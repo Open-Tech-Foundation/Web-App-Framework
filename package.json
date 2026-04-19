@@ -1,0 +1,26 @@
+{
+  "name": "wcf",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@babel/preset-react": "^7.28.5",
+    "@rollup/plugin-babel": "^7.0.0",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/helper-module-imports": "^7.28.6",
+    "@babel/plugin-syntax-jsx": "^7.28.6",
+    "@preact/signals": "^2.9.0",
+    "vite": "^8.0.8"
+  }
+}
