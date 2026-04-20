@@ -5,11 +5,12 @@
 * [x] Web Component wrapping.
 * [x] Signal-based reactivity.
 * [x] File-based routing.
+* [x] Compiler-driven lifecycle hooks (onMount/onCleanup).
 
 ## Phase 2: Refinement (In Progress)
-* [ ] Formalized naming conventions (.wc.jsx).
-* [ ] Compiler enforcement.
-* [ ] Children/Slot support.
+* [x] Formalized naming conventions (.wc.jsx).
+* [x] Compiler enforcement.
+* [x] Children/Slot support (Light DOM).
 * [ ] Fragment support (<>...</>).
 
 ## Phase 3: Advanced Features

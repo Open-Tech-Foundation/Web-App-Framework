@@ -20,3 +20,10 @@
 * All components MUST export a default function.
 * Components MUST follow PascalCase naming (e.g., `Counter`).
 * Tag usage of a `.jsx` file as a component is strictly forbidden and will throw a compiler error.
+
+## Lifecycle Hooks
+Components support two primary lifecycle hooks that are automatically transformed by the compiler:
+* `onMount(() => { ... })`: Runs when the component is added to the DOM.
+* `onCleanup(() => { ... })`: Runs when the component is removed from the DOM.
+
+**Note**: You do NOT need to import these functions; the compiler handles them globally within `.wc.jsx` files.

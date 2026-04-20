@@ -154,13 +154,40 @@ module.exports = function (babel) {
                   t.identifier("connectedCallback"),
                   [],
                   t.blockStatement([
+                    t.expressionStatement(
+                      t.assignmentExpression(
+                        "=",
+                        t.memberExpression(t.thisExpression(), t.identifier("_onCleanups")),
+                        t.arrayExpression([])
+                      )
+                    ),
                     t.variableDeclaration("const", [
                       t.variableDeclarator(
                         t.identifier("props"),
                         t.callExpression(createPropsProxyId, [t.thisExpression()])
                       )
                     ]),
-                    ...originalStatements,
+                    ...originalStatements.map(stmt => {
+                       if (t.isExpressionStatement(stmt) && t.isCallExpression(stmt.expression)) {
+                         const call = stmt.expression;
+                         if (t.isIdentifier(call.callee, { name: "onCleanup" })) {
+                           return t.expressionStatement(
+                             t.callExpression(
+                               t.memberExpression(
+                                 t.memberExpression(t.thisExpression(), t.identifier("_onCleanups")),
+                                 t.identifier("push")
+                               ),
+                               [call.arguments[0]]
+                             )
+                           );
+                         }
+                         if (t.isIdentifier(call.callee, { name: "onMount" })) {
+                            // We'll handle onMount later to ensure it runs after DOM is ready
+                            return t.emptyStatement(); 
+                         }
+                       }
+                       return stmt;
+                    }),
                     ...statements,
                     t.whileStatement(
                       t.memberExpression(t.thisExpression(), t.identifier("firstChild")),
@@ -175,6 +202,30 @@ module.exports = function (babel) {
                       t.callExpression(
                         t.memberExpression(t.thisExpression(), t.identifier("appendChild")),
                         [rootId]
+                      )
+                    ),
+                    // Run onMount callbacks (they preserve closure)
+                    ...originalStatements.filter(stmt => 
+                      t.isExpressionStatement(stmt) && 
+                      t.isCallExpression(stmt.expression) && 
+                      t.isIdentifier(stmt.expression.callee, { name: "onMount" })
+                    ).map(stmt => 
+                      t.expressionStatement(t.callExpression(stmt.expression.arguments[0], []))
+                    )
+                  ])
+                ),
+                t.classMethod(
+                  "method",
+                  t.identifier("disconnectedCallback"),
+                  [],
+                  t.blockStatement([
+                    t.expressionStatement(
+                      t.callExpression(
+                        t.memberExpression(
+                          t.memberExpression(t.thisExpression(), t.identifier("_onCleanups")),
+                          t.identifier("forEach")
+                        ),
+                        [t.arrowFunctionExpression([t.identifier("fn")], t.callExpression(t.identifier("fn"), []))]
                       )
                     )
                   ])
