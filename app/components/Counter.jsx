@@ -1,7 +1,9 @@
-import { signal } from "@preact/signals"
-
 export default function Counter(props) {
-  const count = signal(0)
+  const count = $state(0)
+
+  const doubled = $derived(() => count.value * 2);
+
+  $effect(() => console.log(doubled.value));
 
   onMount(() => {
     console.log(`Counter "${props.label}" mounted!`)
@@ -21,3 +23,4 @@ export default function Counter(props) {
     </div>
   )
 }
+

@@ -1,9 +1,10 @@
-import LoginForm from './components/LoginForm.jsx';
+import Counter from './components/Counter.jsx';
 
 export default function Page() {
   return (
     <div>
-      <LoginForm />
+      <Counter label="First" />
+      <Counter label="Second" />
     </div>
   );
 }

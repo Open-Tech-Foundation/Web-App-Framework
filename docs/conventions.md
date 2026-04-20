@@ -31,9 +31,28 @@ WAF supports multiple styling approaches:
 2. **CSS Modules**: Files named `*.module.css` provide class name isolation (hashing).
 3. **Tailwind CSS v4**: Built-in support for Tailwind v4 utility classes.
 
+## Global Signal Macros
+WAF provides global "macros" for reactivity that do not require imports. The compiler automatically transforms these and injects the necessary imports:
+* `$state(initialValue)`: Creates a reactive signal (Maps to `@preact/signals`'s `signal`).
+* `$effect(() => { ... })`: Runs a side effect when signals used inside change (Maps to `effect`).
+* `$derived(() => expression)`: Creates a memoized reactive value (Maps to `computed`).
+
+**Usage Example:**
+```jsx
+export default function Counter() {
+  const count = $state(0);
+  const doubled = $derived(() => count.value * 2);
+
+  $effect(() => console.log(count.value));
+
+  return <button onclick={() => count.value++}>{doubled.value}</button>;
+}
+```
+
 ## Lifecycle Hooks
-Components support two primary lifecycle hooks that are automatically transformed by the compiler:
+Components support two primary lifecycle hooks:
 * `onMount(() => { ... })`: Runs when the component is added to the DOM.
 * `onCleanup(() => { ... })`: Runs when the component is removed from the DOM.
 
-**Note**: You do NOT need to import these functions; the compiler handles them globally within `.wc.jsx` files.
+
+**Note**: You do NOT need to import these functions; the compiler handles them globally within `.jsx` or `.tsx` component files.

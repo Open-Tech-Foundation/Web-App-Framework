@@ -6,9 +6,15 @@
 * Lowercase tags (`div`, `span`) -> `document.createElement("tag")`.
 * Uppercase tags (`Button`) -> `document.createElement("waf-button")`.
 
-### 2. Reactivity
-* Expressions in text nodes (`{count.value}`) -> `createTextNode("")` + `effect(() => textNode.textContent = expr)`.
-* Expressions in attributes (`value={val.value}`) -> `effect(() => el.value = expr)`.
+### 2. Reactivity & Macros
+* **Global Macros**:
+    * `$state(v)` -> `signal(v)`
+    * `$effect(fn)` -> `effect(fn)`
+    * `$derived(fn)` -> `computed(fn)`
+* **Auto-Imports**: The compiler automatically adds imports for `signal`, `effect`, or `computed` from `@preact/signals` (or any other configured signal library) when these macros are used.
+* **Text Bindings**: Expressions in text nodes (`{count.value}`) -> `createTextNode("")` + `effect(() => textNode.textContent = expr)`.
+* **Attribute Bindings**: Expressions in attributes (`value={val.value}`) -> `effect(() => el.value = expr)`.
+
 
 ### 3. Attributes & Properties
 * **Class Handling**: Both `class` and `className` are automatically mapped to the standard DOM `className` property.

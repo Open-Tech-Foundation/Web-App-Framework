@@ -288,6 +288,57 @@ customElements.define("waf-styletest", StyleTestElement);
 export default StyleTestElement;"
 `;
 
+exports[`WAF Compiler Compiles macros.jsx 1`] = `
+"import { createPropsProxy as _createPropsProxy } from "/framework/runtime/props.js";
+import { signal as _signal, computed as _computed, effect as _effect } from "@preact/signals";
+class MacroTestElement extends HTMLElement {
+  static observedAttributes = [];
+  constructor() {
+    super();
+    this._propsSignals = {};
+  }
+  attributeChangedCallback(name, _, value) {
+    this._propsSignals[name].value = value;
+  }
+  connectedCallback() {
+    this._onCleanups = [];
+    const props = _createPropsProxy(this);
+    const count = _signal(0);
+    const doubled = _computed(() => count.value * 2);
+    _effect(() => {
+      console.log("Count changed:", count.value);
+    });
+    const el0 = document.createElement("div");
+    const el1 = document.createElement("p");
+    const text2 = document.createTextNode("Count: ");
+    el1.appendChild(text2);
+    const text3 = document.createTextNode("");
+    _effect(() => text3.textContent = count.value);
+    el1.appendChild(text3);
+    el0.appendChild(el1);
+    const el4 = document.createElement("p");
+    const text5 = document.createTextNode("Doubled: ");
+    el4.appendChild(text5);
+    const text6 = document.createTextNode("");
+    _effect(() => text6.textContent = doubled.value);
+    el4.appendChild(text6);
+    el0.appendChild(el4);
+    const el7 = document.createElement("button");
+    el7.onclick = () => count.value++;
+    const text8 = document.createTextNode("Increment");
+    el7.appendChild(text8);
+    el0.appendChild(el7);
+    while (this.firstChild) el0.appendChild(this.firstChild);
+    this.appendChild(el0);
+  }
+  disconnectedCallback() {
+    this._onCleanups.forEach(fn => fn());
+  }
+}
+customElements.define("waf-macrotest", MacroTestElement);
+export default MacroTestElement;"
+`;
+
 exports[`WAF Compiler Compiles whitespace.page.jsx 1`] = `
 "import { effect as _effect } from "@preact/signals";
 export function render(root) {

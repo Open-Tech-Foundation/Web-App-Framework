@@ -103,6 +103,23 @@ module.exports = function (babel) {
 
     if (!jsxNode) return;
 
+    // Transform global-like macros ($state, $effect, $derived)
+    componentPath.traverse({
+      CallExpression(p) {
+        if (t.isIdentifier(p.node.callee)) {
+          const name = p.node.callee.name;
+          if (name === "$state") {
+            p.get("callee").replaceWith(getImport("signal", "@preact/signals"));
+          } else if (name === "$effect") {
+            p.get("callee").replaceWith(getImport("effect", "@preact/signals"));
+          } else if (name === "$derived") {
+            p.get("callee").replaceWith(getImport("computed", "@preact/signals"));
+          }
+        }
+      }
+    }, state);
+
+
     const { statements, rootId, signals } = transformJSX(jsxNode, t, state, getImport);
     const componentInfo = state.components.get(name);
     const allSignals = new Set([...signals, ...(componentInfo?.observedAttributes || [])]);
