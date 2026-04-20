@@ -1,10 +1,15 @@
 import { signal } from "@preact/signals"
+import styles from "./SignupForm.module.css"
 
 export default function SignupForm() {
   const username = signal("")
   const email = signal("")
   const password = signal("")
   const status = signal("")
+
+  onMount(() => {
+    console.log("SignupForm mounted")
+  })
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -22,14 +27,15 @@ export default function SignupForm() {
   }
 
   return (
-    <div class="signup-card">
-      <h2 class="green">Join WAF</h2>
-      <p class="subtitle">Experience the future of zero-VDOM apps</p>
+    <div class={styles.card}>
+      <h2 class={`${styles.title} green`}>Join WAF</h2>
+      <p class={styles.subtitle}>Experience the future of zero-VDOM apps</p>
 
       <form onsubmit={handleSubmit}>
-        <div class="form-group">
-          <label>Username</label>
+        <div class={styles.formGroup}>
+          <label class={styles.label}>Username</label>
           <input
+            class={styles.input}
             type="text"
             placeholder="johndoe"
             value={username.value}
@@ -37,9 +43,10 @@ export default function SignupForm() {
           />
         </div>
 
-        <div class="form-group">
-          <label>Email Address</label>
+        <div class={styles.formGroup}>
+          <label class={styles.label}>Email Address</label>
           <input
+            class={styles.input}
             type="email"
             placeholder="john@example.com"
             value={email.value}
@@ -47,9 +54,10 @@ export default function SignupForm() {
           />
         </div>
 
-        <div class="form-group">
-          <label>Password</label>
+        <div class={styles.formGroup}>
+          <label class={styles.label}>Password</label>
           <input
+            class={styles.input}
             type="password"
             placeholder="••••••••"
             value={password.value}
@@ -57,10 +65,10 @@ export default function SignupForm() {
           />
         </div>
 
-        <button type="submit">Create Account</button>
+        <button type="submit" class={styles.button}>Create Account</button>
       </form>
 
-      <div class="status-msg">
+      <div class={styles.statusMsg}>
         {status.value}
       </div>
     </div>
