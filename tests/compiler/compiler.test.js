@@ -1,6 +1,6 @@
 import { expect, test, describe } from "bun:test";
 import { transformSync } from "@babel/core";
-import plugin from "../../compiler/babel-plugin.cjs";
+import plugin from "../../framework/compiler/babel-plugin.cjs";
 import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
 

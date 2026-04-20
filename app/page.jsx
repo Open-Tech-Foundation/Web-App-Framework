@@ -1,4 +1,4 @@
-import Counter from "../components/Counter.wc.jsx"
+import Counter from "./components/Counter.wc.jsx"
 import Link from "../framework/router/Link.wc.jsx"
 
 export default function Page() {

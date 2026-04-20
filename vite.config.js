@@ -13,7 +13,7 @@ export default defineConfig({
       configFile: false,
       plugins: [
         "@babel/plugin-syntax-jsx",
-        [path.resolve(__dirname, 'compiler/babel-plugin.cjs')]
+        [path.resolve(__dirname, 'framework/compiler/babel-plugin.cjs')]
       ]
     })
   ]
