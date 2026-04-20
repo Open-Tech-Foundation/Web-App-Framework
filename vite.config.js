@@ -1,12 +1,14 @@
 import { defineConfig } from 'vite'
 import { babel } from '@rollup/plugin-babel'
 import path from 'path'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   esbuild: {
     jsx: 'preserve'
   },
   plugins: [
+    tailwindcss(),
     babel({
       babelHelpers: 'bundled',
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.wc.jsx', '.wc.tsx'],

@@ -1,9 +1,7 @@
-import SignupForm from "./components/SignupForm.wc.jsx"
+import LoginForm from "./components/LoginForm.wc.jsx"
 
 export default function Page() {
   return (
-    <div>
-      <SignupForm />
-    </div>
+    <LoginForm />
   )
 }

@@ -11,6 +11,7 @@
 * [x] Formalized naming conventions (.wc.jsx).
 * [x] Compiler enforcement.
 * [x] Children/Slot support (Light DOM).
+* [x] Tailwind CSS v4 integration.
 * [ ] Fragment support (<>...</>).
 
 ## Phase 3: Advanced Features

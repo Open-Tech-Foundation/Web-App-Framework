@@ -325,6 +325,7 @@ module.exports = function (babel) {
             const value = attr.value;
 
             if (name.startsWith("on")) {
+              if (t.isJSXExpressionContainer(value) && t.isJSXEmptyExpression(value.expression)) return;
               statements.push(
                 t.expressionStatement(
                   t.assignmentExpression(
@@ -335,6 +336,7 @@ module.exports = function (babel) {
                 )
               );
             } else if (t.isJSXExpressionContainer(value)) {
+              if (t.isJSXEmptyExpression(value.expression)) return;
               if (t.isMemberExpression(value.expression) && t.isIdentifier(value.expression.object, { name: "props" })) {
                 signals.add(value.expression.property.name);
               }
@@ -406,6 +408,8 @@ module.exports = function (babel) {
         );
         return textId;
       } else if (t.isJSXExpressionContainer(n)) {
+        if (t.isJSXEmptyExpression(n.expression)) return null;
+        
         const textId = nextId("text");
         const effectId = getImport("effect", "@preact/signals");
         statements.push(

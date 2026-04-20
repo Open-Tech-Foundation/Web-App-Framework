@@ -22,6 +22,8 @@
     "@babel/helper-module-imports": "^7.28.6",
     "@babel/plugin-syntax-jsx": "^7.28.6",
     "@preact/signals": "^2.9.0",
+    "@tailwindcss/vite": "^4.2.2",
+    "tailwindcss": "^4.2.2",
     "vite": "^8.0.8"
   }
 }
