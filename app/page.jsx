@@ -1,7 +1,15 @@
-import LoginForm from "./components/LoginForm.wc.jsx"
+import Profile from "./components/Profile.wc";
 
-export default function Page() {
+
+export default function Gallery() {
   return (
-    <LoginForm />
-  )
+    <section>
+      <h1>Amazing scientists</h1>
+      <div style={{ display: "flex", gap: "20px", flexWrap: "wrap" }}>
+        <Profile />
+        <Profile />
+        <Profile />
+      </div>
+    </section>
+  );
 }

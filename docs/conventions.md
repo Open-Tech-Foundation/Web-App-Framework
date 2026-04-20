@@ -20,6 +20,8 @@
 * All components MUST export a default function.
 * Components MUST follow PascalCase naming (e.g., `Counter`).
 * **CSS Classes**: You may use either `class` or `className` in your JSX. The compiler automatically maps both to the native `className` property.
+* **Inline Styles**: Supports React-style style objects: `style={{ display: 'flex', gap: '10px' }}`.
+* **SVG/Attributes**: Supports camelCase attributes (e.g., `strokeWidth`) which are automatically mapped to their kebab-case versions in the DOM.
 * **Comments**: Standard JSX comments `{/* ... */}` are supported. If using single-line comments `{ // ... }`, ensure the closing brace is on a new line to avoid syntax errors.
 * Tag usage of a `.jsx` file as a component is strictly forbidden and will throw a compiler error.
 

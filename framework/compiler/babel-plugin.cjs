@@ -258,6 +258,8 @@ module.exports = function (babel) {
       return t.identifier(prefix + (counter++));
     }
 
+    const toKebabCase = (str) => str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+
     function processNode(n) {
       if (t.isJSXElement(n)) {
         const tagName = n.openingElement.name.name;
@@ -321,7 +323,8 @@ module.exports = function (babel) {
           );
 
           n.openingElement.attributes.forEach(attr => {
-            const name = attr.name.name.toLowerCase();
+            const originalName = attr.name.name;
+            const name = originalName.toLowerCase();
             const value = attr.value;
 
             if (name.startsWith("on")) {
@@ -345,33 +348,59 @@ module.exports = function (babel) {
               if (attrName === "class" || attrName === "classname") attrName = "className";
               
               const effectId = getImport("effect", "@preact/signals");
+              const isStyle = attrName === "style";
+              const isProperty = ["className", "style", "value", "checked", "id", "title", "href", "src"].includes(attrName);
+              
               statements.push(
                 t.expressionStatement(
                   t.callExpression(effectId, [
                     t.arrowFunctionExpression(
                       [],
-                      t.assignmentExpression(
-                        "=",
-                        t.memberExpression(elId, t.identifier(attrName)),
-                        value.expression
-                      )
+                      isStyle 
+                        ? t.callExpression(
+                            t.memberExpression(t.identifier("Object"), t.identifier("assign")),
+                            [t.memberExpression(elId, t.identifier("style")), value.expression]
+                          )
+                        : isProperty
+                          ? t.assignmentExpression(
+                              "=",
+                              t.memberExpression(elId, t.identifier(attrName)),
+                              value.expression
+                            )
+                          : t.callExpression(
+                              t.memberExpression(elId, t.identifier("setAttribute")),
+                              [
+                                t.stringLiteral(toKebabCase(originalName)),
+                                value.expression
+                              ]
+                            )
                     )
                   ])
                 )
               );
             } else {
               let attrName = name;
-              if (attrName === "class" || attrName === "classname") attrName = "className";
-              
-              statements.push(
-                t.expressionStatement(
-                  t.assignmentExpression(
-                    "=",
-                    t.memberExpression(elId, t.identifier(attrName)),
-                    value
+              if (attrName === "class" || attrName === "classname") {
+                attrName = "className";
+                statements.push(
+                  t.expressionStatement(
+                    t.assignmentExpression(
+                      "=",
+                      t.memberExpression(elId, t.identifier(attrName)),
+                      value
+                    )
                   )
-                )
-              );
+                );
+              } else {
+                statements.push(
+                  t.expressionStatement(
+                    t.callExpression(
+                      t.memberExpression(elId, t.identifier("setAttribute")),
+                      [t.stringLiteral(toKebabCase(originalName)), value]
+                    )
+                  )
+                );
+              }
             }
           });
         }

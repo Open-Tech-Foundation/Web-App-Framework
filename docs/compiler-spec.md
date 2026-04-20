@@ -12,6 +12,11 @@
 
 ### 3. Attributes & Properties
 * **Class Handling**: Both `class` and `className` are automatically mapped to the standard DOM `className` property.
+* **Style Handling**: 
+    * If `style` is a string, it's assigned to `el.style`.
+    * If `style` is an object (expression), `Object.assign(el.style, value)` is used.
+* **Attribute Mapping**: For native elements, camelCase attributes (e.g., `strokeWidth`) are automatically converted to kebab-case (e.g., `stroke-width`) and applied via `setAttribute`.
+* **Properties**: Specific attributes (`value`, `checked`, `id`, `title`, `href`, `src`) are assigned as JS properties for maximum compatibility.
 * **Events**: Attributes starting with `on` (e.g., `onclick`) are assigned directly as properties: `el.onclick = value`.
 
 ### 4. Components (.wc.jsx)
