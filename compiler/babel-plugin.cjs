@@ -162,6 +162,15 @@ module.exports = function (babel) {
                     ]),
                     ...originalStatements,
                     ...statements,
+                    t.whileStatement(
+                      t.memberExpression(t.thisExpression(), t.identifier("firstChild")),
+                      t.expressionStatement(
+                        t.callExpression(
+                          t.memberExpression(rootId, t.identifier("appendChild")),
+                          [t.memberExpression(t.thisExpression(), t.identifier("firstChild"))]
+                        )
+                      )
+                    ),
                     t.expressionStatement(
                       t.callExpression(
                         t.memberExpression(t.thisExpression(), t.identifier("appendChild")),
@@ -275,6 +284,9 @@ module.exports = function (babel) {
                 )
               );
             } else if (t.isJSXExpressionContainer(value)) {
+              if (t.isMemberExpression(value.expression) && t.isIdentifier(value.expression.object, { name: "props" })) {
+                signals.add(value.expression.property.name);
+              }
               const effectId = getImport("effect", "@preact/signals");
               statements.push(
                 t.expressionStatement(

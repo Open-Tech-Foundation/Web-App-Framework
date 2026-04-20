@@ -13,7 +13,7 @@ export function registerRoutes(pages) {
   }
 }
 
-export function navigate(path, root) {
+export function navigate(path, root = document.getElementById("app")) {
   const page = routes[path] || routes['/']
   if (page && page.render) {
     root.innerHTML = ''

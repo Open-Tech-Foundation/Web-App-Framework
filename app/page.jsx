@@ -1,4 +1,5 @@
 import Counter from "../components/Counter.wc.jsx"
+import Link from "../components/Link.wc.jsx"
 
 export default function Page() {
   return (
@@ -8,10 +9,7 @@ export default function Page() {
       <Counter label="Increment 1" />
       <Counter label="Increment 2" />
       <hr />
-      <a href="/about" onclick={(e) => {
-        e.preventDefault()
-        import("../framework/router/index").then(m => m.navigate("/about", document.getElementById("app")))
-      }}>Go to About</a>
+      <Link href="/about">Go to About</Link>
     </div>
   )
 }
