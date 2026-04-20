@@ -74,9 +74,36 @@ module.exports = function (babel) {
             state.importSources.set(spec.local.name, source);
           }
         });
+      },
+
+      CallExpression(path, state) {
+        if (t.isIdentifier(path.node.callee)) {
+          const name = path.node.callee.name;
+          const getImport = (importName, source) => {
+            const key = `${importName}:${source}`;
+            if (!state.importsNeeded.has(key)) {
+              state.importsNeeded.set(key, addNamed(path, importName, source));
+            }
+            return state.importsNeeded.get(key);
+          };
+
+          if (name === "$state") {
+            path.get("callee").replaceWith(getImport("signal", "@preact/signals"));
+          } else if (name === "$effect") {
+            path.get("callee").replaceWith(getImport("effect", "@preact/signals"));
+          } else if (name === "$derived") {
+            path.get("callee").replaceWith(getImport("computed", "@preact/signals"));
+          } else if (name === "onMount") {
+            path.get("callee").replaceWith(getImport("onMount", "/framework/runtime/lifecycle.js"));
+          } else if (name === "onCleanup") {
+            path.get("callee").replaceWith(getImport("onCleanup", "/framework/runtime/lifecycle.js"));
+          }
+
+        }
       }
     }
   };
+
 
   function transformComponent(componentPath, name, isRenderFn, t, state) {
     const node = componentPath.node;
@@ -103,26 +130,64 @@ module.exports = function (babel) {
 
     if (!jsxNode) return;
 
-    // Transform global-like macros ($state, $effect, $derived)
-    componentPath.traverse({
-      CallExpression(p) {
-        if (t.isIdentifier(p.node.callee)) {
-          const name = p.node.callee.name;
-          if (name === "$state") {
-            p.get("callee").replaceWith(getImport("signal", "@preact/signals"));
-          } else if (name === "$effect") {
-            p.get("callee").replaceWith(getImport("effect", "@preact/signals"));
-          } else if (name === "$derived") {
-            p.get("callee").replaceWith(getImport("computed", "@preact/signals"));
-          }
-        }
-      }
-    }, state);
-
-
     const { statements, rootId, signals } = transformJSX(jsxNode, t, state, getImport);
+
     const componentInfo = state.components.get(name);
+    
+    // Prop Transformation: If the component uses destructuring in params, 
+    // we convert it to use `props` and replace usages to maintain reactivity.
+    if (!isRenderFn) {
+      const propsNode = node.params[0];
+      if (t.isObjectPattern(propsNode)) {
+        const propNames = new Set();
+        propsNode.properties.forEach(prop => {
+          if (t.isObjectProperty(prop) && t.isIdentifier(prop.key)) {
+            propNames.add(prop.key.name);
+          }
+        });
+
+        node.params[0] = t.identifier("props");
+
+        const replaceProps = (node) => {
+
+          if (!node || typeof node !== "object") return;
+          if (Array.isArray(node)) {
+            node.forEach(replaceProps);
+            return;
+          }
+          if (t.isIdentifier(node) && propNames.has(node.name)) {
+            // Don't replace if it's a property key or part of a member expression (unless computed)
+            return; 
+          }
+
+          // Brute force replacement for now: if we see an identifier that matches a prop, 
+          // and it's in a position where it's a value (not a key), replace it.
+          // To be safe, we'll just check common JSX patterns.
+          
+          Object.keys(node).forEach(key => {
+            const child = node[key];
+            if (t.isIdentifier(child) && propNames.has(child.name)) {
+               // Check if it's a property key
+               if (t.isObjectProperty(node) && key === "key" && !node.computed) return;
+               if (t.isMemberExpression(node) && key === "property" && !node.computed) return;
+               if (t.isClassMethod(node) && key === "key") return;
+               
+               node[key] = t.memberExpression(t.identifier("props"), t.identifier(child.name));
+            } else {
+              replaceProps(child);
+            }
+          });
+        };
+
+        replaceProps(originalStatements);
+        replaceProps(statements);
+      }
+    }
+
+
+
     const allSignals = new Set([...signals, ...(componentInfo?.observedAttributes || [])]);
+
 
     if (isRenderFn) {
       // ... (rest of render logic remains same)
@@ -206,37 +271,26 @@ module.exports = function (babel) {
             t.expressionStatement(t.assignmentExpression("=", t.memberExpression(t.memberExpression(t.memberExpression(t.thisExpression(), t.identifier("_propsSignals")), t.identifier("name"), true), t.identifier("value")), t.identifier("value")))
           ])),
           t.classMethod("method", t.identifier("connectedCallback"), [], t.blockStatement([
+            t.expressionStatement(t.assignmentExpression("=", t.memberExpression(t.thisExpression(), t.identifier("_onMounts")), t.arrayExpression([]))),
             t.expressionStatement(t.assignmentExpression("=", t.memberExpression(t.thisExpression(), t.identifier("_onCleanups")), t.arrayExpression([]))),
             t.variableDeclaration("const", [t.variableDeclarator(t.identifier("props"), t.callExpression(createPropsProxyId, [t.thisExpression()]))]),
             
-            // Inject destructuring if present
-            ...(componentInfo?.observedAttributes?.size > 0 ? [
-              t.variableDeclaration("const", [
-                t.variableDeclarator(
-                  t.objectPattern(Array.from(componentInfo.observedAttributes).map(s => 
-                    t.objectProperty(t.identifier(s), t.identifier(s), false, true)
-                  )),
-                  t.identifier("props")
-                )
-              ])
-            ] : []),
+            // Wrap setup in withInstance(this, () => { ... })
+            t.expressionStatement(t.callExpression(getImport("withInstance", "/framework/runtime/lifecycle.js"), [
+              t.thisExpression(),
+              t.arrowFunctionExpression([], t.blockStatement([
+                ...originalStatements,
+                ...statements,
 
-            ...originalStatements.map(stmt => {
-              if (t.isExpressionStatement(stmt) && t.isCallExpression(stmt.expression)) {
-                const call = stmt.expression;
-                if (t.isIdentifier(call.callee, { name: "onCleanup" })) {
-                  return t.expressionStatement(t.callExpression(t.memberExpression(t.memberExpression(t.thisExpression(), t.identifier("_onCleanups")), t.identifier("push")), [call.arguments[0]]));
-                }
-                if (t.isIdentifier(call.callee, { name: "onMount" })) return t.emptyStatement();
-              }
-              return stmt;
-            }),
-            ...statements,
-            t.whileStatement(t.memberExpression(t.thisExpression(), t.identifier("firstChild")), t.expressionStatement(t.callExpression(t.memberExpression(rootId, t.identifier("appendChild")), [t.memberExpression(t.thisExpression(), t.identifier("firstChild"))]))),
-            t.expressionStatement(t.callExpression(t.memberExpression(t.thisExpression(), t.identifier("appendChild")), [rootId])),
-            ...originalStatements.filter(stmt => t.isExpressionStatement(stmt) && t.isCallExpression(stmt.expression) && t.isIdentifier(stmt.expression.callee, { name: "onMount" }))
-              .map(stmt => t.expressionStatement(t.callExpression(stmt.expression.arguments[0], [])))
+                t.whileStatement(t.memberExpression(t.thisExpression(), t.identifier("firstChild")), t.expressionStatement(t.callExpression(t.memberExpression(rootId, t.identifier("appendChild")), [t.memberExpression(t.thisExpression(), t.identifier("firstChild"))]))),
+                t.expressionStatement(t.callExpression(t.memberExpression(t.thisExpression(), t.identifier("appendChild")), [rootId]))
+              ]))
+            ])),
+            // Run onMounts
+            t.expressionStatement(t.callExpression(t.memberExpression(t.memberExpression(t.thisExpression(), t.identifier("_onMounts")), t.identifier("forEach")), [t.arrowFunctionExpression([t.identifier("fn")], t.callExpression(t.identifier("fn"), []))]))
           ])),
+
+
           t.classMethod("method", t.identifier("disconnectedCallback"), [], t.blockStatement([
             t.expressionStatement(t.callExpression(t.memberExpression(t.memberExpression(t.thisExpression(), t.identifier("_onCleanups")), t.identifier("forEach")), [t.arrowFunctionExpression([t.identifier("fn")], t.callExpression(t.identifier("fn"), []))]))
           ]))
@@ -283,8 +337,18 @@ module.exports = function (babel) {
           n.openingElement.attributes.forEach(attr => {
             const name = attr.name.name;
             const value = attr.value;
-            statements.push(t.expressionStatement(t.assignmentExpression("=", t.memberExpression(elId, t.identifier(name === "class" || name === "className" ? "className" : name)), t.isJSXExpressionContainer(value) ? value.expression : value)));
+            const targetProp = name === "class" || name === "className" ? "className" : name;
+
+            if (t.isJSXExpressionContainer(value)) {
+              const effectId = getImport("effect", "@preact/signals");
+              statements.push(t.expressionStatement(t.callExpression(effectId, [
+                t.arrowFunctionExpression([], t.assignmentExpression("=", t.memberExpression(elId, t.identifier(targetProp)), value.expression))
+              ])));
+            } else {
+              statements.push(t.expressionStatement(t.assignmentExpression("=", t.memberExpression(elId, t.identifier(targetProp)), value)));
+            }
           });
+
           
           n.children.forEach(child => {
             const childId = processNode(child);
