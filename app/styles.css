@@ -1,0 +1,11 @@
+.red {
+    color: #ff4444 !important;
+    background: none !important;
+    -webkit-text-fill-color: #ff4444 !important;
+}
+
+.green {
+    color: #44ff44 !important;
+    background: none !important;
+    -webkit-text-fill-color: #44ff44 !important;
+}

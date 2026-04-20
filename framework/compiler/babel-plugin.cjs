@@ -338,6 +338,10 @@ module.exports = function (babel) {
               if (t.isMemberExpression(value.expression) && t.isIdentifier(value.expression.object, { name: "props" })) {
                 signals.add(value.expression.property.name);
               }
+              
+              let attrName = name;
+              if (attrName === "class" || attrName === "classname") attrName = "className";
+              
               const effectId = getImport("effect", "@preact/signals");
               statements.push(
                 t.expressionStatement(
@@ -346,7 +350,7 @@ module.exports = function (babel) {
                       [],
                       t.assignmentExpression(
                         "=",
-                        t.memberExpression(elId, t.identifier(name)),
+                        t.memberExpression(elId, t.identifier(attrName)),
                         value.expression
                       )
                     )
@@ -354,11 +358,14 @@ module.exports = function (babel) {
                 )
               );
             } else {
+              let attrName = name;
+              if (attrName === "class" || attrName === "classname") attrName = "className";
+              
               statements.push(
                 t.expressionStatement(
                   t.assignmentExpression(
                     "=",
-                    t.memberExpression(elId, t.identifier(name)),
+                    t.memberExpression(elId, t.identifier(attrName)),
                     value
                   )
                 )

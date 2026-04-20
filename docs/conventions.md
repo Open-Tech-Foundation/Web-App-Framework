@@ -19,6 +19,7 @@
 ## Rules
 * All components MUST export a default function.
 * Components MUST follow PascalCase naming (e.g., `Counter`).
+* **CSS Classes**: You may use either `class` or `className` in your JSX. The compiler automatically maps both to the native `className` property.
 * Tag usage of a `.jsx` file as a component is strictly forbidden and will throw a compiler error.
 
 ## Lifecycle Hooks

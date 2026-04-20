@@ -10,8 +10,9 @@
 * Expressions in text nodes (`{count.value}`) -> `createTextNode("")` + `effect(() => textNode.textContent = expr)`.
 * Expressions in attributes (`value={val.value}`) -> `effect(() => el.value = expr)`.
 
-### 3. Events
-* Attributes starting with `on` (e.g., `onclick`) are assigned directly as properties: `el.onclick = value`.
+### 3. Attributes & Properties
+* **Class Handling**: Both `class` and `className` are automatically mapped to the standard DOM `className` property.
+* **Events**: Attributes starting with `on` (e.g., `onclick`) are assigned directly as properties: `el.onclick = value`.
 
 ### 4. Components (.wc.jsx)
 * Transformed into a class extending `HTMLElement`.
