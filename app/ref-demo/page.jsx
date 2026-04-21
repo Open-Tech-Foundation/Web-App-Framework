@@ -3,7 +3,7 @@ import FancyModal from "../components/FancyModal.jsx";
 export default function RefDemoPage() {
   const modalRef = $ref();
   const inputRef = $ref();
-  const message = $state("Hello WAF!");
+  let message = $state("Hello WAF!");
 
   const focusInput = () => {
     inputRef.focus();

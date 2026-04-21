@@ -23,7 +23,7 @@ class StylingTestElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const active = _signal(true);
+      let active = _signal(true);
       const rootElement = (() => {
         const el0 = document.createElement("div");
         el0.className = "static-class";

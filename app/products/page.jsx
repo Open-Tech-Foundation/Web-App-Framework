@@ -1,10 +1,10 @@
 import { mapped } from "../../framework/runtime/dom";
 
 export default function ProductsPage() {
-  const productsNaive = $state([]);
-  const productsOptimized = $state([]);
-  const naiveTime = $state(0);
-  const optimizedTime = $state(0);
+  let productsNaive = $state([]);
+  let productsOptimized = $state([]);
+  let naiveTime = $state(0);
+  let optimizedTime = $state(0);
 
   onMount(() => {
     const data = Array.from({ length: 5000 }, (_, i) => ({

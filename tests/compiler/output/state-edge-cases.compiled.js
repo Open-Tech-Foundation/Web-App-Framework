@@ -16,12 +16,12 @@ class StateEdgeCasesElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const count = _signal(0);
-      const user = _signal({
+      let count = _signal(0);
+      let user = _signal({
         name: "Alice",
         age: 30
       });
-      const todos = _signal([]);
+      let todos = _signal([]);
 
       // 1. Basic reassignment
       count.value = 10;

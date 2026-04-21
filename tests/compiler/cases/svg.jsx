@@ -1,5 +1,5 @@
 export default function SvgTest() {
-  const strokeWidth = $state(2)
+  let strokeWidth = $state(2)
   
   return (
     <svg width="100" height="100" viewBox="0 0 100 100">

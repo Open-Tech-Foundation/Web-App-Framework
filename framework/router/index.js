@@ -10,6 +10,7 @@ export const routes = {
 export const router = {
   pathname: signal(window.location.pathname),
   searchParams: signal(new URLSearchParams(window.location.search)),
+  hash: signal(window.location.hash),
   push: (path) => navigate(path),
   replace: (path) => navigate(path, undefined, true)
 }
@@ -39,7 +40,6 @@ export function registerRoutes(pages) {
 
 function matchRoute(path) {
   for (const route in routes.pages) {
-    // Convert [ ...param ] to catch-all regex and [ param ] to single segment regex
     const pattern = route
       .replace(/\[\.\.\.([^\]]+)\]/g, '(?<$1>.+)')
       .replace(/\[([^\]]+)\]/g, '(?<$1>[^/]+)');
@@ -49,7 +49,6 @@ function matchRoute(path) {
     if (match) {
       const params = { ...(match.groups || {}) };
       
-      // Transform catch-all segments into arrays
       for (const key in params) {
         if (route.includes(`[...${key}]`)) {
           params[key] = params[key].split('/');
@@ -66,14 +65,38 @@ function matchRoute(path) {
   return null;
 }
 
+function scrollToHash(hash) {
+  if (!hash) return;
+  const id = hash.replace('#', '');
+  const el = document.getElementById(id);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
 export function navigate(path, root = document.getElementById("app"), replace = false, isPopState = false) {
-  // Parse path for pathname and search params
+  if (!path) return;
+  
   const url = new URL(path, window.location.origin);
   const pathname = url.pathname;
+  const oldPathname = window.location.pathname;
+  const oldSearch = window.location.search;
+  const oldHash = window.location.hash;
   
   if (!isPopState) {
     router.pathname.value = pathname;
     router.searchParams.value = new URLSearchParams(url.search);
+    router.hash.value = url.hash;
+  }
+
+  // If only hash changed, don't re-render everything
+  if (pathname === oldPathname && url.search === oldSearch && url.hash !== oldHash) {
+    if (!isPopState) {
+      if (replace) window.history.replaceState({}, '', path);
+      else window.history.pushState({}, '', path);
+    }
+    scrollToHash(url.hash);
+    return;
   }
 
   const match = matchRoute(pathname) || (routes.notFound ? { page: routes.notFound, params: {}, route: null } : null);
@@ -81,16 +104,13 @@ export function navigate(path, root = document.getElementById("app"), replace = 
   if (match) {
     const { page, params, route } = match;
     
-    // Cleanup previous page
     if (currentPageInstance && currentPageInstance._onCleanups) {
       currentPageInstance._onCleanups.forEach(fn => fn());
     }
     
-    // Create new page instance
     const instance = { _onMounts: [], _onCleanups: [] };
     currentPageInstance = instance;
 
-    // Find all parent layouts
     const layoutChain = [];
     if (route) {
       let currentPath = route;
@@ -103,7 +123,6 @@ export function navigate(path, root = document.getElementById("app"), replace = 
       }
     }
 
-    // Render the chain with instance context
     let content = document.createDocumentFragment();
     withInstance(instance, () => {
       page.render(content, { params });
@@ -119,28 +138,32 @@ export function navigate(path, root = document.getElementById("app"), replace = 
     root.innerHTML = '';
     root.appendChild(content);
 
-    // Trigger mount hooks
     if (instance._onMounts) {
       instance._onMounts.forEach(fn => fn());
     }
 
     if (!isPopState) {
-      if (replace) {
-        window.history.replaceState({}, '', path);
-      } else {
-        window.history.pushState({}, '', path);
-      }
+      if (replace) window.history.replaceState({}, '', path);
+      else window.history.pushState({}, '', path);
     }
+
+    // Scroll to hash after render
+    setTimeout(() => scrollToHash(url.hash), 100);
   } else {
     root.innerHTML = '<h1>404 Not Found</h1>';
   }
 }
 
-// Sync router state with browser history navigation
 if (typeof window !== 'undefined') {
   window.addEventListener('popstate', () => {
+    const fullPath = window.location.pathname + window.location.search + window.location.hash;
     router.pathname.value = window.location.pathname;
     router.searchParams.value = new URLSearchParams(window.location.search);
-    navigate(window.location.pathname + window.location.search, undefined, false, true);
+    router.hash.value = window.location.hash;
+    navigate(fullPath, undefined, false, true);
+  });
+  window.addEventListener('hashchange', () => {
+    router.hash.value = window.location.hash;
+    scrollToHash(window.location.hash);
   });
 }

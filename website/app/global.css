@@ -6,6 +6,15 @@
   --color-accent-hover: #e67512;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+/* Ensure custom elements behave like blocks */
+waf-navlink, waf-link, waf-counter, waf-todolist {
+  display: block;
+}
+
 :root {
   --accent: #ff851b;
 }
@@ -22,3 +31,28 @@ body {
   background: rgba(255, 133, 27, 0.2);
   color: #c2610d;
 }
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.active-nav-link {
+  background-color: rgba(255, 133, 27, 0.1);
+  color: #ff851b !important;
+  font-weight: 700;
+}
+

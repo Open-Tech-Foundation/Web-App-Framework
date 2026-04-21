@@ -1,5 +1,5 @@
 export default function NestedReactivity(props) {
-  const show = $state(true);
+  let show = $state(true);
   return (
     <div>
       {show && <span title={props.title}>Hello</span>}

@@ -20,11 +20,24 @@ export default function WebsiteLayout(props) {
         {props.children}
       </main>
 
-      <footer className="py-8 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center px-8 text-xs text-slate-400 bg-slate-50 mt-auto">
-        <div>© 2026 Open-Tech-Foundation. Experimental.</div>
-        <div className="flex gap-6 mt-4 md:mt-0">
-          <a href="#" className="hover:text-black">Twitter</a>
-          <a href="#" className="hover:text-black">Discord</a>
+      <footer className="py-12 border-t border-slate-100 flex flex-col md:flex-row justify-between items-center px-8 text-xs text-slate-400 bg-slate-50 mt-auto">
+        <div className="flex flex-col gap-2">
+          <div className="font-bold text-slate-900 flex items-center gap-2">
+            WAF Framework
+            <span className="px-2 py-0.5 bg-accent/10 text-accent rounded text-[10px] uppercase tracking-wider">v0.1-alpha</span>
+          </div>
+          <div>© 2026 Open-Tech-Foundation. Experimental.</div>
+        </div>
+
+        <div className="flex flex-col items-center md:items-end gap-4 mt-6 md:mt-0">
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-white border border-slate-200 rounded-full text-slate-600 shadow-sm">
+            <span className="text-[#10b981] font-bold text-lg leading-none" style={{ marginTop: '-2px' }}>✓</span>
+            <span>This site is rendered entirely using <strong>WAF</strong></span>
+          </div>
+          <div className="flex gap-6">
+            <a href="https://twitter.com" className="hover:text-black">Twitter</a>
+            <a href="https://github.com/Open-Tech-Foundation" className="hover:text-black">GitHub</a>
+          </div>
         </div>
       </footer>
     </div>

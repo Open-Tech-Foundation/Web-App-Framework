@@ -55,7 +55,7 @@ class RefTestElement extends HTMLElement {
     _withInstance(this, () => {
       const myDiv = _signal();
       const myInput = _signal();
-      const color = _signal("red");
+      let color = _signal("red");
       _onMount(() => {
         myDiv.value.style.backgroundColor = "lightgray";
         myInput.value.focus();

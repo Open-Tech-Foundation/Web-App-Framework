@@ -1,19 +1,48 @@
 import Link from "../../framework/router/Link.wc.jsx";
+import CodeBlock from "./components/CodeBlock.jsx";
+import Counter from "./components/Counter.jsx";
+import TodoList from "./components/TodoList.jsx";
 
 export default function HomePage() {
   const counterCode = `export default function Counter() {
-  const count = $state(0);
+  let count = $state(0);
+
   return (
     <div className="flex gap-4 items-center">
-      <button onclick={() => count--} className="btn">-</button>
-      <span className="text-2xl font-bold w-12 text-center">{count}</span>
-      <button onclick={() => count++} className="btn">+</button>
+      <button onclick={() => count--}>-</button>
+      <span className="text-2xl font-bold">{count}</span>
+      <button onclick={() => count++}>+</button>
     </div>
   );
 }`;
 
+  const counterCompiled = `class CounterElement extends HTMLElement {
+  connectedCallback() {
+    let count = _signal(0);
+    const rootElement = (() => {
+      const el0 = document.createElement("div");
+      const el1 = document.createElement("button");
+      el1.onclick = () => count.value--;
+      el1.textContent = "-";
+      el0.appendChild(el1);
+      
+      const el3 = document.createElement("span");
+      _renderDynamic(el3, () => count.value);
+      el0.appendChild(el3);
+      
+      const el4 = document.createElement("button");
+      el4.onclick = () => count.value++;
+      el4.textContent = "+";
+      el0.appendChild(el4);
+      return el0;
+    })();
+    this.appendChild(rootElement);
+  }
+}
+customElements.define("waf-counter", CounterElement);`;
+
   const todoCode = `export default function TodoList() {
-  const todos = $state([{ id: 1, text: "Learn WAF", done: false }]);
+  let todos = $state([{ id: 1, text: "Learn WAF", done: false }]);
   
   const toggle = (id) => {
     todos = todos.map(t => t.id === id ? { ...t, done: !t.done } : t);
@@ -22,34 +51,43 @@ export default function HomePage() {
   return (
     <ul className="space-y-2">
       {todos.map(todo => (
-        <li key={todo.id} className="flex gap-2">
-          <input 
-            type="checkbox" 
-            checked={todo.done} 
-            onchange={() => toggle(todo.id)} 
-          />
-          <span className={todo.done ? "line-through" : ""}>
-            {todo.text}
-          </span>
+        <li key={todo.id}>
+          <input type="checkbox" checked={todo.done} onchange={() => toggle(todo.id)} />
+          <span className={todo.done ? "line-through" : ""}>{todo.text}</span>
         </li>
       ))}
     </ul>
   );
 }`;
 
-  const count = $state(0);
-  const todos = $state([{ id: 1, text: "Learn WAF", done: true }, { id: 2, text: "Build an App", done: false }]);
-
-  const toggleTodo = (id) => {
-    todos = todos.map(t => t.id === id ? { ...t, done: !t.done } : t);
-  };
-
-  const addTodo = (e) => {
-    if (e.key === 'Enter' && e.target.value.trim()) {
-      todos = [...todos, { id: Date.now(), text: e.target.value.trim(), done: false }];
-      e.target.value = '';
-    }
-  };
+  const todoCompiled = `class TodoListElement extends HTMLElement {
+  connectedCallback() {
+    let todos = _signal([{ id: 1, text: "Learn WAF", done: false }]);
+    const toggle = id => {
+      todos.value = todos.value.map(t => t.id === id ? { ...t, done: !t.done } : t);
+    };
+    const rootElement = (() => {
+      const el0 = document.createElement("ul");
+      _renderDynamic(el0, () => todos.value.map(todo => (() => {
+        const el0 = document.createElement("li");
+        el0._key = todo.id;
+        const el1 = document.createElement("input");
+        el1.setAttribute("type", "checkbox");
+        _effect(() => el1.checked = todo.done);
+        el1.onchange = () => toggle(todo.id);
+        el0.appendChild(el1);
+        const el2 = document.createElement("span");
+        _effect(() => el2.className = todo.done ? "line-through" : "");
+        _renderDynamic(el2, () => todo.text);
+        el0.appendChild(el2);
+        return el0;
+      })()));
+      return el0;
+    })();
+    this.appendChild(rootElement);
+  }
+}
+customElements.define("waf-todolist", TodoListElement);`;
 
   return (
     <div className="flex-1 max-w-6xl mx-auto px-8 w-full pb-24">
@@ -74,10 +112,10 @@ export default function HomePage() {
         </p>
 
         <div className="flex justify-center gap-4 pt-4">
-          <Link href="/docs" className="bg-black text-white px-8 py-3 rounded-lg font-bold hover:bg-slate-800 transition-all shadow-lg">
+          <Link href="/docs" className="inline-flex items-center justify-center bg-black text-white px-6 py-2.5 rounded-xl font-bold hover:bg-slate-800 transition-all shadow-md active:scale-95">
             Get Started
           </Link>
-          <a href="https://github.com/Open-Tech-Foundation" className="bg-white text-slate-900 border border-slate-200 px-8 py-3 rounded-lg font-bold hover:bg-slate-50 transition-all">
+          <a href="https://github.com/Open-Tech-Foundation" className="inline-flex items-center justify-center bg-white text-slate-900 border border-slate-200 px-6 py-2.5 rounded-xl font-bold hover:bg-slate-50 transition-all active:scale-95">
             View on GitHub
           </a>
         </div>
@@ -121,51 +159,21 @@ export default function HomePage() {
         <div className="grid md:grid-cols-2 gap-8 items-center bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
           <div className="p-12 border-b md:border-b-0 md:border-r border-slate-200 bg-slate-50 flex flex-col items-center justify-center min-h-[300px]">
             <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-8">Live Preview</div>
-            <div className="flex gap-4 items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
-              <button onclick={() => count--} className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 font-bold text-xl transition-colors">-</button>
-              <span className="text-4xl font-bold w-16 text-center text-accent">{count}</span>
-              <button onclick={() => count++} className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 font-bold text-xl transition-colors">+</button>
-            </div>
+            <Counter />
           </div>
           <div className="p-8">
-            <pre className="text-sm font-mono text-slate-800 overflow-x-auto">
-              <code>{counterCode}</code>
-            </pre>
+            <CodeBlock code={counterCode} compiled={counterCompiled} />
           </div>
         </div>
 
         {/* Todo List Demo */}
         <div className="grid md:grid-cols-2 gap-8 items-center bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
           <div className="p-8 order-2 md:order-1">
-            <pre className="text-sm font-mono text-slate-800 overflow-x-auto">
-              <code>{todoCode}</code>
-            </pre>
+            <CodeBlock code={todoCode} compiled={todoCompiled} />
           </div>
           <div className="p-12 border-t md:border-t-0 md:border-l border-slate-200 bg-slate-50 flex flex-col items-center justify-center min-h-[400px] order-1 md:order-2">
             <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-8">Live Preview</div>
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 w-full max-w-sm">
-              <input 
-                type="text" 
-                placeholder="What needs to be done?" 
-                onkeyup={addTodo}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 mb-4 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-              />
-              <ul className="space-y-3">
-                {todos.map(todo => (
-                  <li key={todo.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg transition-colors">
-                    <input 
-                      type="checkbox" 
-                      checked={todo.done} 
-                      onchange={() => toggleTodo(todo.id)} 
-                      className="w-5 h-5 accent-[#ff851b] rounded cursor-pointer"
-                    />
-                    <span className={todo.done ? "line-through text-slate-400" : "text-slate-700 font-medium"}>
-                      {todo.text}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <TodoList />
           </div>
         </div>
       </section>

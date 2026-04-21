@@ -1,5 +1,5 @@
 export default function StylingTest(props) {
-  const active = $state(true)
+  let active = $state(true)
   
   return (
     <div class="static-class" className="static-classname">

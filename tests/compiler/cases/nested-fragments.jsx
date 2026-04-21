@@ -1,5 +1,5 @@
 export default function NestedFragments() {
-  const show = $state(true)
+  let show = $state(true)
   return (
     <div>
       {show && (

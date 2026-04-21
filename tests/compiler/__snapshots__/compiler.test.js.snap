@@ -55,7 +55,7 @@ class ComplexExpressionsElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const count = _signal(0);
+      let count = _signal(0);
       const rootElement = (() => {
         const el0 = document.createElement("div");
         _effect(() => el0.className = props.theme);
@@ -289,7 +289,7 @@ class ReactivityElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const count = _signal(0);
+      let count = _signal(0);
       const rootElement = (() => {
         const el0 = document.createElement("div");
         _effect(() => el0.title = props.title);
@@ -343,7 +343,7 @@ class NestedReactivityElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const show = _signal(true);
+      let show = _signal(true);
       const rootElement = (() => {
         const el0 = document.createElement("div");
         _renderDynamic(el0, () => show.value && (() => {
@@ -405,12 +405,12 @@ class StateEdgeCasesElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const count = _signal(0);
-      const user = _signal({
+      let count = _signal(0);
+      let user = _signal({
         name: "Alice",
         age: 30
       });
-      const todos = _signal([]);
+      let todos = _signal([]);
 
       // 1. Basic reassignment
       count.value = 10;
@@ -499,7 +499,7 @@ class StylingTestElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const active = _signal(true);
+      let active = _signal(true);
       const rootElement = (() => {
         const el0 = document.createElement("div");
         el0.className = "static-class";
@@ -587,7 +587,7 @@ class RefTestElement extends HTMLElement {
     _withInstance(this, () => {
       const myDiv = _signal();
       const myInput = _signal();
-      const color = _signal("red");
+      let color = _signal("red");
       _onMount(() => {
         myDiv.value.style.backgroundColor = "lightgray";
         myInput.value.focus();
@@ -632,7 +632,7 @@ exports[`WAF Compiler Compiles products-page.page.jsx 1`] = `
 "import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
 import { signal as _signal, effect as _effect } from "@preact/signals-core";
 export function render(root, props) {
-  const products = _signal(Array.from({
+  let products = _signal(Array.from({
     length: 1000
   }, (_, i) => ({
     id: i,
@@ -741,7 +741,7 @@ class SvgTestElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const strokeWidth = _signal(2);
+      let strokeWidth = _signal(2);
       const rootElement = (() => {
         const el0 = document.createElement("svg");
         el0.setAttribute("width", "100");
@@ -794,7 +794,7 @@ class ParentElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const count = _signal(0);
+      let count = _signal(0);
       const rootElement = (() => {
         const el0 = document.createElement("div");
         const el1 = document.createElement("waf-child");
@@ -1069,7 +1069,7 @@ class StyleTestElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const color = _signal("red");
+      let color = _signal("red");
       const rootElement = (() => {
         const el0 = document.createElement("div");
         _effect(() => Object.assign(el0.style, {
@@ -1122,7 +1122,7 @@ class MacroTestElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const count = _signal(0);
+      let count = _signal(0);
       const doubled = _computed(() => count.value * 2);
       _effect(() => {
         console.log("Count changed:", count.value);
@@ -1178,7 +1178,7 @@ class ListRenderingElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const items = _signal(['A', 'B', 'C']);
+      let items = _signal(['A', 'B', 'C']);
       const rootElement = (() => {
         const el0 = document.createElement("div");
         const el1 = document.createElement("ul");
@@ -1229,7 +1229,7 @@ class NestedFragmentsElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const show = _signal(true);
+      let show = _signal(true);
       const rootElement = (() => {
         const el0 = document.createElement("div");
         _renderDynamic(el0, () => show.value && (() => {

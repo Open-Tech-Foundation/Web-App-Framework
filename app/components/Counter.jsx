@@ -1,5 +1,5 @@
 export default function Counter(props) {
-  const count = $state(0)
+  let count = $state(0)
 
   const doubled = $derived(() => count * 2);
 

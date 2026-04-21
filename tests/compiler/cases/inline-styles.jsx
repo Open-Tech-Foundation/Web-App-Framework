@@ -1,5 +1,5 @@
 export default function StyleTest() {
-  const color = $state("red")
+  let color = $state("red")
   
   return (
     <div style={{ display: "flex", gap: "10px" }}>

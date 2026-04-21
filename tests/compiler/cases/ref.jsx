@@ -12,7 +12,7 @@ function CustomInput() {
 export default function RefTest() {
   const myDiv = $ref();
   const myInput = $ref();
-  const color = $state("red");
+  let color = $state("red");
 
   onMount(() => {
     myDiv.style.backgroundColor = "lightgray";

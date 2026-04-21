@@ -15,7 +15,7 @@ class StyleTestElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const color = _signal("red");
+      let color = _signal("red");
       const rootElement = (() => {
         const el0 = document.createElement("div");
         _effect(() => Object.assign(el0.style, {

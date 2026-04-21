@@ -15,7 +15,7 @@ class SvgTestElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const strokeWidth = _signal(2);
+      let strokeWidth = _signal(2);
       const rootElement = (() => {
         const el0 = document.createElement("svg");
         el0.setAttribute("width", "100");

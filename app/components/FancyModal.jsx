@@ -1,5 +1,5 @@
 export default function FancyModal(props) {
-  const isOpen = $state(false);
+  let isOpen = $state(false);
   const modalContent = $ref();
 
   const open = () => {

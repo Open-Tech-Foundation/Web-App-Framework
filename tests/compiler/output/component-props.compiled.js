@@ -16,7 +16,7 @@ class ParentElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const count = _signal(0);
+      let count = _signal(0);
       const rootElement = (() => {
         const el0 = document.createElement("div");
         const el1 = document.createElement("waf-child");

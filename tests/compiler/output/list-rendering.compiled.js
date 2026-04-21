@@ -16,7 +16,7 @@ class ListRenderingElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const items = _signal(['A', 'B', 'C']);
+      let items = _signal(['A', 'B', 'C']);
       const rootElement = (() => {
         const el0 = document.createElement("div");
         const el1 = document.createElement("ul");

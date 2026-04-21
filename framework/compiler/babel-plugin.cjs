@@ -290,34 +290,34 @@ module.exports = function (babel) {
         node.params[0] = t.identifier("props");
 
         const replaceProps = (node) => {
-
           if (!node || typeof node !== "object") return;
+
           if (Array.isArray(node)) {
-            node.forEach(replaceProps);
+            for (let i = 0; i < node.length; i++) {
+              const child = node[i];
+              if (t.isIdentifier(child) && propNames.has(child.name)) {
+                node[i] = t.memberExpression(t.identifier("props"), t.identifier(child.name));
+              } else {
+                replaceProps(child);
+              }
+            }
             return;
           }
-          if (t.isIdentifier(node) && propNames.has(node.name)) {
-            // Don't replace if it's a property key or part of a member expression (unless computed)
-            return; 
-          }
 
-          // Brute force replacement for now: if we see an identifier that matches a prop, 
-          // and it's in a position where it's a value (not a key), replace it.
-          // To be safe, we'll just check common JSX patterns.
-          
-          Object.keys(node).forEach(key => {
+          for (const key in node) {
             const child = node[key];
             if (t.isIdentifier(child) && propNames.has(child.name)) {
-               // Check if it's a property key
-               if (t.isObjectProperty(node) && key === "key" && !node.computed) return;
-               if (t.isMemberExpression(node) && key === "property" && !node.computed) return;
-               if (t.isClassMethod(node) && key === "key") return;
-               
-               node[key] = t.memberExpression(t.identifier("props"), t.identifier(child.name));
+              // Only replace if it's NOT a property key in an object or member expression
+              if (t.isObjectProperty(node) && key === "key" && !node.computed) continue;
+              if (t.isMemberExpression(node) && key === "property" && !node.computed) continue;
+              if (t.isClassMethod(node) && key === "key") continue;
+              if (t.isJSXAttribute(node) && key === "name") continue;
+              
+              node[key] = t.memberExpression(t.identifier("props"), t.identifier(child.name));
             } else {
               replaceProps(child);
             }
-          });
+          }
         };
 
         replaceProps(originalStatements);

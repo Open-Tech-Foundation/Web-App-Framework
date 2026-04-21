@@ -1,5 +1,5 @@
 export default function Parent() {
-  const count = $state(0);
+  let count = $state(0);
   return (
     <div>
       <Child val={count} />

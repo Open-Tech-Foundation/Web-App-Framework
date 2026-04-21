@@ -60,30 +60,8 @@ export function mapped(signal, fn) {
 }
 
 function reconcile(parent, anchor, oldNodes, nextNodes) {
-  const oldMap = new Map();
-  oldNodes.forEach(n => {
-    if (n._key !== undefined) oldMap.set(n._key, n);
-  });
-
-  let nextSibling = anchor;
-  for (let i = nextNodes.length - 1; i >= 0; i--) {
-    const node = nextNodes[i];
-    const key = node._key;
-    const existing = key !== undefined ? oldMap.get(key) : null;
-
-    if (existing) {
-      if (existing !== nextSibling.previousSibling) {
-        parent.insertBefore(existing, nextSibling);
-      }
-      oldMap.delete(key);
-      nextNodes[i] = existing;
-    } else {
-      parent.insertBefore(node, nextSibling);
-    }
-    nextSibling = nextNodes[i];
-  }
-
-  oldNodes.forEach(n => {
-    if (!nextNodes.includes(n)) n.remove();
-  });
+  // Clear old nodes and append new ones for now to ensure correctness
+  // Full reconciliation with node reuse requires signal-based item updates
+  oldNodes.forEach(n => n.remove());
+  nextNodes.forEach(n => parent.insertBefore(n, anchor));
 }

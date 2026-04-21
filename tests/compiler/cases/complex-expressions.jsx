@@ -1,5 +1,5 @@
 export default function ComplexExpressions(props) {
-  const count = $state(0);
+  let count = $state(0);
   return (
     <div 
       className={props.theme}

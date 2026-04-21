@@ -1,7 +1,7 @@
 export default function StateEdgeCases() {
-  const count = $state(0);
-  const user = $state({ name: "Alice", age: 30 });
-  const todos = $state([]);
+  let count = $state(0);
+  let user = $state({ name: "Alice", age: 30 });
+  let todos = $state([]);
 
   // 1. Basic reassignment
   count = 10;

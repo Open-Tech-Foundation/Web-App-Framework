@@ -16,7 +16,7 @@ class MacroTestElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const count = _signal(0);
+      let count = _signal(0);
       const doubled = _computed(() => count.value * 2);
       _effect(() => {
         console.log("Count changed:", count.value);

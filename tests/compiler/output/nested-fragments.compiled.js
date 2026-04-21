@@ -16,7 +16,7 @@ class NestedFragmentsElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const show = _signal(true);
+      let show = _signal(true);
       const rootElement = (() => {
         const el0 = document.createElement("div");
         _renderDynamic(el0, () => show.value && (() => {

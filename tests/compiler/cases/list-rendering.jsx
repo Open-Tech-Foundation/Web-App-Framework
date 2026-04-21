@@ -1,5 +1,5 @@
 export default function ListRendering(props) {
-  const items = $state(['A', 'B', 'C']);
+  let items = $state(['A', 'B', 'C']);
   
   return (
     <div>
