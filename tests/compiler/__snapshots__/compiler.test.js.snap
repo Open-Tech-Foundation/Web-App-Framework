@@ -1,5 +1,101 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
+exports[`WAF Compiler Compiles complex-expressions.jsx 1`] = `
+"import { withInstance as _withInstance } from "/framework/runtime/lifecycle.js";
+import { createPropsProxy as _createPropsProxy } from "/framework/runtime/props.js";
+import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
+import { signal as _signal, effect as _effect } from "@preact/signals";
+class ComplexExpressionsElement extends HTMLElement {
+  static observedAttributes = ["theme", "color", "loading", "title", "logMessage"];
+  set theme(val) {
+    this._propsSignals["theme"].value = val;
+  }
+  set color(val) {
+    this._propsSignals["color"].value = val;
+  }
+  set loading(val) {
+    this._propsSignals["loading"].value = val;
+  }
+  set title(val) {
+    this._propsSignals["title"].value = val;
+  }
+  set logMessage(val) {
+    this._propsSignals["logMessage"].value = val;
+  }
+  get theme() {
+    return this._propsSignals["theme"].value;
+  }
+  get color() {
+    return this._propsSignals["color"].value;
+  }
+  get loading() {
+    return this._propsSignals["loading"].value;
+  }
+  get title() {
+    return this._propsSignals["title"].value;
+  }
+  get logMessage() {
+    return this._propsSignals["logMessage"].value;
+  }
+  constructor() {
+    super();
+    this._propsSignals = {
+      theme: _signal(null),
+      color: _signal(null),
+      loading: _signal(null),
+      title: _signal(null),
+      logMessage: _signal(null)
+    };
+  }
+  attributeChangedCallback(name, _, value) {
+    this._propsSignals[name].value = value;
+  }
+  connectedCallback() {
+    this._onMounts = [];
+    this._onCleanups = [];
+    const props = _createPropsProxy(this);
+    _withInstance(this, () => {
+      const count = _signal(0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        _effect(() => el0.className = props.theme);
+        _effect(() => Object.assign(el0.style, {
+          color: props.color,
+          opacity: count.value > 5 ? 1 : 0.5
+        }));
+        _renderDynamic(el0, () => props.loading ? (() => {
+          const el0 = document.createElement("span");
+          const text1 = document.createTextNode("Loading...");
+          el0.appendChild(text1);
+          return el0;
+        })() : (() => {
+          const el0 = document.createElement("div");
+          const el1 = document.createElement("h1");
+          _renderDynamic(el1, () => props.title);
+          el0.appendChild(el1);
+          const el2 = document.createElement("button");
+          el2.onclick = () => console.log(props.logMessage);
+          const text3 = document.createTextNode("Log ");
+          el2.appendChild(text3);
+          _renderDynamic(el2, () => count.value);
+          el0.appendChild(el2);
+          return el0;
+        })());
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
+    });
+    this._onMounts.forEach(fn => fn());
+  }
+  disconnectedCallback() {
+    this._onCleanups.forEach(fn => fn());
+  }
+}
+customElements.define("waf-complexexpressions", ComplexExpressionsElement);
+export default ComplexExpressionsElement;"
+`;
+
 exports[`WAF Compiler Compiles conditional.jsx 1`] = `
 "import { withInstance as _withInstance } from "/framework/runtime/lifecycle.js";
 import { createPropsProxy as _createPropsProxy } from "/framework/runtime/props.js";
@@ -34,15 +130,18 @@ class ItemElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const el0 = document.createElement("li");
-      el0.className = "item";
-      _renderDynamic(el0, () => props.isPacked ? (() => {
-        const el0 = document.createElement("del");
-        _renderDynamic(el0, () => props.name + ' ✅');
+      const rootElement = (() => {
+        const el0 = document.createElement("li");
+        el0.className = "item";
+        _renderDynamic(el0, () => props.isPacked ? (() => {
+          const el0 = document.createElement("del");
+          _renderDynamic(el0, () => props.name + ' ✅');
+          return el0;
+        })() : props.name);
         return el0;
-      })() : props.name);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
@@ -72,20 +171,23 @@ class WrapperElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const el0 = document.createElement("div");
-      el0.className = "wrapper";
-      const el1 = document.createElement("header");
-      const text2 = document.createTextNode("Header");
-      el1.appendChild(text2);
-      el0.appendChild(el1);
-      const el3 = document.createElement("main");
-      el0.appendChild(el3);
-      const el4 = document.createElement("footer");
-      const text5 = document.createTextNode("Footer");
-      el4.appendChild(text5);
-      el0.appendChild(el4);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        el0.className = "wrapper";
+        const el1 = document.createElement("header");
+        const text2 = document.createTextNode("Header");
+        el1.appendChild(text2);
+        el0.appendChild(el1);
+        const el3 = document.createElement("main");
+        el0.appendChild(el3);
+        const el4 = document.createElement("footer");
+        const text5 = document.createTextNode("Footer");
+        el4.appendChild(text5);
+        el0.appendChild(el4);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
@@ -122,11 +224,14 @@ class LifecycleElement extends HTMLElement {
       _onCleanup(() => {
         console.log("cleaned up");
       });
-      const el0 = document.createElement("div");
-      const text1 = document.createTextNode("Lifecycle");
-      el0.appendChild(text1);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        const text1 = document.createTextNode("Lifecycle");
+        el0.appendChild(text1);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
@@ -167,18 +272,21 @@ class ReactivityElement extends HTMLElement {
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
       const count = signal(0);
-      const el0 = document.createElement("div");
-      _effect(() => el0.title = props.title);
-      const el1 = document.createElement("span");
-      _renderDynamic(el1, () => count.value);
-      el0.appendChild(el1);
-      const el2 = document.createElement("button");
-      el2.onclick = () => count.value++;
-      const text3 = document.createTextNode("Add");
-      el2.appendChild(text3);
-      el0.appendChild(el2);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        _effect(() => el0.title = props.title);
+        const el1 = document.createElement("span");
+        _renderDynamic(el1, () => count.value);
+        el0.appendChild(el1);
+        const el2 = document.createElement("button");
+        el2.onclick = () => count.value++;
+        const text3 = document.createTextNode("Add");
+        el2.appendChild(text3);
+        el0.appendChild(el2);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
@@ -190,18 +298,73 @@ customElements.define("waf-reactivity", ReactivityElement);
 export default ReactivityElement;"
 `;
 
+exports[`WAF Compiler Compiles nested-reactivity.jsx 1`] = `
+"import { withInstance as _withInstance } from "/framework/runtime/lifecycle.js";
+import { createPropsProxy as _createPropsProxy } from "/framework/runtime/props.js";
+import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
+import { signal as _signal, effect as _effect } from "@preact/signals";
+class NestedReactivityElement extends HTMLElement {
+  static observedAttributes = ["title"];
+  set title(val) {
+    this._propsSignals["title"].value = val;
+  }
+  get title() {
+    return this._propsSignals["title"].value;
+  }
+  constructor() {
+    super();
+    this._propsSignals = {
+      title: _signal(null)
+    };
+  }
+  attributeChangedCallback(name, _, value) {
+    this._propsSignals[name].value = value;
+  }
+  connectedCallback() {
+    this._onMounts = [];
+    this._onCleanups = [];
+    const props = _createPropsProxy(this);
+    _withInstance(this, () => {
+      const show = _signal(true);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        _renderDynamic(el0, () => show.value && (() => {
+          const el0 = document.createElement("span");
+          _effect(() => el0.title = props.title);
+          const text1 = document.createTextNode("Hello");
+          el0.appendChild(text1);
+          return el0;
+        })());
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
+    });
+    this._onMounts.forEach(fn => fn());
+  }
+  disconnectedCallback() {
+    this._onCleanups.forEach(fn => fn());
+  }
+}
+customElements.define("waf-nestedreactivity", NestedReactivityElement);
+export default NestedReactivityElement;"
+`;
+
 exports[`WAF Compiler Compiles basic-elements.page.jsx 1`] = `
 "export function render(root) {
-  const el0 = document.createElement("div");
-  const el1 = document.createElement("h1");
-  const text2 = document.createTextNode("Hello");
-  el1.appendChild(text2);
-  el0.appendChild(el1);
-  const el3 = document.createElement("p");
-  const text4 = document.createTextNode("World");
-  el3.appendChild(text4);
-  el0.appendChild(el3);
-  root.appendChild(el0);
+  const rootElement = (() => {
+    const el0 = document.createElement("div");
+    const el1 = document.createElement("h1");
+    const text2 = document.createTextNode("Hello");
+    el1.appendChild(text2);
+    el0.appendChild(el1);
+    const el3 = document.createElement("p");
+    const text4 = document.createTextNode("World");
+    el3.appendChild(text4);
+    el0.appendChild(el3);
+    return el0;
+  })();
+  root.appendChild(rootElement);
 }"
 `;
 
@@ -232,21 +395,24 @@ class StylingTestElement extends HTMLElement {
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
       const active = signal(true);
-      const el0 = document.createElement("div");
-      el0.className = "static-class";
-      el0.className = "static-classname";
-      const el1 = document.createElement("span");
-      _effect(() => el1.className = active.value ? "active" : "inactive");
-      const text2 = document.createTextNode("Reactive Class");
-      el1.appendChild(text2);
-      el0.appendChild(el1);
-      const el3 = document.createElement("button");
-      _effect(() => el3.className = props.theme);
-      const text4 = document.createTextNode("Reactive ClassName from Props");
-      el3.appendChild(text4);
-      el0.appendChild(el3);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        el0.className = "static-class";
+        el0.className = "static-classname";
+        const el1 = document.createElement("span");
+        _effect(() => el1.className = active.value ? "active" : "inactive");
+        const text2 = document.createTextNode("Reactive Class");
+        el1.appendChild(text2);
+        el0.appendChild(el1);
+        const el3 = document.createElement("button");
+        _effect(() => el3.className = props.theme);
+        const text4 = document.createTextNode("Reactive ClassName from Props");
+        el3.appendChild(text4);
+        el0.appendChild(el3);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
@@ -260,17 +426,20 @@ export default StylingTestElement;"
 
 exports[`WAF Compiler Compiles comments.page.jsx 1`] = `
 "export function render(root) {
-  const el0 = document.createElement("div");
-  const el1 = document.createElement("h1");
-  const text2 = document.createTextNode("Title");
-  el1.appendChild(text2);
-  el0.appendChild(el1);
-  const el3 = document.createElement("p");
-  el3.className = "foo";
-  const text4 = document.createTextNode("Content");
-  el3.appendChild(text4);
-  el0.appendChild(el3);
-  root.appendChild(el0);
+  const rootElement = (() => {
+    const el0 = document.createElement("div");
+    const el1 = document.createElement("h1");
+    const text2 = document.createTextNode("Title");
+    el1.appendChild(text2);
+    el0.appendChild(el1);
+    const el3 = document.createElement("p");
+    el3.className = "foo";
+    const text4 = document.createTextNode("Content");
+    el3.appendChild(text4);
+    el0.appendChild(el3);
+    return el0;
+  })();
+  root.appendChild(rootElement);
 }"
 `;
 
@@ -293,25 +462,28 @@ class SvgTestElement extends HTMLElement {
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
       const strokeWidth = signal(2);
-      const el0 = document.createElement("svg");
-      el0.setAttribute("width", "100");
-      el0.setAttribute("height", "100");
-      el0.setAttribute("view-box", "0 0 100 100");
-      const el1 = document.createElement("circle");
-      el1.setAttribute("cx", "50");
-      el1.setAttribute("cy", "50");
-      el1.setAttribute("r", "40");
-      el1.setAttribute("stroke", "red");
-      _effect(() => el1.setAttribute("stroke-width", strokeWidth.value));
-      el1.setAttribute("fill", "transparent");
-      el0.appendChild(el1);
-      const el2 = document.createElement("path");
-      el2.setAttribute("d", "M 10 10 L 90 90");
-      el2.setAttribute("stroke", "blue");
-      el2.setAttribute("stroke-linecap", "round");
-      el0.appendChild(el2);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("svg");
+        el0.setAttribute("width", "100");
+        el0.setAttribute("height", "100");
+        el0.setAttribute("view-box", "0 0 100 100");
+        const el1 = document.createElement("circle");
+        el1.setAttribute("cx", "50");
+        el1.setAttribute("cy", "50");
+        el1.setAttribute("r", "40");
+        el1.setAttribute("stroke", "red");
+        _effect(() => el1.setAttribute("stroke-width", strokeWidth.value));
+        el1.setAttribute("fill", "transparent");
+        el0.appendChild(el1);
+        const el2 = document.createElement("path");
+        el2.setAttribute("d", "M 10 10 L 90 90");
+        el2.setAttribute("stroke", "blue");
+        el2.setAttribute("stroke-linecap", "round");
+        el0.appendChild(el2);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
@@ -324,9 +496,9 @@ export default SvgTestElement;"
 `;
 
 exports[`WAF Compiler Compiles component-props.jsx 1`] = `
-"import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
-import { withInstance as _withInstance } from "/framework/runtime/lifecycle.js";
+"import { withInstance as _withInstance } from "/framework/runtime/lifecycle.js";
 import { createPropsProxy as _createPropsProxy } from "/framework/runtime/props.js";
+import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
 import { signal as _signal, effect as _effect } from "@preact/signals";
 class ParentElement extends HTMLElement {
   static observedAttributes = [];
@@ -343,17 +515,20 @@ class ParentElement extends HTMLElement {
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
       const count = _signal(0);
-      const el0 = document.createElement("div");
-      const el1 = document.createElement("waf-child");
-      _effect(() => el1.val = count.value);
-      el0.appendChild(el1);
-      const el2 = document.createElement("button");
-      el2.onclick = () => count.value++;
-      const text3 = document.createTextNode("Inc");
-      el2.appendChild(text3);
-      el0.appendChild(el2);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        const el1 = document.createElement("waf-child");
+        _effect(() => el1.val = count.value);
+        el0.appendChild(el1);
+        const el2 = document.createElement("button");
+        el2.onclick = () => count.value++;
+        const text3 = document.createTextNode("Inc");
+        el2.appendChild(text3);
+        el0.appendChild(el2);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
@@ -385,10 +560,13 @@ class ChildElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const el0 = document.createElement("div");
-      _renderDynamic(el0, () => props.val);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        _renderDynamic(el0, () => props.val);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
@@ -397,6 +575,138 @@ class ChildElement extends HTMLElement {
   }
 }
 customElements.define("waf-child", ChildElement);"
+`;
+
+exports[`WAF Compiler Compiles multiple-components.jsx 1`] = `
+"import { withInstance as _withInstance } from "/framework/runtime/lifecycle.js";
+import { createPropsProxy as _createPropsProxy } from "/framework/runtime/props.js";
+import { signal as _signal } from "@preact/signals";
+import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
+import { effect as _effect } from "@preact/signals";
+class MultipleComponentsElement extends HTMLElement {
+  static observedAttributes = ["a", "b"];
+  set a(val) {
+    this._propsSignals["a"].value = val;
+  }
+  set b(val) {
+    this._propsSignals["b"].value = val;
+  }
+  get a() {
+    return this._propsSignals["a"].value;
+  }
+  get b() {
+    return this._propsSignals["b"].value;
+  }
+  constructor() {
+    super();
+    this._propsSignals = {
+      a: _signal(null),
+      b: _signal(null)
+    };
+  }
+  attributeChangedCallback(name, _, value) {
+    this._propsSignals[name].value = value;
+  }
+  connectedCallback() {
+    this._onMounts = [];
+    this._onCleanups = [];
+    const props = _createPropsProxy(this);
+    _withInstance(this, () => {
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        const el1 = document.createElement("waf-a");
+        _effect(() => el1.val = props.a);
+        el0.appendChild(el1);
+        const el2 = document.createElement("waf-b");
+        _effect(() => el2.val = props.b);
+        el0.appendChild(el2);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
+    });
+    this._onMounts.forEach(fn => fn());
+  }
+  disconnectedCallback() {
+    this._onCleanups.forEach(fn => fn());
+  }
+}
+customElements.define("waf-multiplecomponents", MultipleComponentsElement);
+export default MultipleComponentsElement;
+class AElement extends HTMLElement {
+  static observedAttributes = ["val"];
+  set val(val) {
+    this._propsSignals["val"].value = val;
+  }
+  get val() {
+    return this._propsSignals["val"].value;
+  }
+  constructor() {
+    super();
+    this._propsSignals = {
+      val: _signal(null)
+    };
+  }
+  attributeChangedCallback(name, _, value) {
+    this._propsSignals[name].value = value;
+  }
+  connectedCallback() {
+    this._onMounts = [];
+    this._onCleanups = [];
+    const props = _createPropsProxy(this);
+    _withInstance(this, () => {
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        _renderDynamic(el0, () => props.val);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
+    });
+    this._onMounts.forEach(fn => fn());
+  }
+  disconnectedCallback() {
+    this._onCleanups.forEach(fn => fn());
+  }
+}
+customElements.define("waf-a", AElement);
+class BElement extends HTMLElement {
+  static observedAttributes = ["val"];
+  set val(val) {
+    this._propsSignals["val"].value = val;
+  }
+  get val() {
+    return this._propsSignals["val"].value;
+  }
+  constructor() {
+    super();
+    this._propsSignals = {
+      val: _signal(null)
+    };
+  }
+  attributeChangedCallback(name, _, value) {
+    this._propsSignals[name].value = value;
+  }
+  connectedCallback() {
+    this._onMounts = [];
+    this._onCleanups = [];
+    const props = _createPropsProxy(this);
+    _withInstance(this, () => {
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        _renderDynamic(el0, () => props.val);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
+    });
+    this._onMounts.forEach(fn => fn());
+  }
+  disconnectedCallback() {
+    this._onCleanups.forEach(fn => fn());
+  }
+}
+customElements.define("waf-b", BElement);"
 `;
 
 exports[`WAF Compiler Compiles inline-styles.jsx 1`] = `
@@ -418,25 +728,28 @@ class StyleTestElement extends HTMLElement {
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
       const color = signal("red");
-      const el0 = document.createElement("div");
-      _effect(() => Object.assign(el0.style, {
-        display: "flex",
-        gap: "10px"
-      }));
-      const el1 = document.createElement("span");
-      _effect(() => Object.assign(el1.style, {
-        color: color.value
-      }));
-      const text2 = document.createTextNode("Reactive Style");
-      el1.appendChild(text2);
-      el0.appendChild(el1);
-      const el3 = document.createElement("div");
-      el3.setAttribute("style", "font-weight: bold;");
-      const text4 = document.createTextNode("Static Style String");
-      el3.appendChild(text4);
-      el0.appendChild(el3);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        _effect(() => Object.assign(el0.style, {
+          display: "flex",
+          gap: "10px"
+        }));
+        const el1 = document.createElement("span");
+        _effect(() => Object.assign(el1.style, {
+          color: color.value
+        }));
+        const text2 = document.createTextNode("Reactive Style");
+        el1.appendChild(text2);
+        el0.appendChild(el1);
+        const el3 = document.createElement("div");
+        el3.setAttribute("style", "font-weight: bold;");
+        const text4 = document.createTextNode("Static Style String");
+        el3.appendChild(text4);
+        el0.appendChild(el3);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
@@ -472,24 +785,27 @@ class MacroTestElement extends HTMLElement {
       _effect(() => {
         console.log("Count changed:", count.value);
       });
-      const el0 = document.createElement("div");
-      const el1 = document.createElement("p");
-      const text2 = document.createTextNode("Count: ");
-      el1.appendChild(text2);
-      _renderDynamic(el1, () => count.value);
-      el0.appendChild(el1);
-      const el3 = document.createElement("p");
-      const text4 = document.createTextNode("Doubled: ");
-      el3.appendChild(text4);
-      _renderDynamic(el3, () => doubled.value);
-      el0.appendChild(el3);
-      const el5 = document.createElement("button");
-      el5.onclick = () => count.value++;
-      const text6 = document.createTextNode("Increment");
-      el5.appendChild(text6);
-      el0.appendChild(el5);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        const el1 = document.createElement("p");
+        const text2 = document.createTextNode("Count: ");
+        el1.appendChild(text2);
+        _renderDynamic(el1, () => count.value);
+        el0.appendChild(el1);
+        const el3 = document.createElement("p");
+        const text4 = document.createTextNode("Doubled: ");
+        el3.appendChild(text4);
+        _renderDynamic(el3, () => doubled.value);
+        el0.appendChild(el3);
+        const el5 = document.createElement("button");
+        el5.onclick = () => count.value++;
+        const text6 = document.createTextNode("Increment");
+        el5.appendChild(text6);
+        el0.appendChild(el5);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
@@ -501,26 +817,95 @@ customElements.define("waf-macrotest", MacroTestElement);
 export default MacroTestElement;"
 `;
 
+exports[`WAF Compiler Compiles nested-fragments.jsx 1`] = `
+"import { withInstance as _withInstance } from "/framework/runtime/lifecycle.js";
+import { createPropsProxy as _createPropsProxy } from "/framework/runtime/props.js";
+import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
+import { signal as _signal, effect as _effect } from "@preact/signals";
+class NestedFragmentsElement extends HTMLElement {
+  static observedAttributes = ["t1", "t2"];
+  set t1(val) {
+    this._propsSignals["t1"].value = val;
+  }
+  set t2(val) {
+    this._propsSignals["t2"].value = val;
+  }
+  get t1() {
+    return this._propsSignals["t1"].value;
+  }
+  get t2() {
+    return this._propsSignals["t2"].value;
+  }
+  constructor() {
+    super();
+    this._propsSignals = {
+      t1: _signal(null),
+      t2: _signal(null)
+    };
+  }
+  attributeChangedCallback(name, _, value) {
+    this._propsSignals[name].value = value;
+  }
+  connectedCallback() {
+    this._onMounts = [];
+    this._onCleanups = [];
+    const props = _createPropsProxy(this);
+    _withInstance(this, () => {
+      const show = _signal(true);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        _renderDynamic(el0, () => show.value && (() => {
+          const frag0 = document.createDocumentFragment();
+          const el1 = document.createElement("span");
+          _effect(() => el1.title = props.t1);
+          const text2 = document.createTextNode("Part 1");
+          el1.appendChild(text2);
+          frag0.appendChild(el1);
+          const el3 = document.createElement("span");
+          _effect(() => el3.title = props.t2);
+          const text4 = document.createTextNode("Part 2");
+          el3.appendChild(text4);
+          frag0.appendChild(el3);
+          return frag0;
+        })());
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
+    });
+    this._onMounts.forEach(fn => fn());
+  }
+  disconnectedCallback() {
+    this._onCleanups.forEach(fn => fn());
+  }
+}
+customElements.define("waf-nestedfragments", NestedFragmentsElement);
+export default NestedFragmentsElement;"
+`;
+
 exports[`WAF Compiler Compiles whitespace.page.jsx 1`] = `
 "import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
 export function render(root) {
   const name = "WAF";
-  const el0 = document.createElement("div");
-  const el1 = document.createElement("span");
-  const text2 = document.createTextNode("Hello ");
-  el1.appendChild(text2);
-  _renderDynamic(el1, () => name);
-  const text3 = document.createTextNode("!");
-  el1.appendChild(text3);
-  el0.appendChild(el1);
-  const el4 = document.createElement("p");
-  const text5 = document.createTextNode("Line 1Line 2");
-  el4.appendChild(text5);
-  el0.appendChild(el4);
-  const el6 = document.createElement("div");
-  const text7 = document.createTextNode("Spaces should be preserved here -> ");
-  el6.appendChild(text7);
-  el0.appendChild(el6);
-  root.appendChild(el0);
+  const rootElement = (() => {
+    const el0 = document.createElement("div");
+    const el1 = document.createElement("span");
+    const text2 = document.createTextNode("Hello ");
+    el1.appendChild(text2);
+    _renderDynamic(el1, () => name);
+    const text3 = document.createTextNode("!");
+    el1.appendChild(text3);
+    el0.appendChild(el1);
+    const el4 = document.createElement("p");
+    const text5 = document.createTextNode("Line 1Line 2");
+    el4.appendChild(text5);
+    el0.appendChild(el4);
+    const el6 = document.createElement("div");
+    const text7 = document.createTextNode("Spaces should be preserved here -> ");
+    el6.appendChild(text7);
+    el0.appendChild(el6);
+    return el0;
+  })();
+  root.appendChild(rootElement);
 }"
 `;

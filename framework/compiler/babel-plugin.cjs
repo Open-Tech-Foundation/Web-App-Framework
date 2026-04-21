@@ -103,10 +103,59 @@ module.exports = function (babel) {
 
 
         }
+      },
+
+      JSXElement(path, state) {
+        handleJSXVisitor(path, state, t);
+      },
+
+      JSXFragment(path, state) {
+        handleJSXVisitor(path, state, t);
       }
     }
   };
 
+  function handleJSXVisitor(path, state, t) {
+    if (path.node._processed) return;
+    const getImport = (importName, source) => {
+      const key = `${importName}:${source}`;
+      if (!state.importsNeeded.has(key)) {
+        state.importsNeeded.set(key, addNamed(path, importName, source));
+      }
+      return state.importsNeeded.get(key);
+    };
+
+    const { statements, rootId, signals } = transformJSX(path.node, t, state, getImport, path);
+
+    // Propagate signals to parent component for observedAttributes
+    const parentFunc = path.findParent(p => 
+      p.isFunctionDeclaration() && (
+        /^[A-Z]/.test(p.node.id?.name) || 
+        (p.parentPath.isExportDefaultDeclaration() && state.isPageFile)
+      )
+    );
+
+    if (parentFunc) {
+      let compName = parentFunc.node.id?.name;
+      if (!compName && parentFunc.parentPath.isExportDefaultDeclaration()) {
+        compName = "_default";
+      }
+      if (compName) {
+        const info = state.components.get(compName);
+        if (info) {
+          if (!info.observedAttributes) info.observedAttributes = new Set();
+          signals.forEach(s => info.observedAttributes.add(s));
+        }
+      }
+    }
+
+    const iife = t.callExpression(t.arrowFunctionExpression([], t.blockStatement([
+      ...statements,
+      t.returnStatement(rootId)
+    ])), []);
+    iife._processed = true;
+    path.replaceWith(iife);
+  }
 
   function transformComponent(componentPath, name, isRenderFn, t, state) {
     const node = componentPath.node;
@@ -124,7 +173,7 @@ module.exports = function (babel) {
     const originalStatements = [];
 
     body.body.forEach(stmt => {
-      if (t.isReturnStatement(stmt) && (t.isJSXElement(stmt.argument) || t.isJSXFragment(stmt.argument))) {
+      if (t.isReturnStatement(stmt)) {
         jsxNode = stmt.argument;
       } else {
         originalStatements.push(stmt);
@@ -133,7 +182,17 @@ module.exports = function (babel) {
 
     if (!jsxNode) return;
 
-    const { statements, rootId, signals } = transformJSX(jsxNode, t, state, getImport, componentPath);
+    const res = transformJSX(jsxNode, t, state, getImport, componentPath);
+    let statements = res.statements;
+    let rootId = res.rootId;
+    let signals = res.signals;
+
+    // Capture the root element in a variable to avoid re-evaluating the IIFE if it is one
+    const rootVar = t.identifier("rootElement");
+    statements.push(t.variableDeclaration("const", [t.variableDeclarator(rootVar, rootId)]));
+    rootId = rootVar;
+
+
 
     const componentInfo = state.components.get(name);
     
@@ -319,11 +378,30 @@ module.exports = function (babel) {
   }
 
   function transformJSX(node, t, state, getImport, path) {
+    if (node._processed) return { statements: [], rootId: node, signals: new Set() };
+    node._processed = true;
+
     const statements = [];
+
     const signals = new Set();
     let counter = 0;
     const nextId = (prefix = "el") => t.identifier(prefix + (counter++));
     const toKebabCase = (str) => str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+
+    function collectSignals(exprNode) {
+      if (!exprNode || typeof exprNode !== "object") return;
+      if (Array.isArray(exprNode)) {
+        exprNode.forEach(collectSignals);
+        return;
+      }
+      if (t.isMemberExpression(exprNode) && t.isIdentifier(exprNode.object, { name: "props" }) && t.isIdentifier(exprNode.property)) {
+        signals.add(exprNode.property.name);
+      }
+      Object.keys(exprNode).forEach(key => {
+        if (key === "property" && t.isMemberExpression(exprNode) && !exprNode.computed) return;
+        collectSignals(exprNode[key]);
+      });
+    }
 
     function processNode(n, parentElId) {
       if (t.isJSXElement(n)) {
@@ -343,6 +421,7 @@ module.exports = function (babel) {
             const targetProp = name === "class" || name === "className" ? "className" : name;
 
             if (t.isJSXExpressionContainer(value)) {
+              collectSignals(value.expression);
               const effectId = getImport("effect", "@preact/signals");
               statements.push(t.expressionStatement(t.callExpression(effectId, [
                 t.arrowFunctionExpression([], t.assignmentExpression("=", t.memberExpression(elId, t.identifier(targetProp)), value.expression))
@@ -374,7 +453,7 @@ module.exports = function (babel) {
             statements.push(t.expressionStatement(t.assignmentExpression("=", t.memberExpression(elId, t.identifier(name)), t.isJSXExpressionContainer(value) ? value.expression : value)));
           } else if (t.isJSXExpressionContainer(value)) {
             if (t.isJSXEmptyExpression(value.expression)) return;
-            if (t.isMemberExpression(value.expression) && t.isIdentifier(value.expression.object, { name: "props" })) signals.add(value.expression.property.name);
+            collectSignals(value.expression);
             
             const effectId = getImport("effect", "@preact/signals");
             const attrProp = (name === "class" || name === "classname") ? "className" : name;
@@ -407,9 +486,19 @@ module.exports = function (babel) {
         const textId = nextId("text");
         statements.push(t.variableDeclaration("const", [t.variableDeclarator(textId, t.callExpression(t.memberExpression(t.identifier("document"), t.identifier("createTextNode")), [t.stringLiteral(text)]))]));
         return textId;
+      } else if (t.isJSXFragment(n)) {
+        const fragId = nextId("frag");
+        statements.push(t.variableDeclaration("const", [t.variableDeclarator(fragId, t.callExpression(t.memberExpression(t.identifier("document"), t.identifier("createDocumentFragment")), []))]));
+        n.children.forEach(child => {
+          const childId = processNode(child, fragId);
+          if (childId) statements.push(t.expressionStatement(t.callExpression(t.memberExpression(fragId, t.identifier("appendChild")), [childId])));
+        });
+        return fragId;
       } else if (t.isJSXExpressionContainer(n)) {
         if (t.isJSXEmptyExpression(n.expression)) return null;
         
+        collectSignals(n.expression);
+
         // Recursive helper to transform nested JSX elements into imperative IIFEs
         const transformNestedJSX = (exprNode) => {
           if (!exprNode || typeof exprNode !== "object") return;
@@ -421,11 +510,14 @@ module.exports = function (babel) {
           Object.keys(exprNode).forEach(key => {
             const child = exprNode[key];
             if (t.isJSXElement(child) || t.isJSXFragment(child)) {
-              const { statements: innerStatements, rootId: innerRootId } = transformJSX(child, t, state, getImport, path);
+              if (child._processed) return;
+              const { statements: innerStatements, rootId: innerRootId, signals: innerSignals } = transformJSX(child, t, state, getImport, path);
+              innerSignals.forEach(s => signals.add(s));
               exprNode[key] = t.callExpression(t.arrowFunctionExpression([], t.blockStatement([
                 ...innerStatements,
                 t.returnStatement(innerRootId)
               ])), []);
+              exprNode[key]._processed = true;
             } else {
               transformNestedJSX(child);
             }
@@ -441,10 +533,13 @@ module.exports = function (babel) {
           t.arrowFunctionExpression([], n.expression)
         ])));
 
-        if (t.isMemberExpression(n.expression) && t.isIdentifier(n.expression.object, { name: "props" })) signals.add(n.expression.property.name);
         return null;
+      } else if (t.isExpression(n)) {
+        return n;
       }
     }
+
+
     const rootId = processNode(node, t.identifier("root"));
     return { statements, rootId, signals };
   }

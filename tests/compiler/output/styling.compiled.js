@@ -24,21 +24,24 @@ class StylingTestElement extends HTMLElement {
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
       const active = signal(true);
-      const el0 = document.createElement("div");
-      el0.className = "static-class";
-      el0.className = "static-classname";
-      const el1 = document.createElement("span");
-      _effect(() => el1.className = active.value ? "active" : "inactive");
-      const text2 = document.createTextNode("Reactive Class");
-      el1.appendChild(text2);
-      el0.appendChild(el1);
-      const el3 = document.createElement("button");
-      _effect(() => el3.className = props.theme);
-      const text4 = document.createTextNode("Reactive ClassName from Props");
-      el3.appendChild(text4);
-      el0.appendChild(el3);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        el0.className = "static-class";
+        el0.className = "static-classname";
+        const el1 = document.createElement("span");
+        _effect(() => el1.className = active.value ? "active" : "inactive");
+        const text2 = document.createTextNode("Reactive Class");
+        el1.appendChild(text2);
+        el0.appendChild(el1);
+        const el3 = document.createElement("button");
+        _effect(() => el3.className = props.theme);
+        const text4 = document.createTextNode("Reactive ClassName from Props");
+        el3.appendChild(text4);
+        el0.appendChild(el3);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }

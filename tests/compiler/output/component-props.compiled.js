@@ -1,6 +1,6 @@
-import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
 import { withInstance as _withInstance } from "/framework/runtime/lifecycle.js";
 import { createPropsProxy as _createPropsProxy } from "/framework/runtime/props.js";
+import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
 import { signal as _signal, effect as _effect } from "@preact/signals";
 class ParentElement extends HTMLElement {
   static observedAttributes = [];
@@ -17,17 +17,20 @@ class ParentElement extends HTMLElement {
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
       const count = _signal(0);
-      const el0 = document.createElement("div");
-      const el1 = document.createElement("waf-child");
-      _effect(() => el1.val = count.value);
-      el0.appendChild(el1);
-      const el2 = document.createElement("button");
-      el2.onclick = () => count.value++;
-      const text3 = document.createTextNode("Inc");
-      el2.appendChild(text3);
-      el0.appendChild(el2);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        const el1 = document.createElement("waf-child");
+        _effect(() => el1.val = count.value);
+        el0.appendChild(el1);
+        const el2 = document.createElement("button");
+        el2.onclick = () => count.value++;
+        const text3 = document.createTextNode("Inc");
+        el2.appendChild(text3);
+        el0.appendChild(el2);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
@@ -59,10 +62,13 @@ class ChildElement extends HTMLElement {
     this._onCleanups = [];
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
-      const el0 = document.createElement("div");
-      _renderDynamic(el0, () => props.val);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        _renderDynamic(el0, () => props.val);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }

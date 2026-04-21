@@ -22,11 +22,14 @@ class LifecycleElement extends HTMLElement {
       _onCleanup(() => {
         console.log("cleaned up");
       });
-      const el0 = document.createElement("div");
-      const text1 = document.createTextNode("Lifecycle");
-      el0.appendChild(text1);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        const text1 = document.createTextNode("Lifecycle");
+        el0.appendChild(text1);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }

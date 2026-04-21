@@ -26,18 +26,21 @@ class ReactivityElement extends HTMLElement {
     const props = _createPropsProxy(this);
     _withInstance(this, () => {
       const count = signal(0);
-      const el0 = document.createElement("div");
-      _effect(() => el0.title = props.title);
-      const el1 = document.createElement("span");
-      _renderDynamic(el1, () => count.value);
-      el0.appendChild(el1);
-      const el2 = document.createElement("button");
-      el2.onclick = () => count.value++;
-      const text3 = document.createTextNode("Add");
-      el2.appendChild(text3);
-      el0.appendChild(el2);
-      while (this.firstChild) el0.appendChild(this.firstChild);
-      this.appendChild(el0);
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        _effect(() => el0.title = props.title);
+        const el1 = document.createElement("span");
+        _renderDynamic(el1, () => count.value);
+        el0.appendChild(el1);
+        const el2 = document.createElement("button");
+        el2.onclick = () => count.value++;
+        const text3 = document.createTextNode("Add");
+        el2.appendChild(text3);
+        el0.appendChild(el2);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
     });
     this._onMounts.forEach(fn => fn());
   }
