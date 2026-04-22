@@ -448,19 +448,39 @@ module.exports = function (babel) {
       );
       
       const parent = componentPath.parentPath;
-      const targetPath = parent.isExportDefaultDeclaration() ? parent : componentPath;
-      targetPath.insertBefore(classDecl);
-      targetPath.insertBefore(t.expressionStatement(
-        t.callExpression(
-          t.memberExpression(t.identifier("customElements"), t.identifier("define")),
-          [t.stringLiteral(tagName), classId]
-        )
-      ));
-
+      
       if (parent.isExportDefaultDeclaration()) {
+        componentPath.parentPath.insertBefore(classDecl);
+        componentPath.parentPath.insertBefore(t.expressionStatement(
+          t.callExpression(
+            t.memberExpression(t.identifier("customElements"), t.identifier("define")),
+            [t.stringLiteral(tagName), classId]
+          )
+        ));
         parent.replaceWith(t.exportDefaultDeclaration(classId));
+      } else if (parent.isExportNamedDeclaration()) {
+        // For named exports, we transform the function into an exported class directly
+        const exportedClass = t.classDeclaration(
+          t.identifier(name),
+          t.identifier("HTMLElement"),
+          classDecl.body
+        );
+        parent.replaceWith(t.exportNamedDeclaration(exportedClass, []));
+        parent.insertAfter(t.expressionStatement(
+          t.callExpression(
+            t.memberExpression(t.identifier("customElements"), t.identifier("define")),
+            [t.stringLiteral(tagName), t.identifier(name)]
+          )
+        ));
       } else {
-        componentPath.remove(); // The classDecl is already inserted before
+        componentPath.insertBefore(classDecl);
+        componentPath.insertBefore(t.expressionStatement(
+          t.callExpression(
+            t.memberExpression(t.identifier("customElements"), t.identifier("define")),
+            [t.stringLiteral(tagName), classId]
+          )
+        ));
+        componentPath.remove();
       }
     }
   }
@@ -504,6 +524,11 @@ module.exports = function (babel) {
           ]));
           
           n.openingElement.attributes.forEach(attr => {
+            if (t.isJSXSpreadAttribute(attr)) {
+              const applySpreadId = getImport("applySpread", "/framework/runtime/props.js");
+              statements.push(t.expressionStatement(t.callExpression(applySpreadId, [elId, attr.argument])));
+              return;
+            }
             const name = attr.name.name;
             const value = attr.value;
             const targetProp = name === "class" || name === "className" ? "className" : name;
@@ -551,6 +576,11 @@ module.exports = function (babel) {
         ]));
 
         n.openingElement.attributes.forEach(attr => {
+          if (t.isJSXSpreadAttribute(attr)) {
+            const applySpreadId = getImport("applySpread", "/framework/runtime/props.js");
+            statements.push(t.expressionStatement(t.callExpression(applySpreadId, [elId, attr.argument])));
+            return;
+          }
           const originalName = attr.name.name;
           const name = originalName.toLowerCase();
           const value = attr.value;
@@ -585,18 +615,18 @@ module.exports = function (babel) {
             } else {
               statements.push(t.expressionStatement(t.callExpression(effectId, [t.arrowFunctionExpression([], 
                 isStyle ? t.callExpression(t.memberExpression(t.identifier("Object"), t.identifier("assign")), [t.memberExpression(elId, t.identifier("style")), value.expression])
-                : isProperty ? t.assignmentExpression("=", t.memberExpression(elId, t.identifier(attrProp)), value.expression)
-                : t.callExpression(t.memberExpression(elId, t.identifier("setAttribute")), [t.stringLiteral(toKebabCase(originalName)), value.expression])
+                : (isProperty && (!isSvg || attrProp !== "className")) ? t.assignmentExpression("=", t.memberExpression(elId, t.identifier(attrProp)), value.expression)
+                : t.callExpression(t.memberExpression(elId, t.identifier("setAttribute")), [t.stringLiteral(attrProp === "className" ? "class" : toKebabCase(originalName)), value.expression])
               )])));
             }
           } else {
             const attrProp = (name === "class" || name === "classname") ? "className" : name;
             const isProperty = ["className", "style", "value", "checked", "id", "title", "href", "src", "key"].includes(attrProp);
             
-            if (isProperty) {
+            if (isProperty && (!isSvg || attrProp !== "className")) {
               statements.push(t.expressionStatement(t.assignmentExpression("=", t.memberExpression(elId, t.identifier(attrProp === "key" ? "_key" : attrProp)), value)));
             } else {
-              statements.push(t.expressionStatement(t.callExpression(t.memberExpression(elId, t.identifier("setAttribute")), [t.stringLiteral(toKebabCase(originalName)), value])));
+              statements.push(t.expressionStatement(t.callExpression(t.memberExpression(elId, t.identifier("setAttribute")), [t.stringLiteral(attrProp === "className" ? "class" : toKebabCase(originalName)), value])));
             }
           }
         });
@@ -653,10 +683,32 @@ module.exports = function (babel) {
         transformNestedJSX(n.expression);
 
 
+        let finalExpression = n.expression;
+        
+        // Auto-transform .map() to mapped() for high-performance keyed lists
+        if (t.isCallExpression(n.expression) && 
+            t.isMemberExpression(n.expression.callee) && 
+            t.isIdentifier(n.expression.callee.property, { name: "map" })) {
+          
+          const mappedId = getImport("mapped", "/framework/runtime/dom.js");
+          const sourceArray = n.expression.callee.object;
+          const mapFn = n.expression.arguments[0];
+          
+          const mappedInstanceId = nextId("mapped");
+          statements.push(t.variableDeclaration("const", [
+            t.variableDeclarator(mappedInstanceId, t.callExpression(mappedId, [
+              t.arrowFunctionExpression([], sourceArray),
+              mapFn
+            ]))
+          ]));
+          
+          finalExpression = mappedInstanceId;
+        }
+
         const renderDynamicId = getImport("renderDynamic", "/framework/runtime/dom.js");
         statements.push(t.expressionStatement(t.callExpression(renderDynamicId, [
           parentElId,
-          t.arrowFunctionExpression([], n.expression)
+          t.arrowFunctionExpression([], finalExpression)
         ])));
 
         return null;

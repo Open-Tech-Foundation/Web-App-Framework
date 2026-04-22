@@ -14,6 +14,7 @@ export default function GlobalLayout(props) {
         <Link href="/post/2">Post 2</Link>
         <Link href="/router-test">Router API</Link>
         <Link href="/ref-demo" className="text-indigo-400 font-bold">Ref & Expose</Link>
+        <Link href="/forms-demo" className="text-emerald-400 font-bold">Forms Demo</Link>
       </nav>
       <main className="bg-slate-800 p-8 rounded shadow border border-slate-700">
         {props.children}

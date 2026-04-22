@@ -24,11 +24,11 @@ export function renderDynamic(parent, fn) {
   });
 }
 
-export function mapped(signal, fn) {
-  let cache = new Map(); // key -> { node, effect }
+export function mapped(source, fn) {
+  let cache = new Map(); // key -> { node }
   
   return () => {
-    const list = signal.value || [];
+    const list = (typeof source === "function" ? source() : source.value) || [];
     const nextNodes = [];
     const nextCache = new Map();
 
@@ -60,8 +60,19 @@ export function mapped(signal, fn) {
 }
 
 function reconcile(parent, anchor, oldNodes, nextNodes) {
-  // Clear old nodes and append new ones for now to ensure correctness
-  // Full reconciliation with node reuse requires signal-based item updates
-  oldNodes.forEach(n => n.remove());
-  nextNodes.forEach(n => parent.insertBefore(n, anchor));
+  // 1. Remove nodes that are no longer present
+  const nextSet = new Set(nextNodes);
+  oldNodes.forEach(n => {
+    if (!nextSet.has(n)) n.remove();
+  });
+
+  // 2. Insert or move nodes from right to left to minimize DOM operations
+  let current = anchor;
+  for (let i = nextNodes.length - 1; i >= 0; i--) {
+    const node = nextNodes[i];
+    if (node.nextSibling !== current) {
+      parent.insertBefore(node, current);
+    }
+    current = node;
+  }
 }

@@ -1,4 +1,4 @@
-import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
+import { renderDynamic as _renderDynamic, mapped as _mapped } from "/framework/runtime/dom.js";
 import { signal as _signal, effect as _effect } from "@preact/signals-core";
 export function render(root, props) {
   let products = _signal(Array.from({
@@ -46,7 +46,7 @@ export function render(root, props) {
     el0.appendChild(el1);
     const el9 = document.createElement("div");
     el9.className = "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4";
-    _renderDynamic(el9, () => products.value.map(p => (() => {
+    const mapped10 = _mapped(() => products.value, p => (() => {
       const el0 = document.createElement("div");
       el0._key = p.id;
       el0.className = "p-4 bg-slate-800 rounded border border-slate-700 hover:border-indigo-500 transition-all";
@@ -65,7 +65,8 @@ export function render(root, props) {
       el4.className = "mt-2 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-300 focus:outline-none focus:border-indigo-500";
       el0.appendChild(el4);
       return el0;
-    })()));
+    })());
+    _renderDynamic(el9, () => mapped10);
     el0.appendChild(el9);
     return el0;
   })();

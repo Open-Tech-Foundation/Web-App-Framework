@@ -386,6 +386,57 @@ exports[`MWAF Compiler Compiles basic-elements.page.jsx 1`] = `
 }"
 `;
 
+exports[`MWAF Compiler Compiles spread.jsx 1`] = `
+"import { withInstance as _withInstance } from "/framework/runtime/lifecycle.js";
+import { createPropsProxy as _createPropsProxy } from "/framework/runtime/props.js";
+import { signal as _signal } from "@preact/signals-core";
+import { applySpread as _applySpread } from "/framework/runtime/props.js";
+class SpreadTestElement extends HTMLElement {
+  static observedAttributes = [];
+  constructor() {
+    super();
+    this._propsSignals = {};
+  }
+  attributeChangedCallback(name, _, value) {
+    this._propsSignals[name].value = value;
+  }
+  connectedCallback() {
+    this._onMounts = [];
+    this._onCleanups = [];
+    const props = _createPropsProxy(this);
+    _withInstance(this, () => {
+      const props = {
+        id: "test",
+        className: "foo",
+        "data-custom": "bar"
+      };
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        _applySpread(el0, props);
+        const el1 = document.createElement("span");
+        _applySpread(el1, {
+          style: {
+            color: "red"
+          }
+        });
+        const text2 = document.createTextNode("Hello");
+        el1.appendChild(text2);
+        el0.appendChild(el1);
+        return el0;
+      })();
+      while (this.firstChild) rootElement.appendChild(this.firstChild);
+      this.appendChild(rootElement);
+    });
+    this._onMounts.forEach(fn => fn());
+  }
+  disconnectedCallback() {
+    this._onCleanups.forEach(fn => fn());
+  }
+}
+customElements.define("mwaf-spreadtest", SpreadTestElement);
+export default SpreadTestElement;"
+`;
+
 exports[`MWAF Compiler Compiles state-edge-cases.jsx 1`] = `
 "import { withInstance as _withInstance } from "/framework/runtime/lifecycle.js";
 import { createPropsProxy as _createPropsProxy } from "/framework/runtime/props.js";
@@ -629,7 +680,7 @@ export default RefTestElement;"
 `;
 
 exports[`MWAF Compiler Compiles products-page.page.jsx 1`] = `
-"import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
+"import { renderDynamic as _renderDynamic, mapped as _mapped } from "/framework/runtime/dom.js";
 import { signal as _signal, effect as _effect } from "@preact/signals-core";
 export function render(root, props) {
   let products = _signal(Array.from({
@@ -677,7 +728,7 @@ export function render(root, props) {
     el0.appendChild(el1);
     const el9 = document.createElement("div");
     el9.className = "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4";
-    _renderDynamic(el9, () => products.value.map(p => (() => {
+    const mapped10 = _mapped(() => products.value, p => (() => {
       const el0 = document.createElement("div");
       el0._key = p.id;
       el0.className = "p-4 bg-slate-800 rounded border border-slate-700 hover:border-indigo-500 transition-all";
@@ -696,7 +747,8 @@ export function render(root, props) {
       el4.className = "mt-2 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-300 focus:outline-none focus:border-indigo-500";
       el0.appendChild(el4);
       return el0;
-    })()));
+    })());
+    _renderDynamic(el9, () => mapped10);
     el0.appendChild(el9);
     return el0;
   })();
@@ -1012,7 +1064,7 @@ export function render(root, props) {
 `;
 
 exports[`MWAF Compiler Compiles catch-all-page.page.jsx 1`] = `
-"import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
+"import { renderDynamic as _renderDynamic, mapped as _mapped } from "/framework/runtime/dom.js";
 export function render(root, props) {
   const rootElement = (() => {
     const el0 = document.createElement("div");
@@ -1028,23 +1080,24 @@ export function render(root, props) {
     el0.appendChild(el3);
     const el5 = document.createElement("ul");
     el5.className = "list-disc ml-6 mt-2";
-    _renderDynamic(el5, () => props.params.slug.map(segment => (() => {
+    const mapped6 = _mapped(() => props.params.slug, segment => (() => {
       const el0 = document.createElement("li");
       _renderDynamic(el0, () => segment);
       return el0;
-    })()));
+    })());
+    _renderDynamic(el5, () => mapped6);
     el0.appendChild(el5);
-    const el6 = document.createElement("div");
-    el6.className = "mt-4 p-4 bg-slate-800 rounded";
-    const text7 = document.createTextNode("Full path: ");
-    el6.appendChild(text7);
-    const el8 = document.createElement("span");
-    el8.className = "text-indigo-400 font-mono";
-    const text9 = document.createTextNode("/shop/");
-    el8.appendChild(text9);
-    _renderDynamic(el8, () => props.params.slug.join('/'));
-    el6.appendChild(el8);
-    el0.appendChild(el6);
+    const el7 = document.createElement("div");
+    el7.className = "mt-4 p-4 bg-slate-800 rounded";
+    const text8 = document.createTextNode("Full path: ");
+    el7.appendChild(text8);
+    const el9 = document.createElement("span");
+    el9.className = "text-indigo-400 font-mono";
+    const text10 = document.createTextNode("/shop/");
+    el9.appendChild(text10);
+    _renderDynamic(el9, () => props.params.slug.join('/'));
+    el7.appendChild(el9);
+    el0.appendChild(el7);
     return el0;
   })();
   root.appendChild(rootElement);
@@ -1162,7 +1215,7 @@ export default MacroTestElement;"
 exports[`MWAF Compiler Compiles list-rendering.jsx 1`] = `
 "import { withInstance as _withInstance } from "/framework/runtime/lifecycle.js";
 import { createPropsProxy as _createPropsProxy } from "/framework/runtime/props.js";
-import { renderDynamic as _renderDynamic } from "/framework/runtime/dom.js";
+import { renderDynamic as _renderDynamic, mapped as _mapped } from "/framework/runtime/dom.js";
 import { signal as _signal } from "@preact/signals-core";
 class ListRenderingElement extends HTMLElement {
   static observedAttributes = [];
@@ -1182,19 +1235,20 @@ class ListRenderingElement extends HTMLElement {
       const rootElement = (() => {
         const el0 = document.createElement("div");
         const el1 = document.createElement("ul");
-        _renderDynamic(el1, () => items.value.map(item => (() => {
+        const mapped2 = _mapped(() => items.value, item => (() => {
           const el0 = document.createElement("li");
           const text1 = document.createTextNode("Item ");
           el0.appendChild(text1);
           _renderDynamic(el0, () => item);
           return el0;
-        })()));
+        })());
+        _renderDynamic(el1, () => mapped2);
         el0.appendChild(el1);
-        const el2 = document.createElement("button");
-        el2.onclick = () => items.value = [...items.value, 'D'];
-        const text3 = document.createTextNode("Add");
-        el2.appendChild(text3);
-        el0.appendChild(el2);
+        const el3 = document.createElement("button");
+        el3.onclick = () => items.value = [...items.value, 'D'];
+        const text4 = document.createTextNode("Add");
+        el3.appendChild(text4);
+        el0.appendChild(el3);
         return el0;
       })();
       while (this.firstChild) rootElement.appendChild(this.firstChild);

@@ -95,6 +95,25 @@ export function Timer() {
   return <input ref={input} />;
 }`;
 
+  const formsCode = `import { createForm } from "mwaf-forms";
+
+export function Signup() {
+  const { register, handleSubmit, errors } = createForm({
+    initialValues: { email: "" },
+    validate: (v) => v.email.includes("@") ? {} : { email: "Invalid" }
+  });
+
+  const onSubmit = (values) => console.log(values);
+
+  return (
+    <form onsubmit={handleSubmit(onSubmit)}>
+      <input {...register("email")} placeholder="Email" />
+      {errors.email && <span>{errors.email}</span>}
+      <button type="submit">Join</button>
+    </form>
+  );
+}`;
+
   return (
     <div className="space-y-24 pb-24">
       
@@ -353,7 +372,34 @@ export function Timer() {
         </div>
       </section>
 
-      {/* 6. ⚙️ API REFERENCE */}
+      {/* 6. 📦 SUPPORTING LIBRARIES */}
+      <section className="space-y-12">
+        <div id="forms" className="space-y-4 scroll-mt-24 group">
+          <h2 className="text-2xl font-bold border-b border-slate-100 pb-2 flex items-center gap-2">
+            📝 Form State Management (mwaf-forms)
+            <a href="#forms" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
+          </h2>
+          <p className="text-slate-600 leading-relaxed">
+            MWAF provides official libraries for common application needs. <code className="text-accent">mwaf-forms</code> is a high-performance, signal-based form library that handles state, validation, and submission with minimal boilerplate.
+          </p>
+          <p className="text-slate-600 leading-relaxed">
+            It leverages <strong>JSX Spread Attributes</strong> to bind inputs to reactive signals automatically.
+          </p>
+          <CodeBlock code={formsCode} />
+        </div>
+
+        <div id="ui-libs" className="space-y-4 scroll-mt-24 group">
+          <h2 className="text-2xl font-bold border-b border-slate-100 pb-2 flex items-center gap-2">
+            🎨 Future Libraries
+            <a href="#ui-libs" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
+          </h2>
+          <p className="text-slate-600 leading-relaxed italic">
+            Official MWAF UI components and other ecosystem libraries are currently in development.
+          </p>
+        </div>
+      </section>
+
+      {/* 7. ⚙️ API REFERENCE */}
       <section className="space-y-12 border-t border-slate-100 pt-12">
         <h2 className="text-3xl font-bold text-slate-900">API Reference 📖</h2>
 
@@ -444,6 +490,10 @@ export function Timer() {
                 <tr className="border-b border-slate-50">
                   <td className="py-3 font-mono text-accent">ref</td>
                   <td className="py-3">Binds the element to a variable declared with <code className="bg-slate-100 px-1 rounded">$ref()</code>.</td>
+                </tr>
+                <tr className="border-b border-slate-50">
+                  <td className="py-3 font-mono text-accent">{`{...props}`}</td>
+                  <td className="py-3">Spreads an object of attributes onto the element. Supports reactive signals.</td>
                 </tr>
               </tbody>
             </table>
