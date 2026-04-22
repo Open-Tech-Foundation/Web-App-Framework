@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createForm } from "../../libs/forms/index.js";
+import { createForm } from "@opentf/mwaf-form";
 import { zodResolver } from "./zodResolver.js";
 
 /**

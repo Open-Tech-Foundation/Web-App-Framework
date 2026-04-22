@@ -1,17 +1,16 @@
-import Link from "../../../framework/router/Link.wc.jsx";
-import { router } from "../../../framework/router/index.js";
+import { Link, router } from "@opentf/mwaf-core";
 
 const navLink = (props) => {
   const id = props.href.split('#')[1];
   const isActive = $derived(() => {
-    const currentHash = router.hash.value || "#introduction";
+    const currentHash = router.hash || "#introduction";
     return currentHash === `#${id}`;
   });
   
   const handleClick = (e) => {
     e.preventDefault();
     window._isProgrammaticScroll = true;
-    router.hash.value = `#${id}`;
+    router.hash = `#${id}`;
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: 'smooth' });
     setTimeout(() => window._isProgrammaticScroll = false, 1000);
@@ -49,7 +48,7 @@ export default function DocsLayout(props) {
       
       entries.forEach(entry => {
         if (entry.isIntersecting) {
-          router.hash.value = `#${entry.target.id}`;
+          router.hash = `#${entry.target.id}`;
         }
       });
     }, { threshold: 0.5, rootMargin: '-10% 0px -80% 0px' });

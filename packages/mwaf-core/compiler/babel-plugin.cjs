@@ -134,11 +134,11 @@ module.exports = function (babel) {
             path.get("callee").replaceWith(t.memberExpression(t.identifier("Object"), t.identifier("assign")));
             path.node.arguments.unshift(t.thisExpression());
           } else if (name === "onMount") {
-            path.get("callee").replaceWith(getImport("onMount", "/framework/runtime/lifecycle.js"));
+            path.get("callee").replaceWith(getImport("onMount", "@opentf/mwaf-core"));
           } else if (name === "onCleanup") {
-            path.get("callee").replaceWith(getImport("onCleanup", "/framework/runtime/lifecycle.js"));
+            path.get("callee").replaceWith(getImport("onCleanup", "@opentf/mwaf-core"));
           } else if (name === "$renderDynamic") {
-            path.get("callee").replaceWith(getImport("renderDynamic", "/framework/runtime/dom.js"));
+            path.get("callee").replaceWith(getImport("renderDynamic", "@opentf/mwaf-core"));
           }
         }
       },
@@ -337,6 +337,7 @@ module.exports = function (babel) {
         t.identifier("render"),
         [t.identifier("root"), t.identifier("props")],
         t.blockStatement([
+          ...(t.isObjectPattern(node.params[0]) ? [t.variableDeclaration("const", [t.variableDeclarator(node.params[0], t.identifier("props"))])] : []),
           ...originalStatements,
           ...statements,
           t.expressionStatement(
@@ -359,7 +360,7 @@ module.exports = function (babel) {
       const tagName = "mwaf-" + name.toLowerCase();
       const observedAttributes = Array.from(allSignals);
       const signalId = getImport("signal", "@preact/signals-core");
-      const createPropsProxyId = getImport("createPropsProxy", "/framework/runtime/props.js");
+      const createPropsProxyId = getImport("createPropsProxy", "@opentf/mwaf-core");
       const classId = t.identifier(name + "Element");
 
       const classDecl = t.classDeclaration(
@@ -428,7 +429,7 @@ module.exports = function (babel) {
             t.whileStatement(t.memberExpression(t.thisExpression(), t.identifier("firstChild")), t.expressionStatement(t.callExpression(t.memberExpression(t.thisExpression(), t.identifier("removeChild")), [t.memberExpression(t.thisExpression(), t.identifier("firstChild"))]))),
 
             // Wrap setup in withInstance(this, () => { ... })
-            t.expressionStatement(t.callExpression(getImport("withInstance", "/framework/runtime/lifecycle.js"), [
+            t.expressionStatement(t.callExpression(getImport("withInstance", "@opentf/mwaf-core"), [
               t.thisExpression(),
               t.arrowFunctionExpression([], t.blockStatement([
                 ...originalStatements,
@@ -525,7 +526,7 @@ module.exports = function (babel) {
           
           n.openingElement.attributes.forEach(attr => {
             if (t.isJSXSpreadAttribute(attr)) {
-              const applySpreadId = getImport("applySpread", "/framework/runtime/props.js");
+              const applySpreadId = getImport("applySpread", "@opentf/mwaf-core");
               statements.push(t.expressionStatement(t.callExpression(applySpreadId, [elId, attr.argument])));
               return;
             }
@@ -577,7 +578,7 @@ module.exports = function (babel) {
 
         n.openingElement.attributes.forEach(attr => {
           if (t.isJSXSpreadAttribute(attr)) {
-            const applySpreadId = getImport("applySpread", "/framework/runtime/props.js");
+            const applySpreadId = getImport("applySpread", "@opentf/mwaf-core");
             statements.push(t.expressionStatement(t.callExpression(applySpreadId, [elId, attr.argument])));
             return;
           }
@@ -683,7 +684,7 @@ module.exports = function (babel) {
                      t.isMemberExpression(child.callee) && 
                      t.isIdentifier(child.callee.property, { name: "map" })) {
               
-              const mappedId = getImport("mapped", "/framework/runtime/dom.js");
+              const mappedId = getImport("mapped", "@opentf/mwaf-core");
               const sourceArray = child.callee.object;
               const mapFn = child.arguments[0];
               
@@ -709,7 +710,7 @@ module.exports = function (babel) {
         transformExpression(wrapper);
         const finalExpression = wrapper.expr;
 
-        const renderDynamicId = getImport("renderDynamic", "/framework/runtime/dom.js");
+        const renderDynamicId = getImport("renderDynamic", "@opentf/mwaf-core");
         statements.push(t.expressionStatement(t.callExpression(renderDynamicId, [
           parentElId,
           t.arrowFunctionExpression([], finalExpression)

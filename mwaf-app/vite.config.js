@@ -1,19 +1,11 @@
 import { defineConfig } from 'vite'
 import { babel } from '@rollup/plugin-babel'
-import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
+import mwafCompiler from '@opentf/mwaf-core/compiler'
 
 export default defineConfig({
-  root: '.',
   esbuild: {
     jsx: 'preserve'
-  },
-  resolve: {
-    alias: {
-      '@opentf/mwaf-core': path.resolve(__dirname, '../packages/mwaf-core'),
-      '@opentf/mwaf-form': path.resolve(__dirname, '../packages/mwaf-form'),
-      '@opentf/mwaf-ui': path.resolve(__dirname, '../packages/mwaf-ui')
-    }
   },
   plugins: [
     tailwindcss(),
@@ -24,12 +16,8 @@ export default defineConfig({
       configFile: false,
       plugins: [
         "@babel/plugin-syntax-jsx",
-        [path.resolve(__dirname, '../packages/mwaf-core/compiler/babel-plugin.cjs')]
+        [mwafCompiler]
       ]
     })
-  ],
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true
-  }
+  ]
 })

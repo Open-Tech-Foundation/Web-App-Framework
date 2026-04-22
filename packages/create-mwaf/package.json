@@ -1,0 +1,16 @@
+{
+  "name": "@opentf/create-mwaf",
+  "version": "1.0.0",
+  "description": "The official scaffolding tool for the MWAF framework.",
+  "bin": {
+    "create-mwaf": "./bin/index.js"
+  },
+  "type": "module",
+  "dependencies": {
+    "kolorist": "^1.8.0",
+    "prompts": "^2.4.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,10 +1,10 @@
 import CodeBlock from "../components/CodeBlock.jsx";
 
 export default function DocsPage() {
-  const installationCode = `git clone https://github.com/Open-Tech-Foundation/MWAF my-app
+  const installationCode = `npm create @opentf/mwaf@latest my-app
 cd my-app
-bun install
-bun dev`;
+npm install
+npm run dev`;
 
   const webComponentsCode = `// This MWAF component:
 export function UserCard() { 
@@ -45,7 +45,7 @@ const doubled = $derived(() => count * 2);
   );
 }`;
 
-  const routerApiCode = `import { router } from "@waf/router";
+  const routerApiCode = `import { router } from "@opentf/mwaf-core";
 
 // Reactive signals
 <div>Current Path: {router.pathname}</div>
@@ -72,7 +72,7 @@ return (
   </div>
 );`;
 
-  const lifecycleCode = `import { onMount, onCleanup } from "waf";
+  const lifecycleCode = `import { onMount, onCleanup } from "@opentf/mwaf-core";
 
 export function Timer() {
   let time = $state(0);
@@ -95,7 +95,7 @@ export function Timer() {
   return <input ref={input} />;
 }`;
 
-  const formsCode = `import { createForm } from "mwaf-forms";
+  const formsCode = `import { createForm } from "@opentf/mwaf-form";
 
 export function Signup() {
   const { register, handleSubmit, errors } = createForm({
@@ -141,8 +141,9 @@ export function Signup() {
             Installation
             <a href="#installation" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
           </h2>
-          <p className="text-slate-600">Currently, MWAF is in an experimental phase. You can start a new project by cloning the core repository:</p>
+          <p className="text-slate-600">Start a new project instantly using our official scaffolding tool:</p>
           <CodeBlock code={installationCode} language="bash" />
+          <p className="text-slate-600 italic">This interactive tool will guide you through choosing a styling solution and including optional framework modules.</p>
         </div>
 
         <div id="architecture" className="space-y-4 scroll-mt-24 group">
@@ -368,7 +369,7 @@ export function Signup() {
           <p className="text-slate-600 leading-relaxed">
             Since MWAF reactivity is based on standard signals, global state is as simple as exporting a signal from a shared file.
           </p>
-          <CodeBlock code={`// store.js\nimport { signal } from "@preact/signals-core";\nexport const user = signal(null);\n\n// component.jsx\nimport { user } from "./store";\nexport function Profile() {\n  return <div>{user.value?.name ?? "Guest"}</div>;\n}`} />
+          <CodeBlock code={`// store.js\n// No imports needed! The compiler handles the macro\nexport const user = $state({ name: "Guest" });\n\n// component.jsx\nimport { user } from "./store";\n\nexport function Profile() {\n  // Access directly, no .value needed\n  return <div>Hello, {user.name}</div>;\n}`} />
         </div>
       </section>
 

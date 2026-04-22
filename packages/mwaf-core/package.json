@@ -1,0 +1,23 @@
+{
+  "name": "@opentf/mwaf-core",
+  "version": "1.0.0",
+  "description": "The core engine of the MWAF framework, including the zero-VDOM compiler and signal-based runtime.",
+  "main": "index.js",
+  "module": "index.js",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./compiler": "./compiler/babel-plugin.cjs",
+    "./runtime": "./runtime/index.js",
+    "./router": "./router/index.js"
+  },
+  "dependencies": {
+    "@preact/signals-core": "^1.14.1",
+    "@babel/core": "^7.29.0",
+    "@babel/helper-module-imports": "^7.28.6",
+    "@babel/plugin-syntax-jsx": "^7.28.6"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

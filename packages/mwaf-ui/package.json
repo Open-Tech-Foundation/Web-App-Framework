@@ -1,0 +1,14 @@
+{
+  "name": "@opentf/mwaf-ui",
+  "version": "0.1.0",
+  "description": "Premium, high-fidelity UI components for the MWAF framework.",
+  "main": "index.js",
+  "module": "index.js",
+  "type": "module",
+  "dependencies": {
+    "@opentf/mwaf-core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

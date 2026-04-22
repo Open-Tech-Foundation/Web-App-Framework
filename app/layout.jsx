@@ -1,5 +1,4 @@
-import Link from "../framework/router/Link.wc.jsx";
-import { router } from "../framework/router/index.js";
+import { Link, router } from "@opentf/mwaf-core";
 
 export default function GlobalLayout(props) {
   return (

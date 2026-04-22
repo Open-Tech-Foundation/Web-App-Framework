@@ -1,4 +1,4 @@
-import Link from "../../framework/router/Link.wc.jsx";
+import { Link } from "@opentf/mwaf-core";
 import CodeBlock from "./components/CodeBlock.jsx";
 import Counter from "./components/Counter.jsx";
 import TodoList from "./components/TodoList.jsx";

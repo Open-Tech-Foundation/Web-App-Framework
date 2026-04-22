@@ -1,4 +1,4 @@
-import Link from "../../framework/router/Link.wc.jsx";
+import { Link } from "@opentf/mwaf-core";
 
 export default function WebsiteLayout(props) {
   return (
