@@ -655,16 +655,19 @@ module.exports = function (babel) {
         
         collectSignals(n.expression);
 
-        // Recursive helper to transform nested JSX elements into imperative IIFEs
-        const transformNestedJSX = (exprNode) => {
+        // Recursive helper to transform nested JSX elements and .map() calls
+        const transformExpression = (exprNode) => {
           if (!exprNode || typeof exprNode !== "object") return;
           if (Array.isArray(exprNode)) {
-            exprNode.forEach(transformNestedJSX);
+            exprNode.forEach(transformExpression);
             return;
           }
           
           Object.keys(exprNode).forEach(key => {
             const child = exprNode[key];
+            if (!child || typeof child !== "object") return;
+
+            // Transform nested JSX elements into imperative IIFEs
             if (t.isJSXElement(child) || t.isJSXFragment(child)) {
               if (child._processed) return;
               const { statements: innerStatements, rootId: innerRootId, signals: innerSignals } = transformJSX(child, t, state, getImport, path);
@@ -674,36 +677,37 @@ module.exports = function (babel) {
                 t.returnStatement(innerRootId)
               ])), []);
               exprNode[key]._processed = true;
-            } else {
-              transformNestedJSX(child);
+            } 
+            // Transform .map() into optimized keyed mapped() call
+            else if (t.isCallExpression(child) && 
+                     t.isMemberExpression(child.callee) && 
+                     t.isIdentifier(child.callee.property, { name: "map" })) {
+              
+              const mappedId = getImport("mapped", "/framework/runtime/dom.js");
+              const sourceArray = child.callee.object;
+              const mapFn = child.arguments[0];
+              
+              const mappedInstanceId = nextId("mapped");
+              statements.push(t.variableDeclaration("const", [
+                t.variableDeclarator(mappedInstanceId, t.callExpression(mappedId, [
+                  t.arrowFunctionExpression([], sourceArray),
+                  mapFn
+                ]))
+              ]));
+              
+              exprNode[key] = t.callExpression(mappedInstanceId, []);
+              // Recurse into the map function body if needed
+              transformExpression(mapFn);
+            }
+            else {
+              transformExpression(child);
             }
           });
         };
 
-        transformNestedJSX(n.expression);
-
-
-        let finalExpression = n.expression;
-        
-        // Auto-transform .map() to mapped() for high-performance keyed lists
-        if (t.isCallExpression(n.expression) && 
-            t.isMemberExpression(n.expression.callee) && 
-            t.isIdentifier(n.expression.callee.property, { name: "map" })) {
-          
-          const mappedId = getImport("mapped", "/framework/runtime/dom.js");
-          const sourceArray = n.expression.callee.object;
-          const mapFn = n.expression.arguments[0];
-          
-          const mappedInstanceId = nextId("mapped");
-          statements.push(t.variableDeclaration("const", [
-            t.variableDeclarator(mappedInstanceId, t.callExpression(mappedId, [
-              t.arrowFunctionExpression([], sourceArray),
-              mapFn
-            ]))
-          ]));
-          
-          finalExpression = mappedInstanceId;
-        }
+        const wrapper = { expr: n.expression };
+        transformExpression(wrapper);
+        const finalExpression = wrapper.expr;
 
         const renderDynamicId = getImport("renderDynamic", "/framework/runtime/dom.js");
         statements.push(t.expressionStatement(t.callExpression(renderDynamicId, [
