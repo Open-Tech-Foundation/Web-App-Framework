@@ -3,8 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '.changeset/**'
+      - '**/CHANGELOG.md'
   pull_request:
     branches: [main]
+    branches-ignore:
+      - 'changeset-release/**'
 
 jobs:
   test:
