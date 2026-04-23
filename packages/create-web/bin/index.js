@@ -65,7 +65,6 @@ async function init() {
           initial: true,
           active: 'yes',
           inactive: 'no'
-        },
         }
       ],
       {
@@ -79,7 +78,7 @@ async function init() {
     return;
   }
 
-  const { styling, includeForms, includeUI, overwrite } = result;
+  const { styling, includeForms, overwrite } = result;
 
   const root = path.join(process.cwd(), targetDir);
 
