@@ -1,5 +1,11 @@
 # @opentf/create-web
 
+## 0.3.0
+
+### Minor Changes
+
+- c3067ab: Update core web pkg ver
+
 ## 0.2.1
 
 ### Patch Changes
