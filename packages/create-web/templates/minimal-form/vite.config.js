@@ -5,6 +5,11 @@ export default defineConfig({
   esbuild: {
     jsx: 'preserve'
   },
+  optimizeDeps: {
+    rolldownOptions: {
+      jsx: 'preserve'
+    }
+  },
   plugins: [
     babel({
       babelHelpers: 'bundled',
