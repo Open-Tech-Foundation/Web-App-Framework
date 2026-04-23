@@ -7,7 +7,7 @@ export default function WebsiteLayout(props) {
         <div className="flex items-center gap-2">
           <img src="/logo.png" alt="Logo" className="w-8 h-8" />
           <span className="font-bold tracking-tight text-lg">Web App Framework</span>
-          <span className="px-2 py-0.5 bg-[#ff851b]/10 text-[#ff851b] rounded text-[10px] uppercase tracking-wider font-bold">v0.1.0-alpha.1</span>
+          <span className="px-2 py-0.5 bg-[#ff851b]/10 text-[#ff851b] rounded text-[10px] uppercase tracking-wider font-bold">v0.3.0</span>
         </div>
 
         <nav className="flex gap-8 text-sm font-medium text-slate-500">
