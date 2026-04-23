@@ -1,5 +1,11 @@
 # @opentf/web
 
+## 0.3.0
+
+### Minor Changes
+
+- 476d65a: Fix reactivity issues by re-exporting all signals from the core package and updating the compiler to use a unified reactivity instance. This prevents state-update failures in complex project structures.
+
 ## 0.2.0
 
 ### Minor Changes
