@@ -1,5 +1,11 @@
 # @opentf/web
 
+## 0.2.0
+
+### Minor Changes
+
+- a56fdfe: Fix the core components to prebuilt before publishing
+
 ## 0.1.0
 
 ### Minor Changes
