@@ -1,4 +1,27 @@
 import { defineConfig } from 'tsup'
+import babel from '@babel/core'
+import frameworkCompiler from './compiler/index.js'
+import fs from 'fs'
+
+const frameworkJSXPlugin = {
+  name: 'framework-jsx',
+  setup(build) {
+    build.onLoad({ filter: /\.jsx$/ }, async (args) => {
+      const code = await fs.promises.readFile(args.path, 'utf8')
+      const result = await babel.transformAsync(code, {
+        filename: args.path,
+        plugins: [
+          '@babel/plugin-syntax-jsx',
+          [frameworkCompiler, { runtimeSource: '../runtime/index.js' }]
+        ],
+        sourceMaps: true,
+        configFile: false,
+        babelrc: false,
+      })
+      return { contents: result.code, loader: 'js' }
+    })
+  }
+}
 
 export default defineConfig({
   entry: {
@@ -11,6 +34,7 @@ export default defineConfig({
   dts: true,
   clean: true,
   shims: true,
+  esbuildPlugins: [frameworkJSXPlugin],
   external: ['@babel/core', '@preact/signals-core', '@babel/helper-module-imports'],
   outExtension({ format }) {
     return {

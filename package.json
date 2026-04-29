@@ -8,14 +8,15 @@
   "type": "module",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "website"
   ],
   "scripts": {
     "dev": "vite playground",
     "build": "bun run build:web && vite build playground",
     "preview": "bun run website:build && wrangler dev",
-    "website:dev": "vite website",
-    "website:build": "bun run build:web && vite build website",
+    "website:dev": "bun run --cwd website dev",
+    "website:build": "bun run build:web && bun run --cwd website build",
     "test": "bun test",
     "deploy": "bun run website:build && wrangler deploy",
     "build:web": "bun run --cwd packages/web build",

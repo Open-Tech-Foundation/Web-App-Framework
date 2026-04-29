@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => {
         configFile: false,
         plugins: [
           "@babel/plugin-syntax-jsx",
-          ["@opentf/web/compiler"]
+          [isDev ? path.resolve(__dirname, '../packages/web/dist/compiler/babel-plugin.cjs') : "@opentf/web/compiler"]
         ]
       })
     ],
