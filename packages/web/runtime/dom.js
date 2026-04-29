@@ -36,12 +36,14 @@ export function mapped(source, fn) {
       const key = item.key ?? item.id ?? index;
       let cached = cache.get(key);
       
-      // If the item exists and the reference is identical, reuse the node
-      if (cached && cached.item === item) {
+      // If the item exists and the reference is identical OR it's a primitive at the same key/index, reuse the node
+      if (cached && (cached.item === item || typeof item !== 'object')) {
+        // Update the cached item reference so future checks have the latest primitive value
+        cached.item = item;
         nextNodes.push(cached.node);
         nextCache.set(key, cached);
       } else {
-        // If it's a new item OR the data changed (new reference), re-render
+        // If it's a new item OR the object data changed (new reference), re-render
         const node = fn(item, index);
         node._key = key;
         nextNodes.push(node);
