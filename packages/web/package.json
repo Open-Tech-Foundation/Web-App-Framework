@@ -6,14 +6,31 @@
   "module": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "babel . --out-dir dist --extensions .js,.jsx --copy-files --config-file ./babel.config.cjs --ignore \"node_modules,dist,package.json,bun.lock,*.md\"",
-    "prepublishOnly": "npm run build"
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepublishOnly": "bun run build"
   },
   "exports": {
-    ".": "./dist/index.js",
-    "./compiler": "./dist/compiler/babel-plugin.cjs",
-    "./runtime": "./dist/runtime/index.js",
-    "./router": "./dist/router/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./compiler": {
+      "types": "./dist/compiler/babel-plugin.d.ts",
+      "import": "./dist/compiler/babel-plugin.js",
+      "require": "./dist/compiler/babel-plugin.cjs"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js",
+      "require": "./dist/runtime/index.cjs"
+    },
+    "./router": {
+      "types": "./dist/router/index.d.ts",
+      "import": "./dist/router/index.js",
+      "require": "./dist/router/index.cjs"
+    }
   },
   "files": [
     "dist"

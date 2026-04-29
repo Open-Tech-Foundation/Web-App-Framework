@@ -12,12 +12,13 @@
   ],
   "scripts": {
     "dev": "vite playground",
-    "build": "vite build playground",
+    "build": "bun run build:web && vite build playground",
     "preview": "bun run website:build && wrangler dev",
     "website:dev": "vite website",
-    "website:build": "vite build website",
+    "website:build": "bun run build:web && vite build website",
     "test": "bun test",
     "deploy": "bun run website:build && wrangler deploy",
+    "build:web": "bun run --cwd packages/web build",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "changeset publish"
@@ -29,6 +30,7 @@
     "@cloudflare/vite-plugin": "^1.33.1",
     "@rollup/plugin-babel": "^7.0.0",
     "@types/bun": "latest",
+    "tsup": "^8.5.1",
     "wrangler": "^4.84.1"
   },
   "peerDependencies": {

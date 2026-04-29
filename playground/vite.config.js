@@ -23,7 +23,7 @@ export default defineConfig({
     configFile: false,
     plugins: [
       "@babel/plugin-syntax-jsx",
-      [path.resolve(__dirname, '../packages/web/compiler/babel-plugin.cjs')]
+      [path.resolve(__dirname, '../packages/web/dist/compiler/babel-plugin.cjs')]
     ]
   }), cloudflare()]
 })

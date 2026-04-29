@@ -1,6 +1,6 @@
 import { expect, test, describe } from "bun:test";
 import { transformSync } from "@babel/core";
-import plugin from "../../packages/web/compiler/babel-plugin.cjs";
+import plugin from "../../packages/web/compiler/index.js";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, basename, extname } from "node:path";
 

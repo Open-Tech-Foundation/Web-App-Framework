@@ -1,6 +1,6 @@
 import { expect, test, describe } from "bun:test";
 import * as babel from "@babel/core";
-import plugin from "../../packages/web/compiler/babel-plugin.cjs";
+import plugin from "../../packages/web/compiler/index.js";
 
 function compile(code) {
   return babel.transform(code, {
