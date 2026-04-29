@@ -1,5 +1,11 @@
 # @opentf/create-web
 
+## 0.4.0
+
+### Minor Changes
+
+- c846f32: Bump the @opentf/web compiler package verion to v0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
