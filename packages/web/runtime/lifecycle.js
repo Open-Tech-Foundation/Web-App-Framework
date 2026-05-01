@@ -1,4 +1,5 @@
 let currentInstance = null;
+export const getCurrentInstance = () => currentInstance;
 
 export function withInstance(inst, fn) {
   const prev = currentInstance;

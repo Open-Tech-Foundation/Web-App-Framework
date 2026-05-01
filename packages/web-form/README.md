@@ -83,6 +83,44 @@ const onSubmit = (values) => {
 </form>
 ```
 
+## Form State Helpers
+
+`createForm` returns several reactive signals and proxies to track the form lifecycle:
+
+| Helper | Type | Description |
+| :--- | :--- | :--- |
+| `isValid` | `Signal<boolean>` | `true` if there are no validation errors. |
+| `isChanged` | `Signal<boolean>` | `true` if the form values differ from `initialValues`. |
+| `isTouched` | `Signal<boolean>` | `true` if any field has been blurred. |
+| `isSubmitting` | `Signal<boolean>` | `true` while the `onSubmit` handler is running. |
+| `isSubmitted` | `Signal<boolean>` | `true` if the form has been successfully submitted. |
+| `touched` | `Proxy<boolean>` | Access per-field touched state: `form.touched.email`. |
+| `changed` | `Proxy<boolean>` | Access per-field changed state: `form.changed.email`. |
+
+## Validation Modes
+
+You can customize when validation triggers using `mode` and `reValidateMode`.
+
+```javascript
+const form = createForm({
+  mode: 'onBlur',          // Initial validation: 'onSubmit', 'onBlur', 'onTouched', 'onChange'
+  reValidateMode: 'onChange' // Re-validation: 'onChange', 'onBlur', 'onSubmit'
+});
+```
+
+- **Default mode**: `onBlur`
+- **Default reValidateMode**: `onChange`
+
+### Resetting the Form
+
+You can restore the form to its `initialValues` and clear all status flags using the `reset()` method.
+
+```javascript
+<button type="button" onclick={() => form.reset()}>
+  Reset Form
+</button>
+```
+
 ## Custom Validation
 
 For simpler cases, you can use the `validate` function which expects you to return the errors object directly.

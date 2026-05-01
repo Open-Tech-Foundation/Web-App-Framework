@@ -21,11 +21,12 @@ npm install @opentf/web
 ```jsx
 export default function Counter() {
   let count = $state(0);
+  const doubled = $derived(count * 2);
 
   return (
     <div className="counter">
       <button onclick={() => count--}>-</button>
-      <span>{count}</span>
+      <span>{count} ({doubled})</span>
       <button onclick={() => count++}>+</button>
     </div>
   );

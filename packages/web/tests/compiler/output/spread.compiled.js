@@ -1,4 +1,4 @@
-import { applySpread as _applySpread, signal as _signal, createPropsProxy as _createPropsProxy, withInstance as _withInstance } from "@opentf/web";
+import { applySpread as _applySpread, effect as _effect, signal as _signal, createPropsProxy as _createPropsProxy, withInstance as _withInstance } from "@opentf/web";
 class SpreadTestElement extends HTMLElement {
   static observedAttributes = [];
   constructor() {
@@ -22,13 +22,13 @@ class SpreadTestElement extends HTMLElement {
       };
       const rootElement = (() => {
         const el0 = document.createElement("div");
-        _applySpread(el0, props);
+        _effect(() => _applySpread(el0, props));
         const el1 = document.createElement("span");
-        _applySpread(el1, {
+        _effect(() => _applySpread(el1, {
           style: {
             color: "red"
           }
-        });
+        }));
         const text2 = document.createTextNode("Hello");
         el1.appendChild(text2);
         el0.appendChild(el1);

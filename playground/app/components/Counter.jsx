@@ -15,7 +15,7 @@ export default function Counter(props) {
 
   return (
     <div>
-      {count}
+      <div>The count is: {count}</div>
       <button onclick={(e) => { count++ }} className="btn border border-black cursor-pointer mx-2 px-2 py-1 rounded-lg">
         {props.label}
       </button>

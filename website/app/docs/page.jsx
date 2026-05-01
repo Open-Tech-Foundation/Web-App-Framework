@@ -121,18 +121,27 @@ test("increment counter", async () => {
   const formsCode = `import { createForm } from "@opentf/web-form";
 
 export function Signup() {
-  const { register, handleSubmit, errors } = createForm({
+  const form = createForm({
     initialValues: { email: "" },
     validate: (v) => v.email.includes("@") ? {} : { email: "Invalid" }
   });
 
-  const onSubmit = (values) => console.log(values);
+  const onSubmit = async (values) => {
+    await fetch("/api/signup", { method: "POST", body: JSON.stringify(values) });
+  };
 
   return (
-    <form onsubmit={handleSubmit(onSubmit)}>
-      <input {...register("email")} placeholder="Email" />
-      {errors.email && <span>{errors.email}</span>}
-      <button type="submit">Join</button>
+    <form onsubmit={form.handleSubmit(onSubmit)}>
+      <input {...form.register("email")} placeholder="Email" />
+      {form.errors.email && <span>{form.errors.email}</span>}
+      
+      <button type="submit" disabled={form.isSubmitting.value}>
+        {form.isSubmitting.value ? "Joining..." : "Join"}
+      </button>
+      
+      <button type="button" onclick={() => form.reset()}>Reset</button>
+
+      {form.isSubmitted.value && <p>Thanks for joining!</p>}
     </form>
   );
 }`;
@@ -416,6 +425,53 @@ export function Signup() {
             It leverages <strong>JSX Spread Attributes</strong> to bind inputs to reactive signals automatically.
           </p>
           <CodeBlock code={formsCode} />
+          
+          <div className="mt-8 space-y-4">
+            <h4 className="text-lg font-bold text-slate-800">Standardized State Helpers</h4>
+            <p className="text-slate-600">The <code className="text-accent">form</code> object provides reactive signals to track the complete form lifecycle:</p>
+            <ul className="grid md:grid-cols-2 gap-4">
+              <li className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <span className="font-mono text-accent text-sm">form.isValid</span>
+                <p className="text-xs text-slate-500">True if there are no errors.</p>
+              </li>
+              <li className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <span className="font-mono text-accent text-sm">form.isChanged</span>
+                <p className="text-xs text-slate-500">True if values differ from initial state.</p>
+              </li>
+              <li className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <span className="font-mono text-accent text-sm">form.isSubmitting</span>
+                <p className="text-xs text-slate-500">True during async submission.</p>
+              </li>
+              <li className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <span className="font-mono text-accent text-sm">form.reset()</span>
+                <p className="text-xs text-slate-500">Restores initial values and clears state.</p>
+              </li>
+            </ul>
+          </div>
+
+          <div className="mt-8 space-y-4">
+            <h4 className="text-lg font-bold text-slate-800">Validation Modes</h4>
+            <p className="text-slate-600">Control precisely when validation triggers to optimize for UX and performance.</p>
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <p className="text-sm font-bold text-slate-700">mode (First-time validation)</p>
+                <ul className="text-xs text-slate-500 list-disc pl-4 space-y-1">
+                  <li><code className="text-accent">onBlur</code> (Default)</li>
+                  <li><code className="text-accent">onChange</code></li>
+                  <li><code className="text-accent">onTouched</code></li>
+                  <li><code className="text-accent">onSubmit</code></li>
+                </ul>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-bold text-slate-700">reValidateMode (After error)</p>
+                <ul className="text-xs text-slate-500 list-disc pl-4 space-y-1">
+                  <li><code className="text-accent">onChange</code> (Default)</li>
+                  <li><code className="text-accent">onBlur</code></li>
+                  <li><code className="text-accent">onSubmit</code></li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
 
       </section>

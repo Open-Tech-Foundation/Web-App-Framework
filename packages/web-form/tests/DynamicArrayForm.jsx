@@ -6,7 +6,8 @@ export default function DynamicArrayForm() {
   });
 
   const addItem = () => {
-    form.values.items = [...form.values.items, `Item ${form.values.items.length + 1}`];
+    const items = form.values.items;
+    form.values.items = [...items, `Item ${items.length + 1}`];
   };
 
   const removeItem = (index) => {

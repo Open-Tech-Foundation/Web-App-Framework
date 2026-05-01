@@ -23,13 +23,14 @@ Unlike traditional frameworks, Web App Framework has **Zero-VDOM**. There is no 
 - **Boilerplate-Free**: No manual `.value` access. The compiler automatically injects reactivity where needed.
 - **File-based Routing**: Intuitive routing with layouts and dynamic segments.
 - **Declarative Refs**: Capture DOM nodes effortlessly with the `$ref` macro.
+- **Official Ecosystem**: Standardized libraries for forms (`@opentf/web-form`) and testing (`@opentf/web-test`).
 
 ## Example
 
 ```jsx
 export default function Counter() {
   const count = $state(0);
-  const doubled = $derived(() => count * 2);
+  const doubled = $derived(count * 2); // No arrow function needed!
 
   return (
     <div className="counter-card">
@@ -42,6 +43,30 @@ export default function Counter() {
   );
 }
 ```
+
+### Reactive Macros
+
+The framework uses a set of compiler macros to provide a "no-boilerplate" reactivity experience.
+
+#### `$state(initialValue)`
+Transforms into a reactive Signal. The compiler automatically handles `.value` access for you in both logic and JSX.
+
+#### `$derived(expression)`
+Transforms into a Signal-based computed value. 
+- **Auto-wrapping**: If you pass a direct expression (e.g., `$derived(a + b)`), the compiler automatically wraps it in an arrow function so you don't have to.
+
+#### JSX Expressions
+The compiler automatically analyzes expressions inside `{}`. If they contain reactive variables (`$state`, `$derived`, `props`), they are automatically wrapped in a dynamic update call. This allows standard React-style conditional rendering:
+```jsx
+// Just like React, but reactively efficient!
+<div>{activeTab === "basic" ? <Basic /> : <Complex />}</div>
+```
+
+#### `$effect(callback)`
+Runs a side effect whenever its reactive dependencies change.
+
+#### `$ref()`
+Captures a reference to a DOM element directly.
 
 ## 📊 Performance Benchmarks
 

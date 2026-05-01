@@ -53,21 +53,23 @@ describe("Web App Framework Forms Library - Pure Logic", () => {
 
   test("validates values", () => {
     const form = createForm({
-      initialValues: { age: 10 },
-      validator: (v) => {
+      mode: "onChange",
+      initialValues: { age: 20 },
+      validate: (v) => {
         const errors = {};
         if (v.age < 18) errors.age = "Too young";
         return errors;
       }
     });
     
-    expect(form.errors.age).toBe("Too young");
-    form.values.age = 20;
     expect(form.errors.age).toBeUndefined();
+    form.values.age = 10;
+    expect(form.errors.age).toBe("Too young");
   });
 
   test("errors proxy supports direct access", () => {
     const form = createForm({
+      mode: "onChange",
       initialValues: { username: "" },
       validate: (v) => (v.username ? {} : { username: "Required" }),
     });
@@ -81,12 +83,71 @@ describe("Web App Framework Forms Library - Pure Logic", () => {
 
   test("supports Zod-style validator returning { errors }", () => {
     const form = createForm({
-      initialValues: { email: "invalid" },
+      mode: "onChange",
+      initialValues: { email: "a" },
       validator: (v) => {
         return { errors: { email: "Invalid email" } };
       },
     });
 
     expect(form.errors.email).toBe("Invalid email");
+  });
+
+  test("handles async validation", async () => {
+    const form = createForm({
+      mode: "onChange",
+      initialValues: { username: "abc" },
+      validate: async (v) => {
+        await new Promise((r) => setTimeout(r, 10));
+        return v.username.length < 3 ? { username: "Too short" } : {};
+      },
+    });
+
+    expect(form.isValidating).toBe(true); // Immediate validation in onChange mode
+    await new Promise((r) => setTimeout(r, 20));
+    expect(form.isValidating).toBe(false);
+    expect(form.errors.username).toBeUndefined();
+
+    form.values.username = "al";
+    expect(form.isValidating).toBe(true);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(form.isValidating).toBe(false);
+    expect(form.errors.username).toBe("Too short");
+
+    form.values.username = "alice";
+    await new Promise((r) => setTimeout(r, 20));
+    expect(form.errors.username).toBeUndefined();
+    expect(form.isValid).toBe(true);
+  });
+
+  test("reactive array mutations (push/splice)", () => {
+    const form = createForm({
+      initialValues: { tags: ["js"] },
+    });
+
+    let changeCount = 0;
+    form._signals.values.subscribe(() => changeCount++);
+    expect(changeCount).toBe(1);
+
+    form.values.tags.push("web");
+    expect(form.values.tags).toEqual(["js", "web"]);
+    expect(changeCount).toBe(2);
+
+    form.values.tags.splice(0, 1);
+    expect(form.values.tags).toEqual(["web"]);
+    expect(changeCount).toBe(3);
+  });
+
+  test("reset() with custom values", () => {
+    const form = createForm({
+      initialValues: { a: 1 },
+    });
+
+    form.values.a = 2;
+    form.reset({ a: 10 });
+    expect(form.values.a).toBe(10);
+    expect(form.isChanged).toBe(false); // isChanged is against the NEW initialValues? 
+    // Actually, createForm stores initialValues from the constructor.
+    // If reset(newVals) is called, it should ideally update the reference for isChanged.
   });
 });

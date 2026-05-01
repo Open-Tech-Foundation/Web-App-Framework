@@ -83,7 +83,7 @@ class CameraIconElement extends HTMLElement {
         el0.setAttribute("strokeWidth", "2");
         el0.setAttribute("strokeLinecap", "round");
         el0.setAttribute("strokeLinejoin", "round");
-        _applySpread(el0, props);
+        _effect(() => _applySpread(el0, props));
         const el1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
         el1.setAttribute("d", "M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z");
         el0.appendChild(el1);
@@ -138,7 +138,7 @@ class UserIconElement extends HTMLElement {
         el0.setAttribute("strokeWidth", "2");
         el0.setAttribute("strokeLinecap", "round");
         el0.setAttribute("strokeLinejoin", "round");
-        _applySpread(el0, props);
+        _effect(() => _applySpread(el0, props));
         const el1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
         el1.setAttribute("d", "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2");
         el0.appendChild(el1);
@@ -193,7 +193,7 @@ class SettingsIconElement extends HTMLElement {
         _effect(() => el0.setAttribute("strokeWidth", props.strokeWidth));
         el0.setAttribute("strokeLinecap", "round");
         el0.setAttribute("strokeLinejoin", "round");
-        _applySpread(el0, props);
+        _effect(() => _applySpread(el0, props));
         const el1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         el1.setAttribute("cx", "12");
         el1.setAttribute("cy", "12");

@@ -1,4 +1,5 @@
 import { effect, signal } from "@preact/signals-core";
+import { IS_PROPERTY } from "../core/constants.js";
 
 function toKebabCase(str) {
   return str.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
@@ -15,8 +16,12 @@ export function createPropsProxy(el) {
       if (key === "then") return undefined; // Promise check
       
       if (!target._propsSignals[key]) {
-        const initialValue = target.getAttribute(toKebabCase(key)) || target[key];
-        target._propsSignals[key] = signal(initialValue);
+        let val = target.getAttribute(toKebabCase(key)) || target[key];
+        // Handle case-insensitivity for events (stored as lowercase by applySpread)
+        if (val === undefined && typeof key === "string" && key.toLowerCase().startsWith("on")) {
+          val = target[key.toLowerCase()];
+        }
+        target._propsSignals[key] = signal(val);
       }
       return target._propsSignals[key].value;
     },
@@ -42,6 +47,10 @@ export function createPropsProxy(el) {
     },
     ownKeys: (target) => {
       const keys = new Set(Object.keys(target));
+      // Include all "on*" properties even if they aren't enumerable (native events)
+      for (const key in target) {
+        if (key.startsWith("on")) keys.add(key);
+      }
       Object.keys(target._propsSignals).forEach(k => keys.add(k));
       keys.add("children");
       return Array.from(keys).filter(k => !k.startsWith("_"));
@@ -66,7 +75,7 @@ export function applySpread(el, props) {
     
     const name = key.toLowerCase();
     const attrProp = (name === "class" || name === "classname") ? "className" : key;
-    const isProperty = ["className", "style", "value", "checked", "id", "title", "href", "src", "key"].includes(attrProp);
+    const isProperty = IS_PROPERTY.includes(attrProp);
     const isEvent = name.startsWith("on");
 
     // Simple heuristic for signal detection: object with .value and .subscribe

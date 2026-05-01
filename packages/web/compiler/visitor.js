@@ -192,28 +192,61 @@ export function transformComponent(componentPath, name, isRenderFn, t, state) {
   }
 }
 
-export function transformJSX(node, t, state, getImport, path) {
-  if (node._processed) return { statements: [], rootId: node, signals: new Set() };
-  node._processed = true;
-  const statements = [];
-  const signals = new Set();
-  const nextId = createIdGenerator();
-  const toKebabCase = (str) => str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+  function transformJSX(node, t, state, getImport, path) {
+    if (node._processed) return { statements: [], rootId: node, signals: new Set() };
+    node._processed = true;
+    const statements = [];
+    const signals = new Set();
+    const mapParams = new Set();
+    const nextId = createIdGenerator();
+    const toKebabCase = (str) => str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 
-  function collectSignals(exprNode) {
-    if (!exprNode || typeof exprNode !== "object") return;
-    if (Array.isArray(exprNode)) {
-      exprNode.forEach(collectSignals);
-      return;
+    function collectSignals(exprNode) {
+      if (!exprNode || typeof exprNode !== "object") return;
+      if (Array.isArray(exprNode)) {
+        exprNode.forEach(collectSignals);
+        return;
+      }
+      if (t.isMemberExpression(exprNode) && t.isIdentifier(exprNode.object, { name: "props" }) && t.isIdentifier(exprNode.property)) {
+        signals.add(exprNode.property.name);
+      }
+      if (t.isIdentifier(exprNode)) {
+        // Check if this identifier is a map callback parameter
+        const binding = path.scope.getBinding(exprNode.name);
+        if (binding && t.isFunction(binding.path.parent) && binding.path.parent._isMapCallback) {
+          signals.add(exprNode.name);
+          mapParams.add(exprNode.name);
+        }
+      }
+      Object.keys(exprNode).forEach(key => {
+        if (key === "property" && t.isMemberExpression(exprNode) && !exprNode.computed) return;
+        collectSignals(exprNode[key]);
+      });
     }
-    if (t.isMemberExpression(exprNode) && t.isIdentifier(exprNode.object, { name: "props" }) && t.isIdentifier(exprNode.property)) {
-      signals.add(exprNode.property.name);
-    }
-    Object.keys(exprNode).forEach(key => {
-      if (key === "property" && t.isMemberExpression(exprNode) && !exprNode.computed) return;
-      collectSignals(exprNode[key]);
-    });
-  }
+
+    const transformNoValue = (exprNode) => {
+      if (!exprNode || typeof exprNode !== "object") return;
+      if (Array.isArray(exprNode)) {
+        exprNode.forEach(transformNoValue);
+        return;
+      }
+      Object.keys(exprNode).forEach(key => {
+        const child = exprNode[key];
+        if (t.isIdentifier(child) && (mapParams.has(child.name) || state.stateVars?.has(child.name) || state.refVars?.has(child.name))) {
+          // Don't transform the parameter definition itself
+          if (t.isFunction(exprNode) && exprNode.params.includes(child)) return;
+          // Don't transform if it's already part of a .value access
+          if (t.isMemberExpression(exprNode) && t.isIdentifier(exprNode.property, { name: "value" }) && !exprNode.computed) return;
+          // Don't transform if it's an object property key
+          if (t.isObjectProperty(exprNode) && key === "key" && !exprNode.computed) return;
+          
+          child._processed = true;
+          exprNode[key] = t.memberExpression(child, t.identifier("value"));
+        } else {
+          transformNoValue(child);
+        }
+      });
+    };
 
   function processNode(n, parentElId) {
     if (t.isJSXElement(n)) {
@@ -254,7 +287,8 @@ export function transformJSX(node, t, state, getImport, path) {
         n.openingElement.attributes.forEach(attr => {
           if (t.isJSXSpreadAttribute(attr)) {
             const applySpreadId = getImport("applySpread", state.runtimeSource);
-            statements.push(t.expressionStatement(t.callExpression(applySpreadId, [elId, attr.argument])));
+            const effectId = getImport("effect", state.runtimeSource);
+            statements.push(t.expressionStatement(t.callExpression(effectId, [t.arrowFunctionExpression([], t.callExpression(applySpreadId, [elId, attr.argument]))])));
             return;
           }
           const name = attr.name.name;
@@ -290,7 +324,8 @@ export function transformJSX(node, t, state, getImport, path) {
       n.openingElement.attributes.forEach(attr => {
         if (t.isJSXSpreadAttribute(attr)) {
           const applySpreadId = getImport("applySpread", state.runtimeSource);
-          statements.push(t.expressionStatement(t.callExpression(applySpreadId, [elId, attr.argument])));
+          const effectId = getImport("effect", state.runtimeSource);
+          statements.push(t.expressionStatement(t.callExpression(effectId, [t.arrowFunctionExpression([], t.callExpression(applySpreadId, [elId, attr.argument]))])));
           return;
         }
         const originalName = attr.name.name;
@@ -413,6 +448,7 @@ export function transformJSX(node, t, state, getImport, path) {
     }
   }
 
-  const rootId = processNode(node, t.identifier("root"));
-  return { statements, rootId, signals };
-}
+    const rootId = processNode(node, t.identifier("root"));
+    transformNoValue(statements);
+    return { statements, rootId, signals };
+  }

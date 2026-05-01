@@ -38,7 +38,7 @@ class ReactPatternsElement extends HTMLElement {
         el0.className = "container";
         el0.setAttribute("data-testid", "main-div");
         const el1 = document.createElement("input");
-        el1.setAttribute("disabled", true);
+        el1.disabled = true;
         _effect(() => el1.setAttribute("tab-index", -1));
         _effect(() => el1.setAttribute("max-length", 5));
         el0.appendChild(el1);
@@ -64,7 +64,7 @@ class ReactPatternsElement extends HTMLElement {
         el6.appendChild(text10);
         el0.appendChild(el6);
         const el11 = document.createElement("div");
-        _applySpread(el11, props.extra);
+        _effect(() => _applySpread(el11, props.extra));
         el11.className = "override";
         el11.id = "constant";
         const text12 = document.createTextNode(" Spread Test ");

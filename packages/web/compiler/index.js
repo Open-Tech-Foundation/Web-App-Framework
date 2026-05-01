@@ -107,6 +107,10 @@ export default function (babel) {
               path.get("callee").replaceWith(getImport("signal", state.runtimeSource));
             } else if (name === "$derived") {
               path.get("callee").replaceWith(getImport("computed", state.runtimeSource));
+              const arg = path.node.arguments[0];
+              if (arg && !t.isArrowFunctionExpression(arg) && !t.isFunctionExpression(arg)) {
+                path.node.arguments[0] = t.arrowFunctionExpression([], arg);
+              }
             } else if (name === "$ref") {
               const parent = path.findParent(p => p.isVariableDeclarator());
               if (parent && t.isIdentifier(parent.node.id)) {

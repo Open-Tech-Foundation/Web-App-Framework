@@ -43,6 +43,7 @@
       "name": "@opentf/web-form",
       "version": "0.1.0",
       "dependencies": {
+        "@opentf/std": "^1.0.0-beta.2",
         "@preact/signals-core": "^1.14.1",
       },
       "devDependencies": {
@@ -55,7 +56,7 @@
     },
     "packages/web-test": {
       "name": "@opentf/web-test",
-      "version": "0.1.0",
+      "version": "0.0.1",
       "dependencies": {
         "@testing-library/dom": "^10.4.1",
         "@testing-library/user-event": "^14.6.1",
@@ -296,6 +297,8 @@
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
     "@opentf/create-web": ["@opentf/create-web@workspace:packages/create-web"],
+
+    "@opentf/std": ["@opentf/std@1.0.0-beta.2", "", {}, "sha512-XZdgxVcA+Ao3Ic59C5QZL68NtTSP4mFHYa8tLLBfpm5O4d/XcRRge0XKhiU8qW01dfoP+DycVs6Np4GTI7ngdw=="],
 
     "@opentf/web": ["@opentf/web@workspace:packages/web"],
 

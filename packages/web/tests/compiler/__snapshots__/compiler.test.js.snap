@@ -307,6 +307,53 @@ customElements.define("web-reactivity", ReactivityElement);
 export default ReactivityElement;"
 `;
 
+exports[`Web App Framework Compiler Compiles basic-form-verify.jsx 1`] = `
+"import { computed as _computed, effect as _effect, renderDynamic as _renderDynamic, signal as _signal, createPropsProxy as _createPropsProxy, withInstance as _withInstance } from "@opentf/web";
+import { createForm } from "@opentf/web-form";
+export class BasicForm extends HTMLElement {
+  static observedAttributes = [];
+  constructor() {
+    super();
+    this._propsSignals = {};
+  }
+  attributeChangedCallback(name, _, value) {
+    this._propsSignals[name].value = value;
+  }
+  connectedCallback() {
+    this._onMounts = [];
+    this._onCleanups = [];
+    const props = _createPropsProxy(this);
+    this._children = Array.from(this.childNodes);
+    while (this.firstChild) this.removeChild(this.firstChild);
+    _withInstance(this, () => {
+      const form = createForm({
+        initialValues: {
+          username: ""
+        }
+      });
+      const isValid = _computed(() => form.isValid);
+      const isSubmitting = _computed(() => form.isSubmitting);
+      const canSubmit = _computed(() => isValid.value && !isSubmitting.value);
+      const rootElement = (() => {
+        const el0 = document.createElement("section");
+        const el1 = document.createElement("button");
+        el1.setAttribute("type", "submit");
+        _effect(() => el1.disabled = () => !canSubmit.value);
+        _renderDynamic(el1, () => () => isSubmitting.value ? "Processing..." : "Save Changes");
+        el0.appendChild(el1);
+        return el0;
+      })();
+      this.appendChild(rootElement);
+    });
+    this._onMounts.forEach(fn => fn());
+  }
+  disconnectedCallback() {
+    this._onCleanups.forEach(fn => fn());
+  }
+}
+customElements.define("web-basicform", BasicForm);"
+`;
+
 exports[`Web App Framework Compiler Compiles react-patterns.jsx 1`] = `
 "import { effect as _effect, renderDynamic as _renderDynamic, applySpread as _applySpread, signal as _signal, createPropsProxy as _createPropsProxy, withInstance as _withInstance } from "@opentf/web";
 import { UI } from './ui-lib';
@@ -348,7 +395,7 @@ class ReactPatternsElement extends HTMLElement {
         el0.className = "container";
         el0.setAttribute("data-testid", "main-div");
         const el1 = document.createElement("input");
-        el1.setAttribute("disabled", true);
+        el1.disabled = true;
         _effect(() => el1.setAttribute("tab-index", -1));
         _effect(() => el1.setAttribute("max-length", 5));
         el0.appendChild(el1);
@@ -374,7 +421,7 @@ class ReactPatternsElement extends HTMLElement {
         el6.appendChild(text10);
         el0.appendChild(el6);
         const el11 = document.createElement("div");
-        _applySpread(el11, props.extra);
+        _effect(() => _applySpread(el11, props.extra));
         el11.className = "override";
         el11.id = "constant";
         const text12 = document.createTextNode(" Spread Test ");
@@ -543,7 +590,7 @@ exports[`Web App Framework Compiler Compiles basic-elements.page.jsx 1`] = `
 `;
 
 exports[`Web App Framework Compiler Compiles spread.jsx 1`] = `
-"import { applySpread as _applySpread, signal as _signal, createPropsProxy as _createPropsProxy, withInstance as _withInstance } from "@opentf/web";
+"import { applySpread as _applySpread, effect as _effect, signal as _signal, createPropsProxy as _createPropsProxy, withInstance as _withInstance } from "@opentf/web";
 class SpreadTestElement extends HTMLElement {
   static observedAttributes = [];
   constructor() {
@@ -567,13 +614,13 @@ class SpreadTestElement extends HTMLElement {
       };
       const rootElement = (() => {
         const el0 = document.createElement("div");
-        _applySpread(el0, props);
+        _effect(() => _applySpread(el0, props));
         const el1 = document.createElement("span");
-        _applySpread(el1, {
+        _effect(() => _applySpread(el1, {
           style: {
             color: "red"
           }
-        });
+        }));
         const text2 = document.createTextNode("Hello");
         el1.appendChild(text2);
         el0.appendChild(el1);
@@ -729,6 +776,59 @@ class StylingTestElement extends HTMLElement {
 }
 customElements.define("web-stylingtest", StylingTestElement);
 export default StylingTestElement;"
+`;
+
+exports[`Web App Framework Compiler Compiles forms.jsx 1`] = `
+"import { applySpread as _applySpread, effect as _effect, renderDynamic as _renderDynamic, signal as _signal, createPropsProxy as _createPropsProxy, withInstance as _withInstance } from "@opentf/web";
+import { createForm } from "@opentf/web-form";
+class FormCaseElement extends HTMLElement {
+  static observedAttributes = [];
+  constructor() {
+    super();
+    this._propsSignals = {};
+  }
+  attributeChangedCallback(name, _, value) {
+    this._propsSignals[name].value = value;
+  }
+  connectedCallback() {
+    this._onMounts = [];
+    this._onCleanups = [];
+    const props = _createPropsProxy(this);
+    this._children = Array.from(this.childNodes);
+    while (this.firstChild) this.removeChild(this.firstChild);
+    _withInstance(this, () => {
+      const form = createForm({
+        initialValues: {
+          name: "Alice"
+        }
+      });
+      const rootElement = (() => {
+        const el0 = document.createElement("div");
+        const el1 = document.createElement("input");
+        _effect(() => _applySpread(el1, form.register('name')));
+        el0.appendChild(el1);
+        const el2 = document.createElement("p");
+        const text3 = document.createTextNode("Hello, ");
+        el2.appendChild(text3);
+        _renderDynamic(el2, () => form.values.name);
+        el0.appendChild(el2);
+        const el4 = document.createElement("button");
+        el4.onclick = form.handleSubmit(v => console.log(v));
+        const text5 = document.createTextNode(" Submit ");
+        el4.appendChild(text5);
+        el0.appendChild(el4);
+        return el0;
+      })();
+      this.appendChild(rootElement);
+    });
+    this._onMounts.forEach(fn => fn());
+  }
+  disconnectedCallback() {
+    this._onCleanups.forEach(fn => fn());
+  }
+}
+customElements.define("web-formcase", FormCaseElement);
+export default FormCaseElement;"
 `;
 
 exports[`Web App Framework Compiler Compiles ref.jsx 1`] = `
@@ -1490,7 +1590,7 @@ class CameraIconElement extends HTMLElement {
         el0.setAttribute("strokeWidth", "2");
         el0.setAttribute("strokeLinecap", "round");
         el0.setAttribute("strokeLinejoin", "round");
-        _applySpread(el0, props);
+        _effect(() => _applySpread(el0, props));
         const el1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
         el1.setAttribute("d", "M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z");
         el0.appendChild(el1);
@@ -1545,7 +1645,7 @@ class UserIconElement extends HTMLElement {
         el0.setAttribute("strokeWidth", "2");
         el0.setAttribute("strokeLinecap", "round");
         el0.setAttribute("strokeLinejoin", "round");
-        _applySpread(el0, props);
+        _effect(() => _applySpread(el0, props));
         const el1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
         el1.setAttribute("d", "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2");
         el0.appendChild(el1);
@@ -1600,7 +1700,7 @@ class SettingsIconElement extends HTMLElement {
         _effect(() => el0.setAttribute("strokeWidth", props.strokeWidth));
         el0.setAttribute("strokeLinecap", "round");
         el0.setAttribute("strokeLinejoin", "round");
-        _applySpread(el0, props);
+        _effect(() => _applySpread(el0, props));
         const el1 = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         el1.setAttribute("cx", "12");
         el1.setAttribute("cy", "12");

@@ -53,13 +53,6 @@ export function _mapped(source, fn) {
       }
     });
 
-    // Cleanup removed items
-    cache.forEach((cached, key) => {
-      if (!nextCache.has(key)) {
-        if (cached.node.remove) cached.node.remove();
-      }
-    });
-
     cache = nextCache;
     return nextNodes;
   };

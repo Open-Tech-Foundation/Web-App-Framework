@@ -5,3 +5,4 @@ export * from './runtime/lifecycle.js';
 export * from './runtime/props.js';
 export * from './router/index.js';
 export { default as Link } from './router/Link.jsx';
+export * from './core/constants.js';
