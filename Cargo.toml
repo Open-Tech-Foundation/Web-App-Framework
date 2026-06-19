@@ -1,0 +1,14 @@
+# OpenTF Web — Rust toolchain workspace.
+# See ARCHITECTURE.md for the design this implements.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/Open-Tech-Foundation/Web-App-Framework"
+
+[workspace.dependencies]
+otfw_ir = { path = "crates/otfw_ir" }
+otfw_compiler = { path = "crates/otfw_compiler" }
