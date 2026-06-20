@@ -21,6 +21,10 @@ use otfw_ir::ExpressionId;
 
 use crate::lower::{Lowered, SignalDecl};
 
+/// The SVG namespace; elements under `<svg>` are created with `createElementNS`
+/// (SPEC §5.8).
+const SVG_NS: &str = "http://www.w3.org/2000/svg";
+
 /// The CSR output for one component.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CsrModule {
@@ -165,6 +169,9 @@ struct Emitter<'a> {
     base: String,
     /// Counter for unique node-builder function names (list items, dynamic nodes).
     list_counter: u32,
+    /// Whether the current element context is inside an `<svg>` subtree, so
+    /// descendants are created with `createElementNS` (SPEC §5.8).
+    in_svg: bool,
 }
 
 impl<'a> Emitter<'a> {
@@ -179,6 +186,7 @@ impl<'a> Emitter<'a> {
             disposal,
             base,
             list_counter: 0,
+            in_svg: false,
         }
     }
 
@@ -341,13 +349,24 @@ impl<'a> Emitter<'a> {
         match node {
             ViewNode::Element { tag, props, children } => {
                 let var = self.fresh("el");
-                self.line(format!("const {var} = document.createElement({});", js_string(tag)));
+                // `<svg>` (or any element within one) is created in the SVG
+                // namespace; `<foreignObject>` switches descendants back to HTML.
+                let is_svg = self.in_svg || tag == "svg";
+                let create = if is_svg {
+                    format!("document.createElementNS(\"{SVG_NS}\", {})", js_string(tag))
+                } else {
+                    format!("document.createElement({})", js_string(tag))
+                };
+                self.line(format!("const {var} = {create};"));
                 for prop in props {
                     self.emit_element_prop(&var, prop);
                 }
+                let prev = self.in_svg;
+                self.in_svg = is_svg && tag != "foreignObject";
                 for child in children {
                     self.emit_append(&var, child);
                 }
+                self.in_svg = prev;
                 var
             }
             ViewNode::Text(text) => {
@@ -887,6 +906,21 @@ mod tests {
             "code: {}",
             m.code
         );
+    }
+
+    #[test]
+    fn emits_svg_with_namespace() {
+        let m = emit_page(&lower(
+            "export function Icon() { return <svg viewBox=\"0 0 1 1\"><circle cx=\"5\"/><foreignObject><div>x</div></foreignObject></svg>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // `<svg>` and descendants use createElementNS; camelCase attrs keep case.
+        assert!(m.code.contains("document.createElementNS(\"http://www.w3.org/2000/svg\", \"svg\")"), "code: {}", m.code);
+        assert!(m.code.contains("document.createElementNS(\"http://www.w3.org/2000/svg\", \"circle\")"), "code: {}", m.code);
+        assert!(m.code.contains("setAttribute(\"viewBox\", \"0 0 1 1\")"), "code: {}", m.code);
+        // `<foreignObject>` is SVG, but its `<div>` child switches back to HTML.
+        assert!(m.code.contains("document.createElementNS(\"http://www.w3.org/2000/svg\", \"foreignObject\")"), "code: {}", m.code);
+        assert!(m.code.contains("document.createElement(\"div\")"), "code: {}", m.code);
     }
 
     #[test]
