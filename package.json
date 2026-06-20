@@ -13,7 +13,8 @@
     "website"
   ],
   "scripts": {
-    "dev": "vite playground",
+    "dev": "bun scripts/dev-csr.js",
+    "dev:vite": "vite playground",
     "playground:build": "bun run build:web && vite build playground",
     "preview": "bun run website:build && wrangler dev",
     "website:dev": "bun run --cwd website dev",
@@ -35,6 +36,7 @@
     "@types/bun": "latest",
     "jiti": "^2.6.1",
     "linkedom": "^0.18.12",
+    "rolldown": "1.0.0-rc.17",
     "tailwindcss": "^4.2.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
