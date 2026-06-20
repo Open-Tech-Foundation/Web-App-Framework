@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { signal } from "../core/signals.js";
-import { bindAttr, bindText, mount, setAttr, toText } from "./index.js";
+import { bindAttr, bindList, bindText, mount, setAttr, toText } from "./index.js";
 
 describe("toText", () => {
   test("renders nullish and false as empty string", () => {
@@ -71,6 +71,53 @@ describe("bindAttr", () => {
     expect(el.getAttribute("class")).toBe("on");
     cls.value = "off";
     expect(el.getAttribute("class")).toBe("off");
+  });
+});
+
+describe("bindList", () => {
+  const render = (sig) => {
+    const li = document.createElement("li");
+    bindText(li.appendChild(document.createTextNode("")), () => sig.value.name);
+    return li;
+  };
+  const key = (item) => item.id;
+  const text = (parent) =>
+    Array.from(parent.querySelectorAll("li")).map((li) => li.textContent).join(",");
+
+  test("renders, reorders (reusing nodes), updates, and removes by key", () => {
+    const items = signal([{ id: 1, name: "a" }, { id: 2, name: "b" }]);
+    const parent = document.createElement("ul");
+    bindList(parent, () => items.value, render, key);
+    expect(text(parent)).toBe("a,b");
+
+    const firstA = parent.querySelector("li");
+
+    // Insert in the middle.
+    items.value = [{ id: 1, name: "a" }, { id: 3, name: "c" }, { id: 2, name: "b" }];
+    expect(text(parent)).toBe("a,c,b");
+
+    // Reorder + drop: the node for id:1 must be the *same* element (keyed reuse).
+    items.value = [{ id: 2, name: "b" }, { id: 1, name: "a" }];
+    expect(text(parent)).toBe("b,a");
+    expect(parent.querySelectorAll("li")[1]).toBe(firstA);
+
+    // Fine-grained update: same node, new text.
+    items.value = [{ id: 2, name: "b" }, { id: 1, name: "A" }];
+    expect(text(parent)).toBe("b,A");
+    expect(parent.querySelectorAll("li")[1]).toBe(firstA);
+  });
+
+  test("falls back to index when no keyFn is given", () => {
+    const items = signal(["x", "y"]);
+    const parent = document.createElement("ul");
+    bindList(parent, () => items.value, (sig) => {
+      const li = document.createElement("li");
+      bindText(li.appendChild(document.createTextNode("")), () => sig.value);
+      return li;
+    });
+    expect(text(parent)).toBe("x,y");
+    items.value = ["x", "y", "z"];
+    expect(text(parent)).toBe("x,y,z");
   });
 });
 
