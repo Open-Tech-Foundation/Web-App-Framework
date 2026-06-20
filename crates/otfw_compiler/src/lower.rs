@@ -131,6 +131,15 @@ pub struct PropSnapshot {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lowered {
     pub ir: ComponentIR,
+    /// The component's function name (`function Counter` → `Counter`), used to
+    /// derive the Custom Element tag/class even for `export default` — so a page's
+    /// `<Counter/>` (tag from the JSX name) matches the registered `web-counter`.
+    /// Falls back to the export name for anonymous components.
+    pub name: String,
+    /// Verbatim top-level `import` declarations from the source module, preserved
+    /// so the bundler pulls in dependencies (e.g. composed components that
+    /// self-register as Custom Elements) — re-emitted ahead of the runtime import.
+    pub imports: Vec<String>,
     pub exprs: ExprTable,
     /// Signal declarations (`$state`/`$derived`/`$ref`) to emit before the view.
     pub decls: Vec<SignalDecl>,
@@ -187,6 +196,17 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
 
     let (export, func) = find_component(program)?;
     let body = func.body.as_deref()?;
+    let name = func.id.as_ref().map(|id| id.name.as_str().to_string()).unwrap_or_else(|| export.clone());
+
+    // Preserve the module's top-level imports so the bundler resolves them.
+    let imports = program
+        .body
+        .iter()
+        .filter_map(|stmt| match stmt {
+            Statement::ImportDeclaration(decl) => Some(slice_span(source, decl.span)),
+            _ => None,
+        })
+        .collect();
 
     let classified = classify(func, scoping, source);
 
@@ -215,6 +235,8 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
     };
     Some(Lowered {
         ir,
+        name,
+        imports,
         exprs: lowerer.exprs,
         decls: classified.decls,
         props: classified.props,

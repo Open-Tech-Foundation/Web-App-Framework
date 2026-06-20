@@ -73,7 +73,8 @@ pub fn emit_page(lowered: &Lowered) -> CsrModule {
         format!("export function {export}() {{\n")
     };
     let code = format!(
-        "{}{}{}  return {root};\n}}\n",
+        "{}{}{}{}  return {root};\n}}\n",
+        e.user_imports(),
         e.imports(),
         header,
         e.render("  ")
@@ -83,7 +84,9 @@ pub fn emit_page(lowered: &Lowered) -> CsrModule {
 
 /// Emit a UI component as a Custom Element class + `customElements.define`.
 pub fn emit_component(lowered: &Lowered) -> CsrModule {
-    let export = lowered.ir.id.export.clone();
+    // Tag/class come from the function name (not the export), so `export default
+    // function Counter` registers `web-counter` to match a page's `<Counter/>`.
+    let export = lowered.name.clone();
     let props = &lowered.props;
 
     let mut e = Emitter::new(lowered, Disposal::Sink("this._cleanups"));
@@ -103,6 +106,7 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     let body = e.render("    ");
 
     let mut code = String::new();
+    code.push_str(&e.user_imports());
     code.push_str(&e.imports());
     code.push_str(&format!("export class {class} extends HTMLElement {{\n"));
 
@@ -152,6 +156,10 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     code.push_str("  }\n");
     code.push_str("}\n");
     code.push_str(&format!("customElements.define({}, {class});\n", js_string(&tag)));
+    // Default-export the class so a consumer's `import Counter from "./Counter"`
+    // resolves (the binding is unused — the component is referenced by tag — but
+    // the import pulls the module in so its `define` runs).
+    code.push_str(&format!("export default {class};\n"));
 
     CsrModule { code, errors: e.errors }
 }
@@ -299,6 +307,15 @@ impl<'a> Emitter<'a> {
         for obj in self.lowered.exposes.clone() {
             self.line(format!("Object.assign(this, ({obj}));"));
         }
+    }
+
+    /// The module's preserved top-level imports (e.g. composed components), one
+    /// per line, emitted before the runtime import so the bundler resolves them.
+    fn user_imports(&self) -> String {
+        if self.lowered.imports.is_empty() {
+            return String::new();
+        }
+        format!("{}\n", self.lowered.imports.join("\n"))
     }
 
     /// The `import { … } from "@opentf/web";` header for the helpers used.
@@ -796,7 +813,8 @@ mod tests {
              this._cleanups = [];\n  \
              }\n\
              }\n\
-             customElements.define(\"web-counter\", CounterElement);\n"
+             customElements.define(\"web-counter\", CounterElement);\n\
+             export default CounterElement;\n"
         );
     }
 
@@ -997,6 +1015,19 @@ mod tests {
         ));
         assert!(!p.is_complete());
         assert!(p.errors.iter().any(|e| e.contains("$expose is only supported in components")), "errors: {:?}", p.errors);
+    }
+
+    #[test]
+    fn preserves_module_imports() {
+        let m = emit_page(&lower(
+            "import Counter from \"../components/Counter\";\nexport default function App() { return <div><Counter/></div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // The user import is re-emitted (so the bundler pulls Counter in) ahead of
+        // the runtime import; the component is still referenced by tag.
+        let user_at = m.code.find("import Counter from \"../components/Counter\";").expect("user import");
+        let comp_at = m.code.find("document.createElement(\"web-counter\")").expect("tag");
+        assert!(user_at < comp_at, "import must precede use; code: {}", m.code);
     }
 
     #[test]
