@@ -1116,6 +1116,40 @@ mod tests {
     }
 
     #[test]
+    fn lowers_arrow_function_components() {
+        // `const Icon = (props) => <svg/>` and a page that uses it must lower the
+        // same as function-declaration components: a Custom Element + a factory.
+        let source = "const Icon = ({ size = 24 }) => <svg width={size}></svg>;\n\
+             export default function Page() { return <div><Icon size={32} /></div>; }";
+        let sess = ParseSession::new();
+        let parsed = sess.parse(Path::new("page.tsx"), source);
+        assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
+        let m = crate::lower::lower_module("/app/page.tsx", &parsed.program, source, true)
+            .expect("a module");
+        let out = emit_module(&m.components, &m.module_stmts);
+        assert!(out.is_complete(), "errors: {:?}", out.errors);
+        // The arrow component becomes a Custom Element with its prop.
+        assert!(out.code.contains("class IconElement extends HTMLElement"), "icon CE:\n{}", out.code);
+        assert!(out.code.contains("customElements.define(\"web-icon\", IconElement);"), "icon defined:\n{}", out.code);
+        assert!(out.code.contains("observedAttributes = [\"size\"]"), "icon prop:\n{}", out.code);
+        // No raw JSX survives into the output.
+        assert!(!out.code.contains("<svg"), "no raw JSX:\n{}", out.code);
+        assert!(!out.code.contains("=>") || !out.code.contains("<Icon"), "no raw <Icon:\n{}", out.code);
+    }
+
+    #[test]
+    fn lowers_arrow_default_export_page() {
+        // `export default () => <jsx>` is a valid page factory.
+        let m = emit_page(&lower_page(
+            "export default () => <main><h1>Hi</h1></main>;",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("export default function ("), "factory:\n{}", m.code);
+        assert!(m.code.contains("createElement(\"main\")"), "builds view:\n{}", m.code);
+        assert!(!m.code.contains("<main"), "no raw JSX:\n{}", m.code);
+    }
+
+    #[test]
     fn emits_all_components_and_preserves_module_statements() {
         // A page module declaring a co-located component, a module-level store, and
         // a plain helper. emit_module must emit ONE runtime import header, the

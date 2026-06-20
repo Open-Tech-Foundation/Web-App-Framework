@@ -20,9 +20,10 @@ use std::collections::HashMap;
 
 use oxc::ast::ast::{
     Argument, ArrowFunctionExpression, BindingPattern, CallExpression, Declaration, Expression,
-    ExportDefaultDeclarationKind, Function, FunctionBody, IdentifierReference, ImportDeclarationSpecifier,
-    JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName,
-    JSXExpression, JSXFragment, Program, StaticMemberExpression, Statement,
+    ExportDefaultDeclarationKind, FormalParameters, Function, FunctionBody, IdentifierReference,
+    ImportDeclarationSpecifier, JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild,
+    JSXElement, JSXElementName, JSXExpression, JSXFragment, Program, StaticMemberExpression,
+    Statement, VariableDeclaration,
 };
 use oxc::ast_visit::{walk, Visit};
 use oxc::semantic::{Scoping, SymbolId};
@@ -288,7 +289,7 @@ pub fn lower_module<'a>(
 fn lower_one<'a>(
     module: &str,
     export: &str,
-    func: &'a Function<'a>,
+    callable: Callable<'a>,
     scoping: &Scoping,
     source: &'a str,
     is_page: bool,
@@ -297,15 +298,15 @@ fn lower_one<'a>(
     is_page_role: bool,
     is_default_export: bool,
 ) -> Option<Lowered> {
-    let body = func.body.as_deref()?;
-    let name = func.id.as_ref().map(|id| id.name.as_str().to_string()).unwrap_or_else(|| export.to_string());
+    callable.body()?;
+    let name = callable.id().unwrap_or_else(|| export.to_string());
 
-    let classified = classify(func, scoping, source, is_page);
+    let classified = classify(callable, scoping, source, is_page);
 
     let children_symbol = classified.children.as_ref().and_then(|c| c.symbol);
     let children_local = classified.children.map(|c| c.local);
 
-    let jsx = returned_jsx(body)?;
+    let jsx = callable.jsx()?;
     let mut lowerer = Lowerer::new(
         source,
         scoping,
@@ -391,58 +392,43 @@ fn collect_imports(program: &Program, source: &str) -> (Vec<String>, Vec<String>
 
 /// If `stmt` declares a JSX-returning function component, return its export name,
 /// the function, and whether it is the default export.
-fn component_of<'a>(stmt: &'a Statement<'a>) -> Option<(String, &'a Function<'a>, bool)> {
+fn component_of<'a>(stmt: &'a Statement<'a>) -> Option<(String, Callable<'a>, bool)> {
     match stmt {
         Statement::FunctionDeclaration(f) if has_jsx_return(f) => {
             let name = f.id.as_ref()?.name.as_str().to_string();
-            Some((name, f, false))
+            Some((name, Callable::Function(f), false))
         }
-        Statement::ExportNamedDeclaration(e) => {
-            if let Some(Declaration::FunctionDeclaration(f)) = &e.declaration
-                && has_jsx_return(f)
-                && let Some(id) = &f.id
-            {
-                return Some((id.name.as_str().to_string(), f, false));
+        // `const Icon = () => <svg/>` (or a function expression).
+        Statement::VariableDeclaration(vd) => arrow_component_of(vd).map(|(n, c)| (n, c, false)),
+        Statement::ExportNamedDeclaration(e) => match &e.declaration {
+            Some(Declaration::FunctionDeclaration(f)) if has_jsx_return(f) => {
+                let id = f.id.as_ref()?;
+                Some((id.name.as_str().to_string(), Callable::Function(f), false))
             }
-            None
-        }
-        Statement::ExportDefaultDeclaration(e) => {
-            if let ExportDefaultDeclarationKind::FunctionDeclaration(f) = &e.declaration
-                && has_jsx_return(f)
-            {
-                return Some(("default".to_string(), f, true));
+            Some(Declaration::VariableDeclaration(vd)) => {
+                arrow_component_of(vd).map(|(n, c)| (n, c, false))
             }
-            None
-        }
+            _ => None,
+        },
+        Statement::ExportDefaultDeclaration(e) => match &e.declaration {
+            ExportDefaultDeclarationKind::FunctionDeclaration(f) if has_jsx_return(f) => {
+                Some(("default".to_string(), Callable::Function(f), true))
+            }
+            ExportDefaultDeclarationKind::ArrowFunctionExpression(a) if arrow_jsx(a).is_some() => {
+                Some(("default".to_string(), Callable::Arrow(a), true))
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
 
-/// Find the first function-declaration component and its export name.
+/// Find the first component (function declaration or arrow) and its export name.
 /// `export default function` yields the export name `default`.
-fn find_component<'a>(program: &'a Program<'a>) -> Option<(String, &'a Function<'a>)> {
+fn find_component<'a>(program: &'a Program<'a>) -> Option<(String, Callable<'a>)> {
     for stmt in &program.body {
-        match stmt {
-            Statement::FunctionDeclaration(f) if has_jsx_return(f) => {
-                let name = f.id.as_ref().map(|id| id.name.as_str().to_string())?;
-                return Some((name, f));
-            }
-            Statement::ExportNamedDeclaration(e) => {
-                if let Some(Declaration::FunctionDeclaration(f)) = &e.declaration
-                    && has_jsx_return(f)
-                    && let Some(id) = &f.id
-                {
-                    return Some((id.name.as_str().to_string(), f));
-                }
-            }
-            Statement::ExportDefaultDeclaration(e) => {
-                if let ExportDefaultDeclarationKind::FunctionDeclaration(f) = &e.declaration
-                    && has_jsx_return(f)
-                {
-                    return Some(("default".to_string(), f));
-                }
-            }
-            _ => {}
+        if let Some((name, callable, _)) = component_of(stmt) {
+            return Some((name, callable));
         }
     }
     None
@@ -482,7 +468,7 @@ fn arrow_jsx<'a>(arrow: &'a ArrowFunctionExpression<'a>) -> Option<&'a Expressio
     if arrow.expression {
         if let Some(Statement::ExpressionStatement(es)) = arrow.body.statements.first() {
             let expr = unwrap_paren(&es.expression);
-            if matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_)) {
+            if has_jsx_expr(expr) {
                 return Some(expr);
             }
         }
@@ -490,6 +476,74 @@ fn arrow_jsx<'a>(arrow: &'a ArrowFunctionExpression<'a>) -> Option<&'a Expressio
     } else {
         returned_jsx(&arrow.body)
     }
+}
+
+/// A component definition's callable form: a `function` declaration/expression or
+/// an arrow function. Both expose the same params/body/JSX the lowerer needs, so
+/// `function C() {…}` and `const C = () => …` lower identically (SPEC §2.1).
+#[derive(Clone, Copy)]
+enum Callable<'a> {
+    Function(&'a Function<'a>),
+    Arrow(&'a ArrowFunctionExpression<'a>),
+}
+
+impl<'a> Callable<'a> {
+    fn params(&self) -> &'a FormalParameters<'a> {
+        match self {
+            Callable::Function(f) => &f.params,
+            Callable::Arrow(a) => &a.params,
+        }
+    }
+
+    fn body(&self) -> Option<&'a FunctionBody<'a>> {
+        match self {
+            Callable::Function(f) => f.body.as_deref(),
+            Callable::Arrow(a) => Some(&a.body),
+        }
+    }
+
+    /// The view JSX this component returns, if any.
+    fn jsx(&self) -> Option<&'a Expression<'a>> {
+        match self {
+            Callable::Function(f) => f.body.as_deref().and_then(returned_jsx),
+            Callable::Arrow(a) => arrow_jsx(a),
+        }
+    }
+
+    /// The function's own name (`function Counter`), if it has one.
+    fn id(&self) -> Option<String> {
+        match self {
+            Callable::Function(f) => f.id.as_ref().map(|id| id.name.as_str().to_string()),
+            Callable::Arrow(_) => None,
+        }
+    }
+
+    fn has_jsx(&self) -> bool {
+        self.jsx().is_some()
+    }
+}
+
+/// If `decl` declares exactly one `const NAME = () => <jsx>` (or function
+/// expression) arrow component, return its binding name and callable.
+fn arrow_component_of<'a>(
+    decl: &'a VariableDeclaration<'a>,
+) -> Option<(String, Callable<'a>)> {
+    if decl.declarations.len() != 1 {
+        return None;
+    }
+    let d = &decl.declarations[0];
+    let BindingPattern::BindingIdentifier(bi) = &d.id else {
+        return None;
+    };
+    let callable = match &d.init {
+        Some(Expression::ArrowFunctionExpression(a)) => Callable::Arrow(a),
+        Some(Expression::FunctionExpression(f)) => Callable::Function(f),
+        _ => return None,
+    };
+    if !callable.has_jsx() {
+        return None;
+    }
+    Some((bi.name.as_str().to_string(), callable))
 }
 
 // ── Signal classification ───────────────────────────────────────────────────
@@ -527,7 +581,7 @@ struct Classified {
 /// Two passes: first bind every signal's symbol → id (so a later initializer or
 /// the view can reference any of them), then build the declarations with
 /// `.value` injected into initializers/defaults.
-fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str, is_page: bool) -> Classified {
+fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page: bool) -> Classified {
     enum Detail<'a> {
         Prop { local: String, attr: String, default: Option<&'a Expression<'a>> },
         Macro { arg: Option<&'a Argument<'a>> },
@@ -556,11 +610,11 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str, is_page
     // and `props.params.*` then lower as ordinary (non-reactive) accesses.
     if is_page {
         if let Some(BindingPattern::BindingIdentifier(bi)) =
-            func.params.items.first().map(|p| &p.pattern)
+            callable.params().items.first().map(|p| &p.pattern)
         {
             page_param = Some(bi.name.as_str().to_string());
         }
-    } else if let Some(param) = func.params.items.first() {
+    } else if let Some(param) = callable.params().items.first() {
         // Pass 1a: destructured props from the first parameter.
         match &param.pattern {
             BindingPattern::ObjectPattern(obj) => {
@@ -640,7 +694,7 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str, is_page
                 // as `props.key` across the component (SPEC §2.8) — each becomes
                 // an observed signal; `props.children` is the light-DOM slot.
                 if let Some(symbol) = bi.symbol_id.get()
-                    && let Some(body) = func.body.as_deref()
+                    && let Some(body) = callable.body()
                 {
                     props_symbol = Some(symbol);
                     props_object = Some(bi.name.as_str().to_string());
@@ -669,7 +723,7 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str, is_page
     let mut expose_args: Vec<&Argument> = Vec::new();
     let mut mount_args: Vec<&Argument> = Vec::new();
     let mut cleanup_args: Vec<&Argument> = Vec::new();
-    if let Some(body) = func.body.as_deref() {
+    if let Some(body) = callable.body() {
         for stmt in &body.statements {
             match stmt {
                 Statement::VariableDeclaration(vd) => {
@@ -756,11 +810,13 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str, is_page
     // resolve. Signals are consumed in source order from `decls`.
     let mut body = Vec::new();
     let mut decl_iter = decls.iter();
-    if let Some(fbody) = func.body.as_deref() {
+    if let Some(fbody) = callable.body() {
         for stmt in &fbody.statements {
             match stmt {
                 // The returned JSX becomes the view, not a statement.
                 Statement::ReturnStatement(_) => {}
+                // An expression-bodied arrow's JSX (`() => <div/>`) is the view too.
+                Statement::ExpressionStatement(es) if has_jsx_expr(unwrap_paren(&es.expression)) => {}
                 // `$state`/`$derived`/`$ref` declarations → signal items (in order).
                 Statement::VariableDeclaration(vd) if is_macro_decl(vd) => {
                     for d in &vd.declarations {
