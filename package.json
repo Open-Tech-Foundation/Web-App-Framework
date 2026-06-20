@@ -14,8 +14,6 @@
   ],
   "scripts": {
     "dev": "bun packages/web-cli/src/dev.js",
-    "dev:vite": "vite playground",
-    "playground:build": "bun run build:web && vite build playground",
     "preview": "bun run website:build && wrangler dev",
     "website:dev": "bun run --cwd website dev",
     "website:build": "bun run build:web && bun run --cwd website build",
