@@ -5,8 +5,9 @@
 //!          -> (3) lower -> domain-specific IRs (otfw_ir)
 //!          -> (4) codegen -> backend modules
 //!
-//! Status: foundation. Stage 1 (parse) is implemented; later stages are stubs
-//! filled in order. The IR types they target already exist in `otfw_ir`.
+//! Status: foundation. Stages 1–3 (parse, bind/resolve, lower to View IR) are
+//! implemented; Stage 4 (codegen) is a stub. The IR types they target already
+//! exist in `otfw_ir`.
 
 pub use otfw_ir;
 
