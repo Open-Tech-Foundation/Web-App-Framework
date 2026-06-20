@@ -21,4 +21,4 @@ pub mod semantic;
 pub mod lower;
 
 /// Stage 4: Codegen — IR consumers per target (CSR / Hydrate / SSG / SSR / API).
-pub mod codegen {}
+pub mod codegen;
