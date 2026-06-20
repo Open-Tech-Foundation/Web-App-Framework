@@ -41,7 +41,7 @@
       "name": "@opentf/web-cli",
       "version": "0.0.1",
       "bin": {
-        "otfw-dev": "./src/dev.js",
+        "otfw": "./src/cli.js",
       },
       "dependencies": {
         "@tailwindcss/node": "4.2.2",

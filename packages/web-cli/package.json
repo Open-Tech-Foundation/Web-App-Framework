@@ -4,10 +4,10 @@
   "description": "OpenTF Web dev toolchain — the Rolldown-driven CSR dev server.",
   "type": "module",
   "bin": {
-    "otfw-dev": "./src/dev.js"
+    "otfw": "./src/cli.js"
   },
   "exports": {
-    ".": "./src/dev.js"
+    ".": "./src/cli.js"
   },
   "dependencies": {
     "@tailwindcss/node": "4.2.2",
