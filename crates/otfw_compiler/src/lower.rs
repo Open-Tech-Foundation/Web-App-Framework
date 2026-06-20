@@ -144,6 +144,10 @@ pub struct Lowered {
     /// Whether to emit this as a page/layout factory (vs. a Custom Element). Set
     /// for the default export of a page module; co-located components are `false`.
     pub is_page: bool,
+    /// Whether this component was the module's `export default`. In a component
+    /// module its Custom Element class becomes the module's default export, so a
+    /// page's `import Counter from "../components/Counter"` resolves.
+    pub is_default_export: bool,
     /// The component's function name (`function Counter` → `Counter`), used to
     /// derive the Custom Element tag/class even for `export default` — so a page's
     /// `<Counter/>` (tag from the JSX name) matches the registered `web-counter`.
@@ -231,7 +235,7 @@ pub fn lower_component<'a>(
     let scoping = resolved.semantic.scoping();
     let (imports, runtime_imports) = collect_imports(program, source);
     let (export, func) = find_component(program)?;
-    lower_one(module, &export, func, scoping, source, is_page, &imports, &runtime_imports, is_page)
+    lower_one(module, &export, func, scoping, source, is_page, &imports, &runtime_imports, is_page, true)
 }
 
 /// A whole `.jsx` module: every component it declares (the page factory plus any
@@ -264,7 +268,7 @@ pub fn lower_module<'a>(
         if let Some((export, func, is_default)) = component_of(stmt) {
             let role = is_page_module && is_default;
             if let Some(lowered) =
-                lower_one(module, &export, func, scoping, source, role, &imports, &runtime_imports, role)
+                lower_one(module, &export, func, scoping, source, role, &imports, &runtime_imports, role, is_default)
             {
                 components.push(lowered);
             }
@@ -291,6 +295,7 @@ fn lower_one<'a>(
     imports: &[String],
     runtime_imports: &[String],
     is_page_role: bool,
+    is_default_export: bool,
 ) -> Option<Lowered> {
     let body = func.body.as_deref()?;
     let name = func.id.as_ref().map(|id| id.name.as_str().to_string()).unwrap_or_else(|| export.to_string());
@@ -324,6 +329,7 @@ fn lower_one<'a>(
     Some(Lowered {
         ir,
         is_page: is_page_role,
+        is_default_export,
         name,
         imports: imports.to_vec(),
         runtime_imports: runtime_imports.to_vec(),

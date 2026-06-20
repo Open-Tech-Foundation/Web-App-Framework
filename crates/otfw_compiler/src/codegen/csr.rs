@@ -272,7 +272,9 @@ pub fn emit_module(components: &[Lowered], module_stmts: &[String]) -> CsrModule
         let (e, body) = if c.is_page {
             page_body(c)
         } else {
-            component_body_ex(c, false)
+            // The source's `export default` component re-exports its class as the
+            // module default, so `import Counter from "./Counter"` resolves.
+            component_body_ex(c, c.is_default_export)
         };
         combined.merge(&e.uses);
         errors.extend(e.errors);
@@ -1145,6 +1147,31 @@ mod tests {
         assert!(out.code.contains("class BadgeElement extends HTMLElement"), "badge CE:\n{}", out.code);
         assert!(out.code.contains("customElements.define(\"web-badge\", BadgeElement);"), "badge defined:\n{}", out.code);
         assert!(out.code.contains("export default function () {"), "page factory:\n{}", out.code);
+    }
+
+    #[test]
+    fn component_module_default_exports_the_main_class() {
+        // A component module (`export default function Counter`) plus a co-located
+        // helper component. The default-export component re-exports its class so a
+        // consumer's `import Counter from "./Counter"` resolves; the co-located one
+        // only registers its tag (no extra default export).
+        let source = "function Badge() { return <span>x</span>; }\n\
+             export default function Counter() { let n = $state(0); return <button onclick={() => n++}>{n}</button>; }";
+        let sess = ParseSession::new();
+        let parsed = sess.parse(Path::new("Counter.tsx"), source);
+        assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
+        let m = crate::lower::lower_module("/app/Counter.tsx", &parsed.program, source, false)
+            .expect("a module");
+        let out = emit_module(&m.components, &m.module_stmts);
+        assert!(out.is_complete(), "errors: {:?}", out.errors);
+        assert_eq!(
+            out.code.matches("export default ").count(),
+            1,
+            "exactly one default export:\n{}",
+            out.code
+        );
+        assert!(out.code.contains("export default CounterElement;"), "default is the main class:\n{}", out.code);
+        assert!(out.code.contains("customElements.define(\"web-badge\", BadgeElement);"), "badge registered:\n{}", out.code);
     }
 
     #[test]
