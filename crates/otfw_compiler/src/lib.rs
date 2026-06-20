@@ -17,7 +17,7 @@ pub mod parse;
 pub mod semantic;
 
 /// Stage 3: Lower the Semantic Model into the domain-specific IRs.
-pub mod lower {}
+pub mod lower;
 
 /// Stage 4: Codegen — IR consumers per target (CSR / Hydrate / SSG / SSR / API).
 pub mod codegen {}
