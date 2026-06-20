@@ -90,13 +90,27 @@ pub struct SignalDecl {
     pub init_is_fn: bool,
 }
 
+/// A destructured component prop (`function C({ name: local = default })`).
+///
+/// `attr` is the public attribute/property name (observed + synced); `local` is
+/// the in-body binding the view references. Both are reactive signal-backed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PropDecl {
+    pub local: String,
+    pub attr: String,
+    /// Default initializer source, applied when the attribute is absent.
+    pub default: Option<String>,
+}
+
 /// The output of Stage 3 for one component.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lowered {
     pub ir: ComponentIR,
     pub exprs: ExprTable,
-    /// Signal declarations to emit before the view is built.
+    /// Signal declarations (`$state`/`$derived`/`$ref`) to emit before the view.
     pub decls: Vec<SignalDecl>,
+    /// Destructured component props (the Custom Element's observed signals).
+    pub props: Vec<PropDecl>,
     /// Non-fatal lowering diagnostics (unsupported constructs that were skipped).
     pub errors: Vec<String>,
 }
@@ -130,11 +144,14 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
     let (export, func) = find_component(program)?;
     let body = func.body.as_deref()?;
 
-    let classified = classify_signals(body, scoping, source);
+    let classified = classify(func, scoping, source);
 
     let jsx = returned_jsx(body)?;
     let mut lowerer = Lowerer::new(source, scoping, &classified.by_symbol);
     let view = lowerer.lower_root(jsx)?;
+
+    let mut errors = classified.errors;
+    errors.extend(lowerer.errors);
 
     let ir = ComponentIR {
         id: ComponentId::new(module, export),
@@ -143,7 +160,13 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
         imports: Vec::new(),
         exports: Vec::new(),
     };
-    Some(Lowered { ir, exprs: lowerer.exprs, decls: classified.decls, errors: lowerer.errors })
+    Some(Lowered {
+        ir,
+        exprs: lowerer.exprs,
+        decls: classified.decls,
+        props: classified.props,
+        errors,
+    })
 }
 
 /// Find the first function-declaration component and its export name.
@@ -208,59 +231,121 @@ struct Classified {
     by_symbol: HashMap<SymbolId, SignalId>,
     infos: Vec<SignalInfo>,
     decls: Vec<SignalDecl>,
+    props: Vec<PropDecl>,
+    errors: Vec<String>,
 }
 
-/// Collect top-level macro declarations into signals. Two passes: first bind
-/// each signal's symbol → id so initializers can reference earlier signals, then
-/// build the declarations with `.value` injected into their initializers.
-fn classify_signals<'a>(
-    body: &'a FunctionBody<'a>,
-    scoping: &Scoping,
-    source: &str,
-) -> Classified {
+/// Classify the component's reactive bindings into signals: destructured props
+/// (first parameter) and top-level `$state`/`$derived`/`$ref` macros.
+///
+/// Two passes: first bind every signal's symbol → id (so a later initializer or
+/// the view can reference any of them), then build the declarations with
+/// `.value` injected into initializers/defaults.
+fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Classified {
+    enum Detail<'a> {
+        Prop { local: String, attr: String, default: Option<&'a Expression<'a>> },
+        Macro { arg: Option<&'a Argument<'a>> },
+    }
     struct Pending<'a> {
         id: SignalId,
         name: String,
-        kind: MacroKind,
-        arg: Option<&'a Argument<'a>>,
+        kind: SignalKind,
+        detail: Detail<'a>,
     }
 
     let mut by_symbol = HashMap::new();
     let mut pendings: Vec<Pending> = Vec::new();
+    let mut errors = Vec::new();
 
-    for stmt in &body.statements {
-        let Statement::VariableDeclaration(vd) = stmt else { continue };
-        for d in &vd.declarations {
-            let Some(Expression::CallExpression(call)) = &d.init else { continue };
-            let Some(kind) = macro_kind(call) else { continue };
-            let BindingPattern::BindingIdentifier(bi) = &d.id else { continue };
-            let Some(symbol) = bi.symbol_id.get() else { continue };
-
-            let id = SignalId(pendings.len() as u32);
-            by_symbol.insert(symbol, id);
-            pendings.push(Pending {
-                id,
-                name: bi.name.as_str().to_string(),
-                kind,
-                arg: call.arguments.first(),
-            });
+    // Pass 1a: destructured props from the first parameter.
+    if let Some(param) = func.params.items.first() {
+        match &param.pattern {
+            BindingPattern::ObjectPattern(obj) => {
+                for prop in &obj.properties {
+                    let Some(attr) = prop.key.static_name() else {
+                        errors.push("computed prop key not supported".into());
+                        continue;
+                    };
+                    let (binding, default) = match &prop.value {
+                        BindingPattern::BindingIdentifier(bi) => (Some(bi), None),
+                        BindingPattern::AssignmentPattern(ap) => match &ap.left {
+                            BindingPattern::BindingIdentifier(bi) => (Some(bi), Some(&ap.right)),
+                            _ => (None, None),
+                        },
+                        _ => (None, None),
+                    };
+                    let Some(bi) = binding else {
+                        errors.push(format!("nested prop pattern not supported: {attr}"));
+                        continue;
+                    };
+                    let Some(symbol) = bi.symbol_id.get() else { continue };
+                    let local = bi.name.as_str().to_string();
+                    let id = SignalId(pendings.len() as u32);
+                    by_symbol.insert(symbol, id);
+                    pendings.push(Pending {
+                        id,
+                        name: local.clone(),
+                        kind: SignalKind::Prop,
+                        detail: Detail::Prop { local, attr: attr.to_string(), default },
+                    });
+                }
+                if obj.rest.is_some() {
+                    errors.push("rest props (`...rest`) not supported yet".into());
+                }
+            }
+            BindingPattern::BindingIdentifier(_) => {
+                errors.push("direct `props` object not supported yet; destructure props".into());
+            }
+            _ => {}
         }
     }
 
-    let mut infos = Vec::with_capacity(pendings.len());
-    let mut decls = Vec::with_capacity(pendings.len());
-    for p in pendings {
-        infos.push(SignalInfo { id: p.id, kind: p.kind.signal_kind(), name: p.name.clone() });
-        let (init, init_is_fn) = match p.arg {
-            Some(arg) if !arg.is_spread() => {
-                (inject_arg(source, scoping, &by_symbol, arg).code, is_fn_argument(arg))
+    // Pass 1b: top-level macro declarations.
+    if let Some(body) = func.body.as_deref() {
+        for stmt in &body.statements {
+            let Statement::VariableDeclaration(vd) = stmt else { continue };
+            for d in &vd.declarations {
+                let Some(Expression::CallExpression(call)) = &d.init else { continue };
+                let Some(kind) = macro_kind(call) else { continue };
+                let BindingPattern::BindingIdentifier(bi) = &d.id else { continue };
+                let Some(symbol) = bi.symbol_id.get() else { continue };
+
+                let id = SignalId(pendings.len() as u32);
+                by_symbol.insert(symbol, id);
+                pendings.push(Pending {
+                    id,
+                    name: bi.name.as_str().to_string(),
+                    kind: kind.signal_kind(),
+                    detail: Detail::Macro { arg: call.arguments.first() },
+                });
             }
-            _ => (String::new(), false),
-        };
-        decls.push(SignalDecl { name: p.name, kind: p.kind.signal_kind(), init, init_is_fn });
+        }
     }
 
-    Classified { by_symbol, infos, decls }
+    // Pass 2: build declarations with `.value` injected (symbol set now complete).
+    let mut infos = Vec::with_capacity(pendings.len());
+    let mut decls = Vec::new();
+    let mut props = Vec::new();
+    for p in pendings {
+        infos.push(SignalInfo { id: p.id, kind: p.kind.clone(), name: p.name.clone() });
+        match p.detail {
+            Detail::Prop { local, attr, default } => {
+                let default = default.map(|e| inject_expr(source, scoping, &by_symbol, e).code);
+                props.push(PropDecl { local, attr, default });
+            }
+            Detail::Macro { arg } => {
+                let (init, init_is_fn) = match arg {
+                    Some(arg) if !arg.is_spread() => {
+                        (inject_arg(source, scoping, &by_symbol, arg).code, is_fn_argument(arg))
+                    }
+                    _ => (String::new(), false),
+                };
+                decls.push(SignalDecl { name: p.name, kind: p.kind, init, init_is_fn });
+            }
+        }
+    }
+
+    Classified { by_symbol, infos, decls, props, errors }
 }
 
 fn macro_kind(call: &CallExpression) -> Option<MacroKind> {
@@ -346,6 +431,17 @@ fn inject_arg(
     let mut rc = new_collector(scoping, signals);
     rc.visit_argument(arg);
     ExprInfo { code: splice(source, arg.span(), rc.ends), deps: rc.deps }
+}
+
+fn inject_expr(
+    source: &str,
+    scoping: &Scoping,
+    signals: &HashMap<SymbolId, SignalId>,
+    expr: &Expression,
+) -> ExprInfo {
+    let mut rc = new_collector(scoping, signals);
+    rc.visit_expression(expr);
+    ExprInfo { code: splice(source, expr.span(), rc.ends), deps: rc.deps }
 }
 
 // ── View lowering ───────────────────────────────────────────────────────────
@@ -574,6 +670,31 @@ mod tests {
         assert_eq!(derived.kind, SignalKind::Derived);
         assert_eq!(derived.init, "n.value * 2");
         assert!(!derived.init_is_fn);
+    }
+
+    #[test]
+    fn classifies_destructured_props() {
+        let lowered = lower(
+            "export function Greet({ name, title: t = \"Mr\" }) { return <div>{name}{t}</div>; }",
+        );
+        assert_eq!(lowered.props.len(), 2);
+        assert_eq!(lowered.props[0], PropDecl { local: "name".into(), attr: "name".into(), default: None });
+        assert_eq!(
+            lowered.props[1],
+            PropDecl { local: "t".into(), attr: "title".into(), default: Some("\"Mr\"".into()) }
+        );
+        // Both prop refs are reactive (signals), so `.value` is injected.
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        let ViewNode::Dynamic { expr } = &children[0] else { panic!() };
+        assert_eq!(lowered.exprs.code(*expr), Some("name.value"));
+        let ViewNode::Dynamic { expr } = &children[1] else { panic!() };
+        assert_eq!(lowered.exprs.code(*expr), Some("t.value"));
+    }
+
+    #[test]
+    fn reports_rest_props_unsupported() {
+        let lowered = lower("export function C({ a, ...rest }) { return <p>{a}</p>; }");
+        assert!(lowered.errors.iter().any(|e| e.contains("rest props")));
     }
 
     #[test]

@@ -51,6 +51,9 @@ struct Uses {
 pub fn emit_page(lowered: &Lowered) -> CsrModule {
     let mut e = Emitter::new(lowered, Disposal::None);
     let root = e.emit_all();
+    if !lowered.props.is_empty() {
+        e.errors.push("page/factory props not supported yet (use a component)".into());
+    }
 
     let export = &lowered.ir.id.export;
     let header = if export == "default" {
@@ -65,8 +68,14 @@ pub fn emit_page(lowered: &Lowered) -> CsrModule {
 /// Emit a UI component as a Custom Element class + `customElements.define`.
 pub fn emit_component(lowered: &Lowered) -> CsrModule {
     let export = lowered.ir.id.export.clone();
+    let props = &lowered.props;
+
     let mut e = Emitter::new(lowered, Disposal::Sink("this._cleanups"));
+    e.emit_prop_aliases();
     let root = e.emit_all();
+    if !props.is_empty() {
+        e.uses.signal = true; // the constructor initializes prop signals
+    }
 
     let class = format!("{export}Element");
     let tag = component_tag(&export);
@@ -75,6 +84,32 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     let mut code = String::new();
     code.push_str(&e.imports());
     code.push_str(&format!("export class {class} extends HTMLElement {{\n"));
+
+    if !props.is_empty() {
+        let attrs = props.iter().map(|p| js_string(&p.attr)).collect::<Vec<_>>().join(", ");
+        code.push_str(&format!("  static observedAttributes = [{attrs}];\n"));
+
+        // Initialize prop signals from the attribute (or default) before connect.
+        code.push_str("  constructor() {\n    super();\n    this._props = {\n");
+        for p in props {
+            let init = match &p.default {
+                Some(d) => format!("this.getAttribute({}) ?? ({d})", js_string(&p.attr)),
+                None => format!("this.getAttribute({})", js_string(&p.attr)),
+            };
+            code.push_str(&format!("      {}: signal({init}),\n", p.attr));
+        }
+        code.push_str("    };\n  }\n");
+
+        // Property get/set bridge so `el.attr = x` updates the signal.
+        for p in props {
+            let k = js_string(&p.attr);
+            code.push_str(&format!(
+                "  get {attr}() {{ return this._props[{k}].value; }}\n  set {attr}(v) {{ this._props[{k}].value = v; }}\n",
+                attr = p.attr
+            ));
+        }
+    }
+
     code.push_str("  connectedCallback() {\n");
     code.push_str("    if (this._mounted) return;\n");
     code.push_str("    this._mounted = true;\n");
@@ -82,6 +117,14 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     code.push_str(&body);
     code.push_str(&format!("    this.appendChild({root});\n"));
     code.push_str("  }\n");
+
+    if !props.is_empty() {
+        code.push_str("  attributeChangedCallback(name, _old, value) {\n");
+        code.push_str("    const sig = this._props[name];\n");
+        code.push_str("    if (sig) sig.value = value;\n");
+        code.push_str("  }\n");
+    }
+
     code.push_str("  disconnectedCallback() {\n");
     code.push_str("    if (this._cleanups) for (const dispose of this._cleanups) dispose();\n");
     code.push_str("    this._cleanups = [];\n");
@@ -140,6 +183,14 @@ impl<'a> Emitter<'a> {
             out.push('\n');
         }
         out
+    }
+
+    /// Emit a local alias per prop (`const local = this._props["attr"];`) so the
+    /// view references resolve to the prop signals. Component path only.
+    fn emit_prop_aliases(&mut self) {
+        for p in &self.lowered.props {
+            self.lines.push(format!("const {} = this._props[{}];", p.local, js_string(&p.attr)));
+        }
     }
 
     /// Emit signal declarations + the view, returning the root variable.
@@ -470,6 +521,36 @@ mod tests {
             "code: {}",
             m.code
         );
+    }
+
+    #[test]
+    fn component_emits_props_machinery() {
+        let m = emit_component(&lower(
+            "export function Greet({ name = \"World\" }) { return <div>{name}</div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("static observedAttributes = [\"name\"];"), "code: {}", m.code);
+        assert!(
+            m.code.contains("name: signal(this.getAttribute(\"name\") ?? (\"World\")),"),
+            "code: {}",
+            m.code
+        );
+        assert!(m.code.contains("get name() { return this._props[\"name\"].value; }"), "code: {}", m.code);
+        assert!(m.code.contains("set name(v) { this._props[\"name\"].value = v; }"), "code: {}", m.code);
+        assert!(m.code.contains("const name = this._props[\"name\"];"), "code: {}", m.code);
+        assert!(
+            m.code.contains("attributeChangedCallback(name, _old, value)"),
+            "code: {}",
+            m.code
+        );
+        assert!(m.code.contains("bindText(t1, () => (name.value))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn page_with_props_reports_unsupported() {
+        let m = emit_page(&lower("export function P({ x }) { return <p>{x}</p>; }"));
+        assert!(!m.is_complete());
+        assert!(m.errors.iter().any(|e| e.contains("page/factory props")), "errors: {:?}", m.errors);
     }
 
     #[test]
