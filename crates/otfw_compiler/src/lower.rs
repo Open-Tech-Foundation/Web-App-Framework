@@ -111,6 +111,10 @@ pub struct Lowered {
     pub decls: Vec<SignalDecl>,
     /// Destructured component props (the Custom Element's observed signals).
     pub props: Vec<PropDecl>,
+    /// The local binding name for the `children` slot, if the component
+    /// destructures `children` (e.g. `"children"`). Drives child capture + the
+    /// `Children` view node.
+    pub children_local: Option<String>,
     /// Non-fatal lowering diagnostics (unsupported constructs that were skipped).
     pub errors: Vec<String>,
 }
@@ -146,8 +150,11 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
 
     let classified = classify(func, scoping, source);
 
+    let children_symbol = classified.children.as_ref().and_then(|c| c.symbol);
+    let children_local = classified.children.map(|c| c.local);
+
     let jsx = returned_jsx(body)?;
-    let mut lowerer = Lowerer::new(source, scoping, classified.by_symbol);
+    let mut lowerer = Lowerer::new(source, scoping, classified.by_symbol, children_symbol);
     let view = lowerer.lower_root(jsx)?;
 
     let mut errors = classified.errors;
@@ -165,6 +172,7 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
         exprs: lowerer.exprs,
         decls: classified.decls,
         props: classified.props,
+        children_local,
         errors,
     })
 }
@@ -243,11 +251,17 @@ fn arrow_jsx<'a>(arrow: &'a ArrowFunctionExpression<'a>) -> Option<&'a Expressio
 
 // ── Signal classification ───────────────────────────────────────────────────
 
+struct ChildrenInfo {
+    local: String,
+    symbol: Option<SymbolId>,
+}
+
 struct Classified {
     by_symbol: HashMap<SymbolId, SignalId>,
     infos: Vec<SignalInfo>,
     decls: Vec<SignalDecl>,
     props: Vec<PropDecl>,
+    children: Option<ChildrenInfo>,
     errors: Vec<String>,
 }
 
@@ -272,6 +286,7 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
     let mut by_symbol = HashMap::new();
     let mut pendings: Vec<Pending> = Vec::new();
     let mut errors = Vec::new();
+    let mut children = None;
 
     // Pass 1a: destructured props from the first parameter.
     if let Some(param) = func.params.items.first() {
@@ -294,8 +309,14 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
                         errors.push(format!("nested prop pattern not supported: {attr}"));
                         continue;
                     };
-                    let Some(symbol) = bi.symbol_id.get() else { continue };
                     let local = bi.name.as_str().to_string();
+                    // `children` is the light-DOM slot (SPEC §4.5), not an
+                    // observed attribute/signal.
+                    if attr == "children" {
+                        children = Some(ChildrenInfo { local, symbol: bi.symbol_id.get() });
+                        continue;
+                    }
+                    let Some(symbol) = bi.symbol_id.get() else { continue };
                     let id = SignalId(pendings.len() as u32);
                     by_symbol.insert(symbol, id);
                     pendings.push(Pending {
@@ -361,7 +382,7 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         }
     }
 
-    Classified { by_symbol, infos, decls, props, errors }
+    Classified { by_symbol, infos, decls, props, children, errors }
 }
 
 fn macro_kind(call: &CallExpression) -> Option<MacroKind> {
@@ -467,6 +488,8 @@ struct Lowerer<'s, 'r> {
     scoping: &'r Scoping,
     /// Owned so list-item parameters can be scoped in/out during lowering.
     signals: HashMap<SymbolId, SignalId>,
+    /// The `children` slot binding's symbol, if the component destructures it.
+    children_symbol: Option<SymbolId>,
     exprs: ExprTable,
     errors: Vec<String>,
 }
@@ -476,8 +499,28 @@ struct Lowerer<'s, 'r> {
 const ITEM_PARAM_SIGNAL: SignalId = SignalId(u32::MAX);
 
 impl<'s, 'r> Lowerer<'s, 'r> {
-    fn new(source: &'s str, scoping: &'r Scoping, signals: HashMap<SymbolId, SignalId>) -> Self {
-        Self { source, scoping, signals, exprs: ExprTable::default(), errors: Vec::new() }
+    fn new(
+        source: &'s str,
+        scoping: &'r Scoping,
+        signals: HashMap<SymbolId, SignalId>,
+        children_symbol: Option<SymbolId>,
+    ) -> Self {
+        Self {
+            source,
+            scoping,
+            signals,
+            children_symbol,
+            exprs: ExprTable::default(),
+            errors: Vec::new(),
+        }
+    }
+
+    /// True when `expr` is a bare reference to the `children` slot binding.
+    fn is_children_ref(&self, expr: &JSXExpression) -> bool {
+        let Some(target) = self.children_symbol else { return false };
+        let JSXExpression::Identifier(id) = expr else { return false };
+        let Some(ref_id) = id.reference_id.get() else { return false };
+        self.scoping.get_reference(ref_id).symbol_id() == Some(target)
     }
 
     fn slice(&self, span: Span) -> &'s str {
@@ -527,6 +570,7 @@ impl<'s, 'r> Lowerer<'s, 'r> {
             JSXChild::Fragment(fr) => Some(ViewNode::Fragment(self.lower_children(&fr.children))),
             JSXChild::ExpressionContainer(c) => match &c.expression {
                 JSXExpression::EmptyExpression(_) => None,
+                _ if self.is_children_ref(&c.expression) => Some(ViewNode::Children),
                 _ => self
                     .try_lower_list(&c.expression)
                     .or_else(|| Some(ViewNode::Dynamic { expr: self.intern_jsx(&c.expression) })),
@@ -819,6 +863,17 @@ mod tests {
         assert_eq!(lowered.exprs.code(*expr), Some("name.value"));
         let ViewNode::Dynamic { expr } = &children[1] else { panic!() };
         assert_eq!(lowered.exprs.code(*expr), Some("t.value"));
+    }
+
+    #[test]
+    fn lowers_children_slot() {
+        let lowered =
+            lower("export function Wrap({ children }) { return <div>{children}</div>; }");
+        // `children` is the slot, not a normal prop/observed attribute.
+        assert!(lowered.props.is_empty());
+        assert_eq!(lowered.children_local.as_deref(), Some("children"));
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        assert_eq!(children[0], ViewNode::Children);
     }
 
     #[test]

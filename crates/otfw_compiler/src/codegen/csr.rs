@@ -12,8 +12,8 @@
 //! Both emit reactive text holes (`bindText`), dynamic attributes (`bindAttr`),
 //! event handlers, signal declarations, and compose child components by tag.
 //!
-//! Not yet supported (reported as diagnostics): component children/slots,
-//! member-expression component names, and `ref`.
+//! Not yet supported (reported as diagnostics): member-expression component
+//! names and `ref`.
 
 use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
@@ -78,6 +78,7 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     let props = &lowered.props;
 
     let mut e = Emitter::new(lowered, Disposal::Sink("this._cleanups"));
+    e.emit_children_capture();
     e.emit_prop_aliases();
     let root = e.emit_all();
     if !props.is_empty() {
@@ -210,6 +211,16 @@ impl<'a> Emitter<'a> {
         out
     }
 
+    /// Capture the light-DOM children before the view is built, then clear them
+    /// from the host (they are re-placed at the `{children}` slot). Component
+    /// path only; no-op when the component doesn't take children.
+    fn emit_children_capture(&mut self) {
+        if let Some(local) = self.lowered.children_local.clone() {
+            self.line(format!("const {local} = Array.from(this.childNodes);"));
+            self.line("this.replaceChildren();".to_string());
+        }
+    }
+
     /// Emit a local alias per prop (`const local = this._props["attr"];`) so the
     /// view references resolve to the prop signals. Component path only.
     fn emit_prop_aliases(&mut self) {
@@ -315,6 +326,12 @@ impl<'a> Emitter<'a> {
                 var
             }
             ViewNode::Component { name, props, children } => self.emit_component_use(name, props, children),
+            ViewNode::Children => {
+                let frag = self.fresh("frag");
+                self.line(format!("const {frag} = document.createDocumentFragment();"));
+                self.emit_children_slot(&frag);
+                frag
+            }
             ViewNode::List { source, item_param, index_param, item, key } => {
                 // A list as a node (e.g. a root list) lives in its own fragment.
                 let frag = self.fresh("frag");
@@ -398,9 +415,10 @@ impl<'a> Emitter<'a> {
         for prop in props {
             self.emit_component_prop(&var, prop);
         }
-        if !children.is_empty() {
-            self.errors
-                .push(format!("component children/slots not supported yet: <{name}>"));
+        // Children are appended as light DOM; the component captures them at
+        // connect and places them at its `{children}` slot (SPEC §4.5).
+        for child in children {
+            self.emit_append(&var, child);
         }
         var
     }
@@ -418,10 +436,22 @@ impl<'a> Emitter<'a> {
             ViewNode::List { source, item_param, index_param, item, key } => {
                 self.emit_list(parent, *source, item_param, index_param.as_deref(), item, *key);
             }
+            ViewNode::Children => self.emit_children_slot(parent),
             _ => {
                 let child_var = self.emit_node(child);
                 self.line(format!("{parent}.appendChild({child_var});"));
             }
+        }
+    }
+
+    /// Place the captured child nodes into `parent` at the `{children}` slot.
+    fn emit_children_slot(&mut self, parent: &str) {
+        match self.lowered.children_local.clone() {
+            Some(local) => {
+                let n = self.fresh("__c");
+                self.line(format!("for (const {n} of {local}) {parent}.appendChild({n});"));
+            }
+            None => self.errors.push("children slot outside a component with children".into()),
         }
     }
 
@@ -687,9 +717,31 @@ mod tests {
     }
 
     #[test]
-    fn reports_component_children_as_unsupported() {
+    fn parent_appends_component_children_as_light_dom() {
         let m = emit_page(&lower("export function App() { return <Wrap><span/></Wrap>; }"));
-        assert!(!m.is_complete());
-        assert!(m.errors[0].contains("children/slots"), "errors: {:?}", m.errors);
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // The child is built and appended to the component element.
+        assert!(m.code.contains("document.createElement(\"web-wrap\")"), "code: {}", m.code);
+        assert!(m.code.contains("document.createElement(\"span\")"), "code: {}", m.code);
+        assert!(m.code.contains(".appendChild(el1)"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn component_captures_and_places_children_slot() {
+        let m = emit_component(&lower(
+            "export function Wrap({ children }) { return <div class=\"box\">{children}</div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // Captured before the view is built, then cleared from the host.
+        assert!(m.code.contains("const children = Array.from(this.childNodes);"), "code: {}", m.code);
+        assert!(m.code.contains("this.replaceChildren();"), "code: {}", m.code);
+        // `children` is NOT an observed attribute/signal.
+        assert!(!m.code.contains("observedAttributes"), "code: {}", m.code);
+        // The slot places the captured nodes into the box.
+        assert!(
+            m.code.contains("for (const __c1 of children) el0.appendChild(__c1);"),
+            "code: {}",
+            m.code
+        );
     }
 }

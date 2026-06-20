@@ -24,6 +24,9 @@ pub enum ViewNode {
     Dynamic {
         expr: ExpressionId,
     },
+    /// The component's children slot (`{children}`): the light-DOM nodes the
+    /// parent passed in, captured at connect and placed here (SPEC §4.5).
+    Children,
     /// A keyed list from an `array.map(cb)` expression (SPEC §5.4.4). `source` is
     /// the data expression (the chain before `.map`, with `.value` injected on
     /// outer signals); `item` is the callback body rendered per element, with
