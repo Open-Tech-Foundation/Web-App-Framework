@@ -4,10 +4,10 @@
 // Drives Rolldown (used as a library) to bundle the app: our Rust compiler runs
 // as a Rolldown `transform` plugin (per .jsx/.tsx, via `otfw build --stdin`),
 // Rolldown resolves/links the module graph (incl. `@opentf/web` + composed
-// components), and Bun.serve serves the bundle with SSE live-reload on rebuild.
+// components), and Bun.serve serves the bundle with WebSocket live-reload on
+// rebuild. Tailwind stylesheets are compiled on the fly (see ./tailwind.js).
 //
-// Usage:  otfw-dev [route]   (default route: "counter")
-//   → serves <cwd>/playground/app/<route>/page.jsx
+// Usage:  otfw-dev   → serves <cwd>/playground (override root via WEB_ROOT).
 //
 // Run from the monorepo root (`bun run dev`): the project root is `process.cwd()`.
 
@@ -19,6 +19,8 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+
+import { compileCss, usesTailwind } from "./tailwind.js";
 
 const root = process.cwd();
 const port = Number(process.env.PORT ?? 5175);
@@ -210,10 +212,21 @@ const TYPES = {
 };
 
 // Serve a static file from the web root (no path traversal outside it).
-function serveStatic(pathname) {
+// Tailwind entry stylesheets (`@import "tailwindcss"`) are compiled on request.
+async function serveStatic(pathname) {
   const file = `${webRoot}${pathname}`;
   if (!file.startsWith(webRoot) || !existsSync(file)) return null;
   const ext = pathname.split(".").pop();
+  if (ext === "css") {
+    const source = readFileSync(file, "utf8");
+    const css = usesTailwind(source)
+      ? await compileCss(file, source, root).catch((e) => {
+          console.error(`✗ tailwind failed for ${pathname}:\n${e?.message ?? e}`);
+          return source;
+        })
+      : source;
+    return new Response(css, { headers: { "content-type": "text/css" } });
+  }
   return new Response(readFileSync(file), {
     headers: { "content-type": TYPES[ext] ?? "application/octet-stream" },
   });
@@ -226,7 +239,7 @@ server = Bun.serve({
       ws.subscribe("hmr");
     },
   },
-  fetch(req, srv) {
+  async fetch(req, srv) {
     const { pathname } = new URL(req.url);
     // HMR WebSocket upgrade.
     if (pathname === "/__hmr") {
@@ -250,7 +263,7 @@ server = Bun.serve({
     }
     // Static assets referenced by index.html (css, public/, etc).
     if (pathname !== "/") {
-      const asset = serveStatic(pathname);
+      const asset = await serveStatic(pathname);
       if (asset) return asset;
       // A request that looks like a file (has an extension) but isn't found is a
       // genuine 404; extensionless paths fall through to the SPA shell.
