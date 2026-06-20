@@ -584,10 +584,39 @@ fn is_component_name(name: &str) -> bool {
     name.contains('.') || name.chars().next().is_some_and(|c| c.is_uppercase())
 }
 
-/// Collapse JSX text per the usual convention: runs of whitespace become a
-/// single space and pure-whitespace text between tags is dropped.
+/// Normalize JSX text per the JSX whitespace rules (matching Babel's
+/// `cleanJSXElementLiteralChild`): whitespace touching a newline is trimmed,
+/// newlines collapse to a single space, blank lines are dropped, and tabs
+/// become spaces — but significant whitespace on a single line (e.g. the space
+/// in `Hello {name}`) is preserved. Whitespace-only text between tags yields "".
 fn normalize_jsx_text(raw: &str) -> String {
-    raw.split_whitespace().collect::<Vec<_>>().join(" ")
+    let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
+    let lines: Vec<&str> = normalized.split('\n').collect();
+
+    let last_non_empty = lines
+        .iter()
+        .rposition(|line| line.bytes().any(|b| b != b' ' && b != b'\t'))
+        .unwrap_or(0);
+
+    let mut out = String::new();
+    let count = lines.len();
+    for (i, line) in lines.iter().enumerate() {
+        let mut piece = line.replace('\t', " ");
+        if i != 0 {
+            piece = piece.trim_start_matches(' ').to_string();
+        }
+        if i != count - 1 {
+            piece = piece.trim_end_matches(' ').to_string();
+        }
+        if piece.is_empty() {
+            continue;
+        }
+        out.push_str(&piece);
+        if i != last_non_empty {
+            out.push(' ');
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -726,6 +755,37 @@ mod tests {
         let ViewNode::Element { tag, children, .. } = &lowered.ir.view else { panic!() };
         assert_eq!(tag, "ul");
         assert_eq!(children.len(), 1, "whitespace between tags should be dropped");
+    }
+
+    #[test]
+    fn preserves_significant_space_before_hole() {
+        let lowered = lower("export function App() { return <div>Hello {name}</div>; }");
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[0], ViewNode::Text("Hello ".into()), "trailing space must survive");
+        assert!(matches!(children[1], ViewNode::Dynamic { .. }));
+    }
+
+    #[test]
+    fn preserves_text_between_holes() {
+        let lowered = lower("export function App() { return <p>{a} and {b}</p>; }");
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        assert_eq!(children.len(), 3);
+        assert_eq!(children[1], ViewNode::Text(" and ".into()));
+    }
+
+    #[test]
+    fn jsx_whitespace_rules() {
+        // Single line: internal whitespace preserved, edges untouched.
+        assert_eq!(normalize_jsx_text("Hello "), "Hello ");
+        assert_eq!(normalize_jsx_text("a  b"), "a  b");
+        // Newline-adjacent whitespace trimmed; newline → single space.
+        assert_eq!(normalize_jsx_text("line one\nline two"), "line one line two");
+        assert_eq!(normalize_jsx_text("\n  hello\n  world\n"), "hello world");
+        // Whitespace-only between tags → empty.
+        assert_eq!(normalize_jsx_text("\n  "), "");
+        // Tabs become spaces.
+        assert_eq!(normalize_jsx_text("a\tb"), "a b");
     }
 
     impl Lowered {
