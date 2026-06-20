@@ -1,57 +1,93 @@
 //! Stage 3: Lower — Semantic Model → domain-specific IRs.
 //!
-//! This first pass produces the **View IR** (ARCHITECTURE.md §4.2): it walks a
-//! component's returned JSX into a `ViewNode` tree. Dynamic holes and dynamic
-//! props are interned as `ExpressionId`s; their source text is recorded in an
-//! `ExprTable` — the bridge from the IR's opaque handle to actual content for
-//! later stages (Reactivity IR, codegen).
+//! Produces the **View IR** (ARCHITECTURE.md §4.2) and the reactivity facts the
+//! CSR backend needs: the component's signal declarations (from `$state` /
+//! `$derived` / `$ref` macros) and, for every dynamic expression, the source
+//! with `.value` injected on signal references plus its dependency set.
 //!
-//! Scope of this pass (extended in later passes):
-//! - Components are **function declarations** (named or `export default`).
-//!   Arrow-function components are a follow-up.
-//! - The view comes from a top-level `return <jsx>`.
-//! - Reactivity, server, route, and metadata IRs are not yet derived; the
-//!   `ComponentIR` carries an empty signal/import/export set for now.
+//! Reactivity is derived from **resolved bindings**, not identifier names
+//! (ARCHITECTURE.md principle 2): a macro declares a signal *symbol*, and a
+//! reference is reactive only when it resolves to that symbol — so shadowed
+//! names are handled correctly.
+//!
+//! Scope of this pass (extended later):
+//! - Components are **function declarations** (named or `export default`) whose
+//!   body is top-level macro declarations + a `return <jsx>`.
+//! - Props reactivity (the Custom Element path), `ref`, lists, and `$effect`
+//!   bodies are follow-ups.
+
+use std::collections::HashMap;
 
 use oxc::ast::ast::{
-    Expression, Function, FunctionBody, JSXAttributeItem, JSXAttributeName, JSXAttributeValue,
-    JSXChild, JSXElement, JSXElementName, JSXExpression, Program, Statement,
+    Argument, BindingPattern, CallExpression, Declaration, Expression,
+    ExportDefaultDeclarationKind, Function, FunctionBody, IdentifierReference, JSXAttributeItem,
+    JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression,
+    Program, Statement,
 };
+use oxc::ast_visit::Visit;
+use oxc::semantic::{Scoping, SymbolId};
 use oxc::span::{GetSpan, Span};
 
+use otfw_ir::reactivity::{SignalInfo, SignalKind};
 use otfw_ir::view::{Prop, PropValue, ViewNode};
-use otfw_ir::{ComponentId, ComponentIR, ExpressionId};
+use otfw_ir::{ComponentId, ComponentIR, ExpressionId, SignalId};
 
-/// Per-component table mapping an interned `ExpressionId` to the source text of
-/// the expression it stands for.
+/// What an interned dynamic expression compiles to: source with `.value`
+/// injected on signal references, plus the signals it reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExprInfo {
+    /// JS expression source, ready to embed in generated code.
+    pub code: String,
+    /// Signals this expression depends on (deduplicated, in first-seen order).
+    pub deps: Vec<SignalId>,
+}
+
+/// Per-component table mapping an interned `ExpressionId` to its `ExprInfo`.
 ///
-/// Scratch only: it shares the component's arena index space and is never
-/// serialized as a durable contract (ARCHITECTURE.md §4.8). Later stages replace
-/// the stored text with a lowered expression form.
+/// Scratch only: shares the component's arena index space and is never
+/// serialized as a durable contract (ARCHITECTURE.md §4.8).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ExprTable {
-    sources: Vec<String>,
+    entries: Vec<ExprInfo>,
 }
 
 impl ExprTable {
-    fn intern(&mut self, text: &str) -> ExpressionId {
-        let id = ExpressionId(self.sources.len() as u32);
-        self.sources.push(text.to_string());
+    fn intern(&mut self, info: ExprInfo) -> ExpressionId {
+        let id = ExpressionId(self.entries.len() as u32);
+        self.entries.push(info);
         id
     }
 
-    /// The source text behind an interned expression, if the id is from this table.
-    pub fn source(&self, id: ExpressionId) -> Option<&str> {
-        self.sources.get(id.0 as usize).map(String::as_str)
+    /// The emit-ready JS source behind an interned expression.
+    pub fn code(&self, id: ExpressionId) -> Option<&str> {
+        self.entries.get(id.0 as usize).map(|e| e.code.as_str())
+    }
+
+    /// The dependency set behind an interned expression.
+    pub fn deps(&self, id: ExpressionId) -> Option<&[SignalId]> {
+        self.entries.get(id.0 as usize).map(|e| e.deps.as_slice())
     }
 
     pub fn len(&self) -> usize {
-        self.sources.len()
+        self.entries.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.sources.is_empty()
+        self.entries.is_empty()
     }
+}
+
+/// A signal declaration to emit at the top of the generated factory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignalDecl {
+    pub name: String,
+    pub kind: SignalKind,
+    /// The initializer source (`.value`-injected), e.g. `0` or `a.value * 2`.
+    /// Empty for `$ref()`.
+    pub init: String,
+    /// Whether the `$derived` initializer is already a function literal (used
+    /// directly) vs. a bare expression (the backend wraps it in an arrow).
+    pub init_is_fn: bool,
 }
 
 /// The output of Stage 3 for one component.
@@ -59,31 +95,55 @@ impl ExprTable {
 pub struct Lowered {
     pub ir: ComponentIR,
     pub exprs: ExprTable,
+    /// Signal declarations to emit before the view is built.
+    pub decls: Vec<SignalDecl>,
     /// Non-fatal lowering diagnostics (unsupported constructs that were skipped).
     pub errors: Vec<String>,
 }
 
-/// Lower the first component in `program` to its View IR.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MacroKind {
+    State,
+    Derived,
+    Ref,
+}
+
+impl MacroKind {
+    fn signal_kind(self) -> SignalKind {
+        match self {
+            MacroKind::State => SignalKind::State,
+            MacroKind::Derived => SignalKind::Derived,
+            MacroKind::Ref => SignalKind::Ref,
+        }
+    }
+}
+
+/// Lower the first component in `program` to its View IR + reactivity facts.
 ///
 /// `module` is the canonical module path used to form the stable `ComponentId`
 /// (ARCHITECTURE.md §4.8). Returns `None` only when no function component with a
 /// returned JSX view is found.
-pub fn lower_component(module: &str, program: &Program, source: &str) -> Option<Lowered> {
+pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a str) -> Option<Lowered> {
+    let resolved = crate::semantic::resolve(program);
+    let scoping = resolved.semantic.scoping();
+
     let (export, func) = find_component(program)?;
     let body = func.body.as_deref()?;
-    let jsx = returned_jsx(body)?;
 
-    let mut lowerer = Lowerer::new(source);
+    let classified = classify_signals(body, scoping, source);
+
+    let jsx = returned_jsx(body)?;
+    let mut lowerer = Lowerer::new(source, scoping, &classified.by_symbol);
     let view = lowerer.lower_root(jsx)?;
 
     let ir = ComponentIR {
         id: ComponentId::new(module, export),
         view,
-        signals: Vec::new(),
+        signals: classified.infos,
         imports: Vec::new(),
         exports: Vec::new(),
     };
-    Some(Lowered { ir, exprs: lowerer.exprs, errors: lowerer.errors })
+    Some(Lowered { ir, exprs: lowerer.exprs, decls: classified.decls, errors: lowerer.errors })
 }
 
 /// Find the first function-declaration component and its export name.
@@ -96,7 +156,7 @@ fn find_component<'a>(program: &'a Program<'a>) -> Option<(String, &'a Function<
                 return Some((name, f));
             }
             Statement::ExportNamedDeclaration(e) => {
-                if let Some(oxc::ast::ast::Declaration::FunctionDeclaration(f)) = &e.declaration
+                if let Some(Declaration::FunctionDeclaration(f)) = &e.declaration
                     && has_jsx_return(f)
                     && let Some(id) = &f.id
                 {
@@ -104,8 +164,7 @@ fn find_component<'a>(program: &'a Program<'a>) -> Option<(String, &'a Function<
                 }
             }
             Statement::ExportDefaultDeclaration(e) => {
-                if let oxc::ast::ast::ExportDefaultDeclarationKind::FunctionDeclaration(f) =
-                    &e.declaration
+                if let ExportDefaultDeclarationKind::FunctionDeclaration(f) = &e.declaration
                     && has_jsx_return(f)
                 {
                     return Some(("default".to_string(), f));
@@ -143,19 +202,174 @@ fn unwrap_paren<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
     }
 }
 
-struct Lowerer<'s> {
+// ── Signal classification ───────────────────────────────────────────────────
+
+struct Classified {
+    by_symbol: HashMap<SymbolId, SignalId>,
+    infos: Vec<SignalInfo>,
+    decls: Vec<SignalDecl>,
+}
+
+/// Collect top-level macro declarations into signals. Two passes: first bind
+/// each signal's symbol → id so initializers can reference earlier signals, then
+/// build the declarations with `.value` injected into their initializers.
+fn classify_signals<'a>(
+    body: &'a FunctionBody<'a>,
+    scoping: &Scoping,
+    source: &str,
+) -> Classified {
+    struct Pending<'a> {
+        id: SignalId,
+        name: String,
+        kind: MacroKind,
+        arg: Option<&'a Argument<'a>>,
+    }
+
+    let mut by_symbol = HashMap::new();
+    let mut pendings: Vec<Pending> = Vec::new();
+
+    for stmt in &body.statements {
+        let Statement::VariableDeclaration(vd) = stmt else { continue };
+        for d in &vd.declarations {
+            let Some(Expression::CallExpression(call)) = &d.init else { continue };
+            let Some(kind) = macro_kind(call) else { continue };
+            let BindingPattern::BindingIdentifier(bi) = &d.id else { continue };
+            let Some(symbol) = bi.symbol_id.get() else { continue };
+
+            let id = SignalId(pendings.len() as u32);
+            by_symbol.insert(symbol, id);
+            pendings.push(Pending {
+                id,
+                name: bi.name.as_str().to_string(),
+                kind,
+                arg: call.arguments.first(),
+            });
+        }
+    }
+
+    let mut infos = Vec::with_capacity(pendings.len());
+    let mut decls = Vec::with_capacity(pendings.len());
+    for p in pendings {
+        infos.push(SignalInfo { id: p.id, kind: p.kind.signal_kind(), name: p.name.clone() });
+        let (init, init_is_fn) = match p.arg {
+            Some(arg) if !arg.is_spread() => {
+                (inject_arg(source, scoping, &by_symbol, arg).code, is_fn_argument(arg))
+            }
+            _ => (String::new(), false),
+        };
+        decls.push(SignalDecl { name: p.name, kind: p.kind.signal_kind(), init, init_is_fn });
+    }
+
+    Classified { by_symbol, infos, decls }
+}
+
+fn macro_kind(call: &CallExpression) -> Option<MacroKind> {
+    let Expression::Identifier(id) = &call.callee else { return None };
+    match id.name.as_str() {
+        "$state" => Some(MacroKind::State),
+        "$derived" => Some(MacroKind::Derived),
+        "$ref" => Some(MacroKind::Ref),
+        _ => None,
+    }
+}
+
+fn is_fn_argument(arg: &Argument) -> bool {
+    matches!(arg, Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_))
+}
+
+// ── `.value` injection ──────────────────────────────────────────────────────
+
+/// Collects the end offsets of identifier references that resolve to signals,
+/// so `.value` can be spliced in after each.
+struct RefCollector<'r> {
+    scoping: &'r Scoping,
+    signals: &'r HashMap<SymbolId, SignalId>,
+    ends: Vec<u32>,
+    deps: Vec<SignalId>,
+}
+
+impl<'a> Visit<'a> for RefCollector<'_> {
+    fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
+        if let Some(ref_id) = it.reference_id.get()
+            && let Some(symbol) = self.scoping.get_reference(ref_id).symbol_id()
+            && let Some(&sig) = self.signals.get(&symbol)
+        {
+            self.ends.push(it.span.end);
+            if !self.deps.contains(&sig) {
+                self.deps.push(sig);
+            }
+        }
+    }
+}
+
+fn new_collector<'r>(
+    scoping: &'r Scoping,
+    signals: &'r HashMap<SymbolId, SignalId>,
+) -> RefCollector<'r> {
+    RefCollector { scoping, signals, ends: Vec::new(), deps: Vec::new() }
+}
+
+/// Splice `.value` into `source[span]` at each collected reference end.
+fn splice(source: &str, span: Span, mut ends: Vec<u32>) -> String {
+    let base = span.start as usize;
+    let slice = &source[base..span.end as usize];
+    ends.sort_unstable();
+    let mut out = String::with_capacity(slice.len() + ends.len() * 6);
+    let mut last = 0usize;
+    for end in ends {
+        let rel = end as usize - base;
+        out.push_str(&slice[last..rel]);
+        out.push_str(".value");
+        last = rel;
+    }
+    out.push_str(&slice[last..]);
+    out
+}
+
+fn inject_jsx(
+    source: &str,
+    scoping: &Scoping,
+    signals: &HashMap<SymbolId, SignalId>,
+    expr: &JSXExpression,
+) -> ExprInfo {
+    let mut rc = new_collector(scoping, signals);
+    rc.visit_jsx_expression(expr);
+    ExprInfo { code: splice(source, expr.span(), rc.ends), deps: rc.deps }
+}
+
+fn inject_arg(
+    source: &str,
+    scoping: &Scoping,
+    signals: &HashMap<SymbolId, SignalId>,
+    arg: &Argument,
+) -> ExprInfo {
+    let mut rc = new_collector(scoping, signals);
+    rc.visit_argument(arg);
+    ExprInfo { code: splice(source, arg.span(), rc.ends), deps: rc.deps }
+}
+
+// ── View lowering ───────────────────────────────────────────────────────────
+
+struct Lowerer<'s, 'r> {
     source: &'s str,
+    scoping: &'r Scoping,
+    signals: &'r HashMap<SymbolId, SignalId>,
     exprs: ExprTable,
     errors: Vec<String>,
 }
 
-impl<'s> Lowerer<'s> {
-    fn new(source: &'s str) -> Self {
-        Self { source, exprs: ExprTable::default(), errors: Vec::new() }
+impl<'s, 'r> Lowerer<'s, 'r> {
+    fn new(source: &'s str, scoping: &'r Scoping, signals: &'r HashMap<SymbolId, SignalId>) -> Self {
+        Self { source, scoping, signals, exprs: ExprTable::default(), errors: Vec::new() }
     }
 
     fn slice(&self, span: Span) -> &'s str {
         &self.source[span.start as usize..span.end as usize]
+    }
+
+    fn intern_jsx(&mut self, expr: &JSXExpression) -> ExpressionId {
+        let info = inject_jsx(self.source, self.scoping, self.signals, expr);
+        self.exprs.intern(info)
     }
 
     fn lower_root(&mut self, expr: &Expression) -> Option<ViewNode> {
@@ -196,10 +410,7 @@ impl<'s> Lowerer<'s> {
             JSXChild::Fragment(fr) => Some(ViewNode::Fragment(self.lower_children(&fr.children))),
             JSXChild::ExpressionContainer(c) => match &c.expression {
                 JSXExpression::EmptyExpression(_) => None,
-                expr => {
-                    let id = self.exprs.intern(self.slice(expr.span()));
-                    Some(ViewNode::Dynamic { expr: id })
-                }
+                _ => Some(ViewNode::Dynamic { expr: self.intern_jsx(&c.expression) }),
             },
             JSXChild::Spread(s) => {
                 self.errors.push(format!("spread child unsupported: {}", self.slice(s.span)));
@@ -219,6 +430,10 @@ impl<'s> Lowerer<'s> {
                             format!("{}:{}", n.namespace.name, n.name.name)
                         }
                     };
+                    if name == "ref" {
+                        self.errors.push("ref attribute not supported yet".into());
+                        continue;
+                    }
                     let value = match &attr.value {
                         // Valueless attribute (`<input disabled />`): present, no value.
                         None => PropValue::Static(String::new()),
@@ -227,14 +442,14 @@ impl<'s> Lowerer<'s> {
                         }
                         Some(JSXAttributeValue::ExpressionContainer(c)) => match &c.expression {
                             JSXExpression::EmptyExpression(_) => PropValue::Static(String::new()),
-                            expr => PropValue::Dynamic(self.exprs.intern(self.slice(expr.span()))),
+                            _ => PropValue::Dynamic(self.intern_jsx(&c.expression)),
                         },
-                        // JSX-valued props (`foo=<El/>`): treated as a dynamic expression.
+                        // JSX-valued props (`foo=<El/>`): kept as static source text.
                         Some(JSXAttributeValue::Element(e)) => {
-                            PropValue::Dynamic(self.exprs.intern(self.slice(e.span)))
+                            PropValue::Dynamic(self.intern_static(e.span))
                         }
                         Some(JSXAttributeValue::Fragment(f)) => {
-                            PropValue::Dynamic(self.exprs.intern(self.slice(f.span)))
+                            PropValue::Dynamic(self.intern_static(f.span))
                         }
                     };
                     props.push(Prop { name, value });
@@ -246,6 +461,12 @@ impl<'s> Lowerer<'s> {
             }
         }
         props
+    }
+
+    /// Intern a span verbatim (no reactivity), for JSX-valued props.
+    fn intern_static(&mut self, span: Span) -> ExpressionId {
+        let code = self.slice(span).to_string();
+        self.exprs.intern(ExprInfo { code, deps: Vec::new() })
     }
 
     fn element_name(&self, name: &JSXElementName) -> String {
@@ -268,8 +489,7 @@ fn is_component_name(name: &str) -> bool {
 }
 
 /// Collapse JSX text per the usual convention: runs of whitespace become a
-/// single space and pure-whitespace text between tags is dropped. (A faithful
-/// implementation of JSX's edge-trimming rules is a later refinement.)
+/// single space and pure-whitespace text between tags is dropped.
 fn normalize_jsx_text(raw: &str) -> String {
     raw.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -313,7 +533,47 @@ mod tests {
         let ViewNode::Dynamic { expr } = &children[0] else {
             panic!("expected dynamic hole, got {:?}", children[0]);
         };
-        assert_eq!(lowered.exprs.source(*expr), Some("name"));
+        // `name` is not a signal here, so no `.value` is injected.
+        assert_eq!(lowered.exprs.code(*expr), Some("name"));
+        assert_eq!(lowered.exprs.deps(*expr), Some(&[][..]));
+    }
+
+    #[test]
+    fn classifies_state_and_injects_value() {
+        let lowered = lower(
+            "export function Counter() { let count = $state(0); return <p>{count}</p>; }",
+        );
+        // Signal classified.
+        assert_eq!(lowered.signals_len(), 1);
+        assert_eq!(lowered.decls[0].name, "count");
+        assert_eq!(lowered.decls[0].kind, SignalKind::State);
+        assert_eq!(lowered.decls[0].init, "0");
+        // The hole references the signal, so `.value` is injected and a dep recorded.
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        let ViewNode::Dynamic { expr } = &children[0] else { panic!() };
+        assert_eq!(lowered.exprs.code(*expr), Some("count.value"));
+        assert_eq!(lowered.exprs.deps(*expr), Some(&[SignalId(0)][..]));
+    }
+
+    #[test]
+    fn injects_value_in_event_handler() {
+        let lowered = lower(
+            "export function Counter() { let count = $state(0); return <button onclick={() => count++}>{count}</button>; }",
+        );
+        let ViewNode::Element { props, .. } = &lowered.ir.view else { panic!() };
+        let PropValue::Dynamic(expr) = props[0].value else { panic!("expected dynamic onclick") };
+        assert_eq!(lowered.exprs.code(expr), Some("() => count.value++"));
+    }
+
+    #[test]
+    fn derived_wraps_and_injects() {
+        let lowered = lower(
+            "export function C() { let n = $state(2); let d = $derived(n * 2); return <p>{d}</p>; }",
+        );
+        let derived = lowered.decls.iter().find(|d| d.name == "d").unwrap();
+        assert_eq!(derived.kind, SignalKind::Derived);
+        assert_eq!(derived.init, "n.value * 2");
+        assert!(!derived.init_is_fn);
     }
 
     #[test]
@@ -324,7 +584,7 @@ mod tests {
         };
         assert_eq!(name, "Foo");
         let PropValue::Dynamic(expr) = props[0].value else { panic!("expected dynamic prop") };
-        assert_eq!(lowered.exprs.source(expr), Some("1 + 2"));
+        assert_eq!(lowered.exprs.code(expr), Some("1 + 2"));
     }
 
     #[test]
@@ -345,5 +605,11 @@ mod tests {
         let ViewNode::Element { tag, children, .. } = &lowered.ir.view else { panic!() };
         assert_eq!(tag, "ul");
         assert_eq!(children.len(), 1, "whitespace between tags should be dropped");
+    }
+
+    impl Lowered {
+        fn signals_len(&self) -> usize {
+            self.ir.signals.len()
+        }
     }
 }

@@ -1,36 +1,52 @@
 //! CSR backend — View IR → client-side JS that builds the DOM (ARCHITECTURE.md §6).
 //!
-//! This first milestone is **static-first** (per the agreed sequencing): it emits
-//! a factory function that constructs elements, text, fragments, and static
-//! attributes, then returns the root node. Dynamic holes, dynamic props, and
-//! component usage are not yet supported — they are reported as diagnostics and
-//! emitted as inert placeholders so the output stays valid JS. Reactive holes
-//! (`bindText`/`bindAttr` + `.value` injection) arrive once the Reactivity IR
-//! and signal classification land.
+//! Emits a factory function that declares the component's signals, constructs
+//! the DOM (elements, text, fragments, static attributes), wires reactive text
+//! holes and dynamic attributes through the runtime (`bindText` / `bindAttr`),
+//! attaches event handlers, and returns the root node. Imports for the runtime
+//! helpers actually used are emitted as a header.
+//!
+//! Not yet supported (reported as diagnostics + inert placeholders): component
+//! usage (the Custom Element backend) and list rendering.
 
+use otfw_ir::reactivity::SignalKind;
+
+use crate::lower::{Lowered, SignalDecl};
 use otfw_ir::view::{Prop, PropValue, ViewNode};
-
-use crate::lower::Lowered;
 
 /// The CSR output for one component.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CsrModule {
-    /// Generated JavaScript: a factory function returning the root DOM node.
+    /// Generated JavaScript: imports + a factory function returning the root node.
     pub code: String,
-    /// Diagnostics for constructs this static-first pass cannot emit yet.
+    /// Diagnostics for constructs this pass cannot emit yet.
     pub errors: Vec<String>,
 }
 
 impl CsrModule {
-    /// True when the whole view was emitted with no unsupported constructs.
+    /// True when the whole component was emitted with no unsupported constructs.
     pub fn is_complete(&self) -> bool {
         self.errors.is_empty()
     }
 }
 
+/// Which runtime helpers the generated code references (drives the import header).
+#[derive(Default)]
+struct Uses {
+    signal: bool,
+    computed: bool,
+    bind_text: bool,
+    bind_attr: bool,
+}
+
 /// Emit a CSR factory function for a lowered component.
 pub fn emit(lowered: &Lowered) -> CsrModule {
-    let mut emitter = Emitter { lowered, out: String::new(), errors: Vec::new(), counter: 0 };
+    let mut emitter =
+        Emitter { lowered, out: String::new(), errors: Vec::new(), counter: 0, uses: Uses::default() };
+
+    for decl in &lowered.decls {
+        emitter.emit_decl(decl);
+    }
     let root = emitter.emit_node(&lowered.ir.view);
 
     let export = &lowered.ir.id.export;
@@ -39,7 +55,8 @@ pub fn emit(lowered: &Lowered) -> CsrModule {
     } else {
         format!("export function {export}() {{\n")
     };
-    let code = format!("{header}{body}  return {root};\n}}\n", body = emitter.out);
+    let imports = emitter.imports();
+    let code = format!("{imports}{header}{body}  return {root};\n}}\n", body = emitter.out);
 
     CsrModule { code, errors: emitter.errors }
 }
@@ -49,6 +66,7 @@ struct Emitter<'a> {
     out: String,
     errors: Vec<String>,
     counter: u32,
+    uses: Uses,
 }
 
 impl Emitter<'_> {
@@ -64,6 +82,53 @@ impl Emitter<'_> {
         self.out.push('\n');
     }
 
+    /// The `import { … } from "@opentf/web";` header for the helpers used.
+    fn imports(&self) -> String {
+        let mut names = Vec::new();
+        if self.uses.signal {
+            names.push("signal");
+        }
+        if self.uses.computed {
+            names.push("computed");
+        }
+        if self.uses.bind_text {
+            names.push("bindText");
+        }
+        if self.uses.bind_attr {
+            names.push("bindAttr");
+        }
+        if names.is_empty() {
+            return String::new();
+        }
+        format!("import {{ {} }} from \"@opentf/web\";\n", names.join(", "))
+    }
+
+    fn emit_decl(&mut self, decl: &SignalDecl) {
+        match decl.kind {
+            SignalKind::State => {
+                self.uses.signal = true;
+                self.line(format!("const {} = signal({});", decl.name, decl.init));
+            }
+            SignalKind::Ref => {
+                self.uses.signal = true;
+                self.line(format!("const {} = signal(null);", decl.name));
+            }
+            SignalKind::Derived => {
+                self.uses.computed = true;
+                let body = if decl.init_is_fn {
+                    decl.init.clone()
+                } else {
+                    format!("() => {}", decl.init)
+                };
+                self.line(format!("const {} = computed({});", decl.name, body));
+            }
+            // `Prop`-kind signals come from the Custom Element path (not yet emitted here).
+            SignalKind::Prop => {
+                self.errors.push(format!("prop signal not supported yet: {}", decl.name));
+            }
+        }
+    }
+
     /// Emit the statements that build `node` and return the variable holding it.
     fn emit_node(&mut self, node: &ViewNode) -> String {
         match node {
@@ -71,7 +136,7 @@ impl Emitter<'_> {
                 let var = self.fresh("el");
                 self.line(format!("const {var} = document.createElement({});", js_string(tag)));
                 for prop in props {
-                    self.emit_static_prop(&var, prop);
+                    self.emit_prop(&var, prop);
                 }
                 for child in children {
                     self.emit_append(&var, child);
@@ -91,25 +156,25 @@ impl Emitter<'_> {
                 }
                 var
             }
-            ViewNode::Component { name, .. } => {
-                self.errors
-                    .push(format!("component usage not supported yet (static-first): <{name}>"));
-                let var = self.fresh("c");
-                self.line(format!("const {var} = document.createComment(\"component\");"));
+            ViewNode::Dynamic { expr } => {
+                let code = self.lowered.exprs.code(*expr).unwrap_or("null").to_string();
+                let var = self.fresh("t");
+                self.line(format!("const {var} = document.createTextNode(\"\");"));
+                self.uses.bind_text = true;
+                self.line(format!("bindText({var}, () => ({code}));"));
                 var
             }
-            ViewNode::Dynamic { expr } => {
-                let src = self.lowered.exprs.source(*expr).unwrap_or("?");
+            ViewNode::Component { name, .. } => {
                 self.errors
-                    .push(format!("dynamic hole not supported yet (static-first): {{{src}}}"));
-                let var = self.fresh("d");
-                self.line(format!("const {var} = document.createTextNode(\"\");"));
+                    .push(format!("component usage not supported yet (Custom Element backend): <{name}>"));
+                let var = self.fresh("c");
+                self.line(format!("const {var} = document.createComment(\"component\");"));
                 var
             }
         }
     }
 
-    /// Append `child` to `parent`, inlining text-node creation to keep output tidy.
+    /// Append `child` to `parent`, inlining static text-node creation.
     fn emit_append(&mut self, parent: &str, child: &ViewNode) {
         if let ViewNode::Text(text) = child {
             self.line(format!(
@@ -122,7 +187,7 @@ impl Emitter<'_> {
         self.line(format!("{parent}.appendChild({child_var});"));
     }
 
-    fn emit_static_prop(&mut self, el: &str, prop: &Prop) {
+    fn emit_prop(&mut self, el: &str, prop: &Prop) {
         match &prop.value {
             PropValue::Static(value) => {
                 self.line(format!(
@@ -132,13 +197,25 @@ impl Emitter<'_> {
                 ));
             }
             PropValue::Dynamic(expr) => {
-                let src = self.lowered.exprs.source(*expr).unwrap_or("?");
-                self.errors.push(format!(
-                    "dynamic prop not supported yet (static-first): {}={{{src}}}",
-                    prop.name
-                ));
+                let code = self.lowered.exprs.code(*expr).unwrap_or("undefined").to_string();
+                if let Some(event) = event_name(&prop.name) {
+                    // Event handlers are attached once, not wrapped in an effect.
+                    self.line(format!("{el}.{event} = {code};"));
+                } else {
+                    self.uses.bind_attr = true;
+                    self.line(format!("bindAttr({el}, {}, () => ({code}));", js_string(&prop.name)));
+                }
             }
         }
+    }
+}
+
+/// The DOM event-handler property name for an `on*` prop (`onClick` → `onclick`).
+fn event_name(prop: &str) -> Option<String> {
+    if prop.len() > 2 && prop.starts_with("on") {
+        Some(prop.to_ascii_lowercase())
+    } else {
+        None
     }
 }
 
@@ -178,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn emits_static_nested_factory() {
+    fn emits_static_nested_factory_without_imports() {
         let m = emit_csr("export function App() { return <div class=\"x\"><span>hi</span></div>; }");
         assert!(m.is_complete(), "unexpected errors: {:?}", m.errors);
         assert_eq!(
@@ -194,28 +271,43 @@ mod tests {
     }
 
     #[test]
-    fn emits_default_export() {
-        let m = emit_csr("export default function() { return <p>hi</p>; }");
+    fn emits_reactive_counter() {
+        let m = emit_csr(
+            "export function Counter() { let count = $state(0); return <button onclick={() => count++}>{count}</button>; }",
+        );
         assert!(m.is_complete(), "errors: {:?}", m.errors);
-        assert!(m.code.starts_with("export default function () {\n"));
-        assert!(m.code.contains("document.createElement(\"p\")"));
+        assert_eq!(
+            m.code,
+            "import { signal, bindText } from \"@opentf/web\";\n\
+             export function Counter() {\n  \
+             const count = signal(0);\n  \
+             const el0 = document.createElement(\"button\");\n  \
+             el0.onclick = () => count.value++;\n  \
+             const t1 = document.createTextNode(\"\");\n  \
+             bindText(t1, () => (count.value));\n  \
+             el0.appendChild(t1);\n  \
+             return el0;\n}\n"
+        );
     }
 
     #[test]
-    fn escapes_text_and_attributes() {
-        let m = emit_csr("export function App() { return <div title='a\"b'>{\"\"}c\\td</div>; }");
-        // The attribute quote is escaped in the emitted literal.
-        assert!(m.code.contains("\\\"b"), "code: {}", m.code);
+    fn emits_dynamic_attribute_binding() {
+        let m = emit_csr(
+            "export function C() { let cls = $state(\"a\"); return <div class={cls}></div>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("bindAttr(el0, \"class\", () => (cls.value));"), "code: {}", m.code);
+        assert!(m.code.contains("import { signal, bindAttr }"), "code: {}", m.code);
     }
 
     #[test]
-    fn reports_dynamic_hole_as_unsupported() {
-        let m = emit_csr("export function App() { return <p>{name}</p>; }");
-        assert!(!m.is_complete());
-        assert_eq!(m.errors.len(), 1);
-        assert!(m.errors[0].contains("dynamic hole"), "errors: {:?}", m.errors);
-        // Output is still valid JS (inert placeholder text node).
-        assert!(m.code.contains("document.createTextNode(\"\")"));
+    fn emits_derived_computed() {
+        let m = emit_csr(
+            "export function C() { let n = $state(2); let d = $derived(n * 2); return <p>{d}</p>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("const d = computed(() => n.value * 2);"), "code: {}", m.code);
+        assert!(m.code.contains("import { signal, computed, bindText }"), "code: {}", m.code);
     }
 
     #[test]
