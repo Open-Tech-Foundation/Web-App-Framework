@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 
 use oxc::ast::ast::{
-    Argument, BindingPattern, CallExpression, Declaration, Expression,
+    Argument, ArrowFunctionExpression, BindingPattern, CallExpression, Declaration, Expression,
     ExportDefaultDeclarationKind, Function, FunctionBody, IdentifierReference, JSXAttributeItem,
     JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression,
     Program, Statement,
@@ -147,7 +147,7 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
     let classified = classify(func, scoping, source);
 
     let jsx = returned_jsx(body)?;
-    let mut lowerer = Lowerer::new(source, scoping, &classified.by_symbol);
+    let mut lowerer = Lowerer::new(source, scoping, classified.by_symbol);
     let view = lowerer.lower_root(jsx)?;
 
     let mut errors = classified.errors;
@@ -222,6 +222,22 @@ fn unwrap_paren<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
     match expr {
         Expression::ParenthesizedExpression(p) => unwrap_paren(&p.expression),
         other => other,
+    }
+}
+
+/// The JSX expression an arrow returns, for either body form: `x => <jsx>` or
+/// `x => { return <jsx>; }`.
+fn arrow_jsx<'a>(arrow: &'a ArrowFunctionExpression<'a>) -> Option<&'a Expression<'a>> {
+    if arrow.expression {
+        if let Some(Statement::ExpressionStatement(es)) = arrow.body.statements.first() {
+            let expr = unwrap_paren(&es.expression);
+            if matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_)) {
+                return Some(expr);
+            }
+        }
+        None
+    } else {
+        returned_jsx(&arrow.body)
     }
 }
 
@@ -449,13 +465,18 @@ fn inject_expr(
 struct Lowerer<'s, 'r> {
     source: &'s str,
     scoping: &'r Scoping,
-    signals: &'r HashMap<SymbolId, SignalId>,
+    /// Owned so list-item parameters can be scoped in/out during lowering.
+    signals: HashMap<SymbolId, SignalId>,
     exprs: ExprTable,
     errors: Vec<String>,
 }
 
+/// Sentinel id for a list-item parameter signal: it participates in `.value`
+/// injection but is not a component-level signal (deps are codegen-irrelevant).
+const ITEM_PARAM_SIGNAL: SignalId = SignalId(u32::MAX);
+
 impl<'s, 'r> Lowerer<'s, 'r> {
-    fn new(source: &'s str, scoping: &'r Scoping, signals: &'r HashMap<SymbolId, SignalId>) -> Self {
+    fn new(source: &'s str, scoping: &'r Scoping, signals: HashMap<SymbolId, SignalId>) -> Self {
         Self { source, scoping, signals, exprs: ExprTable::default(), errors: Vec::new() }
     }
 
@@ -464,7 +485,7 @@ impl<'s, 'r> Lowerer<'s, 'r> {
     }
 
     fn intern_jsx(&mut self, expr: &JSXExpression) -> ExpressionId {
-        let info = inject_jsx(self.source, self.scoping, self.signals, expr);
+        let info = inject_jsx(self.source, self.scoping, &self.signals, expr);
         self.exprs.intern(info)
     }
 
@@ -506,7 +527,9 @@ impl<'s, 'r> Lowerer<'s, 'r> {
             JSXChild::Fragment(fr) => Some(ViewNode::Fragment(self.lower_children(&fr.children))),
             JSXChild::ExpressionContainer(c) => match &c.expression {
                 JSXExpression::EmptyExpression(_) => None,
-                _ => Some(ViewNode::Dynamic { expr: self.intern_jsx(&c.expression) }),
+                _ => self
+                    .try_lower_list(&c.expression)
+                    .or_else(|| Some(ViewNode::Dynamic { expr: self.intern_jsx(&c.expression) })),
             },
             JSXChild::Spread(s) => {
                 self.errors.push(format!("spread child unsupported: {}", self.slice(s.span)));
@@ -528,6 +551,11 @@ impl<'s, 'r> Lowerer<'s, 'r> {
                     };
                     if name == "ref" {
                         self.errors.push("ref attribute not supported yet".into());
+                        continue;
+                    }
+                    // `key` is list-reconciliation metadata, not a DOM attribute
+                    // (SPEC §5.4.4); handled by list lowering, ignored elsewhere.
+                    if name == "key" {
                         continue;
                     }
                     let value = match &attr.value {
@@ -563,6 +591,79 @@ impl<'s, 'r> Lowerer<'s, 'r> {
     fn intern_static(&mut self, span: Span) -> ExpressionId {
         let code = self.slice(span).to_string();
         self.exprs.intern(ExprInfo { code, deps: Vec::new() })
+    }
+
+    /// Lower `{ array.map(cb) }` into a `List` node (SPEC §5.4.4). Returns `None`
+    /// for anything that isn't a recognized map-call so the caller falls back to
+    /// a plain dynamic hole.
+    fn try_lower_list(&mut self, expr: &JSXExpression) -> Option<ViewNode> {
+        let JSXExpression::CallExpression(call) = expr else { return None };
+        let Expression::StaticMemberExpression(member) = &call.callee else { return None };
+        if member.property.name != "map" {
+            return None;
+        }
+        let Some(Argument::ArrowFunctionExpression(arrow)) = call.arguments.first() else {
+            return None;
+        };
+        // Item parameter (required, simple identifier) + optional index parameter.
+        let item_bi = match arrow.params.items.first().map(|p| &p.pattern) {
+            Some(BindingPattern::BindingIdentifier(bi)) => bi,
+            _ => return None,
+        };
+        let item_param = item_bi.name.as_str().to_string();
+        let item_symbol = item_bi.symbol_id.get();
+        let index_param = match arrow.params.items.get(1).map(|p| &p.pattern) {
+            Some(BindingPattern::BindingIdentifier(bi)) => Some(bi.name.as_str().to_string()),
+            _ => None,
+        };
+
+        let body_jsx = arrow_jsx(arrow)?;
+
+        // Source = the chain before `.map`, with outer signals `.value`-injected.
+        let source_info = inject_expr(self.source, self.scoping, &self.signals, &member.object);
+        let source = self.exprs.intern(source_info);
+
+        // Key is evaluated against the *plain* item, so intern it before the item
+        // parameter becomes a signal.
+        let key = self.extract_key(body_jsx);
+
+        // Scope the item parameter in as a signal while lowering the item view.
+        let restore = item_symbol.map(|s| (s, self.signals.insert(s, ITEM_PARAM_SIGNAL)));
+        let item = self.lower_root(body_jsx)?;
+        if let Some((s, prev)) = restore {
+            match prev {
+                Some(v) => self.signals.insert(s, v),
+                None => self.signals.remove(&s),
+            };
+        }
+
+        Some(ViewNode::List {
+            source,
+            item_param,
+            index_param,
+            item: Box::new(item),
+            key,
+        })
+    }
+
+    /// Intern the `key={…}` expression from a list item's root element, if any.
+    fn extract_key(&mut self, body_jsx: &Expression) -> Option<ExpressionId> {
+        let Expression::JSXElement(el) = unwrap_paren(body_jsx) else { return None };
+        for item in &el.opening_element.attributes {
+            let JSXAttributeItem::Attribute(attr) = item else { continue };
+            let JSXAttributeName::Identifier(id) = &attr.name else { continue };
+            if id.name != "key" {
+                continue;
+            }
+            return match &attr.value {
+                Some(JSXAttributeValue::ExpressionContainer(c)) => Some(self.intern_jsx(&c.expression)),
+                Some(JSXAttributeValue::StringLiteral(s)) => {
+                    Some(self.intern_static(s.span))
+                }
+                _ => None,
+            };
+        }
+        None
     }
 
     fn element_name(&self, name: &JSXElementName) -> String {
@@ -724,6 +825,28 @@ mod tests {
     fn reports_rest_props_unsupported() {
         let lowered = lower("export function C({ a, ...rest }) { return <p>{a}</p>; }");
         assert!(lowered.errors.iter().any(|e| e.contains("rest props")));
+    }
+
+    #[test]
+    fn lowers_keyed_list() {
+        let lowered = lower(
+            "export function L() { let items = $state([]); return <ul>{items.map(i => <li key={i.id}>{i.name}</li>)}</ul>; }",
+        );
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        let ViewNode::List { source, item_param, index_param, item, key } = &children[0] else {
+            panic!("expected list, got {:?}", children[0]);
+        };
+        assert_eq!(item_param, "i");
+        assert_eq!(index_param, &None);
+        // Source: outer signal `.value`-injected.
+        assert_eq!(lowered.exprs.code(*source), Some("items.value"));
+        // Key: evaluated against the plain item — no `.value`.
+        assert_eq!(lowered.exprs.code(key.expect("key present")), Some("i.id"));
+        // Item view: the callback param is a signal, so `.value` is injected.
+        let ViewNode::Element { tag, children: li, .. } = &**item else { panic!() };
+        assert_eq!(tag, "li");
+        let ViewNode::Dynamic { expr } = &li[0] else { panic!() };
+        assert_eq!(lowered.exprs.code(*expr), Some("i.value.name"));
     }
 
     #[test]

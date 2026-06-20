@@ -12,12 +12,12 @@
 //! Both emit reactive text holes (`bindText`), dynamic attributes (`bindAttr`),
 //! event handlers, signal declarations, and compose child components by tag.
 //!
-//! Not yet supported (reported as diagnostics): props flowing into a component
-//! body as signals, component children/slots, member-expression component names,
-//! `ref`, and list rendering.
+//! Not yet supported (reported as diagnostics): component children/slots,
+//! member-expression component names, and `ref`.
 
 use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
+use otfw_ir::ExpressionId;
 
 use crate::lower::{Lowered, SignalDecl};
 
@@ -45,6 +45,7 @@ struct Uses {
     effect: bool,
     bind_text: bool,
     bind_attr: bool,
+    bind_list: bool,
 }
 
 /// Emit a page/layout as a factory function returning the root DOM node.
@@ -61,7 +62,13 @@ pub fn emit_page(lowered: &Lowered) -> CsrModule {
     } else {
         format!("export function {export}() {{\n")
     };
-    let code = format!("{}{}{}  return {root};\n}}\n", e.imports(), header, e.render("  "));
+    let code = format!(
+        "{}{}{}{}  return {root};\n}}\n",
+        e.imports(),
+        e.aux.join(""),
+        header,
+        e.render("  ")
+    );
     CsrModule { code, errors: e.errors }
 }
 
@@ -83,6 +90,7 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
 
     let mut code = String::new();
     code.push_str(&e.imports());
+    code.push_str(&e.aux.join(""));
     code.push_str(&format!("export class {class} extends HTMLElement {{\n"));
 
     if !props.is_empty() {
@@ -149,11 +157,28 @@ struct Emitter<'a> {
     counter: u32,
     uses: Uses,
     disposal: Disposal,
+    /// Prefix for generated list item-render functions (the component name).
+    base: String,
+    /// Counter for unique list item-render function names.
+    list_counter: u32,
+    /// Module-level helper functions (list item renderers) emitted before the main.
+    aux: Vec<String>,
 }
 
 impl<'a> Emitter<'a> {
     fn new(lowered: &'a Lowered, disposal: Disposal) -> Self {
-        Self { lowered, lines: Vec::new(), errors: Vec::new(), counter: 0, uses: Uses::default(), disposal }
+        let base = lowered.ir.id.export.clone();
+        Self {
+            lowered,
+            lines: Vec::new(),
+            errors: Vec::new(),
+            counter: 0,
+            uses: Uses::default(),
+            disposal,
+            base,
+            list_counter: 0,
+            aux: Vec::new(),
+        }
     }
 
     fn fresh(&mut self, prefix: &str) -> String {
@@ -218,6 +243,9 @@ impl<'a> Emitter<'a> {
         }
         if self.uses.bind_attr {
             names.push("bindAttr");
+        }
+        if self.uses.bind_list {
+            names.push("bindList");
         }
         if names.is_empty() {
             return String::new();
@@ -287,7 +315,74 @@ impl<'a> Emitter<'a> {
                 var
             }
             ViewNode::Component { name, props, children } => self.emit_component_use(name, props, children),
+            ViewNode::List { source, item_param, index_param, item, key } => {
+                // A list as a node (e.g. a root list) lives in its own fragment.
+                let frag = self.fresh("frag");
+                self.line(format!("const {frag} = document.createDocumentFragment();"));
+                self.emit_list(&frag, *source, item_param, index_param.as_deref(), item, *key);
+                frag
+            }
         }
+    }
+
+    /// Emit a list into `parent`: a module-level item-render function + a
+    /// `bindList` call performing keyed reconciliation.
+    fn emit_list(
+        &mut self,
+        parent: &str,
+        source: ExpressionId,
+        item_param: &str,
+        index_param: Option<&str>,
+        item: &ViewNode,
+        key: Option<ExpressionId>,
+    ) {
+        let fn_name = format!("{}_item{}", self.base, self.list_counter);
+        self.list_counter += 1;
+        self.build_item_fn(&fn_name, item, item_param, index_param);
+
+        let source_code = self.lowered.exprs.code(source).unwrap_or("[]").to_string();
+        let key_fn = match key {
+            Some(k) => {
+                let code = self.lowered.exprs.code(k).unwrap_or("_index").to_string();
+                format!("({item_param}, _index) => ({code})")
+            }
+            None => "undefined".to_string(),
+        };
+        self.uses.bind_list = true;
+        self.bind(format!("bindList({parent}, () => ({source_code}), {fn_name}, {key_fn})"));
+    }
+
+    /// Build a module-level `function {fn_name}(item, index) { … return root; }`
+    /// for a list item, accumulating it in `aux`. Item effects are not collected
+    /// (they live and die with the item node).
+    fn build_item_fn(
+        &mut self,
+        fn_name: &str,
+        item: &ViewNode,
+        item_param: &str,
+        index_param: Option<&str>,
+    ) {
+        let saved_lines = std::mem::take(&mut self.lines);
+        let saved_counter = self.counter;
+        let saved_disposal = self.disposal;
+        self.counter = 0;
+        self.disposal = Disposal::None;
+
+        let root = self.emit_node(item);
+
+        let item_lines = std::mem::replace(&mut self.lines, saved_lines);
+        self.counter = saved_counter;
+        self.disposal = saved_disposal;
+
+        let index = index_param.unwrap_or("_index");
+        let mut f = format!("function {fn_name}({item_param}, {index}) {{\n");
+        for l in &item_lines {
+            f.push_str("  ");
+            f.push_str(l);
+            f.push('\n');
+        }
+        f.push_str(&format!("  return {root};\n}}\n"));
+        self.aux.push(f);
     }
 
     /// Compose a child component: `<Foo .../>` → `document.createElement("web-foo")`.
@@ -310,17 +405,24 @@ impl<'a> Emitter<'a> {
         var
     }
 
-    /// Append `child` to `parent`, inlining static text-node creation.
+    /// Append `child` to `parent`, inlining static text-node creation and
+    /// wiring lists directly into the parent (no intermediate node).
     fn emit_append(&mut self, parent: &str, child: &ViewNode) {
-        if let ViewNode::Text(text) = child {
-            self.line(format!(
-                "{parent}.appendChild(document.createTextNode({}));",
-                js_string(text)
-            ));
-            return;
+        match child {
+            ViewNode::Text(text) => {
+                self.line(format!(
+                    "{parent}.appendChild(document.createTextNode({}));",
+                    js_string(text)
+                ));
+            }
+            ViewNode::List { source, item_param, index_param, item, key } => {
+                self.emit_list(parent, *source, item_param, index_param.as_deref(), item, *key);
+            }
+            _ => {
+                let child_var = self.emit_node(child);
+                self.line(format!("{parent}.appendChild({child_var});"));
+            }
         }
-        let child_var = self.emit_node(child);
-        self.line(format!("{parent}.appendChild({child_var});"));
     }
 
     /// Props on a host element: static → attribute, dynamic → reactive attribute,
@@ -551,6 +653,37 @@ mod tests {
         let m = emit_page(&lower("export function P({ x }) { return <p>{x}</p>; }"));
         assert!(!m.is_complete());
         assert!(m.errors.iter().any(|e| e.contains("page/factory props")), "errors: {:?}", m.errors);
+    }
+
+    #[test]
+    fn emits_list_with_item_fn_and_bindlist() {
+        let m = emit_page(&lower(
+            "export function L() { let items = $state([]); return <ul>{items.map(i => <li>{i.name}</li>)}</ul>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("import { signal, bindText, bindList }"), "code: {}", m.code);
+        // Module-level item renderer with the item param treated as a signal.
+        assert!(m.code.contains("function L_item0(i, _index) {"), "code: {}", m.code);
+        assert!(m.code.contains("bindText(t1, () => (i.value.name))"), "code: {}", m.code);
+        // bindList wires source (outer signal) + renderer; no key → undefined.
+        assert!(
+            m.code.contains("bindList(el0, () => (items.value), L_item0, undefined)"),
+            "code: {}",
+            m.code
+        );
+    }
+
+    #[test]
+    fn emits_list_key_function() {
+        let m = emit_page(&lower(
+            "export function L() { let items = $state([]); return <ul>{items.map(i => <li key={i.id}>{i.name}</li>)}</ul>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(
+            m.code.contains("bindList(el0, () => (items.value), L_item0, (i, _index) => (i.id))"),
+            "code: {}",
+            m.code
+        );
     }
 
     #[test]

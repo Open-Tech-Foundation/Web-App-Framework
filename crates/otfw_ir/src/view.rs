@@ -24,6 +24,18 @@ pub enum ViewNode {
     Dynamic {
         expr: ExpressionId,
     },
+    /// A keyed list from an `array.map(cb)` expression (SPEC §5.4.4). `source` is
+    /// the data expression (the chain before `.map`, with `.value` injected on
+    /// outer signals); `item` is the callback body rendered per element, with
+    /// `item_param` reified as a per-item signal; `key` is an optional `key={…}`
+    /// expression evaluated against the plain item.
+    List {
+        source: ExpressionId,
+        item_param: String,
+        index_param: Option<String>,
+        item: Box<ViewNode>,
+        key: Option<ExpressionId>,
+    },
     Fragment(Vec<ViewNode>),
 }
 
