@@ -87,6 +87,9 @@
         "monaco-editor": "^0.52.2",
         "prismjs": "^1.29.0",
       },
+      "devDependencies": {
+        "@opentf/web-cli": "workspace:*",
+      },
     },
     "website": {
       "name": "website",

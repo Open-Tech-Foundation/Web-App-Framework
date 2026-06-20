@@ -2,10 +2,16 @@
   "name": "playground",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev": "otfw-dev"
+  },
   "dependencies": {
     "@opentf/web": "workspace:*",
     "monaco-editor": "^0.52.2",
     "@monaco-editor/loader": "^1.4.0",
     "prismjs": "^1.29.0"
+  },
+  "devDependencies": {
+    "@opentf/web-cli": "workspace:*"
   }
 }

@@ -7,9 +7,11 @@
 // components), and Bun.serve serves the bundle with WebSocket live-reload on
 // rebuild. Tailwind stylesheets are compiled on the fly (see ./tailwind.js).
 //
-// Usage:  otfw-dev   → serves <cwd>/playground (override root via WEB_ROOT).
+// Like `vite` / `next dev`, the project root is the current working directory:
+// `otfw-dev` serves `<cwd>/index.html` and the routes under `<cwd>/app`. Add it as
+// a dependency and run it via a package script:
 //
-// Run from the monorepo root (`bun run dev`): the project root is `process.cwd()`.
+//   { "scripts": { "dev": "otfw-dev" }, "devDependencies": { "@opentf/web-cli": "*" } }
 
 import { watch } from "rolldown";
 import {
@@ -19,15 +21,57 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { compileCss, usesTailwind } from "./tailwind.js";
 
+// The project being served is the current directory (its `index.html` + `app/`).
 const root = process.cwd();
 const port = Number(process.env.PORT ?? 5175);
 
-const appDir = `${root}/${process.env.WEB_ROOT ?? "playground"}/app`;
+const appDir = join(root, "app");
 if (!existsSync(appDir)) {
-  console.error(`✗ no app directory at ${appDir}`);
+  console.error(
+    `✗ no app/ directory in ${root}\n  run otfw-dev from your project root (the folder with index.html and app/).`,
+  );
+  process.exit(1);
+}
+
+// Resolve the runtime package the way the bundler will — via node resolution from
+// the project root — so `@opentf/web` works whether it's an installed dependency
+// or a workspace package, with no hardcoded monorepo path.
+let webEntry;
+try {
+  webEntry = Bun.resolveSync("@opentf/web", root);
+} catch {
+  console.error(
+    `✗ cannot resolve "@opentf/web" from ${root}\n  add it to your project's dependencies.`,
+  );
+  process.exit(1);
+}
+
+// The `otfw` compiler ships with the toolchain, not the project: find it relative
+// to this CLI (the workspace's debug build), overridable via OTFW_BIN. Walk up from
+// the CLI source dir to the Cargo workspace (the dir with Cargo.toml).
+const cliDir = dirname(fileURLToPath(import.meta.url));
+function findUp(name, from) {
+  let dir = from;
+  while (true) {
+    if (existsSync(join(dir, name))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+const workspace = findUp("Cargo.toml", cliDir);
+const otfw =
+  process.env.OTFW_BIN ??
+  (workspace ? join(workspace, "target", "debug", "otfw") : null);
+if (!otfw) {
+  console.error(
+    "✗ cannot locate the otfw compiler; set OTFW_BIN to its path.",
+  );
   process.exit(1);
 }
 
@@ -55,12 +99,15 @@ if (pages.length === 0) {
   process.exit(1);
 }
 
-// Ensure the compiler binary exists (build once).
-const otfw = `${root}/target/debug/otfw`;
+// Ensure the compiler binary exists (build once, from the workspace).
 if (!existsSync(otfw)) {
+  if (!workspace) {
+    console.error(`✗ otfw compiler not found at ${otfw}`);
+    process.exit(1);
+  }
   console.log("building compiler (cargo build -p otfw_cli)…");
   const b = Bun.spawnSync(["cargo", "build", "-p", "otfw_cli"], {
-    cwd: root,
+    cwd: workspace,
     stdout: "inherit",
     stderr: "inherit",
   });
@@ -155,7 +202,7 @@ function reload() {
 const watcher = watch({
   input: entry,
   resolve: {
-    alias: { "@opentf/web": `${root}/packages/web/index.js` },
+    alias: { "@opentf/web": webEntry },
     extensions: [".jsx", ".tsx", ".js", ".ts"],
   },
   plugins: [otfwPlugin, cssPlugin],
@@ -171,9 +218,9 @@ watcher.on("event", (e) => {
   }
 });
 
-// The web root holds the project's index.html and static assets (css, public).
-const webRoot = `${root}/${process.env.WEB_ROOT ?? "playground"}`;
-const indexPath = `${webRoot}/index.html`;
+// The project root holds index.html and static assets (css, public).
+const webRoot = root;
+const indexPath = join(webRoot, "index.html");
 
 // Snippets injected into the served HTML: our bundle + the HMR client. The client
 // connects over WebSocket and reloads on rebuild; if the socket drops (server

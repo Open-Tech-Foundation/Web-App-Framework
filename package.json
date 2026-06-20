@@ -13,7 +13,7 @@
     "website"
   ],
   "scripts": {
-    "dev": "bun packages/web-cli/src/dev.js",
+    "dev": "bun run --cwd playground dev",
     "preview": "bun run website:build && wrangler dev",
     "website:dev": "bun run --cwd website dev",
     "website:build": "bun run build:web && bun run --cwd website build",
