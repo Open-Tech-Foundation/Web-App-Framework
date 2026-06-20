@@ -102,38 +102,65 @@ watcher.on("event", (e) => {
   }
 });
 
-const shell = (css) => `<!doctype html><html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenTF Web — /${route}</title>${css ? `\n<link rel="stylesheet" href="/global.css">` : ""}
-</head><body><div id="app"></div>
-<script type="module" src="/bundle.js"></script>
-<script>new EventSource("/__reload").onmessage = () => location.reload();</script>
-</body></html>`;
+// The web root holds the project's index.html and static assets (css, public).
+const webRoot = `${root}/${process.env.WEB_ROOT ?? "playground"}`;
+const indexPath = `${webRoot}/index.html`;
 
-const cssPath = `${root}/playground/app/global.css`;
+// Snippets injected into the served HTML: our bundle + the live-reload client.
+const injected =
+  `<script type="module" src="/bundle.js"></script>\n` +
+  `<script>new EventSource("/__reload").onmessage = () => location.reload();</script>\n`;
+
+// Use the project's index.html as the shell. We strip any Vite-style module
+// entry scripts (`<script type="module" src=…>` — the app would be double-loaded)
+// and inject our bundle + reload client before </body>. Non-module scripts
+// (e.g. @babel/standalone) are left intact.
+function buildHtml() {
+  let html;
+  if (existsSync(indexPath)) {
+    html = readFileSync(indexPath, "utf8").replace(
+      /<script\s+type=["']module["'][^>]*src=[^>]*>\s*<\/script>\s*/gi,
+      "",
+    );
+  } else {
+    html = `<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenTF Web — /${route}</title></head><body><div id="app"></div></body></html>`;
+  }
+  return html.includes("</body>")
+    ? html.replace("</body>", `${injected}</body>`)
+    : html + injected;
+}
+
+const TYPES = {
+  css: "text/css",
+  js: "text/javascript",
+  json: "application/json",
+  svg: "image/svg+xml",
+  png: "image/png",
+  jpg: "image/jpeg",
+  ico: "image/x-icon",
+  woff2: "font/woff2",
+};
+
+// Serve a static file from the web root (no path traversal outside it).
+function serveStatic(pathname) {
+  const file = `${webRoot}${pathname}`;
+  if (!file.startsWith(webRoot) || !existsSync(file)) return null;
+  const ext = pathname.split(".").pop();
+  return new Response(readFileSync(file), {
+    headers: { "content-type": TYPES[ext] ?? "application/octet-stream" },
+  });
+}
 
 Bun.serve({
   port,
   fetch(req) {
     const { pathname } = new URL(req.url);
-    if (pathname === "/" || pathname === `/${route}`) {
-      return new Response(shell(existsSync(cssPath)), {
-        headers: { "content-type": "text/html" },
-      });
-    }
     if (pathname === "/bundle.js") {
       const f = `${devDir}/csr/bundle.js`;
-      if (!existsSync(f))
-        return new Response("// building…", {
-          headers: { "content-type": "text/javascript" },
-        });
-      return new Response(readFileSync(f), {
+      return new Response(existsSync(f) ? readFileSync(f) : "// building…", {
         headers: { "content-type": "text/javascript" },
-      });
-    }
-    if (pathname === "/global.css" && existsSync(cssPath)) {
-      return new Response(readFileSync(cssPath), {
-        headers: { "content-type": "text/css" },
       });
     }
     if (pathname === "/__reload") {
@@ -155,7 +182,20 @@ Bun.serve({
         },
       );
     }
-    return new Response("not found", { status: 404 });
+    // Static assets referenced by index.html (css, public/, etc).
+    if (pathname !== "/") {
+      const asset = serveStatic(pathname);
+      if (asset) return asset;
+      // A request that looks like a file (has an extension) but isn't found is a
+      // genuine 404; extensionless paths fall through to the SPA shell.
+      if (/\.[a-z0-9]+$/i.test(pathname)) {
+        return new Response("not found", { status: 404 });
+      }
+    }
+    // Everything else falls through to the HTML shell (SPA-style).
+    return new Response(buildHtml(), {
+      headers: { "content-type": "text/html" },
+    });
   },
 });
 
