@@ -104,6 +104,29 @@ pub struct PropDecl {
     pub default: Option<String>,
 }
 
+/// A `...rest` prop (`{ a, ...others }`): a static snapshot of the element's
+/// attributes minus the explicitly named props (SPEC §2.7). Non-reactive — the
+/// rest object captures values once at connect.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestProp {
+    pub name: String,
+    /// Named prop attributes to exclude from the snapshot.
+    pub exclude: Vec<String>,
+}
+
+/// A nested destructuring pattern on a prop (`{ user: { name } }`). Destructuring
+/// evaluates eagerly, so the inner bindings are captured as a one-time snapshot
+/// of the prop's value at connect — non-reactive, matching JS / Solid / Svelte.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PropSnapshot {
+    /// The inner pattern source verbatim, e.g. `{ name, age: a = 1 }` or `[first]`.
+    pub pattern: String,
+    /// The outer prop's local binding (its signal alias) the snapshot reads from.
+    pub source: String,
+    /// Null-safe fallback for the destructure: `{}` (object) or `[]` (array).
+    pub empty: &'static str,
+}
+
 /// The output of Stage 3 for one component.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lowered {
@@ -118,6 +141,10 @@ pub struct Lowered {
     /// props-object form (`function C(props)`); `None` for destructured props.
     /// Drives a single `const props = this._props;` alias instead of per-key.
     pub props_object: Option<String>,
+    /// The `...rest` prop, if the destructuring uses one.
+    pub rest: Option<RestProp>,
+    /// One-time snapshots for nested destructuring patterns.
+    pub prop_snapshots: Vec<PropSnapshot>,
     /// The local binding name for the `children` slot, if the component
     /// destructures `children` (e.g. `"children"`). Drives child capture + the
     /// `Children` view node.
@@ -186,6 +213,8 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
         decls: classified.decls,
         props: classified.props,
         props_object: classified.props_object,
+        rest: classified.rest,
+        prop_snapshots: classified.prop_snapshots,
         children_local,
         errors,
     })
@@ -279,6 +308,8 @@ struct Classified {
     /// First-Access `.value` injection; its name drives the codegen alias.
     props_symbol: Option<SymbolId>,
     props_object: Option<String>,
+    rest: Option<RestProp>,
+    prop_snapshots: Vec<PropSnapshot>,
     children: Option<ChildrenInfo>,
     errors: Vec<String>,
 }
@@ -307,6 +338,9 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
     let mut children = None;
     let mut props_symbol = None;
     let mut props_object = None;
+    let mut rest_prop = None;
+    let mut snapshots: Vec<PropSnapshot> = Vec::new();
+    let mut named_keys: Vec<String> = Vec::new();
 
     // Pass 1a: destructured props from the first parameter.
     if let Some(param) = func.params.items.first() {
@@ -317,37 +351,70 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
                         errors.push("computed prop key not supported".into());
                         continue;
                     };
-                    let (binding, default) = match &prop.value {
-                        BindingPattern::BindingIdentifier(bi) => (Some(bi), None),
-                        BindingPattern::AssignmentPattern(ap) => match &ap.left {
-                            BindingPattern::BindingIdentifier(bi) => (Some(bi), Some(&ap.right)),
-                            _ => (None, None),
-                        },
-                        _ => (None, None),
+                    // Unwrap an optional default (`= …`) to reach the binding.
+                    let (pattern, default) = match &prop.value {
+                        BindingPattern::AssignmentPattern(ap) => (&ap.left, Some(&ap.right)),
+                        other => (other, None),
                     };
-                    let Some(bi) = binding else {
-                        errors.push(format!("nested prop pattern not supported: {attr}"));
-                        continue;
-                    };
-                    let local = bi.name.as_str().to_string();
-                    // `children` is the light-DOM slot (SPEC §4.5), not an
-                    // observed attribute/signal.
-                    if attr == "children" {
-                        children = Some(ChildrenInfo { local, symbol: bi.symbol_id.get() });
-                        continue;
+                    match pattern {
+                        BindingPattern::BindingIdentifier(bi) => {
+                            let local = bi.name.as_str().to_string();
+                            // `children` is the light-DOM slot (SPEC §4.5), not an
+                            // observed attribute/signal.
+                            if attr == "children" {
+                                children = Some(ChildrenInfo { local, symbol: bi.symbol_id.get() });
+                                continue;
+                            }
+                            let Some(symbol) = bi.symbol_id.get() else { continue };
+                            named_keys.push(attr.to_string());
+                            let id = SignalId(pendings.len() as u32);
+                            by_symbol.insert(symbol, id);
+                            pendings.push(Pending {
+                                id,
+                                name: local.clone(),
+                                kind: SignalKind::Prop,
+                                detail: Detail::Prop { local, attr: attr.to_string(), default },
+                            });
+                        }
+                        // Nested pattern (`{ user: { name } }`): observe the outer
+                        // key as a signal, snapshot the inner bindings once.
+                        BindingPattern::ObjectPattern(_) | BindingPattern::ArrayPattern(_) => {
+                            named_keys.push(attr.to_string());
+                            let id = SignalId(pendings.len() as u32);
+                            pendings.push(Pending {
+                                id,
+                                name: attr.to_string(),
+                                kind: SignalKind::Prop,
+                                detail: Detail::Prop {
+                                    local: attr.to_string(),
+                                    attr: attr.to_string(),
+                                    default: None,
+                                },
+                            });
+                            let (src, empty) = match pattern {
+                                BindingPattern::ObjectPattern(o) => (slice_span(source, o.span), "{}"),
+                                BindingPattern::ArrayPattern(a) => (slice_span(source, a.span), "[]"),
+                                _ => unreachable!(),
+                            };
+                            snapshots.push(PropSnapshot {
+                                pattern: src,
+                                source: attr.to_string(),
+                                empty,
+                            });
+                        }
+                        _ => errors.push(format!("unsupported prop pattern: {attr}")),
                     }
-                    let Some(symbol) = bi.symbol_id.get() else { continue };
-                    let id = SignalId(pendings.len() as u32);
-                    by_symbol.insert(symbol, id);
-                    pendings.push(Pending {
-                        id,
-                        name: local.clone(),
-                        kind: SignalKind::Prop,
-                        detail: Detail::Prop { local, attr: attr.to_string(), default },
-                    });
                 }
-                if obj.rest.is_some() {
-                    errors.push("rest props (`...rest`) not supported yet".into());
+                if let Some(rest) = &obj.rest {
+                    match &rest.argument {
+                        BindingPattern::BindingIdentifier(bi) => {
+                            rest_prop = Some(RestProp {
+                                name: bi.name.as_str().to_string(),
+                                exclude: named_keys.clone(),
+                            });
+                        }
+                        _ => errors.push("rest prop must be a simple identifier".into()),
+                    }
                 }
             }
             BindingPattern::BindingIdentifier(bi) => {
@@ -424,7 +491,23 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         }
     }
 
-    Classified { by_symbol, infos, decls, props, props_symbol, props_object, children, errors }
+    Classified {
+        by_symbol,
+        infos,
+        decls,
+        props,
+        props_symbol,
+        props_object,
+        rest: rest_prop,
+        prop_snapshots: snapshots,
+        children,
+        errors,
+    }
+}
+
+/// Slice `source[span]` as an owned string (for verbatim pattern capture).
+fn slice_span(source: &str, span: Span) -> String {
+    source[span.start as usize..span.end as usize].to_string()
 }
 
 fn macro_kind(call: &CallExpression) -> Option<MacroKind> {
@@ -1025,9 +1108,32 @@ mod tests {
     }
 
     #[test]
-    fn reports_rest_props_unsupported() {
+    fn lowers_rest_prop_as_snapshot() {
         let lowered = lower("export function C({ a, ...rest }) { return <p>{a}</p>; }");
-        assert!(lowered.errors.iter().any(|e| e.contains("rest props")));
+        assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
+        // `a` stays a reactive named prop; `rest` snapshots the other attributes.
+        assert_eq!(lowered.props.iter().map(|p| p.attr.as_str()).collect::<Vec<_>>(), ["a"]);
+        let rest = lowered.rest.expect("rest prop");
+        assert_eq!(rest.name, "rest");
+        assert_eq!(rest.exclude, ["a"]);
+    }
+
+    #[test]
+    fn lowers_nested_prop_as_snapshot() {
+        let lowered = lower(
+            "export function C({ user: { name } }) { return <p>{name}</p>; }",
+        );
+        assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
+        // The outer key is observed; the inner binding is a one-time snapshot
+        // (non-reactive, so no `.value` injection on `name`).
+        assert_eq!(lowered.props.iter().map(|p| p.attr.as_str()).collect::<Vec<_>>(), ["user"]);
+        let snap = &lowered.prop_snapshots[0];
+        assert_eq!(snap.pattern, "{ name }");
+        assert_eq!(snap.source, "user");
+        assert_eq!(snap.empty, "{}");
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        let ViewNode::Dynamic { expr } = &children[0] else { panic!() };
+        assert_eq!(lowered.exprs.code(*expr), Some("name"));
     }
 
     #[test]

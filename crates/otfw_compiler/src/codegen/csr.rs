@@ -80,6 +80,8 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     let mut e = Emitter::new(lowered, Disposal::Sink("this._cleanups"));
     e.emit_children_capture();
     e.emit_prop_aliases();
+    e.emit_prop_snapshots();
+    e.emit_rest();
     let root = e.emit_all();
     if !props.is_empty() {
         e.uses.signal = true; // the constructor initializes prop signals
@@ -235,6 +237,30 @@ impl<'a> Emitter<'a> {
         }
         for p in &self.lowered.props {
             self.lines.push(format!("const {} = this._props[{}];", p.local, js_string(&p.attr)));
+        }
+    }
+
+    /// Emit one-time snapshots for nested destructuring patterns: destructure the
+    /// (eagerly evaluated) prop value into the inner bindings. Non-reactive by
+    /// design (SPEC §2.7 / `PropSnapshot`). Component path only.
+    fn emit_prop_snapshots(&mut self) {
+        for s in &self.lowered.prop_snapshots {
+            self.lines
+                .push(format!("const {} = ({}.value ?? {});", s.pattern, s.source, s.empty));
+        }
+    }
+
+    /// Emit the `...rest` snapshot: a plain object of the element's attributes
+    /// excluding the named props (SPEC §2.7). Non-reactive. Component path only.
+    fn emit_rest(&mut self) {
+        if let Some(rest) = &self.lowered.rest {
+            let excl =
+                rest.exclude.iter().map(|k| js_string(k)).collect::<Vec<_>>().join(", ");
+            self.lines.push(format!("const {} = {{}};", rest.name));
+            self.lines.push(format!(
+                "for (const __a of Array.from(this.attributes)) if (![{excl}].includes(__a.name)) {}[__a.name] = __a.value;",
+                rest.name
+            ));
         }
     }
 
@@ -702,6 +728,37 @@ mod tests {
         // First-Access references resolve through the alias.
         assert!(m.code.contains("bindText(t1, () => (props.title.value))"), "code: {}", m.code);
         assert!(m.code.contains("bindText(t2, () => (props.user.value.name))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn component_emits_rest_snapshot() {
+        let m = emit_component(&lower(
+            "export function C({ a, ...rest }) { return <p>{a}{rest.b}</p>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // `a` observed; `rest` is a plain attribute snapshot excluding `a`.
+        assert!(m.code.contains("static observedAttributes = [\"a\"];"), "code: {}", m.code);
+        assert!(m.code.contains("const rest = {};"), "code: {}", m.code);
+        assert!(
+            m.code.contains("for (const __a of Array.from(this.attributes)) if (![\"a\"].includes(__a.name)) rest[__a.name] = __a.value;"),
+            "code: {}",
+            m.code
+        );
+        // `rest.b` is a plain (non-signal) access — no `.value`.
+        assert!(m.code.contains("(rest.b)"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn component_emits_nested_snapshot() {
+        let m = emit_component(&lower(
+            "export function C({ user: { name } }) { return <p>{name}</p>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("static observedAttributes = [\"user\"];"), "code: {}", m.code);
+        assert!(m.code.contains("const user = this._props[\"user\"];"), "code: {}", m.code);
+        assert!(m.code.contains("const { name } = (user.value ?? {});"), "code: {}", m.code);
+        // Snapshot binding is non-reactive: a plain read.
+        assert!(m.code.contains("bindText(t1, () => (name))"), "code: {}", m.code);
     }
 
     #[test]
