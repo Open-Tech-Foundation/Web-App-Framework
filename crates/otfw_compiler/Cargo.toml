@@ -8,4 +8,4 @@ description = "OpenTF Web — compiler stages: AST -> Semantic Model -> IRs -> c
 
 [dependencies]
 otfw_ir = { workspace = true }
-# Parser (oxc) and serialization are added when those stages begin (ARCHITECTURE.md §3, §7).
+oxc = { workspace = true }

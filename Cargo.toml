@@ -12,3 +12,8 @@ repository = "https://github.com/Open-Tech-Foundation/Web-App-Framework"
 [workspace.dependencies]
 otfw_ir = { path = "crates/otfw_ir" }
 otfw_compiler = { path = "crates/otfw_compiler" }
+
+# Parser stack (ARCHITECTURE.md §3). The `oxc` umbrella keeps the sub-crate
+# versions aligned; `semantic` seeds Stage 2 (scopes + bindings), `ast_visit`
+# provides the Visit traits used by Stage 3 lowering.
+oxc = { version = "0.137", features = ["semantic", "ast_visit"] }

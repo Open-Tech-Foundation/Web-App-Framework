@@ -5,14 +5,13 @@
 //!          -> (3) lower -> domain-specific IRs (otfw_ir)
 //!          -> (4) codegen -> backend modules
 //!
-//! Status: foundation. Stage modules are stubs; they are implemented in order
-//! starting with parse + lower. The IR types they target already exist in
-//! `otfw_ir`.
+//! Status: foundation. Stage 1 (parse) is implemented; later stages are stubs
+//! filled in order. The IR types they target already exist in `otfw_ir`.
 
 pub use otfw_ir;
 
-/// Stage 1: Parse. Backed by oxc (added when this stage begins).
-pub mod parse {}
+/// Stage 1: Parse — source text → AST. Backed by oxc.
+pub mod parse;
 
 /// Stage 2: Bind / Resolve into the Semantic Model.
 pub mod semantic {}
