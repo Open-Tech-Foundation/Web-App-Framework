@@ -66,6 +66,39 @@ export function bindAttr(el, name, fn) {
   return effect(() => setAttr(el, name, fn()));
 }
 
+/** Flatten a reactive child value into DOM nodes: nodes pass through, arrays
+ * recurse, nullish/booleans render nothing, primitives become text nodes. */
+function toNodes(value) {
+  if (value == null || typeof value === "boolean") return [];
+  if (Array.isArray(value)) {
+    const out = [];
+    for (const v of value) for (const n of toNodes(v)) out.push(n);
+    return out;
+  }
+  if (value instanceof Node) return [value];
+  return [document.createTextNode(String(value))];
+}
+
+/**
+ * Wire a dynamic child region (conditional/element-valued holes like
+ * `{cond && <p/>}` or `{cond ? <a/> : <b/>}`) to a reactive expression. The
+ * region is delimited by `anchor` (a comment); on every change the previous
+ * nodes are replaced with the new ones, inserted just before the anchor.
+ * Returns the effect disposer.
+ */
+export function bindChild(anchor, fn) {
+  let current = [];
+  return effect(() => {
+    const next = toNodes(fn());
+    const host = anchor.parentNode;
+    for (const n of current) {
+      if (n.parentNode === host) host.removeChild(n);
+    }
+    if (host) for (const n of next) host.insertBefore(n, anchor);
+    current = next;
+  });
+}
+
 /**
  * Render a keyed list (`array.map(...)`, SPEC §5.4.4) into `parent`, reconciling
  * by key on every change to `sourceFn`'s dependencies.

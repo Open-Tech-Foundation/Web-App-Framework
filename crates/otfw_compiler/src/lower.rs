@@ -22,7 +22,7 @@ use oxc::ast::ast::{
     Argument, ArrowFunctionExpression, BindingPattern, CallExpression, Declaration, Expression,
     ExportDefaultDeclarationKind, Function, FunctionBody, IdentifierReference, JSXAttributeItem,
     JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression,
-    Program, StaticMemberExpression, Statement,
+    JSXFragment, Program, StaticMemberExpression, Statement,
 };
 use oxc::ast_visit::{walk, Visit};
 use oxc::semantic::{Scoping, SymbolId};
@@ -264,8 +264,10 @@ fn returned_jsx<'a>(body: &'a FunctionBody<'a>) -> Option<&'a Expression<'a>> {
         if let Statement::ReturnStatement(ret) = stmt
             && let Some(arg) = &ret.argument
         {
+            // A component returns JSX directly (`<div/>`) or embedded in an
+            // expression (`cond ? <a/> : <b/>`) — SPEC §2.1.
             let unwrapped = unwrap_paren(arg);
-            if matches!(unwrapped, Expression::JSXElement(_) | Expression::JSXFragment(_)) {
+            if has_jsx_expr(unwrapped) {
                 return Some(unwrapped);
             }
         }
@@ -693,10 +695,129 @@ fn inject_expr(
     ExprInfo { code: splice(source, expr.span(), rc.ends), deps: rc.deps }
 }
 
+// ── Dynamic node regions (conditional / element-valued holes) ────────────────
+
+/// Probes whether an expression embeds any JSX → it's a dynamic *node* region
+/// (`{cond && <p/>}`) rather than a plain text hole.
+struct JsxProbe {
+    found: bool,
+}
+
+impl<'a> Visit<'a> for JsxProbe {
+    fn visit_jsx_element(&mut self, _: &JSXElement<'a>) {
+        self.found = true;
+    }
+    fn visit_jsx_fragment(&mut self, _: &JSXFragment<'a>) {
+        self.found = true;
+    }
+}
+
+fn has_jsx_jsx(expr: &JSXExpression) -> bool {
+    let mut p = JsxProbe { found: false };
+    p.visit_jsx_expression(expr);
+    p.found
+}
+
+fn has_jsx_expr(expr: &Expression) -> bool {
+    let mut p = JsxProbe { found: false };
+    p.visit_expression(expr);
+    p.found
+}
+
+/// One embedded JSX branch of a dynamic node region.
+enum JsxBranch<'a> {
+    Element(&'a JSXElement<'a>),
+    Fragment(&'a JSXFragment<'a>),
+}
+
+impl JsxBranch<'_> {
+    fn span(&self) -> Span {
+        match self {
+            JsxBranch::Element(e) => e.span,
+            JsxBranch::Fragment(f) => f.span,
+        }
+    }
+}
+
+/// Collects, for a dynamic node region, the signal-reference ends for `.value`
+/// injection (First-Access on `props`) and the *outermost* embedded JSX nodes —
+/// it does not recurse into them, so each becomes its own node-builder and inner
+/// references are injected when that branch is lowered as an ordinary view.
+struct NodeTemplater<'a, 'r> {
+    scoping: &'r Scoping,
+    signals: &'r HashMap<SymbolId, SignalId>,
+    props_symbol: Option<SymbolId>,
+    ends: Vec<u32>,
+    branches: Vec<JsxBranch<'a>>,
+}
+
+impl<'a> Visit<'a> for NodeTemplater<'a, '_> {
+    fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
+        if let Some(ref_id) = it.reference_id.get()
+            && let Some(symbol) = self.scoping.get_reference(ref_id).symbol_id()
+            && self.signals.contains_key(&symbol)
+        {
+            self.ends.push(it.span.end);
+        }
+    }
+    fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
+        if let Some(ps) = self.props_symbol
+            && let Expression::Identifier(obj) = &it.object
+            && resolves_to(self.scoping, obj, ps)
+        {
+            if it.property.name != "children" {
+                self.ends.push(it.property.span.end);
+            }
+            return;
+        }
+        walk::walk_static_member_expression(self, it);
+    }
+    fn visit_jsx_element(&mut self, it: &JSXElement<'a>) {
+        self.branches.push(JsxBranch::Element(self.alloc(it)));
+    }
+    fn visit_jsx_fragment(&mut self, it: &JSXFragment<'a>) {
+        self.branches.push(JsxBranch::Fragment(self.alloc(it)));
+    }
+}
+
+/// The placeholder a branch's node-builder call replaces in the template
+/// (NUL-delimited so it can never collide with real source).
+fn branch_placeholder(i: usize) -> String {
+    format!("\u{0}{i}\u{0}")
+}
+
+/// Build the dynamic-node template: the expression source with `.value` spliced
+/// at `ends` and each embedded JSX span replaced by its slot placeholder.
+fn build_template(source: &str, span: Span, ends: Vec<u32>, branches: &[JsxBranch]) -> String {
+    let base = span.start as usize;
+    let slice = &source[base..span.end as usize];
+    // Edits as (start, end, replacement); `.value` inserts are zero-width.
+    let mut edits: Vec<(usize, usize, String)> = Vec::new();
+    for e in ends {
+        let r = e as usize - base;
+        edits.push((r, r, ".value".to_string()));
+    }
+    for (i, b) in branches.iter().enumerate() {
+        let s = b.span();
+        edits.push((s.start as usize - base, s.end as usize - base, branch_placeholder(i)));
+    }
+    edits.sort_by_key(|e| e.0);
+
+    let mut out = String::with_capacity(slice.len());
+    let mut last = 0usize;
+    for (s, e, text) in edits {
+        out.push_str(&slice[last..s]);
+        out.push_str(&text);
+        last = e;
+    }
+    out.push_str(&slice[last..]);
+    out
+}
+
 // ── View lowering ───────────────────────────────────────────────────────────
 
-struct Lowerer<'s, 'r> {
-    source: &'s str,
+struct Lowerer<'a, 'r> {
+    source: &'a str,
     scoping: &'r Scoping,
     /// Owned so list-item parameters can be scoped in/out during lowering.
     signals: HashMap<SymbolId, SignalId>,
@@ -713,9 +834,9 @@ struct Lowerer<'s, 'r> {
 /// injection but is not a component-level signal (deps are codegen-irrelevant).
 const ITEM_PARAM_SIGNAL: SignalId = SignalId(u32::MAX);
 
-impl<'s, 'r> Lowerer<'s, 'r> {
+impl<'a, 'r> Lowerer<'a, 'r> {
     fn new(
-        source: &'s str,
+        source: &'a str,
         scoping: &'r Scoping,
         signals: HashMap<SymbolId, SignalId>,
         children_symbol: Option<SymbolId>,
@@ -752,7 +873,7 @@ impl<'s, 'r> Lowerer<'s, 'r> {
         false
     }
 
-    fn slice(&self, span: Span) -> &'s str {
+    fn slice(&self, span: Span) -> &'a str {
         &self.source[span.start as usize..span.end as usize]
     }
 
@@ -761,11 +882,69 @@ impl<'s, 'r> Lowerer<'s, 'r> {
         self.exprs.intern(info)
     }
 
-    fn lower_root(&mut self, expr: &Expression) -> Option<ViewNode> {
+    /// Lower a JSX-bearing hole (`{cond && <p/>}`) into a `DynamicNode`: a
+    /// templated expression plus a node-builder branch per embedded JSX.
+    fn lower_dynamic_node(&mut self, expr: &JSXExpression<'a>, span: Span) -> ViewNode {
+        let (ends, branches) = {
+            let mut t = NodeTemplater {
+                scoping: self.scoping,
+                signals: &self.signals,
+                props_symbol: self.props_symbol,
+                ends: Vec::new(),
+                branches: Vec::new(),
+            };
+            t.visit_jsx_expression(expr);
+            (t.ends, t.branches)
+        };
+        self.finish_dynamic_node(span, ends, branches)
+    }
+
+    /// As [`lower_dynamic_node`] but for a bare expression (a conditional root
+    /// return, `return cond ? <a/> : <b/>`).
+    fn lower_dynamic_node_expr(&mut self, expr: &Expression<'a>, span: Span) -> ViewNode {
+        let (ends, branches) = {
+            let mut t = NodeTemplater {
+                scoping: self.scoping,
+                signals: &self.signals,
+                props_symbol: self.props_symbol,
+                ends: Vec::new(),
+                branches: Vec::new(),
+            };
+            t.visit_expression(expr);
+            (t.ends, t.branches)
+        };
+        self.finish_dynamic_node(span, ends, branches)
+    }
+
+    fn finish_dynamic_node(
+        &mut self,
+        span: Span,
+        ends: Vec<u32>,
+        branches: Vec<JsxBranch<'a>>,
+    ) -> ViewNode {
+        let template = build_template(self.source, span, ends, &branches);
+        let branch_nodes = branches
+            .into_iter()
+            .map(|b| match b {
+                JsxBranch::Element(e) => self.lower_element(e),
+                JsxBranch::Fragment(f) => ViewNode::Fragment(self.lower_children(&f.children)),
+            })
+            .collect();
+        let expr = self.exprs.intern(ExprInfo { code: template, deps: Vec::new() });
+        ViewNode::DynamicNode { expr, branches: branch_nodes }
+    }
+
+    fn lower_root(&mut self, expr: &'a Expression<'a>) -> Option<ViewNode> {
         match unwrap_paren(expr) {
             Expression::JSXElement(el) => Some(self.lower_element(el)),
             Expression::JSXFragment(fr) => {
                 Some(ViewNode::Fragment(self.lower_children(&fr.children)))
+            }
+            // A conditional/element-valued root (`return cond ? <a/> : <b/>`):
+            // wrap the dynamic region in a fragment so it has a container.
+            other if has_jsx_expr(other) => {
+                let node = self.lower_dynamic_node_expr(other, other.span());
+                Some(ViewNode::Fragment(vec![node]))
             }
             _ => {
                 self.errors.push("component root is not a JSX element or fragment".into());
@@ -774,7 +953,7 @@ impl<'s, 'r> Lowerer<'s, 'r> {
         }
     }
 
-    fn lower_element(&mut self, el: &JSXElement) -> ViewNode {
+    fn lower_element(&mut self, el: &'a JSXElement<'a>) -> ViewNode {
         let name = self.element_name(&el.opening_element.name);
         let props = self.lower_attrs(el);
         let children = self.lower_children(&el.children);
@@ -785,11 +964,11 @@ impl<'s, 'r> Lowerer<'s, 'r> {
         }
     }
 
-    fn lower_children(&mut self, children: &[JSXChild]) -> Vec<ViewNode> {
+    fn lower_children(&mut self, children: &'a [JSXChild<'a>]) -> Vec<ViewNode> {
         children.iter().filter_map(|child| self.lower_child(child)).collect()
     }
 
-    fn lower_child(&mut self, child: &JSXChild) -> Option<ViewNode> {
+    fn lower_child(&mut self, child: &'a JSXChild<'a>) -> Option<ViewNode> {
         match child {
             JSXChild::Text(t) => {
                 let text = normalize_jsx_text(t.value.as_str());
@@ -800,9 +979,16 @@ impl<'s, 'r> Lowerer<'s, 'r> {
             JSXChild::ExpressionContainer(c) => match &c.expression {
                 JSXExpression::EmptyExpression(_) => None,
                 _ if self.is_children_ref(&c.expression) => Some(ViewNode::Children),
-                _ => self
-                    .try_lower_list(&c.expression)
-                    .or_else(|| Some(ViewNode::Dynamic { expr: self.intern_jsx(&c.expression) })),
+                _ => {
+                    if let Some(list) = self.try_lower_list(&c.expression) {
+                        Some(list)
+                    } else if has_jsx_jsx(&c.expression) {
+                        // A hole that can yield DOM nodes (`{cond && <p/>}`).
+                        Some(self.lower_dynamic_node(&c.expression, c.expression.span()))
+                    } else {
+                        Some(ViewNode::Dynamic { expr: self.intern_jsx(&c.expression) })
+                    }
+                }
             },
             JSXChild::Spread(s) => {
                 self.errors.push(format!("spread child unsupported: {}", self.slice(s.span)));
@@ -877,7 +1063,7 @@ impl<'s, 'r> Lowerer<'s, 'r> {
     /// Lower `{ array.map(cb) }` into a `List` node (SPEC §5.4.4). Returns `None`
     /// for anything that isn't a recognized map-call so the caller falls back to
     /// a plain dynamic hole.
-    fn try_lower_list(&mut self, expr: &JSXExpression) -> Option<ViewNode> {
+    fn try_lower_list(&mut self, expr: &'a JSXExpression<'a>) -> Option<ViewNode> {
         let JSXExpression::CallExpression(call) = expr else { return None };
         let Expression::StaticMemberExpression(member) = &call.callee else { return None };
         if member.property.name != "map" {
@@ -1194,6 +1380,48 @@ mod tests {
         assert_eq!(tag, "li");
         let ViewNode::Dynamic { expr } = &li[0] else { panic!() };
         assert_eq!(lowered.exprs.code(*expr), Some("i.value.name"));
+    }
+
+    #[test]
+    fn lowers_conditional_element_hole_as_dynamic_node() {
+        let lowered = lower(
+            "export function C() { let on = $state(true); return <div>{on ? <a/> : <b/>}</div>; }",
+        );
+        assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        let ViewNode::DynamicNode { expr, branches } = &children[0] else {
+            panic!("expected dynamic node, got {:?}", children[0]);
+        };
+        // Template: `.value` injected on the signal, JSX replaced by slot markers.
+        assert_eq!(lowered.exprs.code(*expr), Some("on.value ? \u{0}0\u{0} : \u{0}1\u{0}"));
+        // Two branches lowered as ordinary elements.
+        assert_eq!(branches.len(), 2);
+        assert!(matches!(&branches[0], ViewNode::Element { tag, .. } if tag == "a"));
+        assert!(matches!(&branches[1], ViewNode::Element { tag, .. } if tag == "b"));
+    }
+
+    #[test]
+    fn lowers_logical_hole_and_root_conditional() {
+        // `&&` hole keeps text-valued holes as plain Dynamic but element ones as nodes.
+        let l1 = lower("export function C() { let on = $state(true); return <div>{on && <p>x</p>}</div>; }");
+        let ViewNode::Element { children, .. } = &l1.ir.view else { panic!() };
+        assert!(matches!(&children[0], ViewNode::DynamicNode { .. }));
+
+        // A conditional *root* return is detected as a component and wrapped.
+        let l2 = lower("export function C() { let ok = $state(true); return ok ? <a/> : <b/>; }");
+        assert!(l2.errors.is_empty(), "errors: {:?}", l2.errors);
+        let ViewNode::Fragment(children) = &l2.ir.view else {
+            panic!("expected fragment root, got {:?}", l2.ir.view);
+        };
+        assert!(matches!(&children[0], ViewNode::DynamicNode { .. }));
+    }
+
+    #[test]
+    fn plain_expression_hole_stays_text() {
+        // No embedded JSX → still a text hole, not a dynamic node.
+        let lowered = lower("export function C() { let n = $state(0); return <p>{n ? 1 : 2}</p>; }");
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        assert!(matches!(&children[0], ViewNode::Dynamic { .. }));
     }
 
     #[test]

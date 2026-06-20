@@ -20,9 +20,19 @@ pub enum ViewNode {
         children: Vec<ViewNode>,
     },
     Text(String),
-    /// A dynamic hole; what fills it and when it updates lives in the Reactivity IR.
+    /// A dynamic *text* hole; what fills it and when it updates lives in the
+    /// Reactivity IR. Used when the expression cannot yield DOM nodes.
     Dynamic {
         expr: ExpressionId,
+    },
+    /// A dynamic *node* region: a hole whose expression can evaluate to elements
+    /// (`{cond && <p/>}`, `{cond ? <a/> : <b/>}`). `expr` is the expression with
+    /// `.value` injected and each embedded JSX replaced by an indexed placeholder
+    /// (`\u{0}i\u{0}`); `branches` are the embedded JSX sub-trees, in slot order,
+    /// each compiled to a node-builder the placeholder calls.
+    DynamicNode {
+        expr: ExpressionId,
+        branches: Vec<ViewNode>,
     },
     /// The component's children slot (`{children}`): the light-DOM nodes the
     /// parent passed in, captured at connect and placed here (SPEC §4.5).

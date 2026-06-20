@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { signal } from "../core/signals.js";
-import { bindAttr, bindList, bindText, mount, setAttr, toText } from "./index.js";
+import { bindAttr, bindChild, bindList, bindText, mount, setAttr, toText } from "./index.js";
 
 describe("toText", () => {
   test("renders nullish and false as empty string", () => {
@@ -118,6 +118,62 @@ describe("bindList", () => {
     expect(text(parent)).toBe("x,y");
     items.value = ["x", "y", "z"];
     expect(text(parent)).toBe("x,y,z");
+  });
+});
+
+describe("bindChild", () => {
+  test("swaps conditional elements, text, and nothing", () => {
+    const which = signal(0);
+    const parent = document.createElement("div");
+    const anchor = parent.appendChild(document.createComment(""));
+    bindChild(anchor, () => {
+      if (which.value === 0) return null; // nothing
+      if (which.value === 1) {
+        const p = document.createElement("p");
+        p.textContent = "one";
+        return p;
+      }
+      return "text"; // primitive → text node
+    });
+    expect(parent.textContent).toBe("");
+    expect(parent.querySelector("p")).toBeNull();
+
+    which.value = 1;
+    expect(parent.querySelector("p").textContent).toBe("one");
+
+    which.value = 2;
+    expect(parent.querySelector("p")).toBeNull();
+    expect(parent.textContent).toBe("text");
+
+    which.value = 0; // back to nothing
+    expect(parent.textContent).toBe("");
+  });
+
+  test("renders arrays of nodes and keeps anchor position", () => {
+    const items = signal(["a", "b"]);
+    const parent = document.createElement("div");
+    parent.appendChild(document.createTextNode("["));
+    const anchor = parent.appendChild(document.createComment(""));
+    parent.appendChild(document.createTextNode("]"));
+    bindChild(anchor, () => items.value.map((t) => {
+      const s = document.createElement("span");
+      s.textContent = t;
+      return s;
+    }));
+    expect(parent.textContent).toBe("[ab]");
+    items.value = ["x"];
+    expect(parent.textContent).toBe("[x]");
+  });
+
+  test("dispose stops updates", () => {
+    const on = signal(true);
+    const parent = document.createElement("div");
+    const anchor = parent.appendChild(document.createComment(""));
+    const dispose = bindChild(anchor, () => (on.value ? document.createElement("b") : null));
+    expect(parent.querySelector("b")).not.toBeNull();
+    dispose();
+    on.value = false;
+    expect(parent.querySelector("b")).not.toBeNull(); // frozen
   });
 });
 

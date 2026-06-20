@@ -46,6 +46,7 @@ struct Uses {
     bind_text: bool,
     bind_attr: bool,
     bind_list: bool,
+    bind_child: bool,
 }
 
 /// Emit a page/layout as a factory function returning the root DOM node.
@@ -64,9 +65,8 @@ pub fn emit_page(lowered: &Lowered) -> CsrModule {
         format!("export function {export}() {{\n")
     };
     let code = format!(
-        "{}{}{}{}  return {root};\n}}\n",
+        "{}{}{}  return {root};\n}}\n",
         e.imports(),
-        e.aux.join(""),
         header,
         e.render("  ")
     );
@@ -95,7 +95,6 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
 
     let mut code = String::new();
     code.push_str(&e.imports());
-    code.push_str(&e.aux.join(""));
     code.push_str(&format!("export class {class} extends HTMLElement {{\n"));
 
     if !props.is_empty() {
@@ -164,10 +163,8 @@ struct Emitter<'a> {
     disposal: Disposal,
     /// Prefix for generated list item-render functions (the component name).
     base: String,
-    /// Counter for unique list item-render function names.
+    /// Counter for unique node-builder function names (list items, dynamic nodes).
     list_counter: u32,
-    /// Module-level helper functions (list item renderers) emitted before the main.
-    aux: Vec<String>,
 }
 
 impl<'a> Emitter<'a> {
@@ -182,7 +179,6 @@ impl<'a> Emitter<'a> {
             disposal,
             base,
             list_counter: 0,
-            aux: Vec::new(),
         }
     }
 
@@ -305,6 +301,9 @@ impl<'a> Emitter<'a> {
         if self.uses.bind_list {
             names.push("bindList");
         }
+        if self.uses.bind_child {
+            names.push("bindChild");
+        }
         if names.is_empty() {
             return String::new();
         }
@@ -373,6 +372,13 @@ impl<'a> Emitter<'a> {
                 var
             }
             ViewNode::Component { name, props, children } => self.emit_component_use(name, props, children),
+            ViewNode::DynamicNode { expr, branches } => {
+                // A dynamic region as a node lives in its own fragment.
+                let frag = self.fresh("frag");
+                self.line(format!("const {frag} = document.createDocumentFragment();"));
+                self.emit_dynamic_node(&frag, *expr, branches);
+                frag
+            }
             ViewNode::Children => {
                 let frag = self.fresh("frag");
                 self.line(format!("const {frag} = document.createDocumentFragment();"));
@@ -417,8 +423,7 @@ impl<'a> Emitter<'a> {
     }
 
     /// Build a module-level `function {fn_name}(item, index) { … return root; }`
-    /// for a list item, accumulating it in `aux`. Item effects are not collected
-    /// (they live and die with the item node).
+    /// for a list item, accumulating it in `aux`.
     fn build_item_fn(
         &mut self,
         fn_name: &str,
@@ -426,27 +431,55 @@ impl<'a> Emitter<'a> {
         item_param: &str,
         index_param: Option<&str>,
     ) {
+        let index = index_param.unwrap_or("_index");
+        self.build_fn(fn_name, item, &format!("{item_param}, {index}"));
+    }
+
+    /// Emit a **local** `function {fn_name}({params}) { … return root; }` that
+    /// constructs `node`, into the current body so it closes over component
+    /// signals/props. Inner effects are not collected (they live and die with the
+    /// produced node).
+    fn build_fn(&mut self, fn_name: &str, node: &ViewNode, params: &str) {
         let saved_lines = std::mem::take(&mut self.lines);
         let saved_counter = self.counter;
         let saved_disposal = self.disposal;
         self.counter = 0;
         self.disposal = Disposal::None;
 
-        let root = self.emit_node(item);
+        let root = self.emit_node(node);
 
-        let item_lines = std::mem::replace(&mut self.lines, saved_lines);
+        let body_lines = std::mem::replace(&mut self.lines, saved_lines);
         self.counter = saved_counter;
         self.disposal = saved_disposal;
 
-        let index = index_param.unwrap_or("_index");
-        let mut f = format!("function {fn_name}({item_param}, {index}) {{\n");
-        for l in &item_lines {
-            f.push_str("  ");
-            f.push_str(l);
-            f.push('\n');
+        self.line(format!("function {fn_name}({params}) {{"));
+        for l in &body_lines {
+            self.line(format!("  {l}"));
         }
-        f.push_str(&format!("  return {root};\n}}\n"));
-        self.aux.push(f);
+        self.line(format!("  return {root};"));
+        self.line("}".to_string());
+    }
+
+    /// Emit a dynamic node region (conditional/element-valued hole) into `parent`:
+    /// a comment anchor, a node-builder per embedded JSX branch, and a `bindChild`
+    /// over the templated expression with each placeholder calling its builder.
+    fn emit_dynamic_node(&mut self, parent: &str, expr: ExpressionId, branches: &[ViewNode]) {
+        let anchor = self.fresh("a");
+        self.line(format!("const {anchor} = document.createComment(\"\");"));
+        self.line(format!("{parent}.appendChild({anchor});"));
+
+        let mut calls = Vec::with_capacity(branches.len());
+        for branch in branches {
+            let fn_name = format!("{}_node{}", self.base, self.list_counter);
+            self.list_counter += 1;
+            self.build_fn(&fn_name, branch, "");
+            calls.push(format!("{fn_name}()"));
+        }
+
+        let template = self.lowered.exprs.code(expr).unwrap_or("null").to_string();
+        let code = substitute_branches(&template, &calls);
+        self.uses.bind_child = true;
+        self.bind(format!("bindChild({anchor}, () => ({code}))"));
     }
 
     /// Compose a child component: `<Foo .../>` → `document.createElement("web-foo")`.
@@ -482,6 +515,9 @@ impl<'a> Emitter<'a> {
             }
             ViewNode::List { source, item_param, index_param, item, key } => {
                 self.emit_list(parent, *source, item_param, index_param.as_deref(), item, *key);
+            }
+            ViewNode::DynamicNode { expr, branches } => {
+                self.emit_dynamic_node(parent, *expr, branches);
             }
             ViewNode::Children => self.emit_children_slot(parent),
             _ => {
@@ -568,6 +604,16 @@ impl<'a> Emitter<'a> {
             }
         }
     }
+}
+
+/// Replace each NUL-delimited slot placeholder (`\u{0}i\u{0}`) in a dynamic-node
+/// template with its branch node-builder call.
+fn substitute_branches(template: &str, calls: &[String]) -> String {
+    let mut out = template.to_string();
+    for (i, call) in calls.iter().enumerate() {
+        out = out.replace(&format!("\u{0}{i}\u{0}"), call);
+    }
+    out
 }
 
 /// True for an `on*` event-handler prop name (`onClick`, `onclick`, …).
@@ -819,6 +865,27 @@ mod tests {
             c.code.contains("this._cleanups.push(effect(() => console.log(n.value)));"),
             "code: {}",
             c.code
+        );
+    }
+
+    #[test]
+    fn emits_conditional_dynamic_node() {
+        let m = emit_component(&lower(
+            "export function C() { let on = $state(true); let label = $state(\"hi\"); return <div>{on ? <strong>{label}</strong> : <em>off</em>}</div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("import { signal, bindText, bindChild }"), "code: {}", m.code);
+        // Builders are LOCAL (inside connectedCallback) so they close over `label`.
+        assert!(m.code.contains("function C_node0() {"), "code: {}", m.code);
+        assert!(m.code.contains("function C_node1() {"), "code: {}", m.code);
+        // Inner reactive text inside a branch still wired.
+        assert!(m.code.contains("bindText(t1, () => (label.value))"), "code: {}", m.code);
+        // Anchor + bindChild over the templated expression with builder calls.
+        assert!(m.code.contains("const a1 = document.createComment(\"\");"), "code: {}", m.code);
+        assert!(
+            m.code.contains("bindChild(a1, () => (on.value ? C_node0() : C_node1()))"),
+            "code: {}",
+            m.code
         );
     }
 
