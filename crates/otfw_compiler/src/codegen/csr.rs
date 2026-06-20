@@ -51,6 +51,7 @@ struct Uses {
     bind_attr: bool,
     bind_list: bool,
     bind_child: bool,
+    spread: bool,
 }
 
 /// Emit a page/layout as a factory function returning the root DOM node.
@@ -60,6 +61,9 @@ pub fn emit_page(lowered: &Lowered) -> CsrModule {
     e.emit_effects();
     if !lowered.props.is_empty() {
         e.errors.push("page/factory props not supported yet (use a component)".into());
+    }
+    if !lowered.exposes.is_empty() {
+        e.errors.push("$expose is only supported in components (no element to expose on)".into());
     }
 
     let export = &lowered.ir.id.export;
@@ -89,6 +93,7 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     e.emit_rest();
     let root = e.emit_all();
     e.emit_effects();
+    e.emit_exposes();
     if !props.is_empty() {
         e.uses.signal = true; // the constructor initializes prop signals
     }
@@ -288,6 +293,14 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// Emit `$expose(obj)` as `Object.assign(this, obj)`, publishing the object's
+    /// properties on the element (SPEC §3.2). Component path only.
+    fn emit_exposes(&mut self) {
+        for obj in self.lowered.exposes.clone() {
+            self.line(format!("Object.assign(this, ({obj}));"));
+        }
+    }
+
     /// The `import { … } from "@opentf/web";` header for the helpers used.
     fn imports(&self) -> String {
         let mut names = Vec::new();
@@ -311,6 +324,9 @@ impl<'a> Emitter<'a> {
         }
         if self.uses.bind_child {
             names.push("bindChild");
+        }
+        if self.uses.spread {
+            names.push("spread");
         }
         if names.is_empty() {
             return String::new();
@@ -566,11 +582,27 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// `{...obj}`: reactively apply the object's keys (SPEC §5.5). Wrapped in an
+    /// effect so a reactive source re-applies; `as_props` sets element properties
+    /// (components) vs attributes (host elements).
+    fn emit_spread(&mut self, el: &str, prop: &Prop, as_props: bool) {
+        if let PropValue::Dynamic(expr) = &prop.value {
+            let code = self.lowered.exprs.code(*expr).unwrap_or("null").to_string();
+            self.uses.effect = true;
+            self.uses.spread = true;
+            self.bind(format!("effect(() => spread({el}, ({code}), {as_props}))"));
+        }
+    }
+
     /// Props on a host element: static → attribute, dynamic → reactive attribute,
     /// `on*` → event handler (lowercased property, attached once).
     fn emit_element_prop(&mut self, el: &str, prop: &Prop) {
         if prop.name == "ref" {
             self.emit_ref(el, prop);
+            return;
+        }
+        if prop.name.is_empty() {
+            self.emit_spread(el, prop, false);
             return;
         }
         match &prop.value {
@@ -599,6 +631,10 @@ impl<'a> Emitter<'a> {
     fn emit_component_prop(&mut self, el: &str, prop: &Prop) {
         if prop.name == "ref" {
             self.emit_ref(el, prop);
+            return;
+        }
+        if prop.name.is_empty() {
+            self.emit_spread(el, prop, true);
             return;
         }
         match &prop.value {
@@ -921,6 +957,46 @@ mod tests {
         // `<foreignObject>` is SVG, but its `<div>` child switches back to HTML.
         assert!(m.code.contains("document.createElementNS(\"http://www.w3.org/2000/svg\", \"foreignObject\")"), "code: {}", m.code);
         assert!(m.code.contains("document.createElement(\"div\")"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn emits_spread_props_and_children() {
+        let m = emit_component(&lower(
+            "export function C() { let o = $state({}); let xs = $state([]); return <div {...o} class=\"base\">{...xs}</div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("import { signal, effect, bindChild, spread }"), "code: {}", m.code);
+        // Spread applied (effect), then the static class override — source order.
+        let spread_at = m.code.find("effect(() => spread(el0, (o.value), false))").expect("spread");
+        let class_at = m.code.find("el0.setAttribute(\"class\", \"base\")").expect("class");
+        assert!(spread_at < class_at, "spread must precede the override; code: {}", m.code);
+        // Spread child renders via bindChild over the array.
+        assert!(m.code.contains("bindChild(a1, () => (xs.value))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn emits_component_spread_as_properties() {
+        let m = emit_page(&lower(
+            "export function App() { let o = $state({}); return <Card {...o}/>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // Component spread sets properties (asProps = true).
+        assert!(m.code.contains("effect(() => spread(c0, (o.value), true))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn emits_expose_and_page_rejects_it() {
+        let c = emit_component(&lower(
+            "export function C() { let n = $state(0); $expose({ inc: () => n++ }); return <p>{n}</p>; }",
+        ));
+        assert!(c.is_complete(), "errors: {:?}", c.errors);
+        assert!(c.code.contains("Object.assign(this, ({ inc: () => n.value++ }));"), "code: {}", c.code);
+
+        let p = emit_page(&lower(
+            "export function P() { $expose({ a: 1 }); return <p>x</p>; }",
+        ));
+        assert!(!p.is_complete());
+        assert!(p.errors.iter().any(|e| e.contains("$expose is only supported in components")), "errors: {:?}", p.errors);
     }
 
     #[test]

@@ -148,6 +148,9 @@ pub struct Lowered {
     /// Top-level `$effect(cb)` callbacks (`.value`-injected source), to run as
     /// effects with their disposers collected for cleanup (SPEC §3.2).
     pub effects: Vec<String>,
+    /// Top-level `$expose(obj)` arguments (`.value`-injected source); each is
+    /// `Object.assign`ed onto the element so its props become public (SPEC §3.2).
+    pub exposes: Vec<String>,
     /// The local binding name for the `children` slot, if the component
     /// destructures `children` (e.g. `"children"`). Drives child capture + the
     /// `Children` view node.
@@ -219,6 +222,7 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
         rest: classified.rest,
         prop_snapshots: classified.prop_snapshots,
         effects: classified.effects,
+        exposes: classified.exposes,
         children_local,
         errors,
     })
@@ -317,6 +321,7 @@ struct Classified {
     rest: Option<RestProp>,
     prop_snapshots: Vec<PropSnapshot>,
     effects: Vec<String>,
+    exposes: Vec<String>,
     children: Option<ChildrenInfo>,
     errors: Vec<String>,
 }
@@ -453,8 +458,9 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         }
     }
 
-    // Pass 1b: top-level macro declarations and `$effect` statements.
+    // Pass 1b: top-level macro declarations and `$effect`/`$expose` statements.
     let mut effect_args: Vec<&Argument> = Vec::new();
+    let mut expose_args: Vec<&Argument> = Vec::new();
     if let Some(body) = func.body.as_deref() {
         for stmt in &body.statements {
             match stmt {
@@ -477,11 +483,14 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
                 }
                 Statement::ExpressionStatement(es) => {
                     if let Expression::CallExpression(call) = &es.expression
-                        && is_effect_call(call)
                         && let Some(arg) = call.arguments.first()
                         && !arg.is_spread()
                     {
-                        effect_args.push(arg);
+                        if is_effect_call(call) {
+                            effect_args.push(arg);
+                        } else if is_expose_call(call) {
+                            expose_args.push(arg);
+                        }
                     }
                 }
                 _ => {}
@@ -512,8 +521,12 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         }
     }
 
-    // `$effect` callbacks: inject `.value` now that the symbol set is complete.
+    // `$effect`/`$expose` arguments: inject `.value` now the symbol set is complete.
     let effects = effect_args
+        .into_iter()
+        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
+        .collect();
+    let exposes = expose_args
         .into_iter()
         .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
         .collect();
@@ -528,6 +541,7 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         rest: rest_prop,
         prop_snapshots: snapshots,
         effects,
+        exposes,
         children,
         errors,
     }
@@ -535,6 +549,10 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
 
 fn is_effect_call(call: &CallExpression) -> bool {
     matches!(&call.callee, Expression::Identifier(id) if id.name == "$effect")
+}
+
+fn is_expose_call(call: &CallExpression) -> bool {
+    matches!(&call.callee, Expression::Identifier(id) if id.name == "$expose")
 }
 
 /// Slice `source[span]` as an owned string (for verbatim pattern capture).
@@ -991,8 +1009,9 @@ impl<'a, 'r> Lowerer<'a, 'r> {
                 }
             },
             JSXChild::Spread(s) => {
-                self.errors.push(format!("spread child unsupported: {}", self.slice(s.span)));
-                None
+                // `{...items}`: render each item of the (array) expression as a
+                // child; `bindChild` flattens arrays, so reuse the dynamic region.
+                Some(self.lower_dynamic_node_expr(&s.expression, s.expression.span()))
             }
         }
     }
@@ -1046,8 +1065,17 @@ impl<'a, 'r> Lowerer<'a, 'r> {
                     props.push(Prop { name, value });
                 }
                 JSXAttributeItem::SpreadAttribute(s) => {
-                    self.errors
-                        .push(format!("spread prop unsupported: {}", self.slice(s.span)));
+                    // `{...obj}`: an empty prop name marks a spread; it is applied
+                    // in source order so later props can override (SPEC §5.5).
+                    let info = inject_expr(
+                        self.source,
+                        self.scoping,
+                        &self.signals,
+                        self.props_symbol,
+                        &s.argument,
+                    );
+                    let id = self.exprs.intern(info);
+                    props.push(Prop { name: String::new(), value: PropValue::Dynamic(id) });
                 }
             }
         }
@@ -1422,6 +1450,31 @@ mod tests {
         let lowered = lower("export function C() { let n = $state(0); return <p>{n ? 1 : 2}</p>; }");
         let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
         assert!(matches!(&children[0], ViewNode::Dynamic { .. }));
+    }
+
+    #[test]
+    fn lowers_spread_prop_and_child() {
+        let lowered = lower(
+            "export function C() { let o = $state({}); let xs = $state([]); return <div {...o} id=\"k\">{...xs}</div>; }",
+        );
+        assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
+        let ViewNode::Element { props, children, .. } = &lowered.ir.view else { panic!() };
+        // Spread prop: empty-name sentinel, injected expr, before the static `id`.
+        assert_eq!(props[0].name, "");
+        let PropValue::Dynamic(expr) = props[0].value else { panic!() };
+        assert_eq!(lowered.exprs.code(expr), Some("o.value"));
+        assert_eq!(props[1], Prop { name: "id".into(), value: PropValue::Static("k".into()) });
+        // Spread child: a dynamic node region over the (array) expression.
+        assert!(matches!(&children[0], ViewNode::DynamicNode { .. }));
+    }
+
+    #[test]
+    fn lowers_expose() {
+        let lowered = lower(
+            "export function C() { let n = $state(0); $expose({ inc: () => n++ }); return <p>{n}</p>; }",
+        );
+        assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
+        assert_eq!(lowered.exposes, ["{ inc: () => n.value++ }"]);
     }
 
     #[test]

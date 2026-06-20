@@ -52,6 +52,20 @@ export function setAttr(el, name, value) {
 }
 
 /**
+ * Apply every own enumerable key of `obj` to `el` (`<div {...obj}/>`, SPEC §5.5).
+ * `asProps` sets element properties (for components) instead of attributes (for
+ * host elements). Keys are applied in object order; the caller wraps this in an
+ * effect so a reactive source re-applies.
+ */
+export function spread(el, obj, asProps) {
+  if (!obj) return;
+  for (const k in obj) {
+    if (asProps) el[k] = obj[k];
+    else setAttr(el, k, obj[k]);
+  }
+}
+
+/**
  * Wire a text node to a reactive expression. Returns the effect disposer so the
  * caller (component lifecycle) can stop updates.
  */

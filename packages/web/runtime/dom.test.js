@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { signal } from "../core/signals.js";
-import { bindAttr, bindChild, bindList, bindText, mount, setAttr, toText } from "./index.js";
+import { bindAttr, bindChild, bindList, bindText, mount, setAttr, spread, toText } from "./index.js";
 
 describe("toText", () => {
   test("renders nullish and false as empty string", () => {
@@ -118,6 +118,22 @@ describe("bindList", () => {
     expect(text(parent)).toBe("x,y");
     items.value = ["x", "y", "z"];
     expect(text(parent)).toBe("x,y,z");
+  });
+});
+
+describe("spread", () => {
+  test("applies attributes to elements and properties to components", () => {
+    const el = document.createElement("div");
+    spread(el, { id: "a", title: "t" }, false);
+    expect(el.getAttribute("id")).toBe("a");
+    expect(el.getAttribute("title")).toBe("t");
+
+    const comp = document.createElement("div"); // stand-in for a custom element
+    spread(comp, { foo: { nested: 1 }, bar: 2 }, true);
+    expect(comp.foo).toEqual({ nested: 1 });
+    expect(comp.bar).toBe(2);
+
+    spread(el, null, false); // nullish is a no-op
   });
 });
 
