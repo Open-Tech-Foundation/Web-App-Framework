@@ -20,9 +20,9 @@ use std::collections::HashMap;
 
 use oxc::ast::ast::{
     Argument, ArrowFunctionExpression, BindingPattern, CallExpression, Declaration, Expression,
-    ExportDefaultDeclarationKind, Function, FunctionBody, IdentifierReference, JSXAttributeItem,
-    JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression,
-    JSXFragment, Program, StaticMemberExpression, Statement,
+    ExportDefaultDeclarationKind, Function, FunctionBody, IdentifierReference, ImportDeclarationSpecifier,
+    JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName,
+    JSXExpression, JSXFragment, Program, StaticMemberExpression, Statement,
 };
 use oxc::ast_visit::{walk, Visit};
 use oxc::semantic::{Scoping, SymbolId};
@@ -136,10 +136,14 @@ pub struct Lowered {
     /// `<Counter/>` (tag from the JSX name) matches the registered `web-counter`.
     /// Falls back to the export name for anonymous components.
     pub name: String,
-    /// Verbatim top-level `import` declarations from the source module, preserved
-    /// so the bundler pulls in dependencies (e.g. composed components that
-    /// self-register as Custom Elements) — re-emitted ahead of the runtime import.
+    /// Verbatim top-level `import` declarations from the source module (excluding
+    /// `@opentf/web`), preserved so the bundler pulls in dependencies (e.g. composed
+    /// components that self-register as Custom Elements) — re-emitted ahead of the
+    /// runtime import.
     pub imports: Vec<String>,
+    /// Named specifiers the source imports from `@opentf/web` (e.g. `signal`,
+    /// `router`, `Link`), merged into the single generated runtime import.
+    pub runtime_imports: Vec<String>,
     pub exprs: ExprTable,
     /// Signal declarations (`$state`/`$derived`/`$ref`) to emit before the view.
     pub decls: Vec<SignalDecl>,
@@ -205,14 +209,43 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
     let name = func.id.as_ref().map(|id| id.name.as_str().to_string()).unwrap_or_else(|| export.clone());
 
     // Preserve the module's top-level imports so the bundler resolves them.
-    let imports = program
-        .body
-        .iter()
-        .filter_map(|stmt| match stmt {
-            Statement::ImportDeclaration(decl) => Some(slice_span(source, decl.span)),
-            _ => None,
-        })
-        .collect();
+    // Imports from the runtime (`@opentf/web`) are special-cased: their named
+    // specifiers are merged into the single generated runtime import (so a user
+    // `import { signal }` doesn't clash with our emitted one), and compiler macros
+    // (`$state`/`$effect`/…) are dropped since they aren't real runtime exports.
+    let mut imports = Vec::new();
+    let mut runtime_imports = Vec::new();
+    for stmt in &program.body {
+        let Statement::ImportDeclaration(decl) = stmt else { continue };
+        if decl.source.value != "@opentf/web" {
+            imports.push(slice_span(source, decl.span));
+            continue;
+        }
+        let mut verbatim = false;
+        if let Some(specifiers) = &decl.specifiers {
+            for spec in specifiers {
+                match spec {
+                    ImportDeclarationSpecifier::ImportSpecifier(s) => {
+                        let imported = s.imported.name();
+                        if is_macro_name(&imported) {
+                            continue;
+                        }
+                        let local = s.local.name.as_str();
+                        runtime_imports.push(if imported == local {
+                            local.to_string()
+                        } else {
+                            format!("{imported} as {local}")
+                        });
+                    }
+                    // Default / namespace import from the runtime: keep verbatim.
+                    _ => verbatim = true,
+                }
+            }
+        }
+        if verbatim {
+            imports.push(slice_span(source, decl.span));
+        }
+    }
 
     let classified = classify(func, scoping, source);
 
@@ -243,6 +276,7 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
         ir,
         name,
         imports,
+        runtime_imports,
         exprs: lowerer.exprs,
         decls: classified.decls,
         props: classified.props,
@@ -607,6 +641,12 @@ fn is_expose_call(call: &CallExpression) -> bool {
 /// hooks `onMount`/`onCleanup` are recognized by name, like `$effect`).
 fn is_callee(call: &CallExpression, name: &str) -> bool {
     matches!(&call.callee, Expression::Identifier(id) if id.name == name)
+}
+
+/// Compiler macros (handled by lowering, not real `@opentf/web` exports) — so a
+/// legacy `import { $state } from "@opentf/web"` is dropped rather than re-emitted.
+fn is_macro_name(name: &str) -> bool {
+    matches!(name, "$state" | "$derived" | "$ref" | "$effect" | "$expose" | "$signal")
 }
 
 /// Slice `source[span]` as an owned string (for verbatim pattern capture).

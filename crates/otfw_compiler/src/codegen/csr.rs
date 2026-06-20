@@ -399,10 +399,18 @@ impl<'a> Emitter<'a> {
         if self.uses.spread {
             names.push("spread");
         }
-        if names.is_empty() {
+        // Merge the source's own `@opentf/web` named imports (e.g. router, Link),
+        // skipping any the generated header already provides.
+        let mut merged: Vec<String> = names.into_iter().map(str::to_string).collect();
+        for name in &self.lowered.runtime_imports {
+            if !merged.contains(name) {
+                merged.push(name.clone());
+            }
+        }
+        if merged.is_empty() {
             return String::new();
         }
-        format!("import {{ {} }} from \"@opentf/web\";\n", names.join(", "))
+        format!("import {{ {} }} from \"@opentf/web\";\n", merged.join(", "))
     }
 
     fn emit_decl(&mut self, decl: &SignalDecl) {
@@ -961,6 +969,25 @@ mod tests {
         assert!(m.code.contains("const { name } = (user.value ?? {});"), "code: {}", m.code);
         // Snapshot binding is non-reactive: a plain read.
         assert!(m.code.contains("bindText(t1, () => (name))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn merges_runtime_imports_without_duplicates() {
+        // The source imports `signal`/`router` from the runtime; the generated
+        // header also needs `signal`/`bindText`. They must merge into ONE import
+        // with no duplicate `signal`, and macros ($state) are dropped.
+        let m = emit_page(&lower(
+            "import { signal, router, $state } from \"@opentf/web\";\nexport function C() { let n = $state(0); return <p>{n}</p>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let count = m.code.matches("from \"@opentf/web\"").count();
+        assert_eq!(count, 1, "expected a single runtime import:\n{}", m.code);
+        assert_eq!(m.code.matches("signal").count() > 0, true);
+        assert!(m.code.contains("router"), "router kept:\n{}", m.code);
+        assert!(!m.code.contains("$state"), "macro import dropped:\n{}", m.code);
+        // No duplicate `signal` specifier in the import list.
+        let header = m.code.lines().find(|l| l.contains("from \"@opentf/web\"")).unwrap();
+        assert_eq!(header.matches("signal").count(), 1, "header: {header}");
     }
 
     #[test]
