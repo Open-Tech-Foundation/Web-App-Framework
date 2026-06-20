@@ -133,16 +133,11 @@ const cssPlugin = {
   },
 };
 
-// Live-reload: SSE clients notified on each successful rebuild.
-const clients = new Set();
+// HMR channel: WebSocket clients (subscribed to the "hmr" topic) are notified on
+// each successful rebuild. `server` is assigned below; reload is a no-op until then.
+let server;
 function reload() {
-  for (const c of clients) {
-    try {
-      c.enqueue("data: reload\n\n");
-    } catch {
-      clients.delete(c);
-    }
-  }
+  server?.publish("hmr", "reload");
 }
 
 const watcher = watch({
@@ -168,10 +163,20 @@ watcher.on("event", (e) => {
 const webRoot = `${root}/${process.env.WEB_ROOT ?? "playground"}`;
 const indexPath = `${webRoot}/index.html`;
 
-// Snippets injected into the served HTML: our bundle + the live-reload client.
+// Snippets injected into the served HTML: our bundle + the HMR client. The client
+// connects over WebSocket and reloads on rebuild; if the socket drops (server
+// restart) it retries and reloads once the server is back.
 const injected =
   `<script type="module" src="/bundle.js"></script>\n` +
-  `<script>new EventSource("/__reload").onmessage = () => location.reload();</script>\n`;
+  `<script>(() => {\n` +
+  `  const url = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/__hmr";\n` +
+  `  const connect = () => {\n` +
+  `    const ws = new WebSocket(url);\n` +
+  `    ws.onmessage = () => location.reload();\n` +
+  `    ws.onclose = () => setTimeout(connect, 1000);\n` +
+  `  };\n` +
+  `  connect();\n` +
+  `})();</script>\n`;
 
 // Use the project's index.html as the shell. We strip any Vite-style module
 // entry scripts (`<script type="module" src=…>` — the app would be double-loaded)
@@ -215,10 +220,21 @@ function serveStatic(pathname) {
   });
 }
 
-Bun.serve({
+server = Bun.serve({
   port,
-  fetch(req) {
+  websocket: {
+    open(ws) {
+      ws.subscribe("hmr");
+    },
+  },
+  fetch(req, srv) {
     const { pathname } = new URL(req.url);
+    // HMR WebSocket upgrade.
+    if (pathname === "/__hmr") {
+      return srv.upgrade(req)
+        ? undefined
+        : new Response("upgrade failed", { status: 400 });
+    }
     // Built output: the entry bundle and any code-split chunks live in .dev/csr.
     if (pathname.endsWith(".js")) {
       const built = `${devDir}/csr${pathname}`;
@@ -232,25 +248,6 @@ Bun.serve({
           headers: { "content-type": "text/javascript" },
         });
       }
-    }
-    if (pathname === "/__reload") {
-      return new Response(
-        new ReadableStream({
-          start(controller) {
-            clients.add(controller);
-            req.signal.addEventListener("abort", () =>
-              clients.delete(controller),
-            );
-          },
-        }),
-        {
-          headers: {
-            "content-type": "text/event-stream",
-            "cache-control": "no-cache",
-            connection: "keep-alive",
-          },
-        },
-      );
     }
     // Static assets referenced by index.html (css, public/, etc).
     if (pathname !== "/") {
