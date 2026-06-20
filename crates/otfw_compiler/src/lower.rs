@@ -77,6 +77,16 @@ impl ExprTable {
     }
 }
 
+/// One item of a component/page body, in source order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BodyItem {
+    /// A reactive signal declaration (`$state`/`$derived`/`$ref`).
+    Signal(SignalDecl),
+    /// A preserved statement, verbatim with `.value` injected (local consts,
+    /// helper functions, event handlers, etc.).
+    Raw(String),
+}
+
 /// A signal declaration to emit at the top of the generated factory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignalDecl {
@@ -147,6 +157,10 @@ pub struct Lowered {
     pub exprs: ExprTable,
     /// Signal declarations (`$state`/`$derived`/`$ref`) to emit before the view.
     pub decls: Vec<SignalDecl>,
+    /// The component/page body in source order: signal declarations interleaved
+    /// with preserved verbatim statements (local data, helper functions, event
+    /// handlers — `.value`-injected). Drives in-order emission before the view.
+    pub body: Vec<BodyItem>,
     /// Component props (the Custom Element's observed signals), from either
     /// destructuring or props-object discovery.
     pub props: Vec<PropDecl>,
@@ -289,6 +303,7 @@ pub fn lower_component<'a>(
         runtime_imports,
         exprs: lowerer.exprs,
         decls: classified.decls,
+        body: classified.body,
         props: classified.props,
         props_object: classified.props_object,
         page_param: classified.page_param,
@@ -388,6 +403,7 @@ struct Classified {
     by_symbol: HashMap<SymbolId, SignalId>,
     infos: Vec<SignalInfo>,
     decls: Vec<SignalDecl>,
+    body: Vec<BodyItem>,
     props: Vec<PropDecl>,
     /// The props-object binding (`function C(props)`): its symbol drives
     /// First-Access `.value` injection; its name drives the codegen alias.
@@ -635,10 +651,45 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str, is_page
         .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
         .collect();
 
+    // Ordered body: interleave signal declarations with preserved statements
+    // (local data, helper functions, event handlers) so the view's references
+    // resolve. Signals are consumed in source order from `decls`.
+    let mut body = Vec::new();
+    let mut decl_iter = decls.iter();
+    if let Some(fbody) = func.body.as_deref() {
+        for stmt in &fbody.statements {
+            match stmt {
+                // The returned JSX becomes the view, not a statement.
+                Statement::ReturnStatement(_) => {}
+                // `$state`/`$derived`/`$ref` declarations → signal items (in order).
+                Statement::VariableDeclaration(vd) if is_macro_decl(vd) => {
+                    for d in &vd.declarations {
+                        if matches!(&d.init, Some(Expression::CallExpression(c)) if macro_kind(c).is_some())
+                            && let Some(decl) = decl_iter.next()
+                        {
+                            body.push(BodyItem::Signal(decl.clone()));
+                        }
+                    }
+                }
+                // `$effect`/`$expose`/`onMount`/`onCleanup` are collected separately.
+                Statement::ExpressionStatement(es) if is_lifecycle_stmt(es) => {}
+                // Everything else is preserved verbatim with `.value` injected.
+                other => body.push(BodyItem::Raw(inject_stmt(
+                    source,
+                    scoping,
+                    &by_symbol,
+                    props_symbol,
+                    other,
+                ))),
+            }
+        }
+    }
+
     Classified {
         by_symbol,
         infos,
         decls,
+        body,
         props,
         props_symbol,
         props_object,
@@ -656,6 +707,24 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str, is_page
 
 fn is_effect_call(call: &CallExpression) -> bool {
     matches!(&call.callee, Expression::Identifier(id) if id.name == "$effect")
+}
+
+/// Whether a variable declaration introduces a reactive signal (`$state`/
+/// `$derived`/`$ref` initializer) — those become signal items, not raw statements.
+fn is_macro_decl(vd: &oxc::ast::ast::VariableDeclaration) -> bool {
+    vd.declarations.iter().any(|d| {
+        matches!(&d.init, Some(Expression::CallExpression(c)) if macro_kind(c).is_some())
+    })
+}
+
+/// Whether an expression statement is a lifecycle/reactive macro call
+/// (`$effect`/`$expose`/`onMount`/`onCleanup`) — collected, not preserved raw.
+fn is_lifecycle_stmt(es: &oxc::ast::ast::ExpressionStatement) -> bool {
+    matches!(&es.expression, Expression::CallExpression(call)
+        if is_effect_call(call)
+            || is_expose_call(call)
+            || is_callee(call, "onMount")
+            || is_callee(call, "onCleanup"))
 }
 
 fn is_expose_call(call: &CallExpression) -> bool {
@@ -840,6 +909,20 @@ fn inject_expr(
     let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_expression(expr);
     ExprInfo { code: splice(source, expr.span(), rc.ends), deps: rc.deps }
+}
+
+/// Preserve a whole body statement verbatim with `.value` injected on signal
+/// references (e.g. local handlers `const f = () => count++` or helper data).
+fn inject_stmt(
+    source: &str,
+    scoping: &Scoping,
+    signals: &HashMap<SymbolId, SignalId>,
+    props_symbol: Option<SymbolId>,
+    stmt: &Statement,
+) -> String {
+    let mut rc = new_collector(scoping, signals, props_symbol);
+    rc.visit_statement(stmt);
+    splice(source, stmt.span(), rc.ends)
 }
 
 // ── Dynamic node regions (conditional / element-valued holes) ────────────────

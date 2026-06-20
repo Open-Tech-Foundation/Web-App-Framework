@@ -19,7 +19,7 @@ use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
 use otfw_ir::ExpressionId;
 
-use crate::lower::{Lowered, SignalDecl};
+use crate::lower::{BodyItem, Lowered, SignalDecl};
 
 /// The SVG namespace; elements under `<svg>` are created with `createElementNS`
 /// (SPEC §5.8).
@@ -316,10 +316,14 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    /// Emit signal declarations + the view, returning the root variable.
+    /// Emit the body (signal declarations + preserved statements, in source order)
+    /// then the view, returning the root variable.
     fn emit_all(&mut self) -> String {
-        for decl in &self.lowered.decls {
-            self.emit_decl(decl);
+        for item in self.lowered.body.clone() {
+            match item {
+                BodyItem::Signal(decl) => self.emit_decl(&decl),
+                BodyItem::Raw(stmt) => self.line(stmt),
+            }
         }
         self.emit_node(&self.lowered.ir.view)
     }
@@ -983,6 +987,22 @@ mod tests {
         assert!(m.code.contains("const { name } = (user.value ?? {});"), "code: {}", m.code);
         // Snapshot binding is non-reactive: a plain read.
         assert!(m.code.contains("bindText(t1, () => (name))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn preserves_body_statements_in_order() {
+        // Local data + a handler that mutates a signal must survive, in order,
+        // with `.value` injected — referenced by the view.
+        let m = emit_page(&lower(
+            "export function C() { const base = 10; let n = $state(base); const inc = () => { n = n + 1; }; return <button onclick={inc}>{n}</button>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let base_at = m.code.find("const base = 10;").expect("base const");
+        let sig_at = m.code.find("const n = signal(base);").expect("signal init from base");
+        let inc_at = m.code.find("const inc = () => { n.value = n.value + 1; };").expect("handler");
+        assert!(base_at < sig_at, "base before signal:\n{}", m.code);
+        assert!(sig_at < inc_at, "signal before handler:\n{}", m.code);
+        assert!(m.code.contains("el0.onclick = inc;"), "handler wired:\n{}", m.code);
     }
 
     #[test]
