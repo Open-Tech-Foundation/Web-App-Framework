@@ -649,6 +649,16 @@ fn is_macro_name(name: &str) -> bool {
     matches!(name, "$state" | "$derived" | "$ref" | "$effect" | "$expose" | "$signal")
 }
 
+/// Map JSX attribute names to their DOM equivalents (`className` → `class`,
+/// `htmlFor` → `for`). Everything else passes through unchanged.
+fn dom_attr_name(name: &str) -> String {
+    match name {
+        "className" => "class".to_string(),
+        "htmlFor" => "for".to_string(),
+        other => other.to_string(),
+    }
+}
+
 /// Slice `source[span]` as an owned string (for verbatim pattern capture).
 fn slice_span(source: &str, span: Span) -> String {
     source[span.start as usize..span.end as usize].to_string()
@@ -1116,7 +1126,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
             match item {
                 JSXAttributeItem::Attribute(attr) => {
                     let name = match &attr.name {
-                        JSXAttributeName::Identifier(id) => id.name.as_str().to_string(),
+                        JSXAttributeName::Identifier(id) => dom_attr_name(id.name.as_str()),
                         JSXAttributeName::NamespacedName(n) => {
                             format!("{}:{}", n.namespace.name, n.name.name)
                         }

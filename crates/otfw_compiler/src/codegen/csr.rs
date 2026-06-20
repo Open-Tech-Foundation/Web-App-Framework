@@ -972,6 +972,19 @@ mod tests {
     }
 
     #[test]
+    fn maps_classname_to_class() {
+        let m = emit_page(&lower(
+            "export function C() { let x = $state(\"a\"); return <div className=\"a\" htmlFor=\"y\"><span className={x}>hi</span></div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("setAttribute(\"class\", \"a\")"), "code: {}", m.code);
+        assert!(m.code.contains("setAttribute(\"for\", \"y\")"), "code: {}", m.code);
+        // Dynamic className also binds the `class` attribute.
+        assert!(m.code.contains("bindAttr(el1, \"class\""), "code: {}", m.code);
+        assert!(!m.code.contains("className"), "no raw className left:\n{}", m.code);
+    }
+
+    #[test]
     fn merges_runtime_imports_without_duplicates() {
         // The source imports `signal`/`router` from the runtime; the generated
         // header also needs `signal`/`bindText`. They must merge into ONE import
