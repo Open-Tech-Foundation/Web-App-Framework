@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./index.js",
-    "./signals": "./core/signals.js"
+    "./signals": "./core/signals.js",
+    "./runtime": "./runtime/index.js"
   },
   "publishConfig": {
     "access": "public"
