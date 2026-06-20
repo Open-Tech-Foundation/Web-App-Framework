@@ -66,6 +66,17 @@ pub fn emit_page(lowered: &Lowered) -> CsrModule {
         e.errors.push("$expose is only supported in components (no element to expose on)".into());
     }
 
+    // Lifecycle: a factory has no element to own teardown, so it attaches a
+    // `__lifecycle` record to the root node. `mount` runs the `onMount` callbacks
+    // after insertion; the router runs `cleanups` when navigating away.
+    let mut lifecycle = String::new();
+    if e.has_lifecycle() {
+        lifecycle.push_str("  const __lifecycle = { mounts: [], cleanups: [] };\n");
+        lifecycle.push_str(&e.render_stmts("  ", &e.on_cleanup_stmts("__lifecycle.cleanups")));
+        lifecycle.push_str(&e.render_stmts("  ", &e.on_mount_stmts("__lifecycle.mounts")));
+        lifecycle.push_str(&format!("  {root}.__lifecycle = __lifecycle;\n"));
+    }
+
     let export = &lowered.ir.id.export;
     let header = if export == "default" {
         "export default function () {\n".to_string()
@@ -73,11 +84,12 @@ pub fn emit_page(lowered: &Lowered) -> CsrModule {
         format!("export function {export}() {{\n")
     };
     let code = format!(
-        "{}{}{}{}  return {root};\n}}\n",
+        "{}{}{}{}{}  return {root};\n}}\n",
         e.user_imports(),
         e.imports(),
         header,
-        e.render("  ")
+        e.render("  "),
+        lifecycle,
     );
     CsrModule { code, errors: e.errors }
 }
@@ -97,6 +109,10 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     let root = e.emit_all();
     e.emit_effects();
     e.emit_exposes();
+    // `onCleanup` teardown is registered during connect (run on disconnect).
+    for stmt in e.on_cleanup_stmts("this._cleanups") {
+        e.line(stmt);
+    }
     if !props.is_empty() {
         e.uses.signal = true; // the constructor initializes prop signals
     }
@@ -104,6 +120,14 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     let class = format!("{export}Element");
     let tag = component_tag(&export);
     let body = e.render("    ");
+    // `onMount` callbacks run after the view is appended; a returned function is
+    // collected as additional teardown.
+    let mut mounts = String::new();
+    for cb in &lowered.on_mounts {
+        mounts.push_str(&format!(
+            "    {{ const __d = ({cb})(); if (typeof __d === \"function\") this._cleanups.push(__d); }}\n"
+        ));
+    }
 
     let mut code = String::new();
     code.push_str(&e.user_imports());
@@ -141,6 +165,7 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     code.push_str("    this._cleanups = [];\n");
     code.push_str(&body);
     code.push_str(&format!("    this.appendChild({root});\n"));
+    code.push_str(&mounts);
     code.push_str("  }\n");
 
     if !props.is_empty() {
@@ -223,8 +248,13 @@ impl<'a> Emitter<'a> {
     }
 
     fn render(&self, indent: &str) -> String {
+        self.render_stmts(indent, &self.lines)
+    }
+
+    /// Render the given statements, one per line at `indent`.
+    fn render_stmts(&self, indent: &str, stmts: &[String]) -> String {
         let mut out = String::new();
-        for l in &self.lines {
+        for l in stmts {
             out.push_str(indent);
             out.push_str(l);
             out.push('\n');
@@ -307,6 +337,30 @@ impl<'a> Emitter<'a> {
         for obj in self.lowered.exposes.clone() {
             self.line(format!("Object.assign(this, ({obj}));"));
         }
+    }
+
+    fn has_lifecycle(&self) -> bool {
+        !self.lowered.on_mounts.is_empty() || !self.lowered.on_cleanups.is_empty()
+    }
+
+    /// `onCleanup(cb)` teardown registrations targeting `sink` (pushed as-is; run
+    /// when the component/page is removed).
+    fn on_cleanup_stmts(&self, sink: &str) -> Vec<String> {
+        self.lowered
+            .on_cleanups
+            .iter()
+            .map(|cb| format!("{sink}.push({cb});"))
+            .collect()
+    }
+
+    /// `onMount(cb)` callbacks pushed into `sink` (run after the view is inserted;
+    /// a returned function is collected as additional teardown by the runtime).
+    fn on_mount_stmts(&self, sink: &str) -> Vec<String> {
+        self.lowered
+            .on_mounts
+            .iter()
+            .map(|cb| format!("{sink}.push({cb});"))
+            .collect()
     }
 
     /// The module's preserved top-level imports (e.g. composed components), one
@@ -907,6 +961,42 @@ mod tests {
         assert!(m.code.contains("const { name } = (user.value ?? {});"), "code: {}", m.code);
         // Snapshot binding is non-reactive: a plain read.
         assert!(m.code.contains("bindText(t1, () => (name))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn component_emits_lifecycle_hooks() {
+        let m = emit_component(&lower(
+            "export function C() { let n = $state(0); onMount(() => console.log(n)); onCleanup(() => console.log(\"bye\", n)); return <p>{n}</p>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // `onCleanup` registers teardown during connect (.value injected).
+        assert!(
+            m.code.contains("this._cleanups.push(() => console.log(\"bye\", n.value));"),
+            "code: {}",
+            m.code
+        );
+        // `onMount` runs after the view is appended, collecting a returned disposer.
+        let append = m.code.find("this.appendChild(el0);").expect("append");
+        let run = m
+            .code
+            .find("const __d = (() => console.log(n.value))();")
+            .expect("mount run");
+        assert!(run > append, "onMount must run after append:\n{}", m.code);
+    }
+
+    #[test]
+    fn page_emits_lifecycle_record() {
+        let m = emit_page(&lower(
+            "export function C() { let n = $state(0); onMount(() => console.log(n)); return <p>{n}</p>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("const __lifecycle = { mounts: [], cleanups: [] };"), "code: {}", m.code);
+        assert!(
+            m.code.contains("__lifecycle.mounts.push(() => console.log(n.value));"),
+            "code: {}",
+            m.code
+        );
+        assert!(m.code.contains("el0.__lifecycle = __lifecycle;"), "code: {}", m.code);
     }
 
     #[test]

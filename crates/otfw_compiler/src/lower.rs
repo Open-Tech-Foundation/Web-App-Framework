@@ -160,6 +160,12 @@ pub struct Lowered {
     /// Top-level `$expose(obj)` arguments (`.value`-injected source); each is
     /// `Object.assign`ed onto the element so its props become public (SPEC §3.2).
     pub exposes: Vec<String>,
+    /// Top-level `onMount(cb)` callbacks (`.value`-injected source); run after the
+    /// view is inserted into the DOM, their returned disposer collected for cleanup.
+    pub on_mounts: Vec<String>,
+    /// Top-level `onCleanup(cb)` callbacks (`.value`-injected source); registered as
+    /// teardown to run when the component/page is removed.
+    pub on_cleanups: Vec<String>,
     /// The local binding name for the `children` slot, if the component
     /// destructures `children` (e.g. `"children"`). Drives child capture + the
     /// `Children` view node.
@@ -245,6 +251,8 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
         prop_snapshots: classified.prop_snapshots,
         effects: classified.effects,
         exposes: classified.exposes,
+        on_mounts: classified.on_mounts,
+        on_cleanups: classified.on_cleanups,
         children_local,
         errors,
     })
@@ -344,6 +352,8 @@ struct Classified {
     prop_snapshots: Vec<PropSnapshot>,
     effects: Vec<String>,
     exposes: Vec<String>,
+    on_mounts: Vec<String>,
+    on_cleanups: Vec<String>,
     children: Option<ChildrenInfo>,
     errors: Vec<String>,
 }
@@ -483,6 +493,8 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
     // Pass 1b: top-level macro declarations and `$effect`/`$expose` statements.
     let mut effect_args: Vec<&Argument> = Vec::new();
     let mut expose_args: Vec<&Argument> = Vec::new();
+    let mut mount_args: Vec<&Argument> = Vec::new();
+    let mut cleanup_args: Vec<&Argument> = Vec::new();
     if let Some(body) = func.body.as_deref() {
         for stmt in &body.statements {
             match stmt {
@@ -512,6 +524,10 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
                             effect_args.push(arg);
                         } else if is_expose_call(call) {
                             expose_args.push(arg);
+                        } else if is_callee(call, "onMount") {
+                            mount_args.push(arg);
+                        } else if is_callee(call, "onCleanup") {
+                            cleanup_args.push(arg);
                         }
                     }
                 }
@@ -552,6 +568,14 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         .into_iter()
         .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
         .collect();
+    let on_mounts = mount_args
+        .into_iter()
+        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
+        .collect();
+    let on_cleanups = cleanup_args
+        .into_iter()
+        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
+        .collect();
 
     Classified {
         by_symbol,
@@ -564,6 +588,8 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         prop_snapshots: snapshots,
         effects,
         exposes,
+        on_mounts,
+        on_cleanups,
         children,
         errors,
     }
@@ -575,6 +601,12 @@ fn is_effect_call(call: &CallExpression) -> bool {
 
 fn is_expose_call(call: &CallExpression) -> bool {
     matches!(&call.callee, Expression::Identifier(id) if id.name == "$expose")
+}
+
+/// Whether `call`'s callee is a bare identifier with the given name (lifecycle
+/// hooks `onMount`/`onCleanup` are recognized by name, like `$effect`).
+fn is_callee(call: &CallExpression, name: &str) -> bool {
+    matches!(&call.callee, Expression::Identifier(id) if id.name == name)
 }
 
 /// Slice `source[span]` as an owned string (for verbatim pattern capture).
@@ -1520,6 +1552,16 @@ mod tests {
         assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
         // The effect callback gets `.value` injected on signal references.
         assert_eq!(lowered.effects, ["() => console.log(n.value)"]);
+    }
+
+    #[test]
+    fn lowers_lifecycle_hooks_with_injection() {
+        let lowered = lower(
+            "export function C() { let n = $state(0); onMount(() => console.log(n)); onCleanup(() => n++); return <p>{n}</p>; }",
+        );
+        assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
+        assert_eq!(lowered.on_mounts, ["() => console.log(n.value)"]);
+        assert_eq!(lowered.on_cleanups, ["() => n.value++"]);
     }
 
     #[test]
