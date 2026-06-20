@@ -77,10 +77,21 @@ const entry = `${devDir}/entry.js`;
 const map = pages
   .map((p) => `    [${JSON.stringify(p)}]: () => import(${JSON.stringify(p)}),`)
   .join("\n");
+
+// An optional `app/routeGuard.{js,ts}` runs before every navigation.
+const guardFile = [`${appDir}/routeGuard.js`, `${appDir}/routeGuard.ts`].find(
+  existsSync,
+);
+const guardImport = guardFile
+  ? `import guard from ${JSON.stringify(guardFile)};\n`
+  : "";
+const guardArg = guardFile ? "\n  guard," : "";
+
 writeFileSync(
   entry,
   `import { mountApp } from "@opentf/web";\n` +
-    `mountApp({\n  pages: {\n${map}\n  },\n  target: document.getElementById("app"),\n});\n`,
+    guardImport +
+    `mountApp({\n  pages: {\n${map}\n  },\n  target: document.getElementById("app"),${guardArg}\n});\n`,
 );
 
 // Rolldown plugin: compile .jsx/.tsx through our Rust compiler.
