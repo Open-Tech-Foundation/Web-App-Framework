@@ -12,15 +12,45 @@
 // Run from the monorepo root (`bun run dev`): the project root is `process.cwd()`.
 
 import { watch } from "rolldown";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 
 const root = process.cwd();
-const route = process.argv[2] ?? "counter";
 const port = Number(process.env.PORT ?? 5175);
 
-const pagePath = `${root}/playground/app/${route}/page.jsx`;
-if (!existsSync(pagePath)) {
-  console.error(`✗ no page at ${pagePath}`);
+const appDir = `${root}/${process.env.WEB_ROOT ?? "playground"}/app`;
+if (!existsSync(appDir)) {
+  console.error(`✗ no app directory at ${appDir}`);
+  process.exit(1);
+}
+
+// Routes whose subtree still uses not-yet-ported legacy runtime APIs (e.g. the
+// REPL relies on `hookEffect`). Override with EXCLUDE_ROUTES="a,b" (or "").
+const exclude = new Set(
+  (process.env.EXCLUDE_ROUTES ?? "repl,forms-demo").split(",").filter(Boolean),
+);
+
+// Discover file-based routes: every `page.jsx`/`page.tsx` (and the optional
+// top-level `404`) under app/. Layouts are intentionally excluded for now —
+// layout `props.children` composition needs signal-free page props (follow-up).
+function discoverPages(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory() && exclude.has(entry.name)) continue;
+    const full = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) out.push(...discoverPages(full));
+    else if (/^(page|404)\.[jt]sx$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+const pages = discoverPages(appDir);
+if (pages.length === 0) {
+  console.error(`✗ no page.jsx files found under ${appDir}`);
   process.exit(1);
 }
 
@@ -36,15 +66,20 @@ if (!existsSync(otfw)) {
   if (b.exitCode !== 0) process.exit(b.exitCode);
 }
 
-// Generate the entry: import the page factory and mount it.
+// Generate the entry: hand a route map of lazy loaders to mountApp, which
+// renders the page for the current URL and swaps on navigation. Each route is a
+// dynamic import so Rolldown code-splits it into its own chunk — a page that
+// fails to compile only breaks when navigated to, not the whole app.
 const devDir = `${root}/.dev`;
 mkdirSync(`${devDir}/csr`, { recursive: true });
 const entry = `${devDir}/entry.js`;
+const map = pages
+  .map((p) => `    [${JSON.stringify(p)}]: () => import(${JSON.stringify(p)}),`)
+  .join("\n");
 writeFileSync(
   entry,
-  `import Page from ${JSON.stringify(pagePath)};\n` +
-    `import { mount } from "@opentf/web";\n` +
-    `mount(Page, document.getElementById("app"));\n`,
+  `import { mountApp } from "@opentf/web";\n` +
+    `mountApp({\n  pages: {\n${map}\n  },\n  target: document.getElementById("app"),\n});\n`,
 );
 
 // Rolldown plugin: compile .jsx/.tsx through our Rust compiler.
@@ -64,10 +99,37 @@ const otfwPlugin = {
       stdin: new TextEncoder().encode(code),
     });
     if (proc.exitCode !== 0) {
-      throw new Error(`otfw failed for ${id}:\n${proc.stderr.toString()}`);
+      // Don't fail the whole build: emit a stub that surfaces the diagnostic when
+      // the route is rendered, so other routes keep working (and HMR recovers).
+      const msg = proc.stderr.toString();
+      console.error(`✗ otfw failed for ${id}:\n${msg}`);
+      const stub =
+        `export default function () { const pre = document.createElement("pre");` +
+        ` pre.style.cssText = "color:#f87171;padding:1rem;white-space:pre-wrap";` +
+        ` pre.textContent = ${JSON.stringify(`Compile error in ${id}\n\n${msg}`)};` +
+        ` return pre; }`;
+      return { code: stub, moduleSideEffects: true };
     }
     // Side effects (e.g. customElements.define) must survive bundling.
     return { code: proc.stdout.toString(), moduleSideEffects: true };
+  },
+};
+
+// CSS plugin: turn `import "./x.css"` into a <style> injection. `*.module.css`
+// resolves to an identity class-name map so `styles.foo` yields "foo" (dev-grade
+// CSS Modules — no hashing).
+const cssPlugin = {
+  name: "css",
+  transform(code, id) {
+    if (!id.endsWith(".css")) return null;
+    const inject =
+      `const __s = document.createElement("style");` +
+      ` __s.textContent = ${JSON.stringify(code)};` +
+      ` document.head.appendChild(__s);`;
+    const out = id.endsWith(".module.css")
+      ? `${inject}\nexport default new Proxy({}, { get: (_, k) => k });`
+      : `${inject}\nexport default ${JSON.stringify(code)};`;
+    return { code: out, moduleSideEffects: true };
   },
 };
 
@@ -89,7 +151,7 @@ const watcher = watch({
     alias: { "@opentf/web": `${root}/packages/web/index.js` },
     extensions: [".jsx", ".tsx", ".js", ".ts"],
   },
-  plugins: [otfwPlugin],
+  plugins: [otfwPlugin, cssPlugin],
   output: { dir: `${devDir}/csr`, format: "esm", entryFileNames: "bundle.js" },
 });
 watcher.on("event", (e) => {
@@ -125,7 +187,7 @@ function buildHtml() {
   } else {
     html = `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenTF Web — /${route}</title></head><body><div id="app"></div></body></html>`;
+<title>OpenTF Web</title></head><body><div id="app"></div></body></html>`;
   }
   return html.includes("</body>")
     ? html.replace("</body>", `${injected}</body>`)
@@ -157,11 +219,19 @@ Bun.serve({
   port,
   fetch(req) {
     const { pathname } = new URL(req.url);
-    if (pathname === "/bundle.js") {
-      const f = `${devDir}/csr/bundle.js`;
-      return new Response(existsSync(f) ? readFileSync(f) : "// building…", {
-        headers: { "content-type": "text/javascript" },
-      });
+    // Built output: the entry bundle and any code-split chunks live in .dev/csr.
+    if (pathname.endsWith(".js")) {
+      const built = `${devDir}/csr${pathname}`;
+      if (built.startsWith(`${devDir}/csr/`) && existsSync(built)) {
+        return new Response(readFileSync(built), {
+          headers: { "content-type": "text/javascript" },
+        });
+      }
+      if (pathname === "/bundle.js") {
+        return new Response("// building…", {
+          headers: { "content-type": "text/javascript" },
+        });
+      }
     }
     if (pathname === "/__reload") {
       return new Response(
@@ -200,4 +270,4 @@ Bun.serve({
 });
 
 console.log(`\n  OpenTF Web CSR dev server`);
-console.log(`  → http://localhost:${port}  (route: /${route})\n`);
+console.log(`  → http://localhost:${port}  (${pages.length} routes)\n`);
