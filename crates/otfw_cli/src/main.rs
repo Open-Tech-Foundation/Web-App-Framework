@@ -23,14 +23,14 @@ fn main() -> ExitCode {
             match rest.iter().find(|a| !a.starts_with("--")) {
                 Some(file) => build(file, as_component, from_stdin),
                 None => {
-                    eprintln!("usage: otfw build [--component] [--stdin] <file.tsx>");
+                    eprintln!("usage: otfwc build [--component] [--stdin] <file.tsx>");
                     ExitCode::FAILURE
                 }
             }
         }
         _ => {
-            println!("otfw: OpenTF Web toolchain (foundation). See ARCHITECTURE.md.");
-            println!("usage: otfw build [--component] [--stdin] <file.tsx>   # parse → lower → CSR codegen");
+            println!("otfwc: OpenTF Web IR compiler (foundation). See ARCHITECTURE.md.");
+            println!("usage: otfwc build [--component] [--stdin] <file.tsx>   # parse → lower → CSR codegen");
             println!("  default emits a page factory; --component emits a Custom Element class");
             println!("  --stdin reads source from stdin; <file> is used only for the module id");
             ExitCode::SUCCESS
