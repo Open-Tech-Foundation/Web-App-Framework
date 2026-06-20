@@ -15,23 +15,28 @@ use otfw_compiler::parse::ParseSession;
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
-        Some("build") => match args.get(2) {
-            Some(file) => build(file),
-            None => {
-                eprintln!("usage: otfw build <file.tsx>");
-                ExitCode::FAILURE
+        Some("build") => {
+            let rest = &args[2..];
+            let as_component = rest.iter().any(|a| a == "--component");
+            match rest.iter().find(|a| !a.starts_with("--")) {
+                Some(file) => build(file, as_component),
+                None => {
+                    eprintln!("usage: otfw build [--component] <file.tsx>");
+                    ExitCode::FAILURE
+                }
             }
-        },
+        }
         _ => {
             println!("otfw: OpenTF Web toolchain (foundation). See ARCHITECTURE.md.");
-            println!("usage: otfw build <file.tsx>   # parse → lower → CSR codegen");
+            println!("usage: otfw build [--component] <file.tsx>   # parse → lower → CSR codegen");
+            println!("  default emits a page factory; --component emits a Custom Element class");
             ExitCode::SUCCESS
         }
     }
 }
 
 /// Compile one file to CSR JS and print it. Diagnostics go to stderr.
-fn build(file: &str) -> ExitCode {
+fn build(file: &str, as_component: bool) -> ExitCode {
     let source = match std::fs::read_to_string(file) {
         Ok(s) => s,
         Err(e) => {
@@ -54,7 +59,7 @@ fn build(file: &str) -> ExitCode {
         return ExitCode::FAILURE;
     };
 
-    let module = csr::emit(&lowered);
+    let module = if as_component { csr::emit_component(&lowered) } else { csr::emit_page(&lowered) };
     print!("{}", module.code);
 
     for err in &module.errors {
