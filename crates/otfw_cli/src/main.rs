@@ -5,6 +5,7 @@
 //! full orchestrator (dev server, build, HMR, incremental cache) described in
 //! `ARCHITECTURE.md` §8 is implemented here over time.
 
+use std::io::Read;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -18,30 +19,43 @@ fn main() -> ExitCode {
         Some("build") => {
             let rest = &args[2..];
             let as_component = rest.iter().any(|a| a == "--component");
+            let from_stdin = rest.iter().any(|a| a == "--stdin");
             match rest.iter().find(|a| !a.starts_with("--")) {
-                Some(file) => build(file, as_component),
+                Some(file) => build(file, as_component, from_stdin),
                 None => {
-                    eprintln!("usage: otfw build [--component] <file.tsx>");
+                    eprintln!("usage: otfw build [--component] [--stdin] <file.tsx>");
                     ExitCode::FAILURE
                 }
             }
         }
         _ => {
             println!("otfw: OpenTF Web toolchain (foundation). See ARCHITECTURE.md.");
-            println!("usage: otfw build [--component] <file.tsx>   # parse → lower → CSR codegen");
+            println!("usage: otfw build [--component] [--stdin] <file.tsx>   # parse → lower → CSR codegen");
             println!("  default emits a page factory; --component emits a Custom Element class");
+            println!("  --stdin reads source from stdin; <file> is used only for the module id");
             ExitCode::SUCCESS
         }
     }
 }
 
-/// Compile one file to CSR JS and print it. Diagnostics go to stderr.
-fn build(file: &str, as_component: bool) -> ExitCode {
-    let source = match std::fs::read_to_string(file) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("otfw: cannot read {file}: {e}");
+/// Compile one module to CSR JS and print it. Source comes from `file` or, with
+/// `from_stdin`, from stdin (then `file` is only the module id). Diagnostics go to
+/// stderr.
+fn build(file: &str, as_component: bool, from_stdin: bool) -> ExitCode {
+    let source = if from_stdin {
+        let mut buf = String::new();
+        if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
+            eprintln!("otfw: cannot read stdin: {e}");
             return ExitCode::FAILURE;
+        }
+        buf
+    } else {
+        match std::fs::read_to_string(file) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("otfw: cannot read {file}: {e}");
+                return ExitCode::FAILURE;
+            }
         }
     };
 
