@@ -54,4 +54,37 @@ describe("router", () => {
     await navigate("/about?q=1");
     expect(router.query.q).toBe("1");
   });
+
+  test("composes layouts and passes params/children", async () => {
+    const app = document.createElement("div");
+    document.body.appendChild(app);
+
+    // A page that reads its params, and a root layout that wraps children.
+    const postPage = (props) => {
+      const d = document.createElement("article");
+      d.textContent = `post ${props.params.id}`;
+      return d;
+    };
+    const rootLayout = (props) => {
+      const shell = document.createElement("div");
+      shell.className = "layout";
+      const main = document.createElement("main");
+      if (props.children) main.appendChild(props.children);
+      shell.appendChild(main);
+      return shell;
+    };
+
+    const pages = {
+      "/proj2/app/layout.jsx": { default: rootLayout },
+      "/proj2/app/post/[id]/page.jsx": { default: postPage },
+    };
+
+    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
+    window.history.replaceState({}, "", "/post/7");
+    mountApp({ pages, target: app });
+    await tick();
+
+    // Layout wraps the page; params reached the page.
+    expect(app.querySelector(".layout main article")?.textContent).toBe("post 7");
+  });
 });

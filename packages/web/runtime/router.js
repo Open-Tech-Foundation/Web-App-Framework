@@ -14,7 +14,7 @@
 // emit yet — for now pages read params via the reactive `router.params`.
 
 import { signal } from "../core/signals.js";
-import { mount, runCleanup } from "./mount.js";
+import { runCleanup, runMount } from "./mount.js";
 
 const isBrowser = typeof window !== "undefined";
 
@@ -24,10 +24,10 @@ const state = {
   params: signal({}),
 };
 
-export const routes = { pages: {}, notFound: null };
+export const routes = { pages: {}, layouts: {}, notFound: null };
 let guard = null;
 let rootEl = null;
-let currentNode = null;
+let currentNodes = [];
 
 /** Reactive router facade — getters read signal values (tracked in effects). */
 export const router = {
@@ -51,21 +51,36 @@ export const router = {
 function routeFromPath(filePath) {
   const r = filePath
     .replace(/^.*\/app/, "")
-    .replace(/\/(page|404)\.(jsx|tsx)$/, "");
+    .replace(/\/(page|layout|404)\.(jsx|tsx)$/, "");
   return r === "" ? "/" : r;
 }
 
 /**
- * Register pages from a `{ path: entry }` map. Each `entry` is either a module
+ * Register routes from a `{ path: entry }` map. Each `entry` is either a module
  * namespace (eager) or a `() => import(...)` loader (lazy, code-split) — both
- * resolve to a default-export factory at navigation time.
+ * resolve to a default-export factory at navigation time. `layout.jsx` files
+ * register as layouts (wrapping nested pages), `404.jsx` as the fallback.
  */
 export function registerRoutes(modules) {
   for (const file in modules) {
     const entry = modules[file];
     if (/\/404\.(jsx|tsx)$/.test(file)) routes.notFound = entry;
+    else if (/\/layout\.(jsx|tsx)$/.test(file)) routes.layouts[routeFromPath(file)] = entry;
     else routes.pages[routeFromPath(file)] = entry;
   }
+}
+
+/** Layout entries that wrap `route`, outermost (root) first. */
+function layoutChain(route) {
+  const chain = [];
+  if (!route) return chain;
+  let p = route;
+  while (true) {
+    if (routes.layouts[p]) chain.unshift(routes.layouts[p]);
+    if (p === "/") break;
+    p = p.slice(0, p.lastIndexOf("/")) || "/";
+  }
+  return chain;
 }
 
 /** Resolve a route entry (module namespace or lazy loader) to its factory. */
@@ -86,7 +101,7 @@ function matchRoute(pathname) {
       for (const k in params) {
         if (route.includes(`[...${k}]`)) params[k] = params[k].split("/");
       }
-      return { entry: routes.pages[route], params };
+      return { entry: routes.pages[route], params, route };
     }
   }
   return null;
@@ -128,7 +143,7 @@ export async function navigate(path, replace = false, isPop = false) {
 
   const match =
     matchRoute(url.pathname) ||
-    (routes.notFound ? { entry: routes.notFound, params: {} } : null);
+    (routes.notFound ? { entry: routes.notFound, params: {}, route: null } : null);
 
   state.pathname.value = url.pathname;
   state.searchParams.value = url.searchParams;
@@ -139,32 +154,44 @@ export async function navigate(path, replace = false, isPop = false) {
     else window.history.pushState({}, "", path);
   }
 
-  // Resolve (and lazily load) the page before tearing down the current view, so
-  // a slow/failed import doesn't leave a blank page.
-  let factory = null;
+  // Resolve (and lazily load) the page + its layout chain before tearing down the
+  // current view, so a slow/failed import doesn't leave a blank page.
+  let nodes = null;
   if (match) {
     try {
-      factory = await resolveFactory(match.entry);
+      const props = {
+        params: match.params,
+        query: Object.fromEntries(url.searchParams),
+      };
+      const pageFactory = await resolveFactory(match.entry);
+      let node = pageFactory(props);
+      nodes = [node];
+      // Wrap with layouts from most-specific inward to root outermost.
+      const chain = layoutChain(match.route);
+      for (let i = chain.length - 1; i >= 0; i--) {
+        const layout = await resolveFactory(chain[i]);
+        node = layout({ ...props, children: node });
+        nodes.push(node);
+      }
     } catch (e) {
       console.error("Failed to load route", url.pathname, e);
       rootEl.replaceChildren();
       rootEl.innerHTML = `<pre style="color:#f87171;padding:1rem">Failed to load ${url.pathname}\n${e?.message ?? e}</pre>`;
-      currentNode = null;
+      currentNodes = [];
       return;
     }
   }
 
-  if (currentNode) {
-    runCleanup(currentNode);
-    currentNode.remove();
-  }
+  for (const n of currentNodes) runCleanup(n);
   rootEl.replaceChildren();
 
-  if (factory) {
-    currentNode = mount(factory, rootEl);
+  if (nodes) {
+    rootEl.appendChild(nodes[nodes.length - 1]); // outermost node
+    for (const n of nodes) runMount(n); // run onMount for page + every layout
+    currentNodes = nodes;
   } else {
     rootEl.innerHTML = "<h1>404 — Not Found</h1>";
-    currentNode = null;
+    currentNodes = [];
   }
 }
 

@@ -68,7 +68,7 @@ fn build(file: &str, as_component: bool, from_stdin: bool) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let Some(lowered) = lower_component(file, &parsed.program, &source) else {
+    let Some(lowered) = lower_component(file, &parsed.program, &source, !as_component) else {
         eprintln!("otfw: no component (function returning JSX) found in {file}");
         return ExitCode::FAILURE;
     };

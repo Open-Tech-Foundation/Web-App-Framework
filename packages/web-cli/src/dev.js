@@ -35,16 +35,15 @@ const exclude = new Set(
   (process.env.EXCLUDE_ROUTES ?? "repl,forms-demo").split(",").filter(Boolean),
 );
 
-// Discover file-based routes: every `page.jsx`/`page.tsx` (and the optional
-// top-level `404`) under app/. Layouts are intentionally excluded for now —
-// layout `props.children` composition needs signal-free page props (follow-up).
+// Discover file-based routes under app/: every `page`/`layout` (and the optional
+// top-level `404`). Layouts wrap nested pages.
 function discoverPages(dir) {
   const out = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory() && exclude.has(entry.name)) continue;
     const full = `${dir}/${entry.name}`;
     if (entry.isDirectory()) out.push(...discoverPages(full));
-    else if (/^(page|404)\.[jt]sx$/.test(entry.name)) out.push(full);
+    else if (/^(page|layout|404)\.[jt]sx$/.test(entry.name)) out.push(full);
   }
   return out;
 }

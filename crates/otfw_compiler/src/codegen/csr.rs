@@ -77,11 +77,14 @@ pub fn emit_page(lowered: &Lowered) -> CsrModule {
         lifecycle.push_str(&format!("  {root}.__lifecycle = __lifecycle;\n"));
     }
 
+    // Pages/layouts receive a plain props object (`{ params, query, children }`)
+    // from the router; emit the declared parameter name so `props.*` resolves.
+    let param = lowered.page_param.as_deref().unwrap_or("");
     let export = &lowered.ir.id.export;
     let header = if export == "default" {
-        "export default function () {\n".to_string()
+        format!("export default function ({param}) {{\n")
     } else {
-        format!("export function {export}() {{\n")
+        format!("export function {export}({param}) {{\n")
     };
     let code = format!(
         "{}{}{}{}{}  return {root};\n}}\n",
@@ -641,14 +644,17 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    /// Place the captured child nodes into `parent` at the `{children}` slot.
+    /// Place the children into `parent` at the `{children}` slot. Components splice
+    /// in their captured light-DOM nodes; page/layout factories append the node the
+    /// router passed as `props.children`.
     fn emit_children_slot(&mut self, parent: &str) {
-        match self.lowered.children_local.clone() {
-            Some(local) => {
-                let n = self.fresh("__c");
-                self.line(format!("for (const {n} of {local}) {parent}.appendChild({n});"));
-            }
-            None => self.errors.push("children slot outside a component with children".into()),
+        if let Some(local) = self.lowered.children_local.clone() {
+            let n = self.fresh("__c");
+            self.line(format!("for (const {n} of {local}) {parent}.appendChild({n});"));
+        } else if let Some(param) = self.lowered.page_param.clone() {
+            self.line(format!("if ({param}.children) {parent}.appendChild({param}.children);"));
+        } else {
+            self.errors.push("children slot outside a component with children".into());
         }
     }
 
@@ -807,7 +813,15 @@ mod tests {
         let session = ParseSession::new();
         let parsed = session.parse(Path::new("App.tsx"), source);
         assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
-        lower_component("/app/App.tsx", &parsed.program, source).expect("a component")
+        lower_component("/app/App.tsx", &parsed.program, source, false).expect("a component")
+    }
+
+    /// Lower in page/layout mode (plain props, no signals).
+    fn lower_page(source: &str) -> Lowered {
+        let session = ParseSession::new();
+        let parsed = session.parse(Path::new("page.tsx"), source);
+        assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
+        lower_component("/app/page.tsx", &parsed.program, source, true).expect("a page")
     }
 
     #[test]
@@ -969,6 +983,32 @@ mod tests {
         assert!(m.code.contains("const { name } = (user.value ?? {});"), "code: {}", m.code);
         // Snapshot binding is non-reactive: a plain read.
         assert!(m.code.contains("bindText(t1, () => (name))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn page_uses_plain_props_no_value_injection() {
+        // props.params.* is a plain access (no `.value`); the factory takes the
+        // declared param.
+        let m = emit_page(&lower_page(
+            "export default function P(props) { return <h1>{props.params.id}</h1>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("export default function (props) {"), "code: {}", m.code);
+        assert!(m.code.contains("bindText(t1, () => (props.params.id))"), "code: {}", m.code);
+        assert!(!m.code.contains(".value"), "no signal .value on plain props:\n{}", m.code);
+    }
+
+    #[test]
+    fn layout_renders_props_children_slot() {
+        let m = emit_page(&lower_page(
+            "export default function L(props) { return <main>{props.children}</main>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(
+            m.code.contains("if (props.children) el0.appendChild(props.children);"),
+            "code: {}",
+            m.code
+        );
     }
 
     #[test]

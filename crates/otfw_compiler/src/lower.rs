@@ -154,6 +154,10 @@ pub struct Lowered {
     /// props-object form (`function C(props)`); `None` for destructured props.
     /// Drives a single `const props = this._props;` alias instead of per-key.
     pub props_object: Option<String>,
+    /// For a page/layout factory: the plain props parameter name (`function
+    /// Page(props)`), so codegen emits `function (props) { … }`. `None` when the
+    /// page declares no parameter.
+    pub page_param: Option<String>,
     /// The `...rest` prop, if the destructuring uses one.
     pub rest: Option<RestProp>,
     /// One-time snapshots for nested destructuring patterns.
@@ -200,7 +204,12 @@ impl MacroKind {
 /// `module` is the canonical module path used to form the stable `ComponentId`
 /// (ARCHITECTURE.md §4.8). Returns `None` only when no function component with a
 /// returned JSX view is found.
-pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a str) -> Option<Lowered> {
+pub fn lower_component<'a>(
+    module: &str,
+    program: &'a Program<'a>,
+    source: &'a str,
+    is_page: bool,
+) -> Option<Lowered> {
     let resolved = crate::semantic::resolve(program);
     let scoping = resolved.semantic.scoping();
 
@@ -247,7 +256,7 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
         }
     }
 
-    let classified = classify(func, scoping, source);
+    let classified = classify(func, scoping, source, is_page);
 
     let children_symbol = classified.children.as_ref().and_then(|c| c.symbol);
     let children_local = classified.children.map(|c| c.local);
@@ -259,6 +268,7 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
         classified.by_symbol,
         children_symbol,
         classified.props_symbol,
+        classified.page_param.clone(),
     );
     let view = lowerer.lower_root(jsx)?;
 
@@ -281,6 +291,7 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
         decls: classified.decls,
         props: classified.props,
         props_object: classified.props_object,
+        page_param: classified.page_param,
         rest: classified.rest,
         prop_snapshots: classified.prop_snapshots,
         effects: classified.effects,
@@ -382,6 +393,8 @@ struct Classified {
     /// First-Access `.value` injection; its name drives the codegen alias.
     props_symbol: Option<SymbolId>,
     props_object: Option<String>,
+    /// The plain props parameter name for a page/layout factory, if declared.
+    page_param: Option<String>,
     rest: Option<RestProp>,
     prop_snapshots: Vec<PropSnapshot>,
     effects: Vec<String>,
@@ -398,7 +411,7 @@ struct Classified {
 /// Two passes: first bind every signal's symbol → id (so a later initializer or
 /// the view can reference any of them), then build the declarations with
 /// `.value` injected into initializers/defaults.
-fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Classified {
+fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str, is_page: bool) -> Classified {
     enum Detail<'a> {
         Prop { local: String, attr: String, default: Option<&'a Expression<'a>> },
         Macro { arg: Option<&'a Argument<'a>> },
@@ -419,9 +432,20 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
     let mut rest_prop = None;
     let mut snapshots: Vec<PropSnapshot> = Vec::new();
     let mut named_keys: Vec<String> = Vec::new();
+    let mut page_param = None;
 
-    // Pass 1a: destructured props from the first parameter.
-    if let Some(param) = func.params.items.first() {
+    // Pages/layouts take a plain props object (`{ params, query, children }`)
+    // supplied by the router — no observed signals and no `.value` injection. We
+    // only record the parameter name for the factory signature; `props.children`
+    // and `props.params.*` then lower as ordinary (non-reactive) accesses.
+    if is_page {
+        if let Some(BindingPattern::BindingIdentifier(bi)) =
+            func.params.items.first().map(|p| &p.pattern)
+        {
+            page_param = Some(bi.name.as_str().to_string());
+        }
+    } else if let Some(param) = func.params.items.first() {
+        // Pass 1a: destructured props from the first parameter.
         match &param.pattern {
             BindingPattern::ObjectPattern(obj) => {
                 for prop in &obj.properties {
@@ -618,6 +642,7 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         props,
         props_symbol,
         props_object,
+        page_param,
         rest: rest_prop,
         prop_snapshots: snapshots,
         effects,
@@ -948,6 +973,9 @@ struct Lowerer<'a, 'r> {
     /// The props-object binding's symbol (props-object form), driving First-Access
     /// injection and `{props.children}` slot detection.
     props_symbol: Option<SymbolId>,
+    /// The page/layout plain props parameter name, so `{props.children}` lowers to
+    /// the children slot in page mode (where there is no `props_symbol`).
+    page_param: Option<String>,
     exprs: ExprTable,
     errors: Vec<String>,
 }
@@ -963,6 +991,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         signals: HashMap<SymbolId, SignalId>,
         children_symbol: Option<SymbolId>,
         props_symbol: Option<SymbolId>,
+        page_param: Option<String>,
     ) -> Self {
         Self {
             source,
@@ -970,6 +999,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
             signals,
             children_symbol,
             props_symbol,
+            page_param,
             exprs: ExprTable::default(),
             errors: Vec::new(),
         }
@@ -989,6 +1019,15 @@ impl<'a, 'r> Lowerer<'a, 'r> {
             && m.property.name == "children"
             && let Expression::Identifier(obj) = &m.object
             && resolves_to(self.scoping, obj, ps)
+        {
+            return true;
+        }
+        // Page/layout mode: `<param>.children` (no signal symbol) is the slot.
+        if let Some(param) = &self.page_param
+            && let JSXExpression::StaticMemberExpression(m) = expr
+            && m.property.name == "children"
+            && let Expression::Identifier(obj) = &m.object
+            && obj.name == param.as_str()
         {
             return true;
         }
@@ -1331,7 +1370,7 @@ mod tests {
         let session = ParseSession::new();
         let parsed = session.parse(Path::new("App.tsx"), source);
         assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
-        lower_component("/app/App.tsx", &parsed.program, source).expect("a component")
+        lower_component("/app/App.tsx", &parsed.program, source, false).expect("a component")
     }
 
     #[test]
