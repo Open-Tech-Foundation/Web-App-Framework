@@ -67,8 +67,10 @@ export function loadProject() {
   if (!otfwc) fail("cannot locate the otfwc compiler; set OTFWC_BIN to its path.");
   ensureCompiler(otfwc, workspace);
 
+  // forms-demo depends on @opentf/web-form, which is not yet ported to the new
+  // runtime (it lands with the Project Graph). Override with EXCLUDE_ROUTES.
   const exclude = new Set(
-    (process.env.EXCLUDE_ROUTES ?? "repl,forms-demo").split(",").filter(Boolean),
+    (process.env.EXCLUDE_ROUTES ?? "forms-demo").split(",").filter(Boolean),
   );
 
   return { root, appDir, webEntry, otfwc, workspace, exclude };

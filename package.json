@@ -18,10 +18,9 @@
     "preview": "bun run website:build && wrangler dev",
     "website:dev": "bun run --cwd website dev",
     "website:build": "bun run build:web && bun run --cwd website build",
-    "test": "bun test",
+    "test": "cargo test && bun test packages/web/",
     "deploy": "bun run website:build && wrangler deploy",
     "build:web": "bun run --cwd packages/web build",
-    "build:repl": "bun run scripts/build-standalone.js",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "changeset publish"
