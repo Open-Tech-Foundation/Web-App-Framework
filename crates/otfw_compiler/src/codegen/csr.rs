@@ -42,7 +42,7 @@ impl CsrModule {
 }
 
 /// Which runtime helpers the generated code references (drives the import header).
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Uses {
     signal: bool,
     computed: bool,
@@ -54,8 +54,69 @@ struct Uses {
     spread: bool,
 }
 
+impl Uses {
+    /// Union another unit's helper usage into this one (for module-level headers).
+    fn merge(&mut self, o: &Uses) {
+        self.signal |= o.signal;
+        self.computed |= o.computed;
+        self.effect |= o.effect;
+        self.bind_text |= o.bind_text;
+        self.bind_attr |= o.bind_attr;
+        self.bind_list |= o.bind_list;
+        self.bind_child |= o.bind_child;
+        self.spread |= o.spread;
+    }
+}
+
+/// Build the `import { … } from "@opentf/web";` header for the given helper usage,
+/// merged with the source's own runtime imports (deduped).
+fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
+    let mut names = Vec::new();
+    if uses.signal {
+        names.push("signal");
+    }
+    if uses.computed {
+        names.push("computed");
+    }
+    if uses.effect {
+        names.push("effect");
+    }
+    if uses.bind_text {
+        names.push("bindText");
+    }
+    if uses.bind_attr {
+        names.push("bindAttr");
+    }
+    if uses.bind_list {
+        names.push("bindList");
+    }
+    if uses.bind_child {
+        names.push("bindChild");
+    }
+    if uses.spread {
+        names.push("spread");
+    }
+    let mut merged: Vec<String> = names.into_iter().map(str::to_string).collect();
+    for name in runtime_imports {
+        if !merged.contains(name) {
+            merged.push(name.clone());
+        }
+    }
+    if merged.is_empty() {
+        return String::new();
+    }
+    format!("import {{ {} }} from \"@opentf/web\";\n", merged.join(", "))
+}
+
 /// Emit a page/layout as a factory function returning the root DOM node.
 pub fn emit_page(lowered: &Lowered) -> CsrModule {
+    let (e, body) = page_body(lowered);
+    let code = format!("{}{}{}", e.user_imports(), e.imports(), body);
+    CsrModule { code, errors: e.errors }
+}
+
+/// Build a page factory body (everything after the import header).
+fn page_body(lowered: &Lowered) -> (Emitter<'_>, String) {
     let mut e = Emitter::new(lowered, Disposal::None);
     let root = e.emit_all();
     e.emit_effects();
@@ -86,19 +147,21 @@ pub fn emit_page(lowered: &Lowered) -> CsrModule {
     } else {
         format!("export function {export}({param}) {{\n")
     };
-    let code = format!(
-        "{}{}{}{}{}  return {root};\n}}\n",
-        e.user_imports(),
-        e.imports(),
-        header,
-        e.render("  "),
-        lifecycle,
-    );
-    CsrModule { code, errors: e.errors }
+    let body = format!("{header}{}{lifecycle}  return {root};\n}}\n", e.render("  "));
+    (e, body)
 }
 
 /// Emit a UI component as a Custom Element class + `customElements.define`.
 pub fn emit_component(lowered: &Lowered) -> CsrModule {
+    let (e, body) = component_body(lowered);
+    let code = format!("{}{}{}", e.user_imports(), e.imports(), body);
+    CsrModule { code, errors: e.errors }
+}
+
+/// Build a Custom Element class body (everything after the import header).
+/// `default_export` adds `export default <Class>;` (so the module can be imported
+/// by default), used for standalone component modules.
+fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, String) {
     // Tag/class come from the function name (not the export), so `export default
     // function Counter` registers `web-counter` to match a page's `<Counter/>`.
     let export = lowered.name.clone();
@@ -133,8 +196,6 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     }
 
     let mut code = String::new();
-    code.push_str(&e.user_imports());
-    code.push_str(&e.imports());
     code.push_str(&format!("export class {class} extends HTMLElement {{\n"));
 
     if !props.is_empty() {
@@ -184,12 +245,56 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     code.push_str("  }\n");
     code.push_str("}\n");
     code.push_str(&format!("customElements.define({}, {class});\n", js_string(&tag)));
-    // Default-export the class so a consumer's `import Counter from "./Counter"`
-    // resolves (the binding is unused — the component is referenced by tag — but
-    // the import pulls the module in so its `define` runs).
-    code.push_str(&format!("export default {class};\n"));
+    if default_export {
+        // Default-export the class so a consumer's `import Counter from "./Counter"`
+        // resolves (the binding is unused — the component is referenced by tag — but
+        // the import pulls the module in so its `define` runs).
+        code.push_str(&format!("export default {class};\n"));
+    }
 
-    CsrModule { code, errors: e.errors }
+    (e, code)
+}
+
+/// Single-component module: a Custom Element class with a default export.
+fn component_body(lowered: &Lowered) -> (Emitter<'_>, String) {
+    component_body_ex(lowered, true)
+}
+
+/// Emit a whole module: any preserved top-level statements (helper data,
+/// module-level stores) followed by every component — the page factory (its
+/// `is_page` flag) and co-located Custom Elements — under one merged import
+/// header. This is the multi-component path used by the toolchain.
+pub fn emit_module(components: &[Lowered], module_stmts: &[String]) -> CsrModule {
+    let mut combined = Uses::default();
+    let mut errors = Vec::new();
+    let mut bodies = Vec::new();
+    for c in components {
+        let (e, body) = if c.is_page {
+            page_body(c)
+        } else {
+            component_body_ex(c, false)
+        };
+        combined.merge(&e.uses);
+        errors.extend(e.errors);
+        bodies.push(body);
+    }
+
+    let mut code = String::new();
+    if let Some(first) = components.first() {
+        if !first.imports.is_empty() {
+            code.push_str(&first.imports.join("\n"));
+            code.push('\n');
+        }
+        code.push_str(&import_header(&combined, &first.runtime_imports));
+    }
+    for stmt in module_stmts {
+        code.push_str(stmt);
+        code.push('\n');
+    }
+    for body in bodies {
+        code.push_str(&body);
+    }
+    CsrModule { code, errors }
 }
 
 /// Where effect disposers go: nowhere (page) or a collection sink (component).
@@ -381,43 +486,7 @@ impl<'a> Emitter<'a> {
 
     /// The `import { … } from "@opentf/web";` header for the helpers used.
     fn imports(&self) -> String {
-        let mut names = Vec::new();
-        if self.uses.signal {
-            names.push("signal");
-        }
-        if self.uses.computed {
-            names.push("computed");
-        }
-        if self.uses.effect {
-            names.push("effect");
-        }
-        if self.uses.bind_text {
-            names.push("bindText");
-        }
-        if self.uses.bind_attr {
-            names.push("bindAttr");
-        }
-        if self.uses.bind_list {
-            names.push("bindList");
-        }
-        if self.uses.bind_child {
-            names.push("bindChild");
-        }
-        if self.uses.spread {
-            names.push("spread");
-        }
-        // Merge the source's own `@opentf/web` named imports (e.g. router, Link),
-        // skipping any the generated header already provides.
-        let mut merged: Vec<String> = names.into_iter().map(str::to_string).collect();
-        for name in &self.lowered.runtime_imports {
-            if !merged.contains(name) {
-                merged.push(name.clone());
-            }
-        }
-        if merged.is_empty() {
-            return String::new();
-        }
-        format!("import {{ {} }} from \"@opentf/web\";\n", merged.join(", "))
+        import_header(&self.uses, &self.lowered.runtime_imports)
     }
 
     fn emit_decl(&mut self, decl: &SignalDecl) {
@@ -1042,6 +1111,40 @@ mod tests {
         // Dynamic className also binds the `class` attribute.
         assert!(m.code.contains("bindAttr(el1, \"class\""), "code: {}", m.code);
         assert!(!m.code.contains("className"), "no raw className left:\n{}", m.code);
+    }
+
+    #[test]
+    fn emits_all_components_and_preserves_module_statements() {
+        // A page module declaring a co-located component, a module-level store, and
+        // a plain helper. emit_module must emit ONE runtime import header, the
+        // preserved top-level statements, the page factory (default export), and the
+        // co-located component as a Custom Element.
+        let source = "import { signal } from \"@opentf/web\";\n\
+             export const store = signal(0);\n\
+             const LABEL = \"hi\";\n\
+             function Badge() { return <span>{store}</span>; }\n\
+             export default function Page() { return <div><span>{LABEL}</span></div>; }";
+        let sess = ParseSession::new();
+        let parsed = sess.parse(Path::new("page.tsx"), source);
+        assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
+        let m = crate::lower::lower_module("/app/page.tsx", &parsed.program, source, true)
+            .expect("a module");
+        let out = emit_module(&m.components, &m.module_stmts);
+        assert!(out.is_complete(), "errors: {:?}", out.errors);
+        // Single merged runtime import header.
+        assert_eq!(
+            out.code.matches("from \"@opentf/web\"").count(),
+            1,
+            "one runtime header:\n{}",
+            out.code
+        );
+        // Preserved module-level statements (verbatim).
+        assert!(out.code.contains("export const store = signal(0);"), "store kept:\n{}", out.code);
+        assert!(out.code.contains("const LABEL = \"hi\";"), "helper kept:\n{}", out.code);
+        // The co-located component becomes a Custom Element; the default export the page.
+        assert!(out.code.contains("class BadgeElement extends HTMLElement"), "badge CE:\n{}", out.code);
+        assert!(out.code.contains("customElements.define(\"web-badge\", BadgeElement);"), "badge defined:\n{}", out.code);
+        assert!(out.code.contains("export default function () {"), "page factory:\n{}", out.code);
     }
 
     #[test]

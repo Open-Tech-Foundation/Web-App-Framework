@@ -10,7 +10,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use otfw_compiler::codegen::csr;
-use otfw_compiler::lower::lower_component;
+use otfw_compiler::lower::lower_module;
 use otfw_compiler::parse::ParseSession;
 
 fn main() -> ExitCode {
@@ -68,12 +68,12 @@ fn build(file: &str, as_component: bool, from_stdin: bool) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let Some(lowered) = lower_component(file, &parsed.program, &source, !as_component) else {
+    let Some(lowered) = lower_module(file, &parsed.program, &source, !as_component) else {
         eprintln!("otfw: no component (function returning JSX) found in {file}");
         return ExitCode::FAILURE;
     };
 
-    let module = if as_component { csr::emit_component(&lowered) } else { csr::emit_page(&lowered) };
+    let module = csr::emit_module(&lowered.components, &lowered.module_stmts);
     print!("{}", module.code);
 
     for err in &module.errors {

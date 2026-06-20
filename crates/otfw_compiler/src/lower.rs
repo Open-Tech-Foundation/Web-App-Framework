@@ -141,6 +141,9 @@ pub struct PropSnapshot {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lowered {
     pub ir: ComponentIR,
+    /// Whether to emit this as a page/layout factory (vs. a Custom Element). Set
+    /// for the default export of a page module; co-located components are `false`.
+    pub is_page: bool,
     /// The component's function name (`function Counter` → `Counter`), used to
     /// derive the Custom Element tag/class even for `export default` — so a page's
     /// `<Counter/>` (tag from the JSX name) matches the registered `web-counter`.
@@ -226,16 +229,125 @@ pub fn lower_component<'a>(
 ) -> Option<Lowered> {
     let resolved = crate::semantic::resolve(program);
     let scoping = resolved.semantic.scoping();
-
+    let (imports, runtime_imports) = collect_imports(program, source);
     let (export, func) = find_component(program)?;
-    let body = func.body.as_deref()?;
-    let name = func.id.as_ref().map(|id| id.name.as_str().to_string()).unwrap_or_else(|| export.clone());
+    lower_one(module, &export, func, scoping, source, is_page, &imports, &runtime_imports, is_page)
+}
 
-    // Preserve the module's top-level imports so the bundler resolves them.
-    // Imports from the runtime (`@opentf/web`) are special-cased: their named
-    // specifiers are merged into the single generated runtime import (so a user
-    // `import { signal }` doesn't clash with our emitted one), and compiler macros
-    // (`$state`/`$effect`/…) are dropped since they aren't real runtime exports.
+/// A whole `.jsx` module: every component it declares (the page factory plus any
+/// co-located Custom Elements) and the preserved top-level statements between them.
+pub struct LoweredModule {
+    /// Each component, in source order. Exactly the default export is a page when
+    /// `is_page_module`; the rest are Custom Elements.
+    pub components: Vec<Lowered>,
+    /// Preserved top-level statements (helper data, module-level stores).
+    pub module_stmts: Vec<String>,
+}
+
+/// Lower an entire module: all JSX-returning top-level functions become
+/// components (the default export is the page when `is_page_module`), and other
+/// top-level statements (non-import, non-component) are preserved verbatim so the
+/// components' references resolve.
+pub fn lower_module<'a>(
+    module: &str,
+    program: &'a Program<'a>,
+    source: &'a str,
+    is_page_module: bool,
+) -> Option<LoweredModule> {
+    let resolved = crate::semantic::resolve(program);
+    let scoping = resolved.semantic.scoping();
+    let (imports, runtime_imports) = collect_imports(program, source);
+
+    let mut components = Vec::new();
+    let mut module_stmts = Vec::new();
+    for stmt in &program.body {
+        if let Some((export, func, is_default)) = component_of(stmt) {
+            let role = is_page_module && is_default;
+            if let Some(lowered) =
+                lower_one(module, &export, func, scoping, source, role, &imports, &runtime_imports, role)
+            {
+                components.push(lowered);
+            }
+        } else if !matches!(stmt, Statement::ImportDeclaration(_)) {
+            // Preserve helper data / module-level stores verbatim.
+            module_stmts.push(slice_span(source, stmt.span()));
+        }
+    }
+    if components.is_empty() {
+        return None;
+    }
+    Some(LoweredModule { components, module_stmts })
+}
+
+/// Lower one component function to its `Lowered` facts.
+#[allow(clippy::too_many_arguments)]
+fn lower_one<'a>(
+    module: &str,
+    export: &str,
+    func: &'a Function<'a>,
+    scoping: &Scoping,
+    source: &'a str,
+    is_page: bool,
+    imports: &[String],
+    runtime_imports: &[String],
+    is_page_role: bool,
+) -> Option<Lowered> {
+    let body = func.body.as_deref()?;
+    let name = func.id.as_ref().map(|id| id.name.as_str().to_string()).unwrap_or_else(|| export.to_string());
+
+    let classified = classify(func, scoping, source, is_page);
+
+    let children_symbol = classified.children.as_ref().and_then(|c| c.symbol);
+    let children_local = classified.children.map(|c| c.local);
+
+    let jsx = returned_jsx(body)?;
+    let mut lowerer = Lowerer::new(
+        source,
+        scoping,
+        classified.by_symbol,
+        children_symbol,
+        classified.props_symbol,
+        classified.page_param.clone(),
+    );
+    let view = lowerer.lower_root(jsx)?;
+
+    let mut errors = classified.errors;
+    errors.extend(lowerer.errors);
+
+    let ir = ComponentIR {
+        id: ComponentId::new(module, export.to_string()),
+        view,
+        signals: classified.infos,
+        imports: Vec::new(),
+        exports: Vec::new(),
+    };
+    Some(Lowered {
+        ir,
+        is_page: is_page_role,
+        name,
+        imports: imports.to_vec(),
+        runtime_imports: runtime_imports.to_vec(),
+        exprs: lowerer.exprs,
+        decls: classified.decls,
+        body: classified.body,
+        props: classified.props,
+        props_object: classified.props_object,
+        page_param: classified.page_param,
+        rest: classified.rest,
+        prop_snapshots: classified.prop_snapshots,
+        effects: classified.effects,
+        exposes: classified.exposes,
+        on_mounts: classified.on_mounts,
+        on_cleanups: classified.on_cleanups,
+        children_local,
+        errors,
+    })
+}
+
+/// Collect the module's top-level imports. `@opentf/web` named specifiers are
+/// returned separately (merged into the single generated runtime import); compiler
+/// macros are dropped; all other imports are preserved verbatim.
+fn collect_imports(program: &Program, source: &str) -> (Vec<String>, Vec<String>) {
     let mut imports = Vec::new();
     let mut runtime_imports = Vec::new();
     for stmt in &program.body {
@@ -260,7 +372,6 @@ pub fn lower_component<'a>(
                             format!("{imported} as {local}")
                         });
                     }
-                    // Default / namespace import from the runtime: keep verbatim.
                     _ => verbatim = true,
                 }
             }
@@ -269,53 +380,36 @@ pub fn lower_component<'a>(
             imports.push(slice_span(source, decl.span));
         }
     }
+    (imports, runtime_imports)
+}
 
-    let classified = classify(func, scoping, source, is_page);
-
-    let children_symbol = classified.children.as_ref().and_then(|c| c.symbol);
-    let children_local = classified.children.map(|c| c.local);
-
-    let jsx = returned_jsx(body)?;
-    let mut lowerer = Lowerer::new(
-        source,
-        scoping,
-        classified.by_symbol,
-        children_symbol,
-        classified.props_symbol,
-        classified.page_param.clone(),
-    );
-    let view = lowerer.lower_root(jsx)?;
-
-    let mut errors = classified.errors;
-    errors.extend(lowerer.errors);
-
-    let ir = ComponentIR {
-        id: ComponentId::new(module, export),
-        view,
-        signals: classified.infos,
-        imports: Vec::new(),
-        exports: Vec::new(),
-    };
-    Some(Lowered {
-        ir,
-        name,
-        imports,
-        runtime_imports,
-        exprs: lowerer.exprs,
-        decls: classified.decls,
-        body: classified.body,
-        props: classified.props,
-        props_object: classified.props_object,
-        page_param: classified.page_param,
-        rest: classified.rest,
-        prop_snapshots: classified.prop_snapshots,
-        effects: classified.effects,
-        exposes: classified.exposes,
-        on_mounts: classified.on_mounts,
-        on_cleanups: classified.on_cleanups,
-        children_local,
-        errors,
-    })
+/// If `stmt` declares a JSX-returning function component, return its export name,
+/// the function, and whether it is the default export.
+fn component_of<'a>(stmt: &'a Statement<'a>) -> Option<(String, &'a Function<'a>, bool)> {
+    match stmt {
+        Statement::FunctionDeclaration(f) if has_jsx_return(f) => {
+            let name = f.id.as_ref()?.name.as_str().to_string();
+            Some((name, f, false))
+        }
+        Statement::ExportNamedDeclaration(e) => {
+            if let Some(Declaration::FunctionDeclaration(f)) = &e.declaration
+                && has_jsx_return(f)
+                && let Some(id) = &f.id
+            {
+                return Some((id.name.as_str().to_string(), f, false));
+            }
+            None
+        }
+        Statement::ExportDefaultDeclaration(e) => {
+            if let ExportDefaultDeclarationKind::FunctionDeclaration(f) = &e.declaration
+                && has_jsx_return(f)
+            {
+                return Some(("default".to_string(), f, true));
+            }
+            None
+        }
+        _ => None,
+    }
 }
 
 /// Find the first function-declaration component and its export name.
