@@ -13,7 +13,7 @@
     "website"
   ],
   "scripts": {
-    "dev": "bun scripts/dev-csr.js",
+    "dev": "bun packages/web-cli/src/dev.js",
     "dev:vite": "vite playground",
     "playground:build": "bun run build:web && vite build playground",
     "preview": "bun run website:build && wrangler dev",

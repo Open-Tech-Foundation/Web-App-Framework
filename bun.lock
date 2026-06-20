@@ -37,6 +37,19 @@
       "name": "@opentf/web",
       "version": "0.5.0",
     },
+    "packages/web-cli": {
+      "name": "@opentf/web-cli",
+      "version": "0.0.1",
+      "bin": {
+        "otfw-dev": "./src/dev.js",
+      },
+      "dependencies": {
+        "rolldown": "1.0.0-rc.17",
+      },
+      "peerDependencies": {
+        "@opentf/web": "*",
+      },
+    },
     "packages/web-form": {
       "name": "@opentf/web-form",
       "version": "0.1.0",
@@ -312,6 +325,8 @@
     "@opentf/std": ["@opentf/std@0.13.0", "", {}, "sha512-VG9vn7oML5prxWipDvod1X7z9+3fyyCbw+SuD5F7cWx9F1bXFZdAYGIKGqqHLtfxz3mrXZWHcxnm8d0YwQ7tKQ=="],
 
     "@opentf/web": ["@opentf/web@workspace:packages/web"],
+
+    "@opentf/web-cli": ["@opentf/web-cli@workspace:packages/web-cli"],
 
     "@opentf/web-form": ["@opentf/web-form@workspace:packages/web-form"],
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 // OpenTF Web — CSR dev server (our orchestrator, ARCHITECTURE §8).
 //
 // Drives Rolldown (used as a library) to bundle the app: our Rust compiler runs
@@ -5,15 +6,17 @@
 // Rolldown resolves/links the module graph (incl. `@opentf/web` + composed
 // components), and Bun.serve serves the bundle with SSE live-reload on rebuild.
 //
-// Usage:  bun scripts/dev-csr.js [route]   (default route: "counter")
-//   → serves playground/app/<route>/page.jsx
+// Usage:  otfw-dev [route]   (default route: "counter")
+//   → serves <cwd>/playground/app/<route>/page.jsx
+//
+// Run from the monorepo root (`bun run dev`): the project root is `process.cwd()`.
 
 import { watch } from "rolldown";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-const root = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+const root = process.cwd();
 const route = process.argv[2] ?? "counter";
-const port = Number(process.env.PORT ?? 5173);
+const port = Number(process.env.PORT ?? 5175);
 
 const pagePath = `${root}/playground/app/${route}/page.jsx`;
 if (!existsSync(pagePath)) {
@@ -25,7 +28,11 @@ if (!existsSync(pagePath)) {
 const otfw = `${root}/target/debug/otfw`;
 if (!existsSync(otfw)) {
   console.log("building compiler (cargo build -p otfw_cli)…");
-  const b = Bun.spawnSync(["cargo", "build", "-p", "otfw_cli"], { cwd: root, stdout: "inherit", stderr: "inherit" });
+  const b = Bun.spawnSync(["cargo", "build", "-p", "otfw_cli"], {
+    cwd: root,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   if (b.exitCode !== 0) process.exit(b.exitCode);
 }
 
@@ -45,12 +52,17 @@ const otfwPlugin = {
   name: "otfw",
   transform(code, id) {
     if (!/\.[jt]sx$/.test(id)) return null;
-    const base = id.split("/").pop().replace(/\.[jt]sx$/, "");
+    const base = id
+      .split("/")
+      .pop()
+      .replace(/\.[jt]sx$/, "");
     const isPage = base === "page" || base === "layout" || base === "404";
     const args = ["build"];
     if (!isPage) args.push("--component");
     args.push("--stdin", id);
-    const proc = Bun.spawnSync([otfw, ...args], { stdin: new TextEncoder().encode(code) });
+    const proc = Bun.spawnSync([otfw, ...args], {
+      stdin: new TextEncoder().encode(code),
+    });
     if (proc.exitCode !== 0) {
       throw new Error(`otfw failed for ${id}:\n${proc.stderr.toString()}`);
     }
@@ -63,7 +75,11 @@ const otfwPlugin = {
 const clients = new Set();
 function reload() {
   for (const c of clients) {
-    try { c.enqueue("data: reload\n\n"); } catch { clients.delete(c); }
+    try {
+      c.enqueue("data: reload\n\n");
+    } catch {
+      clients.delete(c);
+    }
   }
 }
 
@@ -101,25 +117,42 @@ Bun.serve({
   fetch(req) {
     const { pathname } = new URL(req.url);
     if (pathname === "/" || pathname === `/${route}`) {
-      return new Response(shell(existsSync(cssPath)), { headers: { "content-type": "text/html" } });
+      return new Response(shell(existsSync(cssPath)), {
+        headers: { "content-type": "text/html" },
+      });
     }
     if (pathname === "/bundle.js") {
       const f = `${devDir}/csr/bundle.js`;
-      if (!existsSync(f)) return new Response("// building…", { headers: { "content-type": "text/javascript" } });
-      return new Response(readFileSync(f), { headers: { "content-type": "text/javascript" } });
+      if (!existsSync(f))
+        return new Response("// building…", {
+          headers: { "content-type": "text/javascript" },
+        });
+      return new Response(readFileSync(f), {
+        headers: { "content-type": "text/javascript" },
+      });
     }
     if (pathname === "/global.css" && existsSync(cssPath)) {
-      return new Response(readFileSync(cssPath), { headers: { "content-type": "text/css" } });
+      return new Response(readFileSync(cssPath), {
+        headers: { "content-type": "text/css" },
+      });
     }
     if (pathname === "/__reload") {
       return new Response(
         new ReadableStream({
           start(controller) {
             clients.add(controller);
-            req.signal.addEventListener("abort", () => clients.delete(controller));
+            req.signal.addEventListener("abort", () =>
+              clients.delete(controller),
+            );
           },
         }),
-        { headers: { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" } },
+        {
+          headers: {
+            "content-type": "text/event-stream",
+            "cache-control": "no-cache",
+            connection: "keep-alive",
+          },
+        },
       );
     }
     return new Response("not found", { status: 404 });

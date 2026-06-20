@@ -1,0 +1,21 @@
+{
+  "name": "@opentf/web-cli",
+  "version": "0.0.1",
+  "description": "OpenTF Web dev toolchain — the Rolldown-driven CSR dev server (no Vite).",
+  "type": "module",
+  "bin": {
+    "otfw-dev": "./src/dev.js"
+  },
+  "exports": {
+    ".": "./src/dev.js"
+  },
+  "dependencies": {
+    "rolldown": "1.0.0-rc.17"
+  },
+  "peerDependencies": {
+    "@opentf/web": "*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
