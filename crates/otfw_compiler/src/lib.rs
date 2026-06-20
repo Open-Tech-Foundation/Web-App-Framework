@@ -14,7 +14,7 @@ pub use otfw_ir;
 pub mod parse;
 
 /// Stage 2: Bind / Resolve into the Semantic Model.
-pub mod semantic {}
+pub mod semantic;
 
 /// Stage 3: Lower the Semantic Model into the domain-specific IRs.
 pub mod lower {}
