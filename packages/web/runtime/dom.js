@@ -66,12 +66,31 @@ export function spread(el, obj, asProps) {
 }
 
 /**
- * Wire a text node to a reactive expression. Returns the effect disposer so the
- * caller (component lifecycle) can stop updates.
+ * Wire a text node to a reactive expression. Primitive values update the text in
+ * place; a DOM node (or array of them) — e.g. JSX stored as a value, `{iconMap[k]}`
+ * — is inserted before the text node, which stays as a stable anchor. Returns the
+ * effect disposer so the caller (component lifecycle) can stop updates.
  */
 export function bindText(node, fn) {
+  let inserted = [];
   return effect(() => {
-    node.data = toText(fn());
+    const value = fn();
+    for (const n of inserted) {
+      if (n.parentNode) n.parentNode.removeChild(n);
+    }
+    inserted = [];
+    if (value instanceof Node || Array.isArray(value)) {
+      node.data = "";
+      const parent = node.parentNode;
+      if (parent) {
+        for (const n of toNodes(value)) {
+          parent.insertBefore(n, node);
+          inserted.push(n);
+        }
+      }
+    } else {
+      node.data = toText(value);
+    }
   });
 }
 

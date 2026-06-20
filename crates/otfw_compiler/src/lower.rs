@@ -79,13 +79,18 @@ impl ExprTable {
 }
 
 /// One item of a component/page body, in source order.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BodyItem {
     /// A reactive signal declaration (`$state`/`$derived`/`$ref`).
     Signal(SignalDecl),
     /// A preserved statement, verbatim with `.value` injected (local consts,
     /// helper functions, event handlers, etc.).
     Raw(String),
+    /// A preserved statement that embeds JSX as a value (`const icon = <Icon/>`,
+    /// `const map = { a: <A/> }`): the statement source with `.value` injected and
+    /// each embedded JSX replaced by a NUL placeholder, plus a node-builder view per
+    /// placeholder (codegen emits the builders and substitutes the calls).
+    Jsx { template: String, nodes: Vec<ViewNode> },
 }
 
 /// A signal declaration to emit at the top of the generated factory.
@@ -245,8 +250,11 @@ pub struct LoweredModule {
     /// Each component, in source order. Exactly the default export is a page when
     /// `is_page_module`; the rest are Custom Elements.
     pub components: Vec<Lowered>,
-    /// Preserved top-level statements (helper data, module-level stores).
-    pub module_stmts: Vec<String>,
+    /// Preserved top-level statements (helper data, module-level stores, and
+    /// JSX-as-value declarations templated with node-builders).
+    pub module_stmts: Vec<BodyItem>,
+    /// Expression table for any JSX-as-value node-builders in `module_stmts`.
+    pub module_exprs: ExprTable,
 }
 
 /// Lower an entire module: all JSX-returning top-level functions become
@@ -263,6 +271,9 @@ pub fn lower_module<'a>(
     let scoping = resolved.semantic.scoping();
     let (imports, runtime_imports) = collect_imports(program, source);
 
+    // A module-scope lowerer (no component signals) templates JSX-as-value in
+    // preserved top-level statements; its expr table travels with the module.
+    let mut module_lowerer = Lowerer::new(source, scoping, HashMap::new(), None, None, None);
     let mut components = Vec::new();
     let mut module_stmts = Vec::new();
     for stmt in &program.body {
@@ -274,14 +285,47 @@ pub fn lower_module<'a>(
                 components.push(lowered);
             }
         } else if !matches!(stmt, Statement::ImportDeclaration(_)) {
-            // Preserve helper data / module-level stores verbatim.
-            module_stmts.push(slice_span(source, stmt.span()));
+            // Preserve helper data / module-level stores (templating any JSX values).
+            module_stmts.push(module_lowerer.lower_stmt(stmt));
         }
     }
     if components.is_empty() {
         return None;
     }
-    Some(LoweredModule { components, module_stmts })
+    Some(LoweredModule { components, module_stmts, module_exprs: module_lowerer.exprs })
+}
+
+/// A minimal `Lowered` carrying just an expr table and body: a codegen context for
+/// emitting module-scope statements (and their JSX-as-value node-builders).
+pub fn module_shell(module: &str, exprs: ExprTable, body: Vec<BodyItem>) -> Lowered {
+    Lowered {
+        ir: ComponentIR {
+            id: ComponentId::new(module, "module".to_string()),
+            view: ViewNode::Fragment(Vec::new()),
+            signals: Vec::new(),
+            imports: Vec::new(),
+            exports: Vec::new(),
+        },
+        is_page: false,
+        is_default_export: false,
+        name: "module".to_string(),
+        imports: Vec::new(),
+        runtime_imports: Vec::new(),
+        exprs,
+        decls: Vec::new(),
+        body,
+        props: Vec::new(),
+        props_object: None,
+        page_param: None,
+        rest: None,
+        prop_snapshots: Vec::new(),
+        effects: Vec::new(),
+        exposes: Vec::new(),
+        on_mounts: Vec::new(),
+        on_cleanups: Vec::new(),
+        children_local: None,
+        errors: Vec::new(),
+    }
 }
 
 /// Lower one component function to its `Lowered` facts.
@@ -317,6 +361,37 @@ fn lower_one<'a>(
     );
     let view = lowerer.lower_root(jsx)?;
 
+    // Ordered body: interleave signal declarations with preserved statements (local
+    // data, helper functions, event handlers, JSX-as-value) so the view's references
+    // resolve. Signals are consumed in source order from `decls`. Built here (not in
+    // `classify`) so JSX-bearing statements can be lowered through the `Lowerer`.
+    let mut body = Vec::new();
+    let mut decl_iter = classified.decls.iter();
+    if let Some(fbody) = callable.body() {
+        for stmt in &fbody.statements {
+            match stmt {
+                // The returned JSX (or an expression arrow's JSX) becomes the view.
+                Statement::ReturnStatement(_) => {}
+                Statement::ExpressionStatement(es)
+                    if has_jsx_expr(unwrap_paren(&es.expression)) => {}
+                // `$state`/`$derived`/`$ref` declarations → signal items (in order).
+                Statement::VariableDeclaration(vd) if is_macro_decl(vd) => {
+                    for d in &vd.declarations {
+                        if matches!(&d.init, Some(Expression::CallExpression(c)) if macro_kind(c).is_some())
+                            && let Some(decl) = decl_iter.next()
+                        {
+                            body.push(BodyItem::Signal(decl.clone()));
+                        }
+                    }
+                }
+                // `$effect`/`$expose`/`onMount`/`onCleanup` collected separately.
+                Statement::ExpressionStatement(es) if is_lifecycle_stmt(es) => {}
+                // Everything else is preserved (verbatim, or templated if it has JSX).
+                other => body.push(lowerer.lower_stmt(other)),
+            }
+        }
+    }
+
     let mut errors = classified.errors;
     errors.extend(lowerer.errors);
 
@@ -336,7 +411,7 @@ fn lower_one<'a>(
         runtime_imports: runtime_imports.to_vec(),
         exprs: lowerer.exprs,
         decls: classified.decls,
-        body: classified.body,
+        body,
         props: classified.props,
         props_object: classified.props_object,
         page_param: classified.page_param,
@@ -557,7 +632,6 @@ struct Classified {
     by_symbol: HashMap<SymbolId, SignalId>,
     infos: Vec<SignalInfo>,
     decls: Vec<SignalDecl>,
-    body: Vec<BodyItem>,
     props: Vec<PropDecl>,
     /// The props-object binding (`function C(props)`): its symbol drives
     /// First-Access `.value` injection; its name drives the codegen alias.
@@ -805,47 +879,10 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
         .collect();
 
-    // Ordered body: interleave signal declarations with preserved statements
-    // (local data, helper functions, event handlers) so the view's references
-    // resolve. Signals are consumed in source order from `decls`.
-    let mut body = Vec::new();
-    let mut decl_iter = decls.iter();
-    if let Some(fbody) = callable.body() {
-        for stmt in &fbody.statements {
-            match stmt {
-                // The returned JSX becomes the view, not a statement.
-                Statement::ReturnStatement(_) => {}
-                // An expression-bodied arrow's JSX (`() => <div/>`) is the view too.
-                Statement::ExpressionStatement(es) if has_jsx_expr(unwrap_paren(&es.expression)) => {}
-                // `$state`/`$derived`/`$ref` declarations → signal items (in order).
-                Statement::VariableDeclaration(vd) if is_macro_decl(vd) => {
-                    for d in &vd.declarations {
-                        if matches!(&d.init, Some(Expression::CallExpression(c)) if macro_kind(c).is_some())
-                            && let Some(decl) = decl_iter.next()
-                        {
-                            body.push(BodyItem::Signal(decl.clone()));
-                        }
-                    }
-                }
-                // `$effect`/`$expose`/`onMount`/`onCleanup` are collected separately.
-                Statement::ExpressionStatement(es) if is_lifecycle_stmt(es) => {}
-                // Everything else is preserved verbatim with `.value` injected.
-                other => body.push(BodyItem::Raw(inject_stmt(
-                    source,
-                    scoping,
-                    &by_symbol,
-                    props_symbol,
-                    other,
-                ))),
-            }
-        }
-    }
-
     Classified {
         by_symbol,
         infos,
         decls,
-        body,
         props,
         props_symbol,
         props_object,
@@ -1332,6 +1369,44 @@ impl<'a, 'r> Lowerer<'a, 'r> {
             .collect();
         let expr = self.exprs.intern(ExprInfo { code: template, deps: Vec::new() });
         ViewNode::DynamicNode { expr, branches: branch_nodes }
+    }
+
+    /// Lower a preserved body statement. Statements without JSX are kept verbatim
+    /// with `.value` injected. A statement embedding JSX as a value
+    /// (`const icon = <Icon/>`) is templated like a dynamic node: each outermost
+    /// JSX becomes a node-builder branch and is replaced by a placeholder.
+    fn lower_stmt(&mut self, stmt: &'a Statement<'a>) -> BodyItem {
+        let mut probe = JsxProbe { found: false };
+        probe.visit_statement(stmt);
+        if !probe.found {
+            return BodyItem::Raw(inject_stmt(
+                self.source,
+                self.scoping,
+                &self.signals,
+                self.props_symbol,
+                stmt,
+            ));
+        }
+        let (ends, branches) = {
+            let mut t = NodeTemplater {
+                scoping: self.scoping,
+                signals: &self.signals,
+                props_symbol: self.props_symbol,
+                ends: Vec::new(),
+                branches: Vec::new(),
+            };
+            t.visit_statement(stmt);
+            (t.ends, t.branches)
+        };
+        let template = build_template(self.source, stmt.span(), ends, &branches);
+        let nodes = branches
+            .into_iter()
+            .map(|b| match b {
+                JsxBranch::Element(e) => self.lower_element(e),
+                JsxBranch::Fragment(f) => ViewNode::Fragment(self.lower_children(&f.children)),
+            })
+            .collect();
+        BodyItem::Jsx { template, nodes }
     }
 
     fn lower_root(&mut self, expr: &'a Expression<'a>) -> Option<ViewNode> {

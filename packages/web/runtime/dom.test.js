@@ -61,6 +61,25 @@ describe("bindText", () => {
     n.value = 2;
     expect(node.data).toBe("1");
   });
+
+  test("inserts node-valued expressions (JSX stored as a value) and swaps them", () => {
+    const parent = document.createElement("div");
+    const anchor = document.createTextNode("");
+    parent.appendChild(anchor);
+    const a = document.createElement("i");
+    const b = document.createElement("b");
+    const which = signal(a);
+    bindText(anchor, () => which.value);
+    expect(parent.querySelector("i")).toBe(a);
+    expect(parent.querySelector("b")).toBeNull();
+    which.value = b;
+    expect(parent.querySelector("i")).toBeNull();
+    expect(parent.querySelector("b")).toBe(b);
+    // Falling back to text removes the previously inserted node.
+    which.value = "hi";
+    expect(parent.querySelector("b")).toBeNull();
+    expect(parent.textContent).toBe("hi");
+  });
 });
 
 describe("bindAttr", () => {

@@ -19,7 +19,7 @@ use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
 use otfw_ir::ExpressionId;
 
-use crate::lower::{BodyItem, Lowered, SignalDecl};
+use crate::lower::{module_shell, BodyItem, ExprTable, Lowered, SignalDecl};
 
 /// The SVG namespace; elements under `<svg>` are created with `createElementNS`
 /// (SPEC §5.8).
@@ -264,7 +264,11 @@ fn component_body(lowered: &Lowered) -> (Emitter<'_>, String) {
 /// module-level stores) followed by every component — the page factory (its
 /// `is_page` flag) and co-located Custom Elements — under one merged import
 /// header. This is the multi-component path used by the toolchain.
-pub fn emit_module(components: &[Lowered], module_stmts: &[String]) -> CsrModule {
+pub fn emit_module(
+    components: &[Lowered],
+    module_stmts: &[BodyItem],
+    module_exprs: &ExprTable,
+) -> CsrModule {
     let mut combined = Uses::default();
     let mut errors = Vec::new();
     let mut bodies = Vec::new();
@@ -281,6 +285,22 @@ pub fn emit_module(components: &[Lowered], module_stmts: &[String]) -> CsrModule
         bodies.push(body);
     }
 
+    // Emit the preserved module-level statements through a module-scope context so
+    // any JSX-as-value declarations get their node-builders (and `Uses` merged into
+    // the shared import header).
+    let shell = module_shell("", module_exprs.clone(), module_stmts.to_vec());
+    let mut me = Emitter::new(&shell, Disposal::None);
+    for item in shell.body.clone() {
+        match item {
+            BodyItem::Signal(decl) => me.emit_decl(&decl),
+            BodyItem::Raw(stmt) => me.line(stmt),
+            BodyItem::Jsx { template, nodes } => me.emit_value_stmt(&template, &nodes),
+        }
+    }
+    let module_code = me.render("");
+    combined.merge(&me.uses);
+    errors.extend(me.errors.clone());
+
     let mut code = String::new();
     if let Some(first) = components.first() {
         if !first.imports.is_empty() {
@@ -289,8 +309,8 @@ pub fn emit_module(components: &[Lowered], module_stmts: &[String]) -> CsrModule
         }
         code.push_str(&import_header(&combined, &first.runtime_imports));
     }
-    for stmt in module_stmts {
-        code.push_str(stmt);
+    if !module_code.is_empty() {
+        code.push_str(&module_code);
         code.push('\n');
     }
     for body in bodies {
@@ -430,6 +450,7 @@ impl<'a> Emitter<'a> {
             match item {
                 BodyItem::Signal(decl) => self.emit_decl(&decl),
                 BodyItem::Raw(stmt) => self.line(stmt),
+                BodyItem::Jsx { template, nodes } => self.emit_value_stmt(&template, &nodes),
             }
         }
         self.emit_node(&self.lowered.ir.view)
@@ -674,6 +695,20 @@ impl<'a> Emitter<'a> {
         self.bind(format!("bindChild({anchor}, () => ({code}))"));
     }
 
+    /// Emit a preserved statement that embeds JSX as a value: a node-builder per
+    /// embedded JSX, then the templated statement with each placeholder calling its
+    /// builder (so `const icon = <Icon/>` becomes `const icon = Page_value0();`).
+    fn emit_value_stmt(&mut self, template: &str, nodes: &[ViewNode]) {
+        let mut calls = Vec::with_capacity(nodes.len());
+        for node in nodes {
+            let fn_name = format!("{}_value{}", self.base, self.list_counter);
+            self.list_counter += 1;
+            self.build_fn(&fn_name, node, "");
+            calls.push(format!("{fn_name}()"));
+        }
+        self.line(substitute_branches(template, &calls));
+    }
+
     /// Compose a child component: `<Foo .../>` → `document.createElement("web-foo")`.
     fn emit_component_use(&mut self, name: &str, props: &[Prop], children: &[ViewNode]) -> String {
         let var = self.fresh("c");
@@ -710,6 +745,17 @@ impl<'a> Emitter<'a> {
             }
             ViewNode::DynamicNode { expr, branches } => {
                 self.emit_dynamic_node(parent, *expr, branches);
+            }
+            // A text hole: append the anchor text node *before* binding so that a
+            // node-valued expression (JSX stored as a value) can insert before it on
+            // the first run (the anchor must already be attached).
+            ViewNode::Dynamic { expr } => {
+                let code = self.lowered.exprs.code(*expr).unwrap_or("null").to_string();
+                let var = self.fresh("t");
+                self.line(format!("const {var} = document.createTextNode(\"\");"));
+                self.line(format!("{parent}.appendChild({var});"));
+                self.uses.bind_text = true;
+                self.bind(format!("bindText({var}, () => ({code}))"));
             }
             ViewNode::Children => self.emit_children_slot(parent),
             _ => {
@@ -931,8 +977,8 @@ mod tests {
              const el0 = document.createElement(\"button\");\n  \
              el0.onclick = () => count.value++;\n  \
              const t1 = document.createTextNode(\"\");\n  \
-             bindText(t1, () => (count.value));\n  \
              el0.appendChild(t1);\n  \
+             bindText(t1, () => (count.value));\n  \
              return el0;\n}\n"
         );
     }
@@ -955,8 +1001,8 @@ mod tests {
              const el0 = document.createElement(\"button\");\n    \
              el0.onclick = () => count.value++;\n    \
              const t1 = document.createTextNode(\"\");\n    \
-             this._cleanups.push(bindText(t1, () => (count.value)));\n    \
              el0.appendChild(t1);\n    \
+             this._cleanups.push(bindText(t1, () => (count.value)));\n    \
              this.appendChild(el0);\n  \
              }\n  \
              disconnectedCallback() {\n    \
@@ -1126,7 +1172,7 @@ mod tests {
         assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
         let m = crate::lower::lower_module("/app/page.tsx", &parsed.program, source, true)
             .expect("a module");
-        let out = emit_module(&m.components, &m.module_stmts);
+        let out = emit_module(&m.components, &m.module_stmts, &m.module_exprs);
         assert!(out.is_complete(), "errors: {:?}", out.errors);
         // The arrow component becomes a Custom Element with its prop.
         assert!(out.code.contains("class IconElement extends HTMLElement"), "icon CE:\n{}", out.code);
@@ -1135,6 +1181,44 @@ mod tests {
         // No raw JSX survives into the output.
         assert!(!out.code.contains("<svg"), "no raw JSX:\n{}", out.code);
         assert!(!out.code.contains("=>") || !out.code.contains("<Icon"), "no raw <Icon:\n{}", out.code);
+    }
+
+    #[test]
+    fn lowers_jsx_stored_as_a_value() {
+        // JSX in a value position (object literal) is lowered to node-builders and
+        // the statement keeps the structure with builder calls — no raw JSX leaks.
+        let m = emit_page(&lower(
+            "export default function P() { const icon = <i>x</i>; const map = { a: <b>y</b> }; let s = $state(\"a\"); return <div>{icon}{map[s]}</div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(!m.code.contains("<i>") && !m.code.contains("<b>"), "no raw JSX:\n{}", m.code);
+        // Builder functions for each embedded JSX value.
+        assert!(m.code.contains("_value0()"), "value builder:\n{}", m.code);
+        assert!(m.code.contains("const icon = "), "icon kept:\n{}", m.code);
+        assert!(m.code.contains("const map = {"), "map kept:\n{}", m.code);
+        // The text-hole anchor is appended before binding (so node values insert).
+        let appended = m.code.find("appendChild(t").unwrap();
+        let bound = m.code.find("bindText(t").unwrap();
+        assert!(appended < bound, "anchor appended before bind:\n{}", m.code);
+    }
+
+    #[test]
+    fn lowers_module_level_jsx_value_map() {
+        // The classic `const iconMap = { a: <A/> }` at module scope: the map keeps
+        // its shape with module-scope node-builders; no raw JSX leaks.
+        let source = "const A = () => <i>a</i>;\n\
+             const map = { a: <A/> };\n\
+             export default function P() { let s = $state(\"a\"); return <div>{map[s]}</div>; }";
+        let sess = ParseSession::new();
+        let parsed = sess.parse(Path::new("page.tsx"), source);
+        assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
+        let m = crate::lower::lower_module("/app/page.tsx", &parsed.program, source, true)
+            .expect("a module");
+        let out = emit_module(&m.components, &m.module_stmts, &m.module_exprs);
+        assert!(out.is_complete(), "errors: {:?}", out.errors);
+        assert!(!out.code.contains("<i>") && !out.code.contains("<A/>"), "no raw JSX:\n{}", out.code);
+        assert!(out.code.contains("function module_value0()"), "module builder:\n{}", out.code);
+        assert!(out.code.contains("const map = { a: module_value0() };"), "map templated:\n{}", out.code);
     }
 
     #[test]
@@ -1165,7 +1249,7 @@ mod tests {
         assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
         let m = crate::lower::lower_module("/app/page.tsx", &parsed.program, source, true)
             .expect("a module");
-        let out = emit_module(&m.components, &m.module_stmts);
+        let out = emit_module(&m.components, &m.module_stmts, &m.module_exprs);
         assert!(out.is_complete(), "errors: {:?}", out.errors);
         // Single merged runtime import header.
         assert_eq!(
@@ -1196,7 +1280,7 @@ mod tests {
         assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
         let m = crate::lower::lower_module("/app/Counter.tsx", &parsed.program, source, false)
             .expect("a module");
-        let out = emit_module(&m.components, &m.module_stmts);
+        let out = emit_module(&m.components, &m.module_stmts, &m.module_exprs);
         assert!(out.is_complete(), "errors: {:?}", out.errors);
         assert_eq!(
             out.code.matches("export default ").count(),

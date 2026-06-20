@@ -73,7 +73,7 @@ fn build(file: &str, as_component: bool, from_stdin: bool) -> ExitCode {
         return ExitCode::FAILURE;
     };
 
-    let module = csr::emit_module(&lowered.components, &lowered.module_stmts);
+    let module = csr::emit_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
     print!("{}", module.code);
 
     for err in &module.errors {
