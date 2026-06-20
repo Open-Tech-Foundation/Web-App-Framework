@@ -12,9 +12,9 @@
 //!
 //! Scope of this pass (extended later):
 //! - Components are **function declarations** (named or `export default`) whose
-//!   body is top-level macro declarations + a `return <jsx>`.
-//! - Props reactivity (the Custom Element path), `ref`, lists, and `$effect`
-//!   bodies are follow-ups.
+//!   body is top-level macro declarations / `$effect` calls + a `return <jsx>`.
+//! - `$signal` external bridge, member-expression component names, and spreads
+//!   are follow-ups.
 
 use std::collections::HashMap;
 
@@ -145,6 +145,9 @@ pub struct Lowered {
     pub rest: Option<RestProp>,
     /// One-time snapshots for nested destructuring patterns.
     pub prop_snapshots: Vec<PropSnapshot>,
+    /// Top-level `$effect(cb)` callbacks (`.value`-injected source), to run as
+    /// effects with their disposers collected for cleanup (SPEC §3.2).
+    pub effects: Vec<String>,
     /// The local binding name for the `children` slot, if the component
     /// destructures `children` (e.g. `"children"`). Drives child capture + the
     /// `Children` view node.
@@ -215,6 +218,7 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
         props_object: classified.props_object,
         rest: classified.rest,
         prop_snapshots: classified.prop_snapshots,
+        effects: classified.effects,
         children_local,
         errors,
     })
@@ -310,6 +314,7 @@ struct Classified {
     props_object: Option<String>,
     rest: Option<RestProp>,
     prop_snapshots: Vec<PropSnapshot>,
+    effects: Vec<String>,
     children: Option<ChildrenInfo>,
     errors: Vec<String>,
 }
@@ -446,24 +451,38 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         }
     }
 
-    // Pass 1b: top-level macro declarations.
+    // Pass 1b: top-level macro declarations and `$effect` statements.
+    let mut effect_args: Vec<&Argument> = Vec::new();
     if let Some(body) = func.body.as_deref() {
         for stmt in &body.statements {
-            let Statement::VariableDeclaration(vd) = stmt else { continue };
-            for d in &vd.declarations {
-                let Some(Expression::CallExpression(call)) = &d.init else { continue };
-                let Some(kind) = macro_kind(call) else { continue };
-                let BindingPattern::BindingIdentifier(bi) = &d.id else { continue };
-                let Some(symbol) = bi.symbol_id.get() else { continue };
+            match stmt {
+                Statement::VariableDeclaration(vd) => {
+                    for d in &vd.declarations {
+                        let Some(Expression::CallExpression(call)) = &d.init else { continue };
+                        let Some(kind) = macro_kind(call) else { continue };
+                        let BindingPattern::BindingIdentifier(bi) = &d.id else { continue };
+                        let Some(symbol) = bi.symbol_id.get() else { continue };
 
-                let id = SignalId(pendings.len() as u32);
-                by_symbol.insert(symbol, id);
-                pendings.push(Pending {
-                    id,
-                    name: bi.name.as_str().to_string(),
-                    kind: kind.signal_kind(),
-                    detail: Detail::Macro { arg: call.arguments.first() },
-                });
+                        let id = SignalId(pendings.len() as u32);
+                        by_symbol.insert(symbol, id);
+                        pendings.push(Pending {
+                            id,
+                            name: bi.name.as_str().to_string(),
+                            kind: kind.signal_kind(),
+                            detail: Detail::Macro { arg: call.arguments.first() },
+                        });
+                    }
+                }
+                Statement::ExpressionStatement(es) => {
+                    if let Expression::CallExpression(call) = &es.expression
+                        && is_effect_call(call)
+                        && let Some(arg) = call.arguments.first()
+                        && !arg.is_spread()
+                    {
+                        effect_args.push(arg);
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -491,6 +510,12 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         }
     }
 
+    // `$effect` callbacks: inject `.value` now that the symbol set is complete.
+    let effects = effect_args
+        .into_iter()
+        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
+        .collect();
+
     Classified {
         by_symbol,
         infos,
@@ -500,9 +525,14 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         props_object,
         rest: rest_prop,
         prop_snapshots: snapshots,
+        effects,
         children,
         errors,
     }
+}
+
+fn is_effect_call(call: &CallExpression) -> bool {
+    matches!(&call.callee, Expression::Identifier(id) if id.name == "$effect")
 }
 
 /// Slice `source[span]` as an owned string (for verbatim pattern capture).
@@ -792,8 +822,16 @@ impl<'s, 'r> Lowerer<'s, 'r> {
                             format!("{}:{}", n.namespace.name, n.name.name)
                         }
                     };
+                    // `ref={expr}`: keep the expression raw (no `.value` injection,
+                    // SPEC §3.3) — codegen assigns the node to the ref signal
+                    // (`expr.value = el`, SPEC §5.6).
                     if name == "ref" {
-                        self.errors.push("ref attribute not supported yet".into());
+                        if let Some(JSXAttributeValue::ExpressionContainer(c)) = &attr.value
+                            && !matches!(c.expression, JSXExpression::EmptyExpression(_))
+                        {
+                            let id = self.intern_static(c.expression.span());
+                            props.push(Prop { name, value: PropValue::Dynamic(id) });
+                        }
                         continue;
                     }
                     // `key` is list-reconciliation metadata, not a DOM attribute
@@ -1156,6 +1194,29 @@ mod tests {
         assert_eq!(tag, "li");
         let ViewNode::Dynamic { expr } = &li[0] else { panic!() };
         assert_eq!(lowered.exprs.code(*expr), Some("i.value.name"));
+    }
+
+    #[test]
+    fn lowers_ref_attribute_raw() {
+        let lowered = lower(
+            "export function C() { let box = $ref(); return <div ref={box}>hi</div>; }",
+        );
+        assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
+        let ViewNode::Element { props, .. } = &lowered.ir.view else { panic!() };
+        let ref_prop = props.iter().find(|p| p.name == "ref").expect("ref prop");
+        let PropValue::Dynamic(expr) = ref_prop.value else { panic!() };
+        // Ref keeps the expression raw — no `.value` injection (SPEC §3.3).
+        assert_eq!(lowered.exprs.code(expr), Some("box"));
+    }
+
+    #[test]
+    fn lowers_effect_with_injection() {
+        let lowered = lower(
+            "export function C() { let n = $state(0); $effect(() => console.log(n)); return <p>{n}</p>; }",
+        );
+        assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
+        // The effect callback gets `.value` injected on signal references.
+        assert_eq!(lowered.effects, ["() => console.log(n.value)"]);
     }
 
     #[test]

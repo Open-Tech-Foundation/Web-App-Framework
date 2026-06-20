@@ -13,7 +13,7 @@
 //! event handlers, signal declarations, and compose child components by tag.
 //!
 //! Not yet supported (reported as diagnostics): member-expression component
-//! names and `ref`.
+//! names and prop/children spreads.
 
 use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
@@ -52,6 +52,7 @@ struct Uses {
 pub fn emit_page(lowered: &Lowered) -> CsrModule {
     let mut e = Emitter::new(lowered, Disposal::None);
     let root = e.emit_all();
+    e.emit_effects();
     if !lowered.props.is_empty() {
         e.errors.push("page/factory props not supported yet (use a component)".into());
     }
@@ -83,6 +84,7 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     e.emit_prop_snapshots();
     e.emit_rest();
     let root = e.emit_all();
+    e.emit_effects();
     if !props.is_empty() {
         e.uses.signal = true; // the constructor initializes prop signals
     }
@@ -270,6 +272,16 @@ impl<'a> Emitter<'a> {
             self.emit_decl(decl);
         }
         self.emit_node(&self.lowered.ir.view)
+    }
+
+    /// Emit top-level `$effect` callbacks, collecting disposers for cleanup
+    /// (page: run for the app's lifetime; SPEC §3.2). Emitted after the view so
+    /// effects can read refs assigned during the build.
+    fn emit_effects(&mut self) {
+        for cb in self.lowered.effects.clone() {
+            self.uses.effect = true;
+            self.bind(format!("effect({cb})"));
+        }
     }
 
     /// The `import { … } from "@opentf/web";` header for the helpers used.
@@ -490,9 +502,22 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// `ref={expr}`: assign the node to the ref signal (`expr.value = el`,
+    /// SPEC §5.6). The expression is raw (no `.value` injection).
+    fn emit_ref(&mut self, el: &str, prop: &Prop) {
+        if let PropValue::Dynamic(expr) = &prop.value {
+            let code = self.lowered.exprs.code(*expr).unwrap_or("null").to_string();
+            self.line(format!("{code}.value = {el};"));
+        }
+    }
+
     /// Props on a host element: static → attribute, dynamic → reactive attribute,
     /// `on*` → event handler (lowercased property, attached once).
     fn emit_element_prop(&mut self, el: &str, prop: &Prop) {
+        if prop.name == "ref" {
+            self.emit_ref(el, prop);
+            return;
+        }
         match &prop.value {
             PropValue::Static(value) => {
                 self.line(format!(
@@ -517,6 +542,10 @@ impl<'a> Emitter<'a> {
     /// static → attribute, dynamic → reactive property set, `on*` → property
     /// (original case, set once) since the component owns its event semantics.
     fn emit_component_prop(&mut self, el: &str, prop: &Prop) {
+        if prop.name == "ref" {
+            self.emit_ref(el, prop);
+            return;
+        }
         match &prop.value {
             PropValue::Static(value) => {
                 self.line(format!(
@@ -759,6 +788,38 @@ mod tests {
         assert!(m.code.contains("const { name } = (user.value ?? {});"), "code: {}", m.code);
         // Snapshot binding is non-reactive: a plain read.
         assert!(m.code.contains("bindText(t1, () => (name))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn emits_ref_assignment() {
+        let m = emit_page(&lower(
+            "export function C() { let box = $ref(); return <div ref={box}>hi</div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("const box = signal(null);"), "code: {}", m.code);
+        assert!(m.code.contains("box.value = el0;"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn emits_effect_with_disposal() {
+        // Page: effect runs for the app lifetime (no disposal collection).
+        let p = emit_page(&lower(
+            "export function C() { let n = $state(0); $effect(() => console.log(n)); return <p>{n}</p>; }",
+        ));
+        assert!(p.is_complete(), "errors: {:?}", p.errors);
+        assert!(p.code.contains("import { signal, effect, bindText }"), "code: {}", p.code);
+        assert!(p.code.contains("effect(() => console.log(n.value));"), "code: {}", p.code);
+
+        // Component: the disposer is collected for disconnectedCallback.
+        let c = emit_component(&lower(
+            "export function C() { let n = $state(0); $effect(() => console.log(n)); return <p>{n}</p>; }",
+        ));
+        assert!(c.is_complete(), "errors: {:?}", c.errors);
+        assert!(
+            c.code.contains("this._cleanups.push(effect(() => console.log(n.value)));"),
+            "code: {}",
+            c.code
+        );
     }
 
     #[test]
