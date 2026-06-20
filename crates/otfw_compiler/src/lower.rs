@@ -22,9 +22,9 @@ use oxc::ast::ast::{
     Argument, ArrowFunctionExpression, BindingPattern, CallExpression, Declaration, Expression,
     ExportDefaultDeclarationKind, Function, FunctionBody, IdentifierReference, JSXAttributeItem,
     JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression,
-    Program, Statement,
+    Program, StaticMemberExpression, Statement,
 };
-use oxc::ast_visit::Visit;
+use oxc::ast_visit::{walk, Visit};
 use oxc::semantic::{Scoping, SymbolId};
 use oxc::span::{GetSpan, Span};
 
@@ -90,10 +90,12 @@ pub struct SignalDecl {
     pub init_is_fn: bool,
 }
 
-/// A destructured component prop (`function C({ name: local = default })`).
+/// A component prop, from either destructuring (`function C({ name: local =
+/// default })`) or props-object discovery (`function C(props)` + `props.name`).
 ///
 /// `attr` is the public attribute/property name (observed + synced); `local` is
-/// the in-body binding the view references. Both are reactive signal-backed.
+/// the in-body binding the view references (equal to `attr` for the props-object
+/// form, which references `props.attr` instead). Both are reactive signal-backed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PropDecl {
     pub local: String,
@@ -109,8 +111,13 @@ pub struct Lowered {
     pub exprs: ExprTable,
     /// Signal declarations (`$state`/`$derived`/`$ref`) to emit before the view.
     pub decls: Vec<SignalDecl>,
-    /// Destructured component props (the Custom Element's observed signals).
+    /// Component props (the Custom Element's observed signals), from either
+    /// destructuring or props-object discovery.
     pub props: Vec<PropDecl>,
+    /// The local name of the props object when the component uses the
+    /// props-object form (`function C(props)`); `None` for destructured props.
+    /// Drives a single `const props = this._props;` alias instead of per-key.
+    pub props_object: Option<String>,
     /// The local binding name for the `children` slot, if the component
     /// destructures `children` (e.g. `"children"`). Drives child capture + the
     /// `Children` view node.
@@ -154,7 +161,13 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
     let children_local = classified.children.map(|c| c.local);
 
     let jsx = returned_jsx(body)?;
-    let mut lowerer = Lowerer::new(source, scoping, classified.by_symbol, children_symbol);
+    let mut lowerer = Lowerer::new(
+        source,
+        scoping,
+        classified.by_symbol,
+        children_symbol,
+        classified.props_symbol,
+    );
     let view = lowerer.lower_root(jsx)?;
 
     let mut errors = classified.errors;
@@ -172,6 +185,7 @@ pub fn lower_component<'a>(module: &str, program: &'a Program<'a>, source: &'a s
         exprs: lowerer.exprs,
         decls: classified.decls,
         props: classified.props,
+        props_object: classified.props_object,
         children_local,
         errors,
     })
@@ -261,6 +275,10 @@ struct Classified {
     infos: Vec<SignalInfo>,
     decls: Vec<SignalDecl>,
     props: Vec<PropDecl>,
+    /// The props-object binding (`function C(props)`): its symbol drives
+    /// First-Access `.value` injection; its name drives the codegen alias.
+    props_symbol: Option<SymbolId>,
+    props_object: Option<String>,
     children: Option<ChildrenInfo>,
     errors: Vec<String>,
 }
@@ -287,6 +305,8 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
     let mut pendings: Vec<Pending> = Vec::new();
     let mut errors = Vec::new();
     let mut children = None;
+    let mut props_symbol = None;
+    let mut props_object = None;
 
     // Pass 1a: destructured props from the first parameter.
     if let Some(param) = func.params.items.first() {
@@ -330,8 +350,30 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
                     errors.push("rest props (`...rest`) not supported yet".into());
                 }
             }
-            BindingPattern::BindingIdentifier(_) => {
-                errors.push("direct `props` object not supported yet; destructure props".into());
+            BindingPattern::BindingIdentifier(bi) => {
+                // Props-object form (`function C(props)`): discover the keys used
+                // as `props.key` across the component (SPEC §2.8) — each becomes
+                // an observed signal; `props.children` is the light-DOM slot.
+                if let Some(symbol) = bi.symbol_id.get()
+                    && let Some(body) = func.body.as_deref()
+                {
+                    props_symbol = Some(symbol);
+                    props_object = Some(bi.name.as_str().to_string());
+                    let mut keys = PropsKeyCollector { scoping, props_symbol: symbol, keys: Vec::new(), has_children: false };
+                    keys.visit_function_body(body);
+                    if keys.has_children {
+                        children = Some(ChildrenInfo { local: "__children".into(), symbol: None });
+                    }
+                    for key in keys.keys {
+                        let id = SignalId(pendings.len() as u32);
+                        pendings.push(Pending {
+                            id,
+                            name: key.clone(),
+                            kind: SignalKind::Prop,
+                            detail: Detail::Prop { local: key.clone(), attr: key, default: None },
+                        });
+                    }
+                }
             }
             _ => {}
         }
@@ -367,13 +409,13 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         infos.push(SignalInfo { id: p.id, kind: p.kind.clone(), name: p.name.clone() });
         match p.detail {
             Detail::Prop { local, attr, default } => {
-                let default = default.map(|e| inject_expr(source, scoping, &by_symbol, e).code);
+                let default = default.map(|e| inject_expr(source, scoping, &by_symbol, props_symbol, e).code);
                 props.push(PropDecl { local, attr, default });
             }
             Detail::Macro { arg } => {
                 let (init, init_is_fn) = match arg {
                     Some(arg) if !arg.is_spread() => {
-                        (inject_arg(source, scoping, &by_symbol, arg).code, is_fn_argument(arg))
+                        (inject_arg(source, scoping, &by_symbol, props_symbol, arg).code, is_fn_argument(arg))
                     }
                     _ => (String::new(), false),
                 };
@@ -382,7 +424,7 @@ fn classify<'a>(func: &'a Function<'a>, scoping: &Scoping, source: &str) -> Clas
         }
     }
 
-    Classified { by_symbol, infos, decls, props, children, errors }
+    Classified { by_symbol, infos, decls, props, props_symbol, props_object, children, errors }
 }
 
 fn macro_kind(call: &CallExpression) -> Option<MacroKind> {
@@ -401,11 +443,49 @@ fn is_fn_argument(arg: &Argument) -> bool {
 
 // ── `.value` injection ──────────────────────────────────────────────────────
 
+/// True when `id` resolves to `symbol` through the semantic model.
+fn resolves_to(scoping: &Scoping, id: &IdentifierReference, symbol: SymbolId) -> bool {
+    id.reference_id
+        .get()
+        .and_then(|r| scoping.get_reference(r).symbol_id())
+        == Some(symbol)
+}
+
+/// Collects, over the whole component, the keys accessed as `props.key` for the
+/// props-object form (SPEC §2.8). Each becomes an observed signal; `children` is
+/// the slot, tracked separately and excluded from the observed set.
+struct PropsKeyCollector<'r> {
+    scoping: &'r Scoping,
+    props_symbol: SymbolId,
+    keys: Vec<String>,
+    has_children: bool,
+}
+
+impl<'a> Visit<'a> for PropsKeyCollector<'_> {
+    fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
+        if let Expression::Identifier(obj) = &it.object
+            && resolves_to(self.scoping, obj, self.props_symbol)
+        {
+            let key = it.property.name.as_str();
+            if key == "children" {
+                self.has_children = true;
+            } else if !self.keys.iter().any(|k| k == key) {
+                self.keys.push(key.to_string());
+            }
+            return; // `props` itself is not a signal; nothing deeper to collect.
+        }
+        walk::walk_static_member_expression(self, it);
+    }
+}
+
 /// Collects the end offsets of identifier references that resolve to signals,
-/// so `.value` can be spliced in after each.
+/// so `.value` can be spliced in after each. For the props-object form it also
+/// applies the **First-Access Rule** (SPEC §2.9): `.value` is spliced after the
+/// property immediately following `props` (`props.user.name` → `props.user.value.name`).
 struct RefCollector<'r> {
     scoping: &'r Scoping,
     signals: &'r HashMap<SymbolId, SignalId>,
+    props_symbol: Option<SymbolId>,
     ends: Vec<u32>,
     deps: Vec<SignalId>,
 }
@@ -422,13 +502,29 @@ impl<'a> Visit<'a> for RefCollector<'_> {
             }
         }
     }
+
+    fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
+        if let Some(ps) = self.props_symbol
+            && let Expression::Identifier(obj) = &it.object
+            && resolves_to(self.scoping, obj, ps)
+        {
+            // First-Access Rule: unwrap the first property after `props`, except
+            // `props.children` (the slot), which stays as-is (SPEC §3.3).
+            if it.property.name != "children" {
+                self.ends.push(it.property.span.end);
+            }
+            return;
+        }
+        walk::walk_static_member_expression(self, it);
+    }
 }
 
 fn new_collector<'r>(
     scoping: &'r Scoping,
     signals: &'r HashMap<SymbolId, SignalId>,
+    props_symbol: Option<SymbolId>,
 ) -> RefCollector<'r> {
-    RefCollector { scoping, signals, ends: Vec::new(), deps: Vec::new() }
+    RefCollector { scoping, signals, props_symbol, ends: Vec::new(), deps: Vec::new() }
 }
 
 /// Splice `.value` into `source[span]` at each collected reference end.
@@ -452,9 +548,10 @@ fn inject_jsx(
     source: &str,
     scoping: &Scoping,
     signals: &HashMap<SymbolId, SignalId>,
+    props_symbol: Option<SymbolId>,
     expr: &JSXExpression,
 ) -> ExprInfo {
-    let mut rc = new_collector(scoping, signals);
+    let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_jsx_expression(expr);
     ExprInfo { code: splice(source, expr.span(), rc.ends), deps: rc.deps }
 }
@@ -463,9 +560,10 @@ fn inject_arg(
     source: &str,
     scoping: &Scoping,
     signals: &HashMap<SymbolId, SignalId>,
+    props_symbol: Option<SymbolId>,
     arg: &Argument,
 ) -> ExprInfo {
-    let mut rc = new_collector(scoping, signals);
+    let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_argument(arg);
     ExprInfo { code: splice(source, arg.span(), rc.ends), deps: rc.deps }
 }
@@ -474,9 +572,10 @@ fn inject_expr(
     source: &str,
     scoping: &Scoping,
     signals: &HashMap<SymbolId, SignalId>,
+    props_symbol: Option<SymbolId>,
     expr: &Expression,
 ) -> ExprInfo {
-    let mut rc = new_collector(scoping, signals);
+    let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_expression(expr);
     ExprInfo { code: splice(source, expr.span(), rc.ends), deps: rc.deps }
 }
@@ -490,6 +589,9 @@ struct Lowerer<'s, 'r> {
     signals: HashMap<SymbolId, SignalId>,
     /// The `children` slot binding's symbol, if the component destructures it.
     children_symbol: Option<SymbolId>,
+    /// The props-object binding's symbol (props-object form), driving First-Access
+    /// injection and `{props.children}` slot detection.
+    props_symbol: Option<SymbolId>,
     exprs: ExprTable,
     errors: Vec<String>,
 }
@@ -504,23 +606,37 @@ impl<'s, 'r> Lowerer<'s, 'r> {
         scoping: &'r Scoping,
         signals: HashMap<SymbolId, SignalId>,
         children_symbol: Option<SymbolId>,
+        props_symbol: Option<SymbolId>,
     ) -> Self {
         Self {
             source,
             scoping,
             signals,
             children_symbol,
+            props_symbol,
             exprs: ExprTable::default(),
             errors: Vec::new(),
         }
     }
 
-    /// True when `expr` is a bare reference to the `children` slot binding.
+    /// True when `expr` is the `children` slot: a bare reference to the
+    /// destructured `children` binding, or `props.children` (SPEC §4.5/§3.3).
     fn is_children_ref(&self, expr: &JSXExpression) -> bool {
-        let Some(target) = self.children_symbol else { return false };
-        let JSXExpression::Identifier(id) = expr else { return false };
-        let Some(ref_id) = id.reference_id.get() else { return false };
-        self.scoping.get_reference(ref_id).symbol_id() == Some(target)
+        if let Some(target) = self.children_symbol
+            && let JSXExpression::Identifier(id) = expr
+            && resolves_to(self.scoping, id, target)
+        {
+            return true;
+        }
+        if let Some(ps) = self.props_symbol
+            && let JSXExpression::StaticMemberExpression(m) = expr
+            && m.property.name == "children"
+            && let Expression::Identifier(obj) = &m.object
+            && resolves_to(self.scoping, obj, ps)
+        {
+            return true;
+        }
+        false
     }
 
     fn slice(&self, span: Span) -> &'s str {
@@ -528,7 +644,7 @@ impl<'s, 'r> Lowerer<'s, 'r> {
     }
 
     fn intern_jsx(&mut self, expr: &JSXExpression) -> ExpressionId {
-        let info = inject_jsx(self.source, self.scoping, &self.signals, expr);
+        let info = inject_jsx(self.source, self.scoping, &self.signals, self.props_symbol, expr);
         self.exprs.intern(info)
     }
 
@@ -664,7 +780,8 @@ impl<'s, 'r> Lowerer<'s, 'r> {
         let body_jsx = arrow_jsx(arrow)?;
 
         // Source = the chain before `.map`, with outer signals `.value`-injected.
-        let source_info = inject_expr(self.source, self.scoping, &self.signals, &member.object);
+        let source_info =
+            inject_expr(self.source, self.scoping, &self.signals, self.props_symbol, &member.object);
         let source = self.exprs.intern(source_info);
 
         // Key is evaluated against the *plain* item, so intern it before the item
@@ -872,6 +989,37 @@ mod tests {
         // `children` is the slot, not a normal prop/observed attribute.
         assert!(lowered.props.is_empty());
         assert_eq!(lowered.children_local.as_deref(), Some("children"));
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        assert_eq!(children[0], ViewNode::Children);
+    }
+
+    #[test]
+    fn discovers_props_object_keys_and_injects_first_access() {
+        let lowered = lower(
+            "export function Card(props) { return <div>{props.title}{props.user.name}</div>; }",
+        );
+        // Keys discovered from `props.key` access become observed props (in
+        // first-seen order); deep access reports only the first-level key.
+        assert_eq!(lowered.props_object.as_deref(), Some("props"));
+        assert_eq!(
+            lowered.props.iter().map(|p| p.attr.as_str()).collect::<Vec<_>>(),
+            ["title", "user"]
+        );
+        // First-Access Rule: `.value` after the first property only.
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        let ViewNode::Dynamic { expr } = &children[0] else { panic!() };
+        assert_eq!(lowered.exprs.code(*expr), Some("props.title.value"));
+        let ViewNode::Dynamic { expr } = &children[1] else { panic!() };
+        assert_eq!(lowered.exprs.code(*expr), Some("props.user.value.name"));
+    }
+
+    #[test]
+    fn props_object_children_is_the_slot() {
+        let lowered =
+            lower("export function Wrap(props) { return <div>{props.children}</div>; }");
+        // `props.children` is the slot, not an observed key.
+        assert!(lowered.props.is_empty());
+        assert_eq!(lowered.children_local.as_deref(), Some("__children"));
         let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
         assert_eq!(children[0], ViewNode::Children);
     }

@@ -221,9 +221,18 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    /// Emit a local alias per prop (`const local = this._props["attr"];`) so the
-    /// view references resolve to the prop signals. Component path only.
+    /// Alias the prop signals so view references resolve to them. For destructured
+    /// props, one binding per key (`const local = this._props["attr"];`). For the
+    /// props-object form, a single `const props = this._props;` so First-Access
+    /// references like `props.name.value` resolve to the keyed signal. Component
+    /// path only.
     fn emit_prop_aliases(&mut self) {
+        if let Some(props_local) = self.lowered.props_object.clone() {
+            if !self.lowered.props.is_empty() {
+                self.lines.push(format!("const {props_local} = this._props;"));
+            }
+            return;
+        }
         for p in &self.lowered.props {
             self.lines.push(format!("const {} = this._props[{}];", p.local, js_string(&p.attr)));
         }
@@ -676,6 +685,23 @@ mod tests {
             m.code
         );
         assert!(m.code.contains("bindText(t1, () => (name.value))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn component_props_object_single_alias_and_machinery() {
+        let m = emit_component(&lower(
+            "export function Card(props) { return <div>{props.title}{props.user.name}</div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // Discovered keys drive the observed signals + bridge.
+        assert!(m.code.contains("static observedAttributes = [\"title\", \"user\"];"), "code: {}", m.code);
+        assert!(m.code.contains("get title()"), "code: {}", m.code);
+        // A single alias to the backing store, not per-key locals.
+        assert!(m.code.contains("const props = this._props;"), "code: {}", m.code);
+        assert!(!m.code.contains("const title = this._props"), "code: {}", m.code);
+        // First-Access references resolve through the alias.
+        assert!(m.code.contains("bindText(t1, () => (props.title.value))"), "code: {}", m.code);
+        assert!(m.code.contains("bindText(t2, () => (props.user.value.name))"), "code: {}", m.code);
     }
 
     #[test]
