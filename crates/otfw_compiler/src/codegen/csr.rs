@@ -54,6 +54,7 @@ struct Uses {
     spread: bool,
     report_error: bool,
     host: bool,
+    set_prop: bool,
 }
 
 impl Uses {
@@ -69,6 +70,7 @@ impl Uses {
         self.spread |= o.spread;
         self.report_error |= o.report_error;
         self.host |= o.host;
+        self.set_prop |= o.set_prop;
     }
 }
 
@@ -106,6 +108,9 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
     if uses.host {
         names.push("enterHost");
         names.push("exitHost");
+    }
+    if uses.set_prop {
+        names.push("setProp");
     }
     let mut merged: Vec<String> = names.into_iter().map(str::to_string).collect();
     for name in runtime_imports {
@@ -878,10 +883,15 @@ impl<'a> Emitter<'a> {
             self.emit_spread(el, prop, true);
             return;
         }
+        // Component props go through `setProp` (property when the element exposes
+        // one, else attribute) so rich values reach component setters while plain
+        // attributes (class, data-*) still land correctly. `on*` handlers are set
+        // as properties verbatim — the component owns their event semantics.
         match &prop.value {
             PropValue::Static(value) => {
+                self.uses.set_prop = true;
                 self.line(format!(
-                    "{el}.setAttribute({}, {});",
+                    "setProp({el}, {}, {});",
                     js_string(&prop.name),
                     js_string(value)
                 ));
@@ -892,8 +902,9 @@ impl<'a> Emitter<'a> {
                     self.line(format!("{el}[{}] = {code};", js_string(&prop.name)));
                 } else {
                     self.uses.effect = true;
+                    self.uses.set_prop = true;
                     self.bind(format!(
-                        "effect(() => {{ {el}[{}] = ({code}); }})",
+                        "effect(() => {{ setProp({el}, {}, ({code})); }})",
                         js_string(&prop.name)
                     ));
                 }
@@ -1068,7 +1079,7 @@ mod tests {
         ));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         assert!(
-            m.code.contains("effect(() => { c0[\"start\"] = (n.value); })"),
+            m.code.contains("effect(() => { setProp(c0, \"start\", (n.value)); })"),
             "code: {}",
             m.code
         );

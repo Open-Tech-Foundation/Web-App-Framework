@@ -57,7 +57,7 @@ export default function ContextDemoPage() {
       <ContextProvider context={ThemeContext} value={theme}>
         <div class="grid gap-4 md:grid-cols-2">
           <ThemedCard title="Inherits page theme" />
-          <ContextProvider context={ThemeContext} value={"high-contrast"}>
+          <ContextProvider context={ThemeContext} value="high-contrast">
             <ThemedCard title="Nested override → high-contrast" />
           </ContextProvider>
         </div>
