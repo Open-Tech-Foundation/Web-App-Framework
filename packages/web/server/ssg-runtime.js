@@ -87,7 +87,14 @@ export function ssgList(arr, fn) {
   return (Array.isArray(arr) ? arr : []).map(fn).join("");
 }
 
-/** Render a child component `<tag …>inner</tag>` via the registry. */
+/**
+ * Render a child component `<tag>inner</tag>` via the registry. Props are passed to
+ * the renderer (which decides where they land — declared props become properties /
+ * forward into the view), so the host tag carries no reflected attributes — exactly
+ * as CSR composes a component (props go through `setProp`, declared ones as
+ * properties, not host attributes). Avoids duplicating e.g. `class` on both the
+ * host and the element the component renders.
+ */
 export function ssgComponent(tag, props, children) {
   const render = registry[tag];
   let inner;
@@ -96,21 +103,7 @@ export function ssgComponent(tag, props, children) {
   } catch {
     inner = ""; // fail soft (client renders/handles it)
   }
-  return `<${tag}${reflectAttrs(props)}>${inner}</${tag}>`;
-}
-
-/** Reflect scalar props as attributes on a component tag (for first paint / SEO). */
-function reflectAttrs(props) {
-  if (!props) return "";
-  let s = "";
-  for (const k in props) {
-    const v = props[k];
-    if (k === "children" || k === "ref" || (k.startsWith("on") && k.length > 2)) continue;
-    if (typeof v === "function" || v == null || typeof v === "object") continue;
-    if (v === false) continue;
-    s += v === true ? ` ${k}` : ` ${k}="${escapeAttr(String(v))}"`;
-  }
-  return s;
+  return `<${tag}>${inner}</${tag}>`;
 }
 
 export { VOID };

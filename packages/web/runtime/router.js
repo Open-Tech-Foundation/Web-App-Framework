@@ -241,40 +241,6 @@ export function mountApp({ pages, target, guard: g } = {}) {
   navigate(window.location.pathname + window.location.search + window.location.hash, true, true);
 }
 
-// `<Link href>` compiles to `<web-link href>`; this Custom Element wraps its
-// children in an <a> and intercepts same-origin clicks for SPA navigation.
-export class LinkElement extends HTMLElement {
-  connectedCallback() {
-    if (this._mounted) return;
-    this._mounted = true;
-    const a = document.createElement("a");
-    const href = this.getAttribute("href") || "#";
-    a.setAttribute("href", href);
-    // The compiler currently emits className as a literal attribute; honor both.
-    const cls =
-      this.getAttribute("class") || this.getAttribute("className") || "";
-    if (cls) a.className = cls;
-    while (this.firstChild) a.appendChild(this.firstChild);
-    a.addEventListener("click", (e) => {
-      if (
-        e.defaultPrevented ||
-        e.metaKey ||
-        e.ctrlKey ||
-        e.shiftKey ||
-        e.altKey ||
-        e.button !== 0
-      )
-        return;
-      e.preventDefault();
-      navigate(href);
-    });
-    this.appendChild(a);
-  }
-}
-
-// Exported so the source-level `import { Link } from "@opentf/web"` resolves; the
-// import's side effect registers the element (the JSX uses the `web-link` tag).
-export const Link = LinkElement;
-if (isBrowser && !customElements.get("web-link")) {
-  customElements.define("web-link", LinkElement);
-}
+// `<Link>` is a pure JSX component (packages/web/components/Link.jsx), compiled by
+// the app's pipeline like any UI component — it lives there, not as a hand-written
+// Custom Element here. It imports `navigate` from this module.
