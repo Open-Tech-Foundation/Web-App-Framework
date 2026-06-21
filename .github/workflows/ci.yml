@@ -16,9 +16,16 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
+      # Run JS actions on Node 24 (Node 20 is deprecated on the runners).
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
+      # The test runner compiles `.jsx` fixtures through `otfwc` (bunfig preload), so
+      # the Rust toolchain must be present; `cargo test` builds the binary.
+      - uses: dtolnay/rust-toolchain@stable
       - uses: oven-sh/setup-bun@v2
       - run: bun install
-      - run: bun test
+      # `bun run test` = `cargo test && bun test packages/web/` — the Rust suite plus
+      # the new-runtime JS suite (scoped to packages/web/, so the not-yet-ported
+      # web-form package isn't pulled in).
+      - run: bun run test
