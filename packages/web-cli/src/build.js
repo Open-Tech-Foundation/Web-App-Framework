@@ -98,6 +98,14 @@ export async function runBuild() {
     : html + script;
   writeFileSync(join(outDir, "index.html"), html);
 
+  // SSG: pre-render each route into static HTML using the shell we just composed
+  // (so per-route files carry the same bundle + stylesheet links).
+  let ssg = null;
+  if (process.argv.includes("--ssg")) {
+    const { runPrerender } = await import("./prerender.js");
+    ssg = await runPrerender({ root, pages, webEntry, otfwc, shellHtml: html, outDir });
+  }
+
   // Copy the public/ directory (static assets served at the root), if present.
   const publicDir = join(root, "public");
   if (existsSync(publicDir)) cpSync(publicDir, outDir, { recursive: true });
@@ -105,5 +113,14 @@ export async function runBuild() {
   const chunks = result.output.filter((o) => o.type === "chunk").length;
   const ms = Math.round(performance.now() - t0);
   console.log(`\n  OpenTF Web build`);
-  console.log(`  → dist/  (${pages.length} routes, ${chunks} chunks) in ${ms}ms\n`);
+  console.log(`  → dist/  (${pages.length} routes, ${chunks} chunks) in ${ms}ms`);
+  if (ssg) {
+    console.log(
+      `  → pre-rendered ${ssg.count} HTML file(s)` +
+        (ssg.skipped.length
+          ? `; skipped ${ssg.skipped.length} dynamic route(s) without getStaticPaths`
+          : ""),
+    );
+  }
+  console.log("");
 }

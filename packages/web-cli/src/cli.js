@@ -27,7 +27,7 @@ switch (cmd) {
     console.log("otfw — OpenTF Web toolchain");
     console.log("usage:");
     console.log("  otfw dev     start the dev server");
-    console.log("  otfw build   build for production (dist/)");
+    console.log("  otfw build   build for production (dist/); --ssg to pre-render routes");
     process.exit(cmd && cmd !== "help" && cmd !== "--help" && cmd !== "-h" ? 1 : 0);
   }
 }
