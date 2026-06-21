@@ -90,8 +90,39 @@ async function resolveFactory(entry) {
   return mod && mod.default ? mod.default : mod;
 }
 
+/**
+ * Build the DOM node for a matched route: the page factory wrapped by its layout
+ * chain (most-specific inward, root outermost). Returns the outermost `node` plus
+ * the ordered `nodes` list (page → … → root) so callers can run lifecycle on each.
+ * Shared by the client router (`navigate`) and server render (`renderToString`).
+ */
+export async function buildRouteNode(match, query = {}) {
+  const props = { params: match.params, query };
+  const pageFactory = await resolveFactory(match.entry);
+  let node = pageFactory(props);
+  const nodes = [node];
+  const chain = layoutChain(match.route);
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const layout = await resolveFactory(chain[i]);
+    node = layout({ ...props, children: node });
+    nodes.push(node);
+  }
+  return { node, nodes };
+}
+
+/**
+ * Set the reactive route state directly (no history/render). Used by server render
+ * so a page reading `router.pathname`/`params`/`query` resolves to the route being
+ * pre-rendered. The client uses `navigate` instead.
+ */
+export function setRouteState({ pathname = "/", search = "", params = {} } = {}) {
+  state.pathname.value = pathname;
+  state.searchParams.value = new URLSearchParams(search);
+  state.params.value = params;
+}
+
 /** Match `pathname` against the registered routes, resolving `[param]` segments. */
-function matchRoute(pathname) {
+export function matchRoute(pathname) {
   for (const route in routes.pages) {
     const pattern = route
       .replace(/\[\.\.\.([^\]]+)\]/g, "(?<$1>.+)")
@@ -160,20 +191,8 @@ export async function navigate(path, replace = false, isPop = false) {
   let nodes = null;
   if (match) {
     try {
-      const props = {
-        params: match.params,
-        query: Object.fromEntries(url.searchParams),
-      };
-      const pageFactory = await resolveFactory(match.entry);
-      let node = pageFactory(props);
-      nodes = [node];
-      // Wrap with layouts from most-specific inward to root outermost.
-      const chain = layoutChain(match.route);
-      for (let i = chain.length - 1; i >= 0; i--) {
-        const layout = await resolveFactory(chain[i]);
-        node = layout({ ...props, children: node });
-        nodes.push(node);
-      }
+      const built = await buildRouteNode(match, Object.fromEntries(url.searchParams));
+      nodes = built.nodes;
     } catch (e) {
       reportError(e, { phase: "route", path: url.pathname });
       rootEl.replaceChildren();
