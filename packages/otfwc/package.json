@@ -1,0 +1,38 @@
+{
+  "name": "@opentf/otfwc",
+  "version": "0.0.1",
+  "description": "OpenTF Web IR compiler (otfwc) — resolves the prebuilt platform binary for the toolchain (ARCHITECTURE.md §8).",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "optionalDependencies": {
+    "@opentf/otfwc-linux-x64": "0.0.1",
+    "@opentf/otfwc-linux-arm64": "0.0.1",
+    "@opentf/otfwc-darwin-x64": "0.0.1",
+    "@opentf/otfwc-darwin-arm64": "0.0.1",
+    "@opentf/otfwc-win32-x64": "0.0.1"
+  },
+  "keywords": [
+    "opentf",
+    "compiler",
+    "jsx",
+    "web-components",
+    "ssg"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Open-Tech-Foundation/Web-App-Framework.git",
+    "directory": "packages/otfwc"
+  },
+  "homepage": "https://github.com/Open-Tech-Foundation/Web-App-Framework#readme",
+  "bugs": "https://github.com/Open-Tech-Foundation/Web-App-Framework/issues",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

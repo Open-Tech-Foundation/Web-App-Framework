@@ -1,0 +1,15 @@
+{
+  "name": "@opentf/otfwc-linux-arm64",
+  "version": "0.0.1",
+  "description": "otfwc prebuilt binary for linux-arm64.",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "files": ["otfwc"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Open-Tech-Foundation/Web-App-Framework.git",
+    "directory": "packages/otfwc/npm/linux-arm64"
+  },
+  "publishConfig": { "access": "public" }
+}
