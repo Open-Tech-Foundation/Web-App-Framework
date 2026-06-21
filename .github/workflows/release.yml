@@ -8,52 +8,39 @@ on:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
-  # 1. Maintain the changesets "Version Packages" PR. No publishing happens here —
-  #    publishing is gated below so a normal push never triggers the heavy builds.
-  version:
-    name: Version PR
+  # Standard changesets flow: on a normal push it creates/updates the "Version
+  # Packages" PR; when that PR is merged it publishes. @opentf/web-compiler is
+  # `private` so changesets skips it here (it has no binaries staged yet) — it is
+  # published by the gated job below. `published` is true when anything published.
+  release:
+    name: Release
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: oven-sh/setup-bun@v2
       - run: bun install
       - run: bun run test
-      - uses: changesets/action@v1
+      - name: Create Release PR or publish to npm
+        id: changesets
+        uses: changesets/action@v1
         with:
-          version: bun run version-packages
+          publish: bun run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # 2. Is a release pending? True only when the local @opentf/web-compiler version is
-  #    not yet on npm — i.e. right after a Version PR merge bumped it. One cheap
-  #    `npm view` call; changesets owns the version number.
-  gate:
-    name: Release pending?
-    runs-on: ubuntu-latest
-    outputs:
-      release: ${{ steps.check.outputs.release }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: check
-        run: |
-          name=$(node -p "require('./packages/web-compiler/package.json').name")
-          version=$(node -p "require('./packages/web-compiler/package.json').version")
-          if npm view "$name@$version" version >/dev/null 2>&1; then
-            echo "release=false" >> "$GITHUB_OUTPUT"
-            echo "$name@$version already published — nothing to release."
-          else
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            echo "$name@$version not on npm — release pending."
-          fi
-
-  # 3. Cross-build the otfwc binary for each platform (only on a real release).
+  # Only after `release` actually published: cross-build the otfwc binary for each
+  # platform and upload it as an artifact. Gated on `published`, so a normal push
+  # never triggers these heavy builds.
   build-binaries:
     name: build otfwc (${{ matrix.platform }})
-    needs: gate
-    if: needs.gate.outputs.release == 'true'
+    needs: release
+    if: needs.release.outputs.published == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -81,38 +68,40 @@ jobs:
           path: target/${{ matrix.target }}/release/${{ matrix.bin }}
           if-no-files-found: error
 
-  # 4. Stage every binary into the single @opentf/web-compiler package, then publish
-  #    all packages with `changeset publish` (idempotent — only unpublished versions).
-  publish:
-    name: Publish
-    needs: [gate, build-binaries]
-    if: needs.gate.outputs.release == 'true'
+  # Stage every binary into the single @opentf/web-compiler package and publish it
+  # once (flipping off `private`). Skips if this version is already on npm.
+  publish-compiler:
+    name: Publish @opentf/web-compiler
+    needs: [release, build-binaries]
+    if: needs.release.outputs.published == 'true'
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
-      - run: bun install
       - name: Download platform binaries
         uses: actions/download-artifact@v4
         with:
           path: .artifacts
-      - name: Stage binaries into bin/
+      - name: Stage binaries + publish
+        working-directory: packages/web-compiler
         run: |
-          for dir in .artifacts/*/; do
+          for dir in ../../.artifacts/*/; do
             platform=$(basename "$dir")
-            mkdir -p "packages/web-compiler/bin/$platform"
-            cp "$dir"* "packages/web-compiler/bin/$platform/"
-            chmod +x "packages/web-compiler/bin/$platform/"* || true
+            mkdir -p "bin/$platform"
+            cp "$dir"* "bin/$platform/"
+            chmod +x "bin/$platform/"* || true
           done
-          find packages/web-compiler/bin -type f
-      - name: Publish to npm
-        run: bun run release
+          find bin -type f
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version already published, skipping."
+          else
+            npm pkg set private=false
+            npm publish --access public
+          fi
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
