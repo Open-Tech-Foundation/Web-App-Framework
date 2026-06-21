@@ -1,20 +1,17 @@
 {
-  "name": "web-bare-app",
+  "name": "web-app",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "otfw dev",
+    "build": "otfw build",
+    "build:ssg": "otfw build --ssg"
   },
   "dependencies": {
-    "@opentf/web": "^0.4.0"
+    "@opentf/web": "^0.5.0"
   },
   "devDependencies": {
-    "@babel/plugin-syntax-jsx": "^7.28.6",
-    "vite": "^8.0.8",
-    "@rollup/plugin-babel": "^7.0.0",
-    "@babel/core": "^7.29.0"
+    "@opentf/web-cli": "^0.0.1"
   }
 }

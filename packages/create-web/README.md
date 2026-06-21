@@ -4,28 +4,33 @@ The official scaffolding tool for **OpenTF Web**.
 
 ## Quick Start
 
-Get a new project up and running in seconds:
+Get a new project up and running in seconds (the toolchain runs on [Bun](https://bun.sh)):
 
 ```bash
-npm create @opentf/web@latest
-# or
-bun create @opentf/web@latest
+bun create @opentf/web@latest my-app
+cd my-app
+bun install
+bun run dev
 ```
 
 ## Features
 
-- 🏗️ **Instant Scaffolding**: Create production-ready OpenTF Web projects with a single command.
-- 🎨 **Multiple Templates**: Choose from "bare" or "minimal-form" starters.
-- ⚡ **Vite-Powered**: Built-in development server with Hot Module Replacement.
-- 🛠️ **Pre-configured**: Includes the OpenTF Web compiler, TailwindCSS (optional), and essential build tools.
+- 🏗️ **Instant Scaffolding**: A ready-to-run OpenTF Web app — `index.html` + file-based
+  `app/` routes, no config.
+- 🎨 **Styling choice**: Plain CSS, or TailwindCSS v4 compiled by the toolchain (no
+  extra config).
+- ⚡ **OpenTF toolchain**: `otfw dev` (Rolldown-driven dev server with live reload),
+  `otfw build`, and `otfw build --ssg` (static pre-render) — powered by the IR
+  compiler.
 
 ## Usage
 
 ```bash
-npx @opentf/create-web my-cool-app
+bun create @opentf/web@latest my-cool-app
 ```
 
-Follow the interactive prompts to select your template and features.
+Follow the interactive prompts to choose a styling solution. The generated project
+has `dev`, `build`, and `build:ssg` scripts.
 
 ## License
 

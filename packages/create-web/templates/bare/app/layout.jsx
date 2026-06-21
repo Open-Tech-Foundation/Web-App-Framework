@@ -1,9 +1,13 @@
-export default function RootLayout({ children }) {
+import { Link } from "@opentf/web";
+
+export default function RootLayout(props) {
   return (
-    <div style="max-width: 600px; margin: 0 auto; padding: 2rem; text-align: center;">
-      <main>
-        {children}
-      </main>
+    <div class="app">
+      <nav class="nav">
+        <Link href="/" class="brand">OpenTF Web</Link>
+        <Link href="/about" class="nav-link">About</Link>
+      </nav>
+      <main class="main">{props.children}</main>
     </div>
   );
 }

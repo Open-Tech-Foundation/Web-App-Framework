@@ -1,9 +1,11 @@
+import { Link } from "@opentf/web";
+
 export default function NotFound() {
   return (
-    <div style="padding: 2rem; text-align: center;">
-      <h1>404 - Page Not Found</h1>
-      <p>The page you are looking for does not exist.</p>
-      <a href="/">Go Home</a>
-    </div>
+    <section class="card">
+      <h1 class="title">404</h1>
+      <p class="lead">This page could not be found.</p>
+      <Link href="/" class="btn">← Back home</Link>
+    </section>
   );
 }

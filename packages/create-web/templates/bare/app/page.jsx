@@ -1,16 +1,19 @@
-export default function HomePage() {
-  return (
-    <div style="display: flex; flex-direction: column; gap: 1.5rem; align-items: center;">
-      <h1 style="font-size: 2.5rem; margin: 0;">Web App Framework</h1>
-      <p style="font-size: 1.25rem; color: #71717a; max-width: 450px; line-height: 1.6;">
-        A high-performance, zero-VDOM framework built on standard Web Components and fine-grained reactivity.
-      </p>
+export default function Home() {
+  let count = $state(0);
 
-      <div style="margin-top: 1rem; padding: 1rem; border: 1px solid #e4e4e7; border-radius: 0.75rem; background: #fafafa; width: 100%;">
-        <p style="margin: 0; font-family: monospace; color: #3f3f46;">
-          Edit <span style="color: #09090b; font-weight: 600;">app/page.jsx</span> to get started
-        </p>
-      </div>
-    </div>
+  return (
+    <section class="card">
+      <h1 class="title">Welcome to OpenTF Web</h1>
+      <p class="lead">
+        A native-first framework: JSX compiles to Web Components with fine-grained,
+        signal-based reactivity — no virtual DOM.
+      </p>
+      <button class="btn" onclick={() => count++}>
+        Clicked {count} {count === 1 ? "time" : "times"}
+      </button>
+      <p class="hint">
+        Edit <code class="code">app/page.jsx</code> and save — the page reloads.
+      </p>
+    </section>
   );
 }

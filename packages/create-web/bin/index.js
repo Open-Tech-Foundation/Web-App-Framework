@@ -1,201 +1,134 @@
 #!/usr/bin/env node
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import prompts from 'prompts';
-import { blue, cyan, green, red, reset, yellow, bold } from 'kolorist';
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import prompts from "prompts";
+import { cyan, green, red, reset, yellow, bold } from "kolorist";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// True Orange Branding (using RGB ANSI if supported, falling back to yellow)
-const orange = (str) => `\x1b[38;2;255;165;0m${str}${reset('')}`;
+const orange = (str) => `\x1b[38;2;255;165;0m${str}${reset("")}`;
 
 async function init() {
-  console.log(`\n  ${bold(orange('Open Tech Foundation'))}`);
-  console.log(`\n  ${bold(cyan('Web App Framework'))} ${yellow('Scaffolding Tool')} ✨\n`);
+  console.log(`\n  ${bold(orange("Open Tech Foundation"))}`);
+  console.log(`\n  ${bold(cyan("OpenTF Web"))} ${yellow("Scaffolding Tool")} ✨\n`);
 
   let targetDir = process.argv[2];
-  const defaultProjectName = targetDir || 'web-app';
-
+  const defaultProjectName = targetDir || "web-app";
   let result = {};
 
   try {
     result = await prompts(
       [
         {
-          type: targetDir ? null : 'text',
-          name: 'projectName',
-          message: reset('Project name:'),
+          type: targetDir ? null : "text",
+          name: "projectName",
+          message: reset("Project name:"),
           initial: defaultProjectName,
           onState: (state) => {
             targetDir = state.value.trim() || defaultProjectName;
           },
         },
         {
-          type: () => (fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0 ? 'confirm' : null),
-          name: 'overwrite',
+          type: () =>
+            fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0 ? "confirm" : null,
+          name: "overwrite",
           message: () =>
-            (targetDir === '.' ? 'Current directory' : `Target directory "${targetDir}"`) +
+            (targetDir === "." ? "Current directory" : `Target directory "${targetDir}"`) +
             ` is not empty. Remove existing files and continue?`,
         },
         {
           type: (_, { overwrite } = {}) => {
-            if (overwrite === false) {
-              throw new Error(red('✖') + ' Operation cancelled');
-            }
+            if (overwrite === false) throw new Error(red("✖") + " Operation cancelled");
             return null;
           },
-          name: 'overwriteChecker',
+          name: "overwriteChecker",
         },
         {
-          type: 'select',
-          name: 'styling',
-          message: reset('Select a styling solution:'),
+          type: "select",
+          name: "styling",
+          message: reset("Select a styling solution:"),
           initial: 1,
           choices: [
-            { title: reset('None'), value: 'none', description: 'Plain CSS' },
-            { title: cyan('TailwindCSS'), value: 'tailwind', description: 'Pre-configured TailwindCSS v4' },
+            { title: reset("Plain CSS"), value: "none", description: "A small starter stylesheet" },
+            {
+              title: cyan("TailwindCSS"),
+              value: "tailwind",
+              description: "Tailwind v4, compiled by the toolchain",
+            },
           ],
         },
-        {
-          type: 'toggle',
-          name: 'includeForms',
-          message: reset(`Add ${cyan("Framework's Reactive Form manager")}?`),
-          initial: true,
-          active: 'yes',
-          inactive: 'no'
-        }
       ],
       {
         onCancel: () => {
-          throw new Error(red('✖') + ' Operation cancelled');
+          throw new Error(red("✖") + " Operation cancelled");
         },
-      }
+      },
     );
   } catch (cancelled) {
     console.log(cancelled.message);
     return;
   }
 
-  const { styling, includeForms, overwrite } = result;
-
+  const { styling, overwrite } = result;
   const root = path.join(process.cwd(), targetDir);
 
-  if (overwrite) {
-    emptyDir(root);
-  } else if (!fs.existsSync(root)) {
-    fs.mkdirSync(root, { recursive: true });
-  }
+  if (overwrite) emptyDir(root);
+  else if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
 
-  // We use the 'bare' template as the foundation for ALL projects
-  const templateDir = path.resolve(__dirname, '../templates/bare');
+  const templateDir = path.resolve(__dirname, "../templates/bare");
+  // When run from inside this monorepo, point @opentf/* deps at the local packages
+  // so a scaffolded app can be tested without publishing.
+  const monorepoPackages = path.resolve(__dirname, "../../../packages");
+  const isInMonorepo = fs.existsSync(monorepoPackages);
 
-  const write = (file, content) => {
-    const targetPath = path.join(root, file);
-    if (content) {
-      fs.writeFileSync(targetPath, content);
-    } else {
-      copy(path.join(templateDir, file), targetPath);
-    }
-  };
-
-  const files = fs.readdirSync(templateDir);
-  for (const file of files) {
-    if (file === 'package.json') {
-      const pkg = JSON.parse(fs.readFileSync(path.join(templateDir, file), 'utf-8'));
-      pkg.name = targetDir;
-      
-      // Dynamic Styling Injection
-      if (styling === 'tailwind') {
-        pkg.devDependencies = {
-          ...pkg.devDependencies,
-          "tailwindcss": "^4.2.2",
-          "@tailwindcss/vite": "^4.2.2"
-        };
-      }
-      
-      // Dynamic Feature Injection
-      if (includeForms) {
-        pkg.dependencies["@opentf/web-form"] = "^0.1.0";
-      }
-
-      // LOCAL DEV HACK: If we are in the monorepo, link packages locally so the user can test
-      const isInMonorepo = fs.existsSync(path.resolve(__dirname, '../../../packages'));
+  for (const file of fs.readdirSync(templateDir)) {
+    const src = path.join(templateDir, file);
+    const dest = path.join(root, file);
+    if (file === "package.json") {
+      const pkg = JSON.parse(fs.readFileSync(src, "utf-8"));
+      pkg.name = path.basename(root);
       if (isInMonorepo) {
-        Object.keys(pkg.dependencies).forEach(dep => {
-          if (dep.startsWith('@opentf/')) {
-            const pkgName = dep.split('/')[1];
-            pkg.dependencies[dep] = `file:${path.resolve(__dirname, '../../../packages', pkgName)}`;
+        for (const deps of [pkg.dependencies, pkg.devDependencies]) {
+          for (const dep of Object.keys(deps || {})) {
+            if (dep.startsWith("@opentf/")) {
+              deps[dep] = `file:${path.join(monorepoPackages, dep.split("/")[1])}`;
+            }
           }
-        });
+        }
       }
-      
-      write(file, JSON.stringify(pkg, null, 2));
-    } else if (file === 'vite.config.js') {
-      let content = fs.readFileSync(path.join(templateDir, file), 'utf-8');
-      
-      if (styling === 'tailwind') {
-        content = content.replace(
-          "import { babel } from '@rollup/plugin-babel'",
-          "import { babel } from '@rollup/plugin-babel'\nimport tailwindcss from '@tailwindcss/vite'"
-        );
-        content = content.replace(
-          "plugins: [",
-          "plugins: [\n    tailwindcss(),"
-        );
-      }
-      
-      write(file, content);
-    } else if (file === 'app') {
-       copy(path.join(templateDir, file), path.join(root, file));
+      fs.writeFileSync(dest, JSON.stringify(pkg, null, 2) + "\n");
     } else {
-      write(file);
+      copy(src, dest);
     }
   }
 
-  // Inject Feature Pages
-  if (includeForms) {
-    const formTemplateApp = path.resolve(__dirname, '../templates/minimal-form/app/form-example');
-    copyDir(formTemplateApp, path.join(root, 'app/form-example'));
-    
-    // Update layout to include link if we want (optional, but good for DX)
+  // Tailwind: the toolchain compiles any stylesheet that imports Tailwind, so we
+  // just prepend the import to the app's global stylesheet — no extra config/deps.
+  if (styling === "tailwind") {
+    const cssPath = path.join(root, "app", "global.css");
+    const css = fs.readFileSync(cssPath, "utf-8");
+    fs.writeFileSync(cssPath, `@import "tailwindcss";\n\n${css}`);
   }
 
-  // If Tailwind, create the CSS file
-  if (styling === 'tailwind') {
-    const cssPath = path.join(root, 'style.css');
-    fs.writeFileSync(cssPath, '@import "tailwindcss";\n');
-    
-    let html = fs.readFileSync(path.join(root, 'index.html'), 'utf-8');
-    if (!html.includes('style.css')) {
-       html = html.replace('</head>', '  <link rel="stylesheet" href="/style.css" />\n  </head>');
-       fs.writeFileSync(path.join(root, 'index.html'), html);
-    }
-  }
-
-  console.log(`\n${green('✔')} ${bold(cyan('Web App Framework'))} project created! 🚀\n`);
-  console.log(`  ${reset('Please run the following commands to get started:')}\n`);
-  console.log(`  ${cyan(`cd ${path.relative(process.cwd(), root)}`)}`);
-  console.log(`  ${cyan('npm install')}`);
-  console.log(`  ${cyan('npm run dev')}\n`);
+  const rel = path.relative(process.cwd(), root);
+  console.log(`\n${green("✔")} ${bold(cyan("OpenTF Web"))} project created! 🚀\n`);
+  console.log(`  ${reset("Next steps (the toolchain runs on Bun):")}\n`);
+  if (rel) console.log(`  ${cyan(`cd ${rel}`)}`);
+  console.log(`  ${cyan("bun install")}`);
+  console.log(`  ${cyan("bun run dev")}\n`);
 }
 
 function copy(src, dest) {
-  const stat = fs.statSync(src);
-  if (stat.isDirectory()) {
-    copyDir(src, dest);
-  } else {
-    fs.copyFileSync(src, dest);
-  }
+  if (fs.statSync(src).isDirectory()) copyDir(src, dest);
+  else fs.copyFileSync(src, dest);
 }
 
 function copyDir(srcDir, destDir) {
   fs.mkdirSync(destDir, { recursive: true });
   for (const file of fs.readdirSync(srcDir)) {
-    const srcFile = path.resolve(srcDir, file);
-    const destFile = path.resolve(destDir, file);
-    copy(srcFile, destFile);
+    copy(path.resolve(srcDir, file), path.resolve(destDir, file));
   }
 }
 
@@ -206,6 +139,4 @@ function emptyDir(dir) {
   }
 }
 
-init().catch((e) => {
-  console.error(e);
-});
+init().catch((e) => console.error(e));
