@@ -6,7 +6,7 @@ import { Link } from "@opentf/web";
 const demos = [
   { href: "/counter", title: "Counter", desc: "$state, $derived, $effect, lifecycle hooks", tag: "Reactivity" },
   { href: "/products", title: "Perf Benchmark", desc: "Keyed list reconciliation over 5,000 rows", tag: "Reactivity" },
-  { href: "/context-demo", title: "Context API", desc: "Scoped provide / useContext with overrides", tag: "Reactivity" },
+  { href: "/context-demo", title: "Context API", desc: "Scoped provider + $context with overrides", tag: "Reactivity" },
   { href: "/dnd-demo", title: "Drag & Drop", desc: "Native HTML5 drag events + keyed lists", tag: "Events" },
   { href: "/ref-demo", title: "Ref & Expose", desc: "$ref to elements + imperative $expose", tag: "Components" },
   { href: "/icons", title: "SVG Icons", desc: "SVG namespacing & dynamic attributes", tag: "Rendering" },
