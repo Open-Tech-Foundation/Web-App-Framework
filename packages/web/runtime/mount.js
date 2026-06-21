@@ -1,6 +1,8 @@
 // Mounting a factory-style view (pages/layouts compile to factory functions;
 // SPEC §2.2). Components compile to Custom Elements and mount via the DOM.
 
+import { reportError } from "../core/errors.js";
+
 /**
  * Mount a view into `target`. `view` is either a factory function returning a
  * DOM node or an already-built node. Returns the mounted node.
@@ -22,8 +24,12 @@ export function runMount(node) {
   const lc = node && node.__lifecycle;
   if (!lc) return;
   for (const cb of lc.mounts) {
-    const disposer = cb();
-    if (typeof disposer === "function") lc.cleanups.push(disposer);
+    try {
+      const disposer = cb();
+      if (typeof disposer === "function") lc.cleanups.push(disposer);
+    } catch (e) {
+      reportError(e, { phase: "mount" });
+    }
   }
   lc.mounts = [];
 }

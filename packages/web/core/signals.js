@@ -11,6 +11,8 @@
 // queue dependent effects, which run once per change/batch (glitch-free: an
 // effect that depends on a signal both directly and via a computed runs once).
 
+import { reportError } from "./errors.js";
+
 /** The consumer (effect or computed) currently executing, if any. */
 let activeConsumer = null;
 /** Depth of nested `batch()` calls; effects flush when this returns to 0. */
@@ -59,7 +61,15 @@ function flush() {
       const batch = [...pendingEffects];
       pendingEffects.clear();
       for (const effectNode of batch) {
-        if (!effectNode.disposed) effectNode.run();
+        if (effectNode.disposed) continue;
+        // A throwing reactive update is reported but must not break the scheduler
+        // (other queued effects still run). Build-time (initial) runs propagate so
+        // the surrounding component/page catch can handle them.
+        try {
+          effectNode.run();
+        } catch (e) {
+          reportError(e, { phase: "effect" });
+        }
       }
     }
   } finally {

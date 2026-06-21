@@ -13,6 +13,7 @@
 // composition both require signal-free page props, which the compiler does not
 // emit yet — for now pages read params via the reactive `router.params`.
 
+import { clearError, reportError } from "../core/errors.js";
 import { signal } from "../core/signals.js";
 import { runCleanup, runMount } from "./mount.js";
 
@@ -174,7 +175,7 @@ export async function navigate(path, replace = false, isPop = false) {
         nodes.push(node);
       }
     } catch (e) {
-      console.error("Failed to load route", url.pathname, e);
+      reportError(e, { phase: "route", path: url.pathname });
       rootEl.replaceChildren();
       rootEl.innerHTML = `<pre style="color:#f87171;padding:1rem">Failed to load ${url.pathname}\n${e?.message ?? e}</pre>`;
       currentNodes = [];
@@ -189,6 +190,7 @@ export async function navigate(path, replace = false, isPop = false) {
     rootEl.appendChild(nodes[nodes.length - 1]); // outermost node
     for (const n of nodes) runMount(n); // run onMount for page + every layout
     currentNodes = nodes;
+    clearError({ phase: "route" }); // a good render dismisses a prior error overlay
   } else {
     rootEl.innerHTML = "<h1>404 — Not Found</h1>";
     currentNodes = [];
