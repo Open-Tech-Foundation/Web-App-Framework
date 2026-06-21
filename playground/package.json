@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "otfw dev",
+    "dev": "otfw dev --port 3005",
     "build": "otfw build"
   },
   "dependencies": {
