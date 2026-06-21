@@ -10,6 +10,8 @@ const demos = [
   { href: "/dnd-demo", title: "Drag & Drop", desc: "Native HTML5 drag events + keyed lists", tag: "Events" },
   { href: "/events-demo", title: "Event Model", desc: "Callback props, emit(), on*:listen modifiers", tag: "Events" },
   { href: "/portal-demo", title: "Portals", desc: "Render to <body>; vs native <dialog>", tag: "Rendering" },
+  { href: "/error-demo", title: "Error Boundary", desc: "Catch a throwing subtree + reset/retry", tag: "Rendering" },
+  { href: "/clsx-demo", title: "Class Names", desc: "clsx-style array/object class bindings", tag: "Rendering" },
   { href: "/ref-demo", title: "Ref & Expose", desc: "$ref to elements + imperative $expose", tag: "Components" },
   { href: "/icons", title: "SVG Icons", desc: "SVG namespacing & dynamic attributes", tag: "Rendering" },
   { href: "/reconnect-demo", title: "Memory Leak", desc: "Effect cleanup on unmount", tag: "Lifecycle" },
