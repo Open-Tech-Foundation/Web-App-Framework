@@ -1,7 +1,7 @@
 {
   "name": "@opentf/web-cli",
   "version": "0.0.1",
-  "description": "OpenTF Web dev toolchain — the Rolldown-driven CSR dev server.",
+  "description": "OpenTF Web dev toolchain — the Rolldown-driven CSR dev server, production build, and SSG.",
   "type": "module",
   "bin": {
     "otfw": "./src/cli.js"
@@ -9,7 +9,14 @@
   "exports": {
     ".": "./src/cli.js"
   },
+  "files": [
+    "src"
+  ],
+  "engines": {
+    "bun": ">=1.0.0"
+  },
   "dependencies": {
+    "@opentf/otfwc": "0.0.1",
     "@tailwindcss/node": "4.2.2",
     "@tailwindcss/oxide": "4.2.2",
     "rolldown": "1.0.0-rc.17",
@@ -18,6 +25,22 @@
   "peerDependencies": {
     "@opentf/web": "*"
   },
+  "keywords": [
+    "opentf",
+    "web",
+    "dev-server",
+    "ssg",
+    "rolldown",
+    "toolchain"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Open-Tech-Foundation/Web-App-Framework.git",
+    "directory": "packages/web-cli"
+  },
+  "homepage": "https://github.com/Open-Tech-Foundation/Web-App-Framework#readme",
+  "bugs": "https://github.com/Open-Tech-Foundation/Web-App-Framework/issues",
+  "license": "MIT",
   "publishConfig": {
     "access": "public"
   }

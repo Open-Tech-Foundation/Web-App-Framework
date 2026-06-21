@@ -9,6 +9,8 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { otfwcPath } from "@opentf/otfwc";
+
 export const EXTENSIONS = [".jsx", ".tsx", ".js", ".ts"];
 
 export const MIME = {
@@ -57,15 +59,25 @@ export function loadProject() {
     fail(`cannot resolve "@opentf/web" from ${root}\n  add it to your dependencies.`);
   }
 
-  // The `otfwc` compiler ships with the toolchain, not the project: find it next
-  // to this CLI (the workspace debug build), overridable via OTFWC_BIN.
+  // Locate the `otfwc` compiler. Published: the prebuilt binary from `@opentf/otfwc`
+  // (a dependency of this CLI). In this repo's own dev (a Cargo workspace is found
+  // above the CLI): the cargo `target/debug` build, rebuilt on demand. `OTFWC_BIN`
+  // overrides both.
   const cliDir = dirname(fileURLToPath(import.meta.url));
   const workspace = findUp("Cargo.toml", cliDir);
-  const otfwc =
-    process.env.OTFWC_BIN ??
-    (workspace ? join(workspace, "target", "debug", "otfwc") : null);
-  if (!otfwc) fail("cannot locate the otfwc compiler; set OTFWC_BIN to its path.");
-  ensureCompiler(otfwc, workspace);
+  let otfwc;
+  if (process.env.OTFWC_BIN) {
+    otfwc = process.env.OTFWC_BIN;
+  } else if (workspace) {
+    otfwc = join(workspace, "target", "debug", "otfwc");
+    ensureCompiler(otfwc, workspace);
+  } else {
+    try {
+      otfwc = otfwcPath();
+    } catch (e) {
+      fail(e.message);
+    }
+  }
 
   // forms-demo depends on @opentf/web-form, which is not yet ported to the new
   // runtime (it lands with the Project Graph). Override with EXCLUDE_ROUTES.
