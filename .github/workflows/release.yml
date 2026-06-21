@@ -92,11 +92,15 @@ jobs:
       - name: Stage binaries + publish
         working-directory: packages/web-compiler
         run: |
+          # Brotli-compress each binary into bin/<platform>/<name>.br (decompressed
+          # on install). Uses node's zlib — no CLI dependency on the runner.
           for dir in ../../.artifacts/*/; do
             platform=$(basename "$dir")
             mkdir -p "bin/$platform"
-            cp "$dir"* "bin/$platform/"
-            chmod +x "bin/$platform/"* || true
+            for f in "$dir"*; do
+              node -e 'const z=require("zlib"),fs=require("fs");fs.writeFileSync(process.argv[2],z.brotliCompressSync(fs.readFileSync(process.argv[1]),{params:{[z.constants.BROTLI_PARAM_QUALITY]:11}}))' \
+                "$f" "bin/$platform/$(basename "$f").br"
+            done
           done
           find bin -type f
           name=$(node -p "require('./package.json').name")

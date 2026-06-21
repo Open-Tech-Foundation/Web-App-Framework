@@ -8,8 +8,13 @@
   "exports": {
     ".": "./index.js"
   },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
   "files": [
     "index.js",
+    "extract.js",
+    "scripts",
     "bin"
   ],
   "keywords": [

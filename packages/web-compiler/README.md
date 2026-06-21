@@ -10,17 +10,21 @@ const bin = otfwcPath(); // absolute path to the otfwc executable for this platf
 
 ## How it works
 
-This single package ships the prebuilt `otfwc` binary for every supported platform
-under `bin/<platform>-<arch>/`. `otfwcPath()` returns the one matching the host
-(`process.platform-process.arch`). The host binary is ~1.8 MB, so shipping all of
-them is only a few MB total — cheaper to maintain than the per-platform
+This single package ships the `otfwc` binary for every supported platform,
+**brotli-compressed**, under `bin/<platform>-<arch>/otfwc[.exe].br` (~0.65 MB each
+vs ~2.3 MB raw). On install a `postinstall` script decompresses **only the host's**
+binary; `otfwcPath()` also decompresses lazily as a fallback (e.g. under
+`--ignore-scripts`) and returns the path matching the host
+(`process.platform-process.arch`).
+
+Shipping all platforms in one package is cheaper to maintain than the per-platform
 optionalDependencies fan-out that rolldown/swc/esbuild use (their binaries are far
 larger). `OTFWC_BIN` overrides everything (used in this repo's own dev to point at
 the cargo `target/` build).
 
 ## Releasing (CI)
 
-`bin/` is empty in git (only `.gitignore` is tracked). The release workflow
-(`.github/workflows/release.yml`) cross-builds otfwc for each target, stages every
-binary into `bin/<platform>/`, and publishes this one package. Versioning is owned
-entirely by changesets — there is no version-sync script.
+`bin/` is empty in git. The release workflow (`.github/workflows/release.yml`)
+cross-builds otfwc for each target, brotli-compresses each into `bin/<platform>/`,
+and publishes this one package. Versioning is owned entirely by changesets — there
+is no version-sync script.

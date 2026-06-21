@@ -24,7 +24,7 @@
     },
     "packages/create-web": {
       "name": "@opentf/create-web",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "bin": {
         "create-web": "./bin/index.js",
       },
@@ -35,11 +35,11 @@
     },
     "packages/web": {
       "name": "@opentf/web",
-      "version": "0.4.0",
+      "version": "0.5.0",
     },
     "packages/web-cli": {
       "name": "@opentf/web-cli",
-      "version": "0.0.1",
+      "version": "1.0.0",
       "bin": {
         "otfw": "./src/cli.js",
       },
@@ -56,11 +56,11 @@
     },
     "packages/web-compiler": {
       "name": "@opentf/web-compiler",
-      "version": "0.0.1",
+      "version": "0.1.0",
     },
     "packages/web-form": {
       "name": "@opentf/web-form",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "dependencies": {
         "@opentf/std": "^1.0.0-beta.2",
       },
@@ -74,7 +74,7 @@
     },
     "packages/web-test": {
       "name": "@opentf/web-test",
-      "version": "0.0.1",
+      "version": "1.0.0",
       "dependencies": {
         "@testing-library/dom": "^10.4.1",
         "@testing-library/user-event": "^14.6.1",
