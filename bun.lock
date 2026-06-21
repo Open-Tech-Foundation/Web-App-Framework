@@ -33,6 +33,17 @@
         "prompts": "^2.4.2",
       },
     },
+    "packages/otfwc": {
+      "name": "@opentf/otfwc",
+      "version": "0.0.1",
+      "optionalDependencies": {
+        "@opentf/otfwc-darwin-arm64": "0.0.1",
+        "@opentf/otfwc-darwin-x64": "0.0.1",
+        "@opentf/otfwc-linux-arm64": "0.0.1",
+        "@opentf/otfwc-linux-x64": "0.0.1",
+        "@opentf/otfwc-win32-x64": "0.0.1",
+      },
+    },
     "packages/web": {
       "name": "@opentf/web",
       "version": "0.5.0",
@@ -44,6 +55,7 @@
         "otfw": "./src/cli.js",
       },
       "dependencies": {
+        "@opentf/otfwc": "0.0.1",
         "@tailwindcss/node": "4.2.2",
         "@tailwindcss/oxide": "4.2.2",
         "rolldown": "1.0.0-rc.17",
@@ -327,6 +339,8 @@
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
     "@opentf/create-web": ["@opentf/create-web@workspace:packages/create-web"],
+
+    "@opentf/otfwc": ["@opentf/otfwc@workspace:packages/otfwc"],
 
     "@opentf/std": ["@opentf/std@0.13.0", "", {}, "sha512-VG9vn7oML5prxWipDvod1X7z9+3fyyCbw+SuD5F7cWx9F1bXFZdAYGIKGqqHLtfxz3mrXZWHcxnm8d0YwQ7tKQ=="],
 
