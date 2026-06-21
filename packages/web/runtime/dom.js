@@ -17,6 +17,12 @@ const AS_PROPERTY = new Set([
   "indeterminate",
 ]);
 
+// Enumerated attributes: their value is a keyword string ("true"/"false"), not a
+// boolean-attribute presence toggle. `draggable={true}` must become
+// draggable="true" — draggable="" reads back as the default (false). ARIA states
+// behave the same (aria-*="true"/"false").
+const ENUMERATED = new Set(["draggable", "spellcheck", "contenteditable"]);
+
 /** Render a reactive value to its text form: null/undefined/false → "". */
 export function toText(value) {
   return value == null || value === false ? "" : String(value);
@@ -38,6 +44,11 @@ export function setAttr(el, name, value) {
   }
   if (AS_PROPERTY.has(name)) {
     el[name] = value;
+    return;
+  }
+  if (ENUMERATED.has(name) || name.startsWith("aria-")) {
+    if (value == null) el.removeAttribute(name);
+    else el.setAttribute(name, value === true ? "true" : value === false ? "false" : String(value));
     return;
   }
   if (value == null || value === false) {

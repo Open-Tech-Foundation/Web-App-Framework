@@ -34,6 +34,22 @@ describe("setAttr", () => {
     expect(el.getAttribute("hidden")).toBe("");
   });
 
+  test("writes enumerated and ARIA attributes as 'true'/'false' keywords", () => {
+    const el = document.createElement("div");
+
+    setAttr(el, "draggable", true); // enumerated: needs the literal keyword
+    expect(el.getAttribute("draggable")).toBe("true");
+
+    setAttr(el, "draggable", false); // not removed — keyword "false"
+    expect(el.getAttribute("draggable")).toBe("false");
+
+    setAttr(el, "aria-expanded", true);
+    expect(el.getAttribute("aria-expanded")).toBe("true");
+
+    setAttr(el, "aria-hidden", null); // nullish still removes
+    expect(el.hasAttribute("aria-hidden")).toBe(false);
+  });
+
   test("wires on* handlers as properties", () => {
     const el = document.createElement("button");
     let clicks = 0;
