@@ -1,4 +1,4 @@
-// File-based client router for the OpenTF Web runtime.
+// File-based client router for the OTF Web runtime.
 //
 // Pages/layouts compile to factory functions (default export) that return a DOM
 // node; `mountApp` registers a route table discovered from the filesystem (by the

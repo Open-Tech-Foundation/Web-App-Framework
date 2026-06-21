@@ -4,7 +4,7 @@ version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "OpenTF Web — compiler stages: AST -> Semantic Model -> IRs -> codegen. See ARCHITECTURE.md §3."
+description = "OTF Web — compiler stages: AST -> Semantic Model -> IRs -> codegen. See ARCHITECTURE.md §3."
 
 [dependencies]
 otfw_ir = { workspace = true }

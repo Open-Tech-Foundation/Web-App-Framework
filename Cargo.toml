@@ -1,4 +1,4 @@
-# OpenTF Web — Rust toolchain workspace.
+# OTF Web — Rust toolchain workspace.
 # See ARCHITECTURE.md for the design this implements.
 [workspace]
 resolver = "3"

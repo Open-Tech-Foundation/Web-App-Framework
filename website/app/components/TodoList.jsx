@@ -1,6 +1,6 @@
 export default function TodoList() {
   let todos = $state([
-    { id: 1, text: "Learn OpenTF Web", done: true },
+    { id: 1, text: "Learn OTF Web", done: true },
     { id: 2, text: "Build an App", done: false }
   ]);
 

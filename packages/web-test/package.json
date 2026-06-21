@@ -1,7 +1,7 @@
 {
   "name": "@opentf/web-test",
   "version": "0.0.1",
-  "description": "DOM testing utilities for OpenTF Web",
+  "description": "DOM testing utilities for OTF Web",
   "type": "module",
   "main": "index.js",
   "peerDependencies": {

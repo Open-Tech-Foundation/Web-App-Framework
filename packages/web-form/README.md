@@ -1,6 +1,6 @@
 # @opentf/web-form
 
-A reactive form management library for **OpenTF Web**.
+A reactive form management library for **OTF Web**.
 
 ## Features
 

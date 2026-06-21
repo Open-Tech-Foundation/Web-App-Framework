@@ -1,4 +1,4 @@
-//! Central error reporting for the OpenTF Web runtime.
+//! Central error reporting for the OTF Web runtime.
 //
 // Render, effect, lifecycle, and event errors are funneled here instead of being
 // thrown into the void. Userland (and the dev overlay) subscribe via `onError`;

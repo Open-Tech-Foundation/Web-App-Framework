@@ -1,4 +1,4 @@
-//! OpenTF Web compiler — Stages 1–4 (see `ARCHITECTURE.md` §3).
+//! OTF Web compiler — Stages 1–4 (see `ARCHITECTURE.md` §3).
 //!
 //!   source -> (1) parse -> AST
 //!          -> (2) bind/resolve -> Semantic Model

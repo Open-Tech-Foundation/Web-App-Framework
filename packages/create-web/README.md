@@ -1,6 +1,6 @@
 # @opentf/create-web
 
-The official scaffolding tool for **OpenTF Web**.
+The official scaffolding tool for **OTF Web**.
 
 ## Quick Start
 
@@ -15,7 +15,7 @@ bun run dev
 
 ## Features
 
-- 🏗️ **Instant Scaffolding**: A ready-to-run OpenTF Web app — `index.html` + file-based
+- 🏗️ **Instant Scaffolding**: A ready-to-run OTF Web app — `index.html` + file-based
   `app/` routes, no config.
 - 🎨 **Styling choice**: Plain CSS, or TailwindCSS v4 compiled by the toolchain (no
   extra config).

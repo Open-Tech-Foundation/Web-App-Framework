@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// `otfw` — the OpenTF Web toolchain CLI.
+// `otfw` — the OTF Web toolchain CLI.
 //
 //   otfw dev     start the CSR dev server (watch + live-reload)
 //   otfw build   produce a static production bundle in dist/
@@ -24,7 +24,7 @@ switch (cmd) {
     if (cmd && cmd !== "help" && cmd !== "--help" && cmd !== "-h") {
       console.error(`unknown command: ${cmd}\n`);
     }
-    console.log("otfw — OpenTF Web toolchain");
+    console.log("otfw — OTF Web toolchain");
     console.log("usage:");
     console.log("  otfw dev     start the dev server");
     console.log("  otfw build   build for production (dist/); --ssg to pre-render routes");

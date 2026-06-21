@@ -17,7 +17,7 @@ cd my-app
 bun install
 bun run dev`;
 
-  const webComponentsCode = `// This OpenTF Web component:
+  const webComponentsCode = `// This OTF Web component:
 export function UserCard() { 
   return <div>User</div>; 
 }
@@ -125,7 +125,7 @@ test("increment counter", async () => {
       <section className="space-y-12">
         <div className="space-y-4">
           <h1 className="text-4xl font-bold tracking-tight text-[var(--text-main)]">Documentation</h1>
-          <p className="text-xl text-[var(--text-muted)]">Everything you need to know to build high-performance web apps with OpenTF Web.</p>
+          <p className="text-xl text-[var(--text-muted)]">Everything you need to know to build high-performance web apps with OTF Web.</p>
         </div>
 
         <div id="introduction" className="space-y-4 scroll-mt-24 group">
@@ -134,7 +134,7 @@ test("increment counter", async () => {
             <a href="#introduction" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
           </h2>
           <p className="text-[var(--text-muted)] leading-relaxed">
-            OpenTF Web is a revolutionary approach to building web applications. 
+            OTF Web is a revolutionary approach to building web applications. 
             Unlike React or Vue, it completely eliminates the Virtual DOM. Instead, it compiles your JSX directly into highly optimized, imperative native DOM operations. 
             Under the hood, every component is compiled into a standard Web Component, ensuring perfect interoperability with the web ecosystem.
           </p>
@@ -162,7 +162,7 @@ test("increment counter", async () => {
             <a href="#architecture" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
           </h2>
           <p className="text-[var(--text-muted)] leading-relaxed mb-4">
-            OpenTF Web is built on three main pillars that ensure maximum performance and developer experience:
+            OTF Web is built on three main pillars that ensure maximum performance and developer experience:
           </p>
           <ul className="space-y-3 mb-8">
             <li className="flex items-center gap-3 text-[var(--text-main)]">
@@ -203,7 +203,7 @@ test("increment counter", async () => {
             <a href="#zero-vdom" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
           </h2>
           <p className="text-[var(--text-muted)] leading-relaxed">
-            When you write JSX in OpenTF Web, it is not transformed into `React.createElement` calls. 
+            When you write JSX in OTF Web, it is not transformed into `React.createElement` calls. 
             Instead, our compiler statically analyzes your templates and converts them into `document.createElement`, `appendChild`, and direct attribute assignments. 
             When state changes, only the specific DOM node bound to that state is updated. No diffing, no reconciliation loop.
           </p>
@@ -215,7 +215,7 @@ test("increment counter", async () => {
             <a href="#web-components" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
           </h2>
           <p className="text-[var(--text-muted)] leading-relaxed">
-            Every capitalized function in OpenTF Web that contains JSX syntax (e.g., `function Button()`) is automatically compiled into a native custom element (`{"<web-button>"}`). 
+            Every capitalized function in OTF Web that contains JSX syntax (e.g., `function Button()`) is automatically compiled into a native custom element (`{"<web-button>"}`). 
             Regular capitalized utility functions that do not return JSX are left untouched.
             This means you get style encapsulation and native lifecycle management for free on your UI components.
           </p>
@@ -242,7 +242,7 @@ test("increment counter", async () => {
             <a href="#state" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
           </h2>
           <p className="text-[var(--text-muted)] leading-relaxed">
-            State management in OpenTF Web is powered by signals, but you never have to deal with `.value`. The compiler automatically tracks variables declared with `$state()` and injects reactivity seamlessly.
+            State management in OTF Web is powered by signals, but you never have to deal with `.value`. The compiler automatically tracks variables declared with `$state()` and injects reactivity seamlessly.
           </p>
           <CodeBlock 
             code={stateCode} 
@@ -281,7 +281,7 @@ test("increment counter", async () => {
             <a href="#file-routing" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
           </h2>
           <p className="text-[var(--text-muted)] leading-relaxed">
-            OpenTF Web uses a file-system based router. Any file named `page.jsx` inside the `app/` directory becomes a route.
+            OTF Web uses a file-system based router. Any file named `page.jsx` inside the `app/` directory becomes a route.
           </p>
           <ul className="list-disc pl-6 space-y-2 text-[var(--text-muted)]">
             <li><code className="text-sm bg-[var(--bg-surface)] px-1 rounded">app/page.jsx</code> → <code className="text-sm text-[var(--accent)]">/</code></li>
@@ -333,7 +333,7 @@ test("increment counter", async () => {
             <a href="#lists" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
           </h2>
           <p className="text-[var(--text-muted)] leading-relaxed">
-            Use standard JavaScript `.map()` to render lists. OpenTF Web automatically wraps the mapping in a reactive execution context, meaning the list updates precisely when the array mutates.
+            Use standard JavaScript `.map()` to render lists. OTF Web automatically wraps the mapping in a reactive execution context, meaning the list updates precisely when the array mutates.
           </p>
           <CodeBlock code={listsCode} />
         </div>
@@ -344,7 +344,7 @@ test("increment counter", async () => {
             <a href="#conditionals" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
           </h2>
           <p className="text-[var(--text-muted)] leading-relaxed">
-            Use standard logical operators (`&&`) or ternary expressions (`? :`) for conditional UI. OpenTF Web will intelligently mount and unmount these DOM fragments dynamically.
+            Use standard logical operators (`&&`) or ternary expressions (`? :`) for conditional UI. OTF Web will intelligently mount and unmount these DOM fragments dynamically.
           </p>
           <CodeBlock code={conditionalsCode} />
         </div>
@@ -377,7 +377,7 @@ test("increment counter", async () => {
             <a href="#global-state" className="opacity-0 group-hover:opacity-100 text-accent text-sm transition-opacity">#</a>
           </h2>
           <p className="text-[var(--text-muted)] leading-relaxed">
-            Since OpenTF Web reactivity is based on standard signals, global state is as simple as exporting a signal from a shared file.
+            Since OTF Web reactivity is based on standard signals, global state is as simple as exporting a signal from a shared file.
           </p>
           <CodeBlock code={`// store.js\n// No imports needed! The compiler handles the macro\nexport const user = $state({ name: "Guest" });\n\n// component.jsx\nimport { user } from "./store";\n\nexport function Profile() {\n  // Access directly, no .value needed\n  return <div>Hello, {user.name}</div>;\n}`} />
         </div>

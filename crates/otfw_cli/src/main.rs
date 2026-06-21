@@ -1,4 +1,4 @@
-//! OpenTF Web toolchain CLI (`otfw`).
+//! OTF Web toolchain CLI (`otfw`).
 //!
 //! Status: foundation. A minimal driver that runs the compiler pipeline
 //! (parse → lower → CSR codegen) over a single file and prints the result. The
@@ -30,7 +30,7 @@ fn main() -> ExitCode {
             }
         }
         _ => {
-            println!("otfwc: OpenTF Web IR compiler (foundation). See ARCHITECTURE.md.");
+            println!("otfwc: OTF Web IR compiler (foundation). See ARCHITECTURE.md.");
             println!("usage: otfwc build [--component] [--stdin] <file.tsx>   # parse → lower → CSR codegen");
             println!("  default emits a page factory; --component emits a Custom Element class");
             println!("  --stdin reads source from stdin; <file> is used only for the module id");

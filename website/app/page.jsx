@@ -42,7 +42,7 @@ export default function HomePage() {
 customElements.define("web-counter", CounterElement);`;
 
   const todoCode = `export default function TodoList() {
-  let todos = $state([{ id: 1, text: "Learn OpenTF Web", done: false }]);
+  let todos = $state([{ id: 1, text: "Learn OTF Web", done: false }]);
   
   const toggle = (id) => {
     todos = todos.map(t => t.id === id ? { ...t, done: !t.done } : t);
@@ -62,7 +62,7 @@ customElements.define("web-counter", CounterElement);`;
 
   const todoCompiled = `class TodoListElement extends HTMLElement {
   connectedCallback() {
-    let todos = _signal([{ id: 1, text: "Learn OpenTF Web", done: false }]);
+    let todos = _signal([{ id: 1, text: "Learn OTF Web", done: false }]);
     const toggle = id => {
       todos.value = todos.value.map(t => t.id === id ? { ...t, done: !t.done } : t);
     };
@@ -126,13 +126,13 @@ customElements.define("web-todolist", TodoListElement);`;
         <div className="p-6 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] space-y-3 transition-colors">
           <div className="text-3xl">⚡️</div>
           <h3 className="font-bold text-[var(--text-main)]">Zero VDOM</h3>
-          <p className="text-sm text-[var(--text-muted)]">Eliminate diffing overhead. OpenTF Web maps state changes directly to the DOM for unmatched runtime performance.</p>
+          <p className="text-sm text-[var(--text-muted)]">Eliminate diffing overhead. OTF Web maps state changes directly to the DOM for unmatched runtime performance.</p>
         </div>
 
         <div className="p-6 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] space-y-3 transition-colors">
           <div className="text-3xl">🧩</div>
           <h3 className="font-bold text-[var(--text-main)]">Native Components</h3>
-          <p className="text-sm text-[var(--text-muted)]">Interoperate with the entire web ecosystem. Every OpenTF Web component is a standard Web Component.</p>
+          <p className="text-sm text-[var(--text-muted)]">Interoperate with the entire web ecosystem. Every OTF Web component is a standard Web Component.</p>
         </div>
 
         <div className="p-6 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] space-y-3 transition-colors">
@@ -475,7 +475,7 @@ customElements.define("web-todolist", TodoListElement);`;
       <section className="py-24 space-y-24">
         <div className="text-center space-y-4">
           <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Built for developers.</h2>
-          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">See how easy it is to build reactive applications with OpenTF Web. No boilerplate, just standard JavaScript and JSX.</p>
+          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">See how easy it is to build reactive applications with OTF Web. No boilerplate, just standard JavaScript and JSX.</p>
         </div>
 
         {/* Counter Demo */}

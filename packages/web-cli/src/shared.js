@@ -1,4 +1,4 @@
-// Shared plumbing for the OpenTF Web toolchain (`otfw dev` / `otfw build`).
+// Shared plumbing for the OTF Web toolchain (`otfw dev` / `otfw build`).
 //
 // Both commands treat the current working directory as the project root (its
 // `index.html` + `app/`), resolve `@opentf/web` via node resolution, run the

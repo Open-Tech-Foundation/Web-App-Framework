@@ -21,7 +21,7 @@ const otfwc =
   process.env.OTFWC_BIN ??
   (workspace ? join(workspace, "target", "debug", "otfwc") : "otfwc");
 
-// Compile `.jsx`/`.tsx` test fixtures through the OpenTF Web compiler so tests can
+// Compile `.jsx`/`.tsx` test fixtures through the OTF Web compiler so tests can
 // import components directly. Page/layout/404 modules become factories; everything
 // else a Custom Element (matching the toolchain).
 plugin({

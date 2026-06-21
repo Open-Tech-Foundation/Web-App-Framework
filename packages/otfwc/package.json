@@ -1,7 +1,7 @@
 {
   "name": "@opentf/otfwc",
   "version": "0.0.1",
-  "description": "OpenTF Web IR compiler (otfwc) — resolves the prebuilt platform binary for the toolchain (ARCHITECTURE.md §8).",
+  "description": "OTF Web IR compiler (otfwc) — resolves the prebuilt platform binary for the toolchain (ARCHITECTURE.md §8).",
   "type": "module",
   "main": "index.js",
   "exports": {

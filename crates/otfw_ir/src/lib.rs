@@ -1,4 +1,4 @@
-//! OpenTF Web intermediate representations — the compiler backbone.
+//! OTF Web intermediate representations — the compiler backbone.
 //!
 //! This crate defines the several small, domain-specific IRs described in
 //! `ARCHITECTURE.md` §4: View, Reactivity, Server, Route, and the assembling

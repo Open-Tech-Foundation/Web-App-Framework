@@ -141,7 +141,7 @@ export async function runDev() {
     } else {
       html = `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenTF Web</title></head><body><div id="app"></div></body></html>`;
+<title>OTF Web</title></head><body><div id="app"></div></body></html>`;
     }
     return html.includes("</body>")
       ? html.replace("</body>", `${injected}</body>`)
@@ -215,6 +215,6 @@ export async function runDev() {
     },
   });
 
-  console.log(`\n  OpenTF Web dev server`);
+  console.log(`\n  OTF Web dev server`);
   console.log(`  → http://localhost:${server.port}  (${pages.length} routes)\n`);
 }

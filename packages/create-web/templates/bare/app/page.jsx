@@ -3,7 +3,7 @@ export default function Home() {
 
   return (
     <section class="card">
-      <h1 class="title">Welcome to OpenTF Web</h1>
+      <h1 class="title">Welcome to OTF Web</h1>
       <p class="lead">
         A native-first framework: JSX compiles to Web Components with fine-grained,
         signal-based reactivity — no virtual DOM.

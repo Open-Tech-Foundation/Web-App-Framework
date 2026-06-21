@@ -27,7 +27,7 @@ export default function Home() {
     <div class="space-y-8">
       <header class="space-y-2">
         <h1 class="text-4xl font-black tracking-tight bg-gradient-to-r from-indigo-400 to-sky-400 bg-clip-text text-transparent">
-          OpenTF Web
+          OTF Web
         </h1>
         <p class="text-slate-400">
           A fullstack framework with a from-scratch IR compiler and a signal-based

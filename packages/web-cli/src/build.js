@@ -71,7 +71,7 @@ export async function runBuild() {
     ? readFileSync(indexPath, "utf8")
     : `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenTF Web</title></head><body><div id="app"></div></body></html>`;
+<title>OTF Web</title></head><body><div id="app"></div></body></html>`;
 
   html = html.replace(
     /<script\s+type=["']module["'][^>]*src=[^>]*>\s*<\/script>\s*/gi,
@@ -112,7 +112,7 @@ export async function runBuild() {
 
   const chunks = result.output.filter((o) => o.type === "chunk").length;
   const ms = Math.round(performance.now() - t0);
-  console.log(`\n  OpenTF Web build`);
+  console.log(`\n  OTF Web build`);
   console.log(`  → dist/  (${pages.length} routes, ${chunks} chunks) in ${ms}ms`);
   if (ssg) {
     console.log(

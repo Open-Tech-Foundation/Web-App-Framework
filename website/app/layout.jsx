@@ -7,7 +7,7 @@ export default function WebsiteLayout(props) {
       <header className="sticky top-0 z-50 bg-[var(--bg-main)]/80 backdrop-blur-md border-b border-[var(--border)] px-8 py-4 flex justify-between items-center transition-colors">
         <div className="flex items-center gap-2">
           <img src="/logo.png" alt="Logo" className="w-8 h-8" />
-          <span className="font-bold tracking-tight text-lg text-[var(--text-main)]">OpenTF Web</span>
+          <span className="font-bold tracking-tight text-lg text-[var(--text-main)]">OTF Web</span>
           <span className="px-2 py-0.5 bg-[var(--accent)]/10 text-[var(--accent)] rounded text-[10px] uppercase tracking-wider font-bold">v0.4.0</span>
         </div>
 
@@ -26,7 +26,7 @@ export default function WebsiteLayout(props) {
       <footer className="py-12 border-t border-[var(--border)] flex flex-col md:flex-row justify-between items-center px-8 text-xs text-[var(--text-muted)] bg-[var(--bg-surface)] mt-auto transition-colors">
         <div className="flex flex-col gap-2">
           <div className="font-bold text-[var(--text-main)] flex items-center gap-2">
-            OpenTF Web
+            OTF Web
           </div>
           <div>© 2026 <a href="https://github.com/Open-Tech-Foundation" target="_blank" className="hover:text-[var(--text-main)] transition-colors">Open Tech Foundation</a>.</div>
         </div>
@@ -37,7 +37,7 @@ export default function WebsiteLayout(props) {
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
               <polyline points="22 4 12 14.01 9 11.01"></polyline>
             </svg>
-            <span>Built with <a className="font-semibold text-[var(--text-main)]" href="https://github.com/Open-Tech-Foundation/Web-App-Framework" target="_blank">OpenTF Web</a></span>
+            <span>Built with <a className="font-semibold text-[var(--text-main)]" href="https://github.com/Open-Tech-Foundation/Web-App-Framework" target="_blank">OTF Web</a></span>
           </div>
         </div>
       </footer>

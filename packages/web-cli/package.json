@@ -1,7 +1,7 @@
 {
   "name": "@opentf/web-cli",
   "version": "0.0.1",
-  "description": "OpenTF Web dev toolchain — the Rolldown-driven CSR dev server, production build, and SSG.",
+  "description": "OTF Web dev toolchain — the Rolldown-driven CSR dev server, production build, and SSG.",
   "type": "module",
   "bin": {
     "otfw": "./src/cli.js"

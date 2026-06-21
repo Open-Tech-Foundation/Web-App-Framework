@@ -1,6 +1,6 @@
 # @opentf/otfwc
 
-Prebuilt-binary resolver for **otfwc**, the OpenTF Web IR compiler (a Rust binary).
+Prebuilt-binary resolver for **otfwc**, the OTF Web IR compiler (a Rust binary).
 You normally don't install this directly — `@opentf/web-cli` depends on it.
 
 ```js

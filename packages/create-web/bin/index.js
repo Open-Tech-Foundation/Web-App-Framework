@@ -12,7 +12,7 @@ const orange = (str) => `\x1b[38;2;255;165;0m${str}${reset("")}`;
 
 async function init() {
   console.log(`\n  ${bold(orange("Open Tech Foundation"))}`);
-  console.log(`\n  ${bold(cyan("OpenTF Web"))} ${yellow("Scaffolding Tool")} ✨\n`);
+  console.log(`\n  ${bold(cyan("OTF Web"))} ${yellow("Scaffolding Tool")} ✨\n`);
 
   let targetDir = process.argv[2];
   const defaultProjectName = targetDir || "web-app";
@@ -113,7 +113,7 @@ async function init() {
   }
 
   const rel = path.relative(process.cwd(), root);
-  console.log(`\n${green("✔")} ${bold(cyan("OpenTF Web"))} project created! 🚀\n`);
+  console.log(`\n${green("✔")} ${bold(cyan("OTF Web"))} project created! 🚀\n`);
   console.log(`  ${reset("Next steps (the toolchain runs on Bun):")}\n`);
   if (rel) console.log(`  ${cyan(`cd ${rel}`)}`);
   console.log(`  ${cyan("bun install")}`);
