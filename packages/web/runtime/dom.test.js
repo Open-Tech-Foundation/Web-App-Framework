@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { signal } from "../core/signals.js";
-import { bindAttr, bindChild, bindList, bindText, mount, setAttr, spread, toText } from "./index.js";
+import { bindAttr, bindChild, bindList, bindText, mount, setAttr, setProp, spread, toText } from "./index.js";
 
 describe("toText", () => {
   test("renders nullish and false as empty string", () => {
@@ -101,6 +101,29 @@ describe("bindText", () => {
     which.value = "hi";
     expect(parent.querySelector("b")).toBeNull();
     expect(parent.textContent).toBe("hi");
+  });
+});
+
+describe("setProp", () => {
+  test("sets a property when the element exposes one, else an attribute", () => {
+    // Custom element with a value property setter (like ContextProvider).
+    let received;
+    customElements.define(
+      "x-setprop",
+      class extends HTMLElement {
+        set value(v) {
+          received = v;
+        }
+      },
+    );
+    const ce = document.createElement("x-setprop");
+
+    const obj = { a: 1 };
+    setProp(ce, "value", obj); // property exists → setter receives the object
+    expect(received).toBe(obj);
+
+    setProp(ce, "class", "card"); // no such property → attribute
+    expect(ce.getAttribute("class")).toBe("card");
   });
 });
 

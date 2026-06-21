@@ -99,6 +99,20 @@ export function setAttr(el, name, value) {
 }
 
 /**
+ * Apply a named prop to a *child component* element. Set it as a property when the
+ * element exposes one (custom-element prop setters, `value`, `checked`, …) so rich
+ * values (objects, signals) reach the component's setter; otherwise fall back to an
+ * attribute so plain ones (`class`, `data-*`, `aria-*`) still land correctly. This
+ * mirrors how JSX libraries target custom elements. If the element is not yet
+ * upgraded `name in el` is false, so the value lands as an attribute and the
+ * component picks it up from `getAttribute` when it upgrades.
+ */
+export function setProp(el, name, value) {
+  if (name in el) el[name] = value;
+  else setAttr(el, name, value);
+}
+
+/**
  * Apply every own enumerable key of `obj` to `el` (`<div {...obj}/>`, SPEC §5.5).
  * `asProps` sets element properties (for components) instead of attributes (for
  * host elements). Keys are applied in object order; the caller wraps this in an
