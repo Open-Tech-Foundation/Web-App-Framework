@@ -839,6 +839,28 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// `onEvent:mod={fn}`: an `addEventListener` binding (the modifier path of the
+    /// hybrid event model). In a component the disposer is collected so the listener
+    /// is removed on disconnect; a page's node is discarded on navigation, so its
+    /// listener needs no teardown and the handler is inlined.
+    fn emit_event_listener(&mut self, el: &str, prop_name: &str, code: &str) {
+        let (event, opts) = event_options(prop_name);
+        let name = js_string(&event);
+        match self.disposal {
+            Disposal::None => {
+                self.line(format!("{el}.addEventListener({name}, {code}{opts});"));
+            }
+            Disposal::Sink(sink) => {
+                let h = self.fresh("__ev");
+                self.line(format!("const {h} = {code};"));
+                self.line(format!("{el}.addEventListener({name}, {h}{opts});"));
+                self.line(format!(
+                    "{sink}.push(() => {el}.removeEventListener({name}, {h}{opts}));"
+                ));
+            }
+        }
+    }
+
     /// `{...obj}`: reactively apply the object's keys (SPEC §5.5). Wrapped in an
     /// effect so a reactive source re-applies; `as_props` sets element properties
     /// (components) vs attributes (host elements).
@@ -852,7 +874,8 @@ impl<'a> Emitter<'a> {
     }
 
     /// Props on a host element: static → attribute, dynamic → reactive attribute,
-    /// `on*` → event handler (lowercased property, attached once).
+    /// `on*` → event handler (lowercased property, attached once), `on*:mod` →
+    /// `addEventListener` with options (the hybrid model's listener path).
     fn emit_element_prop(&mut self, el: &str, prop: &Prop) {
         if prop.name == "ref" {
             self.emit_ref(el, prop);
@@ -872,7 +895,9 @@ impl<'a> Emitter<'a> {
             }
             PropValue::Dynamic(expr) => {
                 let code = self.lowered.exprs.code(*expr).unwrap_or("undefined").to_string();
-                if is_event(&prop.name) {
+                if is_listener(&prop.name) {
+                    self.emit_event_listener(el, &prop.name, &code);
+                } else if is_event(&prop.name) {
                     self.line(format!("{el}.{} = {code};", prop.name.to_ascii_lowercase()));
                 } else {
                     self.uses.bind_attr = true;
@@ -883,8 +908,9 @@ impl<'a> Emitter<'a> {
     }
 
     /// Props on a child component: rich data is passed as **properties** —
-    /// static → attribute, dynamic → reactive property set, `on*` → property
-    /// (original case, set once) since the component owns its event semantics.
+    /// static → attribute, dynamic → reactive property set. `on*` is a callback
+    /// prop (property, original case — the parent→child channel); `on*:mod`
+    /// subscribes to the component's dispatched events via `addEventListener`.
     fn emit_component_prop(&mut self, el: &str, prop: &Prop) {
         if prop.name == "ref" {
             self.emit_ref(el, prop);
@@ -909,7 +935,9 @@ impl<'a> Emitter<'a> {
             }
             PropValue::Dynamic(expr) => {
                 let code = self.lowered.exprs.code(*expr).unwrap_or("undefined").to_string();
-                if is_event(&prop.name) {
+                if is_listener(&prop.name) {
+                    self.emit_event_listener(el, &prop.name, &code);
+                } else if is_event(&prop.name) {
                     self.line(format!("{el}[{}] = {code};", js_string(&prop.name)));
                 } else {
                     self.uses.effect = true;
@@ -934,9 +962,36 @@ fn substitute_branches(template: &str, calls: &[String]) -> String {
     out
 }
 
-/// True for an `on*` event-handler prop name (`onClick`, `onclick`, …).
+/// True for an `on*` event-handler prop name (`onClick`, `onclick`,
+/// `onScroll:passive`, …).
 fn is_event(prop: &str) -> bool {
     prop.len() > 2 && prop.starts_with("on")
+}
+
+/// True when an `on*` name carries listener modifiers (`onScroll:passive`) — the
+/// `:` switches from the callback/property fast path to `addEventListener`.
+fn is_listener(prop: &str) -> bool {
+    prop.contains(':')
+}
+
+/// Parse `onScroll:once-passive` into the DOM event name and an `addEventListener`
+/// options argument: `("scroll", ", { once: true, passive: true }")`. Modifiers
+/// combine with `-`; `listen` forces the listener path with no options. An empty
+/// options string means the third argument is omitted.
+fn event_options(prop: &str) -> (String, String) {
+    let (base, mods) = prop.split_once(':').unwrap_or((prop, ""));
+    let event = base.strip_prefix("on").unwrap_or(base).to_ascii_lowercase();
+    let opts: Vec<&str> = mods
+        .split('-')
+        .filter(|m| matches!(*m, "capture" | "passive" | "once"))
+        .collect();
+    let arg = if opts.is_empty() {
+        String::new()
+    } else {
+        let pairs = opts.iter().map(|o| format!("{o}: true")).collect::<Vec<_>>().join(", ");
+        format!(", {{ {pairs} }}")
+    };
+    (event, arg)
 }
 
 /// The Custom Element tag for a component name: `web-` + kebab-case.
@@ -1197,6 +1252,61 @@ mod tests {
         assert!(base_at < sig_at, "base before signal:\n{}", m.code);
         assert!(sig_at < inc_at, "signal before handler:\n{}", m.code);
         assert!(m.code.contains("el0.onclick = inc;"), "handler wired:\n{}", m.code);
+    }
+
+    #[test]
+    fn listener_modifiers_emit_add_event_listener_with_cleanup() {
+        // A `:`-modified `on*` switches from the property fast path to
+        // `addEventListener`; in a component the disposer is collected for teardown.
+        let m = emit_component(&lower(
+            "export function C() { return <div onclick:capture={onOut} onScroll:once-passive={onScroll}>x</div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(
+            m.code.contains("el0.addEventListener(\"click\", __ev1, { capture: true });"),
+            "capture listener:\n{}",
+            m.code
+        );
+        assert!(
+            m.code.contains("__ev2, { once: true, passive: true }"),
+            "combined options:\n{}",
+            m.code
+        );
+        assert!(
+            m.code.contains("this._cleanups.push(() => el0.removeEventListener(\"click\", __ev1, { capture: true }));"),
+            "listener cleanup:\n{}",
+            m.code
+        );
+        // A bare `on*` still uses the property fast path.
+        assert!(!m.code.contains("onclick:capture"), "modifier not leaked as a name:\n{}", m.code);
+    }
+
+    #[test]
+    fn page_listener_is_inlined_without_teardown() {
+        // A page's node is discarded on navigation, so the listener needs no
+        // disposer and the handler is inlined.
+        let m = emit_page(&lower(
+            "export function P() { return <div onclick:passive={fn}>x</div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(
+            m.code.contains("el0.addEventListener(\"click\", fn, { passive: true });"),
+            "inlined listener:\n{}",
+            m.code
+        );
+        assert!(!m.code.contains("removeEventListener"), "no teardown on a page:\n{}", m.code);
+    }
+
+    #[test]
+    fn component_event_callback_prop_stays_a_property() {
+        // A bare `on*` on a child component is a callback prop (property), not a
+        // listener — the hybrid model's parent→child channel.
+        let m = emit_component(&lower(
+            "export function C() { return <Picker onSelect={pick} />; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("[\"onSelect\"] = pick;"), "callback prop:\n{}", m.code);
+        assert!(!m.code.contains("addEventListener"), "no listener for a callback prop:\n{}", m.code);
     }
 
     #[test]
