@@ -65,6 +65,31 @@ export function toText(value) {
 }
 
 /**
+ * clsx-style class normalization. Falsy entries are skipped; strings/numbers are
+ * kept; arrays recurse; objects contribute the keys whose values are truthy. Lets
+ * JSX write `class={["btn", active && "on", { lg: size === "lg" }]}`.
+ */
+export function clsx(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) {
+    const parts = [];
+    for (const v of value) {
+      const s = clsx(v);
+      if (s) parts.push(s);
+    }
+    return parts.join(" ");
+  }
+  if (typeof value === "object") {
+    const parts = [];
+    for (const k in value) if (value[k]) parts.push(k);
+    return parts.join(" ");
+  }
+  return "";
+}
+
+/**
  * Apply a single static prop/attribute. Handles `style` objects, `on*` event
  * handlers, property-backed attributes, and boolean/nullish removal; everything
  * else falls back to `setAttribute`.
@@ -72,6 +97,12 @@ export function toText(value) {
 export function setAttr(el, name, value) {
   if (name === "style" && value && (typeof value === "object" || typeof value === "string")) {
     applyStyle(el, value);
+    return;
+  }
+  if (name === "class" && value && typeof value === "object") {
+    const c = clsx(value); // array/object form → a normalized class string
+    if (c) el.setAttribute("class", c);
+    else el.removeAttribute("class");
     return;
   }
   if (name.startsWith("on") && typeof value === "function") {
