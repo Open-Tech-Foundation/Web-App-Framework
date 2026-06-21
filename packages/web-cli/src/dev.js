@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { compileCss, usesTailwind } from "./tailwind.js";
+import { overlayClient } from "./overlay.js";
 import {
   EXTENSIONS,
   MIME,
@@ -35,14 +36,23 @@ export async function runDev() {
   const entry = join(devDir, "entry.js");
   writeFileSync(entry, entrySource(pages, appDir));
 
-  // WebSocket HMR: clients on the "hmr" topic reload on each successful rebuild.
+  // WebSocket HMR: clients on the "hmr" topic get JSON messages — a successful
+  // rebuild sends { type: "reload" }; a compile/build failure sends
+  // { type: "error" } so the injected overlay shows it over the last good page.
   let server;
-  const reload = () => server?.publish("hmr", "reload");
+  const publish = (msg) => server?.publish("hmr", JSON.stringify(msg));
+  // Per-module compile diagnostics (keyed by id); a clean build clears them.
+  const compileErrors = new Map();
 
   const watcher = watch({
     input: entry,
     resolve: { alias: { "@opentf/web": webEntry }, extensions: EXTENSIONS },
-    plugins: [otfwPlugin(otfwc), cssPlugin()],
+    plugins: [
+      otfwPlugin(otfwc, {
+        onResult: (id, err) => (err ? compileErrors.set(id, err) : compileErrors.delete(id)),
+      }),
+      cssPlugin(),
+    ],
     output: {
       dir: join(devDir, "csr"),
       format: "esm",
@@ -51,29 +61,29 @@ export async function runDev() {
   });
   watcher.on("event", (e) => {
     if (e.code === "BUNDLE_END") {
-      console.log(`✓ bundled in ${e.duration}ms`);
       e.result?.close?.();
-      reload();
+      if (compileErrors.size > 0) {
+        const [id, message] = [...compileErrors][0];
+        console.error(`✗ ${compileErrors.size} compile error(s)`);
+        publish({ type: "error", kind: "compile", id, message });
+      } else {
+        console.log(`✓ bundled in ${e.duration}ms`);
+        publish({ type: "reload" });
+      }
     } else if (e.code === "ERROR") {
-      console.error("✗ build error:\n", e.error?.message ?? e.error);
+      const message = e.error?.message ?? String(e.error);
+      console.error("✗ build error:\n", message);
+      publish({ type: "error", kind: "build", message, stack: e.error?.stack });
     }
   });
 
   const indexPath = join(root, "index.html");
 
-  // Injected into the served HTML: our bundle + the reload client (reconnects and
-  // reloads once the server is back after a restart).
+  // Injected into the served HTML: our bundle + the dev error overlay / reload
+  // client (reconnects and reloads once the server is back after a restart).
   const injected =
     `<script type="module" src="/bundle.js"></script>\n` +
-    `<script>(() => {\n` +
-    `  const url = (location.protocol === "https:" ? "wss" : "ws") + "://" + location.host + "/__hmr";\n` +
-    `  const connect = () => {\n` +
-    `    const ws = new WebSocket(url);\n` +
-    `    ws.onmessage = () => location.reload();\n` +
-    `    ws.onclose = () => setTimeout(connect, 1000);\n` +
-    `  };\n` +
-    `  connect();\n` +
-    `})();</script>\n`;
+    `<script>${overlayClient}</script>\n`;
 
   // Use the project's index.html as the shell, stripping any module entry script
   // (the app would be double-loaded) and injecting our bundle + reload client.
@@ -117,7 +127,16 @@ export async function runDev() {
 
   server = Bun.serve({
     port,
-    websocket: { open: (ws) => ws.subscribe("hmr") },
+    websocket: {
+      open: (ws) => {
+        ws.subscribe("hmr");
+        // A client connecting while a compile error is outstanding sees it now.
+        if (compileErrors.size > 0) {
+          const [id, message] = [...compileErrors][0];
+          ws.send(JSON.stringify({ type: "error", kind: "compile", id, message }));
+        }
+      },
+    },
     async fetch(req, srv) {
       const { pathname } = new URL(req.url);
       if (pathname === "/__hmr") {

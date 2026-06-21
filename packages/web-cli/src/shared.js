@@ -129,8 +129,10 @@ export function entrySource(pages, appDir) {
  * layout / 404 modules become factories; everything else a Custom Element. On a
  * compile error it emits a diagnostic stub (so one bad route doesn't sink the
  * build) unless `failOnError` is set (production builds should fail loudly).
+ * `onResult(id, errorMessageOrNull)` is called per module so the dev server can
+ * push compile diagnostics to the error overlay and clear them once fixed.
  */
-export function otfwPlugin(otfwc, { failOnError = false } = {}) {
+export function otfwPlugin(otfwc, { failOnError = false, onResult } = {}) {
   return {
     name: "otfw",
     transform(code, id) {
@@ -145,6 +147,7 @@ export function otfwPlugin(otfwc, { failOnError = false } = {}) {
       });
       if (proc.exitCode !== 0) {
         const msg = proc.stderr.toString();
+        onResult?.(id, msg);
         if (failOnError) {
           this.error(`otfwc failed for ${id}:\n${msg}`);
         }
@@ -156,6 +159,7 @@ export function otfwPlugin(otfwc, { failOnError = false } = {}) {
           ` return pre; }`;
         return { code: stub, moduleSideEffects: true };
       }
+      onResult?.(id, null);
       // Side effects (e.g. customElements.define) must survive bundling.
       return { code: proc.stdout.toString(), moduleSideEffects: true };
     },
