@@ -44,3 +44,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# otfwc binaries — staged into the package by CI at release time only
+packages/web-compiler/bin/
