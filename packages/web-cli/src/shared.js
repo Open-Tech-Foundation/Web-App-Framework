@@ -9,7 +9,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { otfwcPath } from "@opentf/otfwc";
+import { otfwcPath } from "@opentf/web-compiler";
 
 export const EXTENSIONS = [".jsx", ".tsx", ".js", ".ts"];
 
@@ -59,7 +59,7 @@ export function loadProject() {
     fail(`cannot resolve "@opentf/web" from ${root}\n  add it to your dependencies.`);
   }
 
-  // Locate the `otfwc` compiler. Published: the prebuilt binary from `@opentf/otfwc`
+  // Locate the `otfwc` compiler. Published: the prebuilt binary from `@opentf/web-compiler`
   // (a dependency of this CLI). In this repo's own dev (a Cargo workspace is found
   // above the CLI): the cargo `target/debug` build, rebuilt on demand. `OTFWC_BIN`
   // overrides both.
