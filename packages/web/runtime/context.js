@@ -47,9 +47,18 @@ export function createContext(defaultValue) {
  * binding as a signal so the bare name reads `.value` reactively.
  */
 export function readContext(context) {
-  const host = hostStack[hostStack.length - 1];
-  const provider = host && host.closest(`[data-otfw-ctx~="${context.id}"]`);
-  return provider ? provider._signal : context.fallback;
+  let el = hostStack[hostStack.length - 1];
+  const sel = `[data-otfw-ctx~="${context.id}"]`;
+  // Walk up the DOM; when the search reaches a portal boundary without finding a
+  // provider, hop to the portal's logical location (`__portalHost`) and continue,
+  // so context resolves across a <Portal> as if the content were still in place.
+  while (el) {
+    const provider = el.closest(sel);
+    if (provider) return provider._signal;
+    const boundary = el.closest("[data-otfw-portal]");
+    el = boundary ? boundary.__portalHost : null;
+  }
+  return context.fallback;
 }
 
 // `<ContextProvider context={Ctx} value={v}>`: a host element that publishes `v`
