@@ -23,7 +23,7 @@
     "build:web": "bun run --cwd packages/web build",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "changeset publish"
+    "release": "node scripts/sync-otfwc-versions.mjs && changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",

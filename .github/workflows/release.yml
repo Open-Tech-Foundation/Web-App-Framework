@@ -8,11 +8,39 @@ on:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
-  # Cross-build the otfwc Rust binary for every supported platform and stage each
-  # into its @opentf/otfwc-<platform> package, so the release job can publish them
-  # with real binaries. (Without this, the platform packages would publish empty.)
-  build-otfwc:
-    name: build otfwc (${{ matrix.platform }})
+  # Runs on every push to main, but only PUBLISHES when a changeset Version PR has
+  # been merged (versions bumped). Otherwise it just creates/updates that PR — no
+  # publish, no expensive binary builds.
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bun run test
+      - name: Create Release PR or publish to npm
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          publish: bun run release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Only after `release` actually published: cross-build the otfwc binary per
+  # platform and publish each @opentf/otfwc-<platform> package (synced to the just-
+  # published @opentf/otfwc version). Gated on `published`, so a normal push never
+  # triggers these heavy builds.
+  publish-otfwc-binaries:
+    name: publish otfwc (${{ matrix.platform }})
+    needs: release
+    if: needs.release.outputs.published == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -28,60 +56,23 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
       - name: Install aarch64 linux cross linker
         if: matrix.cross
         run: |
           sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
-      - name: Build
-        run: cargo build --release -p otfw_cli --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: otfwc-${{ matrix.platform }}
-          path: target/${{ matrix.target }}/release/${{ matrix.bin }}
-          if-no-files-found: error
-
-  release:
-    name: Release
-    needs: build-otfwc
-    runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Download otfwc binaries
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Stage binaries into their platform packages
+      - run: cargo build --release -p otfw_cli --target ${{ matrix.target }}
+      - name: Sync version + stage binary
+        shell: bash
         run: |
-          for d in artifacts/otfwc-*; do
-            plat="${d#artifacts/otfwc-}"
-            cp "$d"/* "packages/otfwc/npm/$plat/"
-            chmod +x "packages/otfwc/npm/$plat/"otfwc* || true
-          done
-
-      - name: Install Dependencies
-        run: bun install
-
-      - name: Run Tests
-        run: bun test
-
-      # Publishes the JS packages and the otfwc binary packages. `bun run release`
-      # runs `changeset publish`; binaries are already staged above.
-      - name: Create Release Pull Request or Publish to npm
-        id: changesets
-        uses: changesets/action@v1
-        with:
-          publish: bun run release
+          node scripts/sync-otfwc-versions.mjs
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" "packages/otfwc/npm/${{ matrix.platform }}/${{ matrix.bin }}"
+      - name: Publish platform package
+        run: npm publish
+        working-directory: packages/otfwc/npm/${{ matrix.platform }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
