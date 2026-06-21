@@ -132,7 +132,7 @@ export function entrySource(pages, appDir) {
  * `onResult(id, errorMessageOrNull)` is called per module so the dev server can
  * push compile diagnostics to the error overlay and clear them once fixed.
  */
-export function otfwPlugin(otfwc, { failOnError = false, onResult } = {}) {
+export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr" } = {}) {
   return {
     name: "otfw",
     transform(code, id) {
@@ -141,6 +141,7 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult } = {}) {
       const isPage = base === "page" || base === "layout" || base === "404";
       const args = ["build"];
       if (!isPage) args.push("--component");
+      if (target === "ssg") args.push("--target=ssg");
       args.push("--stdin", id);
       const proc = Bun.spawnSync([otfwc, ...args], {
         stdin: new TextEncoder().encode(code),
