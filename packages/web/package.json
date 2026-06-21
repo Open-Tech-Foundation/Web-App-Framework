@@ -17,6 +17,22 @@
     "server",
     "!**/*.test.js"
   ],
+  "keywords": [
+    "opentf",
+    "web-components",
+    "signals",
+    "reactivity",
+    "runtime",
+    "ssg"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Open-Tech-Foundation/Web-App-Framework.git",
+    "directory": "packages/web"
+  },
+  "homepage": "https://github.com/Open-Tech-Foundation/Web-App-Framework#readme",
+  "bugs": "https://github.com/Open-Tech-Foundation/Web-App-Framework/issues",
+  "license": "MIT",
   "publishConfig": {
     "access": "public"
   }

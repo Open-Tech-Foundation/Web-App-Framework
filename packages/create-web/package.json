@@ -6,10 +6,32 @@
     "create-web": "./bin/index.js"
   },
   "type": "module",
+  "files": [
+    "bin",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "kolorist": "^1.8.0",
     "prompts": "^2.4.2"
   },
+  "keywords": [
+    "opentf",
+    "create",
+    "scaffold",
+    "starter",
+    "web-components"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Open-Tech-Foundation/Web-App-Framework.git",
+    "directory": "packages/create-web"
+  },
+  "homepage": "https://github.com/Open-Tech-Foundation/Web-App-Framework#readme",
+  "bugs": "https://github.com/Open-Tech-Foundation/Web-App-Framework/issues",
+  "license": "MIT",
   "publishConfig": {
     "access": "public"
   }
