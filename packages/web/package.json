@@ -9,6 +9,14 @@
     "./runtime": "./runtime/index.js",
     "./server": "./server/index.js"
   },
+  "files": [
+    "index.js",
+    "core",
+    "runtime",
+    "components",
+    "server",
+    "!**/*.test.js"
+  ],
   "publishConfig": {
     "access": "public"
   }
