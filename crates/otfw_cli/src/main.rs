@@ -9,7 +9,7 @@ use std::io::Read;
 use std::path::Path;
 use std::process::ExitCode;
 
-use otfw_compiler::codegen::csr;
+use otfw_compiler::codegen::{csr, ssg};
 use otfw_compiler::lower::lower_module;
 use otfw_compiler::parse::ParseSession;
 
@@ -20,10 +20,11 @@ fn main() -> ExitCode {
             let rest = &args[2..];
             let as_component = rest.iter().any(|a| a == "--component");
             let from_stdin = rest.iter().any(|a| a == "--stdin");
+            let ssg = rest.iter().any(|a| a == "--target=ssg" || a == "--ssg");
             match rest.iter().find(|a| !a.starts_with("--")) {
-                Some(file) => build(file, as_component, from_stdin),
+                Some(file) => build(file, as_component, from_stdin, ssg),
                 None => {
-                    eprintln!("usage: otfwc build [--component] [--stdin] <file.tsx>");
+                    eprintln!("usage: otfwc build [--component] [--stdin] [--target=ssg] <file.tsx>");
                     ExitCode::FAILURE
                 }
             }
@@ -38,10 +39,10 @@ fn main() -> ExitCode {
     }
 }
 
-/// Compile one module to CSR JS and print it. Source comes from `file` or, with
-/// `from_stdin`, from stdin (then `file` is only the module id). Diagnostics go to
-/// stderr.
-fn build(file: &str, as_component: bool, from_stdin: bool) -> ExitCode {
+/// Compile one module and print it. `ssg` selects the SSG (HTML-string) backend;
+/// otherwise CSR. Source comes from `file` or, with `from_stdin`, from stdin (then
+/// `file` is only the module id). Diagnostics go to stderr.
+fn build(file: &str, as_component: bool, from_stdin: bool, ssg: bool) -> ExitCode {
     let source = if from_stdin {
         let mut buf = String::new();
         if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
@@ -73,10 +74,16 @@ fn build(file: &str, as_component: bool, from_stdin: bool) -> ExitCode {
         return ExitCode::FAILURE;
     };
 
-    let module = csr::emit_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
-    print!("{}", module.code);
+    let (code, errors) = if ssg {
+        let m = ssg::emit_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
+        (m.code, m.errors)
+    } else {
+        let m = csr::emit_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
+        (m.code, m.errors)
+    };
+    print!("{code}");
 
-    for err in &module.errors {
+    for err in &errors {
         eprintln!("warning: {err}");
     }
     ExitCode::SUCCESS
