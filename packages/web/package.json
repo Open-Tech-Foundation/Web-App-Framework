@@ -7,7 +7,7 @@
     ".": "./index.js",
     "./signals": "./core/signals.js",
     "./runtime": "./runtime/index.js",
-    "./server": "./server/render.js"
+    "./server": "./server/index.js"
   },
   "publishConfig": {
     "access": "public"

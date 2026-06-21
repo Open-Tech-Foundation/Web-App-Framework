@@ -72,7 +72,7 @@ export function registerRoutes(modules) {
 }
 
 /** Layout entries that wrap `route`, outermost (root) first. */
-function layoutChain(route) {
+export function layoutChain(route) {
   const chain = [];
   if (!route) return chain;
   let p = route;
@@ -85,7 +85,7 @@ function layoutChain(route) {
 }
 
 /** Resolve a route entry (module namespace or lazy loader) to its factory. */
-async function resolveFactory(entry) {
+export async function resolveFactory(entry) {
   const mod = typeof entry === "function" ? await entry() : entry;
   return mod && mod.default ? mod.default : mod;
 }

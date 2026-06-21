@@ -1,24 +1,24 @@
-//! Server-side render for SSG (build-time pre-render, SPEC §9). Server-only — not
-//! imported by the browser bundle.
+//! Server render for SSG (ARCHITECTURE.md §6) — composes a route's HTML by
+//! calling the SSG render functions the compiler emits (page/layout factories
+//! that return strings, components registered in the SSG registry). No DOM: this
+//! runs in plain Bun/Node at build time.
 //
-// `renderToString(pathname)` reuses the router's pure matching/assembly
-// (`matchRoute` + `buildRouteNode`) to build the page+layout tree in a server DOM
-// (linkedom, installed as globals by the prerender harness), then serializes the
-// populated light DOM. Custom Elements connect on append (their connectedCallback
-// runs the view); the signals core runs each binding once and skips the reactive
-// graph while `globalThis.__OTFW_SSG__` is set, so the markup reflects initial
-// state without retaining client reactivity.
-//
-// The harness must set `globalThis.__OTFW_SSG__ = true` and install a
-// `window.location` for the route before importing the app (router.js reads it at
-// module init).
+// The route table (registerRoutes/matchRoute/layoutChain) is shared with the
+// client router; here we resolve a route's page + layout chain to string
+// renderers and concatenate them, passing `children` as an HTML string.
 
-import { buildRouteNode, matchRoute, routes, setRouteState } from "../runtime/router.js";
+import {
+  layoutChain,
+  matchRoute,
+  resolveFactory,
+  routes,
+  setRouteState,
+} from "../runtime/router.js";
 
 /**
- * Render `pathname` to an HTML string (the markup that belongs inside `#app`).
- * Falls back to the registered `404` page for an unmatched path; returns `null`
- * if there's no match and no 404 (caller decides what to emit).
+ * Render `pathname` to an HTML string (the markup for inside `#app`). Falls back
+ * to the registered `404` page for an unmatched path; returns `null` if there's
+ * no match and no 404.
  */
 export async function renderToString(pathname, search = "") {
   const match =
@@ -26,29 +26,18 @@ export async function renderToString(pathname, search = "") {
     (routes.notFound ? { entry: routes.notFound, params: {}, route: null } : null);
   if (!match) return null;
 
-  // Make `router.pathname`/`params`/`query` resolve to the route being rendered.
+  // Let a page reading `router.params`/`pathname`/`query` resolve to this route.
   setRouteState({ pathname, search, params: match.params });
 
-  const { node, nodes } = await buildRouteNode(match, Object.fromEntries(new URLSearchParams(search)));
+  const props = { params: match.params, query: Object.fromEntries(new URLSearchParams(search)) };
+  let html = (await resolveFactory(match.entry))(props);
 
-  // Append into a connected container so descendant Custom Elements connect (their
-  // connectedCallback builds the view). A detached subtree would not upgrade.
-  const host = document.createElement("div");
-  document.body.appendChild(host);
-  host.appendChild(node);
-  // Fallback for any element a server DOM didn't auto-connect (SPEC §9.1).
-  for (const el of host.querySelectorAll("*")) {
-    if (typeof el.connectedCallback === "function" && !el._mounted) el.connectedCallback();
+  // Wrap with layouts, most-specific inward to root outermost.
+  const chain = layoutChain(match.route);
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const layout = await resolveFactory(chain[i]);
+    html = layout({ ...props, children: html });
   }
-
-  // Let microtask-deferred DOM swaps settle before serializing — e.g. an
-  // <ErrorBoundary> renders its fallback in a microtask after a child throws.
-  await new Promise((resolve) => queueMicrotask(resolve));
-
-  const html = host.innerHTML;
-  host.remove();
-  // `nodes` is returned for symmetry with the client; SSG runs no onMount.
-  void nodes;
   return html;
 }
 
@@ -62,8 +51,7 @@ function fillRoute(route, params) {
 /**
  * Enumerate the concrete paths to pre-render. Static routes are taken as-is;
  * dynamic routes (`[param]`) are expanded via the page module's optional
- * `getStaticPaths()` (returning `[{ params }]`), else collected as `skipped` so
- * the caller can warn (those render at runtime on the client).
+ * `getStaticPaths()` (returning `[{ params }]`), else collected as `skipped`.
  */
 export async function collectRoutePaths() {
   const paths = [];
