@@ -205,6 +205,9 @@ pub struct Lowered {
     /// destructures `children` (e.g. `"children"`). Drives child capture + the
     /// `Children` view node.
     pub children_local: Option<String>,
+    /// True when the component body calls `useContext`, so codegen brackets its
+    /// connect with the host push/pop that lets `useContext` resolve via the DOM.
+    pub needs_host: bool,
     /// Non-fatal lowering diagnostics (unsupported constructs that were skipped).
     pub errors: Vec<String>,
 }
@@ -324,6 +327,7 @@ pub fn module_shell(module: &str, exprs: ExprTable, body: Vec<BodyItem>) -> Lowe
         on_mounts: Vec::new(),
         on_cleanups: Vec::new(),
         children_local: None,
+        needs_host: false,
         errors: Vec::new(),
     }
 }
@@ -422,6 +426,7 @@ fn lower_one<'a>(
         on_mounts: classified.on_mounts,
         on_cleanups: classified.on_cleanups,
         children_local,
+        needs_host: classified.needs_host,
         errors,
     })
 }
@@ -646,6 +651,7 @@ struct Classified {
     on_mounts: Vec<String>,
     on_cleanups: Vec<String>,
     children: Option<ChildrenInfo>,
+    needs_host: bool,
     errors: Vec<String>,
 }
 
@@ -894,6 +900,12 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         on_mounts,
         on_cleanups,
         children,
+        // A component (not a page — pages have no element) that reads context
+        // needs its connect bracketed so `useContext` can resolve the host.
+        needs_host: !is_page
+            && callable
+                .body()
+                .is_some_and(|b| source[b.span.start as usize..b.span.end as usize].contains("useContext")),
         errors,
     }
 }

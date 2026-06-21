@@ -53,6 +53,7 @@ struct Uses {
     bind_child: bool,
     spread: bool,
     report_error: bool,
+    host: bool,
 }
 
 impl Uses {
@@ -67,6 +68,7 @@ impl Uses {
         self.bind_child |= o.bind_child;
         self.spread |= o.spread;
         self.report_error |= o.report_error;
+        self.host |= o.host;
     }
 }
 
@@ -100,6 +102,10 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
     }
     if uses.report_error {
         names.push("reportError");
+    }
+    if uses.host {
+        names.push("enterHost");
+        names.push("exitHost");
     }
     let mut merged: Vec<String> = names.into_iter().map(str::to_string).collect();
     for name in runtime_imports {
@@ -230,12 +236,21 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
 
     // The build (view + bindings + mounts) is wrapped so a throwing component
     // fails soft — it is reported (surfacing in the dev overlay) instead of
-    // breaking sibling components mid-render.
+    // breaking sibling components mid-render. A context-consuming component also
+    // brackets the build with the host stack so `useContext` can resolve its
+    // provider via the DOM (`closest`), even across nested connects.
     e.uses.report_error = true;
+    let host = lowered.needs_host;
+    if host {
+        e.uses.host = true;
+    }
     code.push_str("  connectedCallback() {\n");
     code.push_str("    if (this._mounted) return;\n");
     code.push_str("    this._mounted = true;\n");
     code.push_str("    this._cleanups = [];\n");
+    if host {
+        code.push_str("    enterHost(this);\n");
+    }
     code.push_str("    try {\n");
     code.push_str(&body);
     code.push_str(&format!("    this.appendChild({root});\n"));
@@ -245,7 +260,11 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
         "      reportError(e, {{ phase: \"render\", component: {} }});\n",
         js_string(&export)
     ));
-    code.push_str("    }\n");
+    code.push_str("    }");
+    if host {
+        code.push_str(" finally {\n      exitHost();\n    }");
+    }
+    code.push('\n');
     code.push_str("  }\n");
 
     if !props.is_empty() {
