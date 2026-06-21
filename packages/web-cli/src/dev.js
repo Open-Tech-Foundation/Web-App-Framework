@@ -21,9 +21,38 @@ import {
   otfwPlugin,
 } from "./shared.js";
 
+// Resolve the *preferred* start port: `--port <n>` / `-p <n>` / `--port=<n>` on
+// the CLI wins, then the PORT env var, else 3000. The server scans upward from here
+// for the first free port (see `serveFrom`).
+function resolveStartPort() {
+  const argv = process.argv.slice(3); // args after `dev`
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if ((a === "--port" || a === "-p") && argv[i + 1]) return Number(argv[i + 1]);
+    if (a.startsWith("--port=")) return Number(a.slice("--port=".length));
+  }
+  if (process.env.PORT) return Number(process.env.PORT);
+  return 3000;
+}
+
+// Start `Bun.serve` on the first free port at or above `start` (EADDRINUSE → next).
+function serveFrom(start, options) {
+  for (let port = start; port < start + 100; port++) {
+    try {
+      return Bun.serve({ ...options, port });
+    } catch (e) {
+      if (e?.code === "EADDRINUSE") continue;
+      throw e;
+    }
+  }
+  console.error(`✗ no free port found in ${start}–${start + 99}`);
+  process.exit(1);
+}
+
 export async function runDev() {
   const { root, appDir, webEntry, otfwc, exclude } = loadProject();
-  const port = Number(process.env.PORT ?? 5175);
+  const requested = resolveStartPort();
+  const startPort = Number.isFinite(requested) ? requested : 3000;
 
   const pages = discoverPages(appDir, exclude);
   if (pages.length === 0) {
@@ -125,8 +154,7 @@ export async function runDev() {
     });
   }
 
-  server = Bun.serve({
-    port,
+  server = serveFrom(startPort, {
     websocket: {
       open: (ws) => {
         ws.subscribe("hmr");
@@ -173,5 +201,5 @@ export async function runDev() {
   });
 
   console.log(`\n  OpenTF Web dev server`);
-  console.log(`  → http://localhost:${port}  (${pages.length} routes)\n`);
+  console.log(`  → http://localhost:${server.port}  (${pages.length} routes)\n`);
 }
