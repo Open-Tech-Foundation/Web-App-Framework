@@ -52,7 +52,7 @@ struct Uses {
     bind_list: bool,
     bind_child: bool,
     spread: bool,
-    report_error: bool,
+    handle_error: bool,
     host: bool,
     set_prop: bool,
     read_context: bool,
@@ -69,7 +69,7 @@ impl Uses {
         self.bind_list |= o.bind_list;
         self.bind_child |= o.bind_child;
         self.spread |= o.spread;
-        self.report_error |= o.report_error;
+        self.handle_error |= o.handle_error;
         self.host |= o.host;
         self.set_prop |= o.set_prop;
         self.read_context |= o.read_context;
@@ -104,8 +104,8 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
     if uses.spread {
         names.push("spread");
     }
-    if uses.report_error {
-        names.push("reportError");
+    if uses.handle_error {
+        names.push("handleError");
     }
     if uses.host {
         names.push("enterHost");
@@ -245,11 +245,12 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
     }
 
     // The build (view + bindings + mounts) is wrapped so a throwing component
-    // fails soft — it is reported (surfacing in the dev overlay) instead of
-    // breaking sibling components mid-render. A context-consuming component also
+    // fails soft — `handleError(this, …)` reports it (surfacing in the dev overlay)
+    // and walks up to the nearest <ErrorBoundary>, which shows its fallback instead
+    // of breaking sibling components mid-render. A context-consuming component also
     // brackets the build with the host stack so `$context` can resolve its
     // provider via the DOM (`closest`), even across nested connects.
-    e.uses.report_error = true;
+    e.uses.handle_error = true;
     let host = lowered.needs_host;
     if host {
         e.uses.host = true;
@@ -267,7 +268,7 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
     code.push_str(&mounts);
     code.push_str("    } catch (e) {\n");
     code.push_str(&format!(
-        "      reportError(e, {{ phase: \"render\", component: {} }});\n",
+        "      handleError(this, e, {{ phase: \"render\", component: {} }});\n",
         js_string(&export)
     ));
     code.push_str("    }");
@@ -1103,7 +1104,7 @@ mod tests {
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         assert_eq!(
             m.code,
-            "import { signal, bindText, reportError } from \"@opentf/web\";\n\
+            "import { signal, bindText, handleError } from \"@opentf/web\";\n\
              export class CounterElement extends HTMLElement {\n  \
              connectedCallback() {\n    \
              if (this._mounted) return;\n    \
@@ -1118,7 +1119,7 @@ mod tests {
              this._cleanups.push(bindText(t1, () => (count.value)));\n    \
              this.appendChild(el0);\n    \
              } catch (e) {\n      \
-             reportError(e, { phase: \"render\", component: \"Counter\" });\n    \
+             handleError(this, e, { phase: \"render\", component: \"Counter\" });\n    \
              }\n  \
              }\n  \
              disconnectedCallback() {\n    \
@@ -1151,7 +1152,7 @@ mod tests {
         assert!(m.code.contains("exitHost();"), "code: {}", m.code);
         // The bare binding reads `.value` (auto-injected like any signal).
         assert!(m.code.contains("bindText(t1, () => (theme.value))"), "code: {}", m.code);
-        assert!(m.code.contains("import { bindText, bindAttr, reportError, enterHost, exitHost, readContext }"), "code: {}", m.code);
+        assert!(m.code.contains("import { bindText, bindAttr, handleError, enterHost, exitHost, readContext }"), "code: {}", m.code);
     }
 
     #[test]
@@ -1572,7 +1573,7 @@ mod tests {
             "export function C() { let on = $state(true); let label = $state(\"hi\"); return <div>{on ? <strong>{label}</strong> : <em>off</em>}</div>; }",
         ));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
-        assert!(m.code.contains("import { signal, bindText, bindChild, reportError }"), "code: {}", m.code);
+        assert!(m.code.contains("import { signal, bindText, bindChild, handleError }"), "code: {}", m.code);
         // Builders are LOCAL (inside connectedCallback) so they close over `label`.
         assert!(m.code.contains("function C_node0() {"), "code: {}", m.code);
         assert!(m.code.contains("function C_node1() {"), "code: {}", m.code);
@@ -1608,7 +1609,7 @@ mod tests {
             "export function C() { let o = $state({}); let xs = $state([]); return <div {...o} class=\"base\">{...xs}</div>; }",
         ));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
-        assert!(m.code.contains("import { signal, effect, bindChild, spread, reportError }"), "code: {}", m.code);
+        assert!(m.code.contains("import { signal, effect, bindChild, spread, handleError }"), "code: {}", m.code);
         // Spread applied (effect), then the static class override — source order.
         let spread_at = m.code.find("effect(() => spread(el0, (o.value), false))").expect("spread");
         let class_at = m.code.find("el0.setAttribute(\"class\", \"base\")").expect("class");
