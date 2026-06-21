@@ -349,12 +349,16 @@ debuggability (artifacts are inspectable).
 Each backend is a **pure function of the IRs / Project Graph**. Adding a target
 = adding a consumer; Stages 1–3 never change.
 
-- **CSR** — build skeleton + resolve slots by path + wire effects.
-- **Hydrate** — adopt existing skeleton by path (no node creation) + wire
+- **CSR** _(implemented — `codegen/csr.rs`)_ — build skeleton + resolve slots by
+  path + wire effects.
+- **Hydrate** _(open)_ — adopt existing skeleton by path (no node creation) + wire
   effects. Mismatches are detected at a specific slot path and reported, never
   silent.
-- **SSG** — IR → HTML at build time; emit hydration markers only where structure
-  is variable (lists/conditionals).
+- **SSG** _(implemented — `codegen/ssg.rs`)_ — IR → HTML at build time. A pure
+  consumer of the View IR that emits JS which **concatenates an HTML string** (runs
+  in Bun at build time to read initial `.value`s; no DOM, no effects, no lifecycle).
+  Driven by `otfw build --ssg`. Hydration markers (emit only where structure is
+  variable — lists/conditionals) land with the Hydrate backend.
 - **SSR** — per-request HTML from the IR; streaming-capable. Shares the SSG path.
 - **API** — server endpoints / server functions compiled in the same graph,
   sharing types and the module graph with the UI.
