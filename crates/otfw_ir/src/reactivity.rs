@@ -12,6 +12,8 @@ pub enum SignalKind {
     State,
     Derived,
     Ref,
+    /// `$context(Ctx)` — a signal read from the nearest provider via the DOM.
+    Context,
     Prop,
 }
 

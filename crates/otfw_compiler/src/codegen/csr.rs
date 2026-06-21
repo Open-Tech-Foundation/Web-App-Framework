@@ -55,6 +55,7 @@ struct Uses {
     report_error: bool,
     host: bool,
     set_prop: bool,
+    read_context: bool,
 }
 
 impl Uses {
@@ -71,6 +72,7 @@ impl Uses {
         self.report_error |= o.report_error;
         self.host |= o.host;
         self.set_prop |= o.set_prop;
+        self.read_context |= o.read_context;
     }
 }
 
@@ -111,6 +113,9 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
     }
     if uses.set_prop {
         names.push("setProp");
+    }
+    if uses.read_context {
+        names.push("readContext");
     }
     let mut merged: Vec<String> = names.into_iter().map(str::to_string).collect();
     for name in runtime_imports {
@@ -242,7 +247,7 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
     // The build (view + bindings + mounts) is wrapped so a throwing component
     // fails soft — it is reported (surfacing in the dev overlay) instead of
     // breaking sibling components mid-render. A context-consuming component also
-    // brackets the build with the host stack so `useContext` can resolve its
+    // brackets the build with the host stack so `$context` can resolve its
     // provider via the DOM (`closest`), even across nested connects.
     e.uses.report_error = true;
     let host = lowered.needs_host;
@@ -561,6 +566,12 @@ impl<'a> Emitter<'a> {
             SignalKind::Ref => {
                 self.uses.signal = true;
                 self.line(format!("const {} = signal(null);", decl.name));
+            }
+            // `$context(Ctx)` resolves the nearest provider's signal via the DOM;
+            // refs to the binding then read `.value` like any other signal.
+            SignalKind::Context => {
+                self.uses.read_context = true;
+                self.line(format!("const {} = readContext({});", decl.name, decl.init));
             }
             SignalKind::Derived => {
                 self.uses.computed = true;
@@ -1070,6 +1081,22 @@ mod tests {
         let m = emit_page(&lower("export function App() { return <div><UserList/></div>; }"));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         assert!(m.code.contains("document.createElement(\"web-user-list\")"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn lowers_context_consumer() {
+        let m = emit_component(&lower(
+            "export function Badge() { const theme = $context(Ctx); return <span class={theme}>{theme}</span>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // `$context` lowers to a readContext binding, treated as a signal.
+        assert!(m.code.contains("const theme = readContext(Ctx);"), "code: {}", m.code);
+        // The connect is bracketed with the host stack so the resolver finds `this`.
+        assert!(m.code.contains("enterHost(this);"), "code: {}", m.code);
+        assert!(m.code.contains("exitHost();"), "code: {}", m.code);
+        // The bare binding reads `.value` (auto-injected like any signal).
+        assert!(m.code.contains("bindText(t1, () => (theme.value))"), "code: {}", m.code);
+        assert!(m.code.contains("import { bindText, bindAttr, reportError, enterHost, exitHost, readContext }"), "code: {}", m.code);
     }
 
     #[test]

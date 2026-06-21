@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { effect } from "../core/signals.js";
-import { createContext, enterHost, exitHost, useContext } from "./context.js";
+import { createContext, enterHost, exitHost, readContext } from "./context.js";
 
 // Build a <web-context-provider> with a value, returning the element.
 function provider(context, value) {
@@ -17,7 +17,7 @@ describe("context", () => {
     const child = document.createElement("div");
     document.body.appendChild(child);
     enterHost(child);
-    const t = useContext(Theme);
+    const t = readContext(Theme);
     exitHost();
     expect(t.value).toBe("dark");
     child.remove();
@@ -31,7 +31,7 @@ describe("context", () => {
     document.body.appendChild(p);
 
     enterHost(child);
-    const t = useContext(Theme);
+    const t = readContext(Theme);
     exitHost();
 
     const seen = [];
@@ -53,7 +53,7 @@ describe("context", () => {
     document.body.appendChild(outer);
 
     enterHost(child);
-    const inProvided = useContext(Theme);
+    const inProvided = readContext(Theme);
     exitHost();
     expect(inProvided.value).toBe("inner");
 
@@ -61,7 +61,7 @@ describe("context", () => {
     const sibling = document.createElement("span");
     outer.appendChild(sibling);
     enterHost(sibling);
-    const outProvided = useContext(Theme);
+    const outProvided = readContext(Theme);
     exitHost();
     expect(outProvided.value).toBe("outer");
     outer.remove();
@@ -70,7 +70,7 @@ describe("context", () => {
   test("resolves at connect time the way the compiler emits it", () => {
     const Theme = createContext("dark");
 
-    // Mirror a compiled context consumer: enterHost(this) → useContext → exitHost().
+    // Mirror a compiled context consumer: enterHost(this) → readContext → exitHost().
     let captured;
     customElements.define(
       "web-ctx-consumer",
@@ -78,7 +78,7 @@ describe("context", () => {
         connectedCallback() {
           enterHost(this);
           try {
-            captured = useContext(Theme);
+            captured = readContext(Theme);
             this.textContent = captured.value;
           } finally {
             exitHost();
@@ -106,7 +106,7 @@ describe("context", () => {
     exitHost(); // B done
     const Theme = createContext("x");
     // Now A is current again; with no provider it falls back, proving A is on top.
-    const t = useContext(Theme);
+    const t = readContext(Theme);
     exitHost();
     expect(t.value).toBe("x");
   });

@@ -7,7 +7,7 @@
 //
 //   const ThemeContext = createContext("dark");
 //   <ContextProvider context={ThemeContext} value={theme}> … </ContextProvider>
-//   const theme = useContext(ThemeContext);   // a signal; read theme.value
+//   const theme = $context(ThemeContext);   // compiler macro; use the bare name
 //
 // `value` flows through the provider's element as a signal, so a reactive `value`
 // (e.g. backed by `$state`) updates every consumer fine-grained.
@@ -34,18 +34,19 @@ export function exitHost() {
 
 /**
  * Create a context with a default value. The returned token is passed to
- * `<ContextProvider context={…}>` and `useContext(…)`.
+ * `<ContextProvider context={…}>` and `$context(…)`.
  */
 export function createContext(defaultValue) {
   return { id: `otfw-ctx-${nextId++}`, fallback: signal(defaultValue) };
 }
 
 /**
- * Read the value provided by the nearest ancestor `ContextProvider` for `context`,
- * or the context's default if there is none. Returns a **signal** — read `.value`
- * (inside a binding it stays reactive). Call it at the top of a component body.
+ * Resolve the value provided by the nearest ancestor `ContextProvider` for
+ * `context`, or the context's default if there is none. Returns a **signal**. This
+ * is what the `$context(Ctx)` compiler macro lowers to; the macro registers the
+ * binding as a signal so the bare name reads `.value` reactively.
  */
-export function useContext(context) {
+export function readContext(context) {
   const host = hostStack[hostStack.length - 1];
   const provider = host && host.closest(`[data-otfw-ctx~="${context.id}"]`);
   return provider ? provider._signal : context.fallback;

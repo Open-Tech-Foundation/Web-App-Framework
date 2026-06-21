@@ -205,8 +205,8 @@ pub struct Lowered {
     /// destructures `children` (e.g. `"children"`). Drives child capture + the
     /// `Children` view node.
     pub children_local: Option<String>,
-    /// True when the component body calls `useContext`, so codegen brackets its
-    /// connect with the host push/pop that lets `useContext` resolve via the DOM.
+    /// True when the component body uses `$context`, so codegen brackets its
+    /// connect with the host push/pop that lets the resolver find the DOM host.
     pub needs_host: bool,
     /// Non-fatal lowering diagnostics (unsupported constructs that were skipped).
     pub errors: Vec<String>,
@@ -217,6 +217,7 @@ enum MacroKind {
     State,
     Derived,
     Ref,
+    Context,
 }
 
 impl MacroKind {
@@ -225,6 +226,7 @@ impl MacroKind {
             MacroKind::State => SignalKind::State,
             MacroKind::Derived => SignalKind::Derived,
             MacroKind::Ref => SignalKind::Ref,
+            MacroKind::Context => SignalKind::Context,
         }
     }
 }
@@ -885,6 +887,11 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
         .collect();
 
+    // A component (not a page — pages have no element) that reads `$context` needs
+    // its connect bracketed so the resolver can find the host. Computed before the
+    // struct move below.
+    let needs_host = !is_page && infos.iter().any(|i| i.kind == SignalKind::Context);
+
     Classified {
         by_symbol,
         infos,
@@ -900,12 +907,7 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         on_mounts,
         on_cleanups,
         children,
-        // A component (not a page — pages have no element) that reads context
-        // needs its connect bracketed so `useContext` can resolve the host.
-        needs_host: !is_page
-            && callable
-                .body()
-                .is_some_and(|b| source[b.span.start as usize..b.span.end as usize].contains("useContext")),
+        needs_host,
         errors,
     }
 }
@@ -945,7 +947,7 @@ fn is_callee(call: &CallExpression, name: &str) -> bool {
 /// Compiler macros (handled by lowering, not real `@opentf/web` exports) — so a
 /// legacy `import { $state } from "@opentf/web"` is dropped rather than re-emitted.
 fn is_macro_name(name: &str) -> bool {
-    matches!(name, "$state" | "$derived" | "$ref" | "$effect" | "$expose" | "$signal")
+    matches!(name, "$state" | "$derived" | "$ref" | "$context" | "$effect" | "$expose" | "$signal")
 }
 
 /// Map JSX attribute names to their DOM equivalents (`className` → `class`,
@@ -969,6 +971,7 @@ fn macro_kind(call: &CallExpression) -> Option<MacroKind> {
         "$state" => Some(MacroKind::State),
         "$derived" => Some(MacroKind::Derived),
         "$ref" => Some(MacroKind::Ref),
+        "$context" => Some(MacroKind::Context),
         _ => None,
     }
 }
