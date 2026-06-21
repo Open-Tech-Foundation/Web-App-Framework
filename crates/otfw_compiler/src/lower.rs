@@ -354,7 +354,10 @@ fn lower_one<'a>(
     let classified = classify(callable, scoping, source, is_page);
 
     let children_symbol = classified.children.as_ref().and_then(|c| c.symbol);
-    let children_local = classified.children.map(|c| c.local);
+    // Components capture their light-DOM children into an array (`children_local`);
+    // pages/layouts receive a single `props.children` node, slotted via
+    // `page_param.children` — so they don't use `children_local`.
+    let children_local = if is_page { None } else { classified.children.map(|c| c.local) };
 
     let jsx = callable.jsx()?;
     let mut lowerer = Lowerer::new(
@@ -372,6 +375,15 @@ fn lower_one<'a>(
     // resolve. Signals are consumed in source order from `decls`. Built here (not in
     // `classify`) so JSX-bearing statements can be lowered through the `Lowerer`.
     let mut body = Vec::new();
+    // Destructured page props become aliases off the synthesized `__props` param,
+    // emitted before the rest of the body (`children` is the slot, handled via the
+    // Children view node).
+    for a in &classified.page_aliases {
+        body.push(BodyItem::Raw(match &a.default {
+            Some(d) => format!("const {} = __props.{} ?? ({d});", a.local, a.key),
+            None => format!("const {} = __props.{};", a.local, a.key),
+        }));
+    }
     let mut decl_iter = classified.decls.iter();
     if let Some(fbody) = callable.body() {
         for stmt in &fbody.statements {
@@ -635,6 +647,14 @@ struct ChildrenInfo {
     symbol: Option<SymbolId>,
 }
 
+/// A binding destructured from a page/layout's props object (`({ params, query })`)
+/// other than `children` — emitted as `const <local> = __props.<key>` aliases.
+struct PageAlias {
+    local: String,
+    key: String,
+    default: Option<String>,
+}
+
 struct Classified {
     by_symbol: HashMap<SymbolId, SignalId>,
     infos: Vec<SignalInfo>,
@@ -644,8 +664,11 @@ struct Classified {
     /// First-Access `.value` injection; its name drives the codegen alias.
     props_symbol: Option<SymbolId>,
     props_object: Option<String>,
-    /// The plain props parameter name for a page/layout factory, if declared.
+    /// The plain props parameter name for a page/layout factory, if declared
+    /// (`__props` is synthesized when the param is destructured).
     page_param: Option<String>,
+    /// Aliases for a page/layout's destructured props (excluding `children`).
+    page_aliases: Vec<PageAlias>,
     rest: Option<RestProp>,
     prop_snapshots: Vec<PropSnapshot>,
     effects: Vec<String>,
@@ -685,16 +708,50 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
     let mut snapshots: Vec<PropSnapshot> = Vec::new();
     let mut named_keys: Vec<String> = Vec::new();
     let mut page_param = None;
+    let mut page_aliases: Vec<PageAlias> = Vec::new();
 
     // Pages/layouts take a plain props object (`{ params, query, children }`)
-    // supplied by the router — no observed signals and no `.value` injection. We
-    // only record the parameter name for the factory signature; `props.children`
-    // and `props.params.*` then lower as ordinary (non-reactive) accesses.
+    // supplied by the router — no observed signals and no `.value` injection. The
+    // param may be a plain name (`function Page(props)` → `props.children`,
+    // `props.params.*`) or destructured (`function Page({ children, params })`): for
+    // the latter we synthesize `__props` and alias each key from it, treating
+    // `children` as the light-DOM slot.
     if is_page {
-        if let Some(BindingPattern::BindingIdentifier(bi)) =
-            callable.params().items.first().map(|p| &p.pattern)
-        {
-            page_param = Some(bi.name.as_str().to_string());
+        match callable.params().items.first().map(|p| &p.pattern) {
+            Some(BindingPattern::BindingIdentifier(bi)) => {
+                page_param = Some(bi.name.as_str().to_string());
+            }
+            Some(BindingPattern::ObjectPattern(obj)) => {
+                page_param = Some("__props".to_string());
+                for prop in &obj.properties {
+                    let Some(key) = prop.key.static_name() else {
+                        errors.push("computed prop key not supported".into());
+                        continue;
+                    };
+                    let (pattern, default) = match &prop.value {
+                        BindingPattern::AssignmentPattern(ap) => (&ap.left, Some(&ap.right)),
+                        other => (other, None),
+                    };
+                    let BindingPattern::BindingIdentifier(bi) = pattern else {
+                        errors.push(format!("unsupported page prop pattern: {key}"));
+                        continue;
+                    };
+                    let local = bi.name.as_str().to_string();
+                    if key == "children" {
+                        children = Some(ChildrenInfo { local, symbol: bi.symbol_id.get() });
+                    } else {
+                        page_aliases.push(PageAlias {
+                            local,
+                            key: key.to_string(),
+                            default: default.map(|d| slice_span(source, d.span()).to_string()),
+                        });
+                    }
+                }
+                if obj.rest.is_some() {
+                    errors.push("rest in page props is not supported".into());
+                }
+            }
+            _ => {}
         }
     } else if let Some(param) = callable.params().items.first() {
         // Pass 1a: destructured props from the first parameter.
@@ -900,6 +957,7 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         props_symbol,
         props_object,
         page_param,
+        page_aliases,
         rest: rest_prop,
         prop_snapshots: snapshots,
         effects,

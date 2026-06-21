@@ -581,6 +581,21 @@ mod tests {
     }
 
     #[test]
+    fn page_destructures_children_and_props() {
+        // `function L({ children, params })` → synthesized __props param, children as
+        // the slot, other keys aliased.
+        let m = emit(
+            "export default function L({ children, params }) { return <main>{children}{params.id}</main>; }",
+            true,
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("export default function (__props)"), "param:\n{}", m.code);
+        assert!(m.code.contains("const params = __props.params;"), "alias:\n{}", m.code);
+        assert!(m.code.contains("(__props?.children ?? \"\")"), "children slot:\n{}", m.code);
+        assert!(m.code.contains("ssgText(params.id)"), "alias used:\n{}", m.code);
+    }
+
+    #[test]
     fn member_expression_component_is_rejected() {
         let m = emit("export default function P(){ return <Foo.Bar/>; }", true);
         assert!(!m.is_complete());
