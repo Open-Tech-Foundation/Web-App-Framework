@@ -21,38 +21,53 @@ import {
   otfwPlugin,
 } from "./shared.js";
 
-// Resolve the *preferred* start port: `--port <n>` / `-p <n>` / `--port=<n>` on
-// the CLI wins, then the PORT env var, else 3000. The server scans upward from here
-// for the first free port (see `serveFrom`).
-function resolveStartPort() {
+// Resolve the start port. An explicit `--port <n>` / `-p <n>` / `--port=<n>` is
+// honored exactly (fail fast if it's busy); with no flag we default to 3000 and
+// scan upward for a free port. (No PORT env: this is a dev tool, and OpenTF's
+// production output is static — there's no long-running server to take PORT.)
+function resolvePort() {
   const argv = process.argv.slice(3); // args after `dev`
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if ((a === "--port" || a === "-p") && argv[i + 1]) return Number(argv[i + 1]);
-    if (a.startsWith("--port=")) return Number(a.slice("--port=".length));
+    if ((a === "--port" || a === "-p") && argv[i + 1]) {
+      return { port: Number(argv[i + 1]), explicit: true };
+    }
+    if (a.startsWith("--port=")) {
+      return { port: Number(a.slice("--port=".length)), explicit: true };
+    }
   }
-  if (process.env.PORT) return Number(process.env.PORT);
-  return 3000;
+  return { port: 3000, explicit: false };
 }
 
-// Start `Bun.serve` on the first free port at or above `start` (EADDRINUSE → next).
-function serveFrom(start, options) {
-  for (let port = start; port < start + 100; port++) {
+// Start `Bun.serve`. An explicit port is tried once (busy → fail fast); otherwise
+// scan upward from `start` for the first free port (EADDRINUSE → next).
+function serve(start, explicit, options) {
+  const end = explicit ? start : start + 99;
+  for (let port = start; port <= end; port++) {
     try {
       return Bun.serve({ ...options, port });
     } catch (e) {
-      if (e?.code === "EADDRINUSE") continue;
+      if (e?.code === "EADDRINUSE") {
+        if (explicit) {
+          console.error(`✗ port ${port} is already in use (pass a different --port)`);
+          process.exit(1);
+        }
+        continue;
+      }
       throw e;
     }
   }
-  console.error(`✗ no free port found in ${start}–${start + 99}`);
+  console.error(`✗ no free port found in ${start}–${end}`);
   process.exit(1);
 }
 
 export async function runDev() {
   const { root, appDir, webEntry, otfwc, exclude } = loadProject();
-  const requested = resolveStartPort();
-  const startPort = Number.isFinite(requested) ? requested : 3000;
+  const { port: startPort, explicit: explicitPort } = resolvePort();
+  if (!Number.isInteger(startPort) || startPort < 1 || startPort > 65535) {
+    console.error(`✗ invalid --port value: ${startPort}`);
+    process.exit(1);
+  }
 
   const pages = discoverPages(appDir, exclude);
   if (pages.length === 0) {
@@ -154,7 +169,7 @@ export async function runDev() {
     });
   }
 
-  server = serveFrom(startPort, {
+  server = serve(startPort, explicitPort, {
     websocket: {
       open: (ws) => {
         ws.subscribe("hmr");
