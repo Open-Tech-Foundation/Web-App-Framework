@@ -52,6 +52,7 @@ struct Uses {
     bind_list: bool,
     bind_child: bool,
     spread: bool,
+    report_error: bool,
 }
 
 impl Uses {
@@ -65,6 +66,7 @@ impl Uses {
         self.bind_list |= o.bind_list;
         self.bind_child |= o.bind_child;
         self.spread |= o.spread;
+        self.report_error |= o.report_error;
     }
 }
 
@@ -95,6 +97,9 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
     }
     if uses.spread {
         names.push("spread");
+    }
+    if uses.report_error {
+        names.push("reportError");
     }
     let mut merged: Vec<String> = names.into_iter().map(str::to_string).collect();
     for name in runtime_imports {
@@ -223,13 +228,24 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
         }
     }
 
+    // The build (view + bindings + mounts) is wrapped so a throwing component
+    // fails soft — it is reported (surfacing in the dev overlay) instead of
+    // breaking sibling components mid-render.
+    e.uses.report_error = true;
     code.push_str("  connectedCallback() {\n");
     code.push_str("    if (this._mounted) return;\n");
     code.push_str("    this._mounted = true;\n");
     code.push_str("    this._cleanups = [];\n");
+    code.push_str("    try {\n");
     code.push_str(&body);
     code.push_str(&format!("    this.appendChild({root});\n"));
     code.push_str(&mounts);
+    code.push_str("    } catch (e) {\n");
+    code.push_str(&format!(
+        "      reportError(e, {{ phase: \"render\", component: {} }});\n",
+        js_string(&export)
+    ));
+    code.push_str("    }\n");
     code.push_str("  }\n");
 
     if !props.is_empty() {
@@ -991,19 +1007,23 @@ mod tests {
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         assert_eq!(
             m.code,
-            "import { signal, bindText } from \"@opentf/web\";\n\
+            "import { signal, bindText, reportError } from \"@opentf/web\";\n\
              export class CounterElement extends HTMLElement {\n  \
              connectedCallback() {\n    \
              if (this._mounted) return;\n    \
              this._mounted = true;\n    \
              this._cleanups = [];\n    \
+             try {\n    \
              const count = signal(0);\n    \
              const el0 = document.createElement(\"button\");\n    \
              el0.onclick = () => count.value++;\n    \
              const t1 = document.createTextNode(\"\");\n    \
              el0.appendChild(t1);\n    \
              this._cleanups.push(bindText(t1, () => (count.value)));\n    \
-             this.appendChild(el0);\n  \
+             this.appendChild(el0);\n    \
+             } catch (e) {\n      \
+             reportError(e, { phase: \"render\", component: \"Counter\" });\n    \
+             }\n  \
              }\n  \
              disconnectedCallback() {\n    \
              if (this._cleanups) for (const dispose of this._cleanups) dispose();\n    \
@@ -1385,7 +1405,7 @@ mod tests {
             "export function C() { let on = $state(true); let label = $state(\"hi\"); return <div>{on ? <strong>{label}</strong> : <em>off</em>}</div>; }",
         ));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
-        assert!(m.code.contains("import { signal, bindText, bindChild }"), "code: {}", m.code);
+        assert!(m.code.contains("import { signal, bindText, bindChild, reportError }"), "code: {}", m.code);
         // Builders are LOCAL (inside connectedCallback) so they close over `label`.
         assert!(m.code.contains("function C_node0() {"), "code: {}", m.code);
         assert!(m.code.contains("function C_node1() {"), "code: {}", m.code);
@@ -1421,7 +1441,7 @@ mod tests {
             "export function C() { let o = $state({}); let xs = $state([]); return <div {...o} class=\"base\">{...xs}</div>; }",
         ));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
-        assert!(m.code.contains("import { signal, effect, bindChild, spread }"), "code: {}", m.code);
+        assert!(m.code.contains("import { signal, effect, bindChild, spread, reportError }"), "code: {}", m.code);
         // Spread applied (effect), then the static class override — source order.
         let spread_at = m.code.find("effect(() => spread(el0, (o.value), false))").expect("spread");
         let class_at = m.code.find("el0.setAttribute(\"class\", \"base\")").expect("class");
