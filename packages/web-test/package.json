@@ -1,6 +1,6 @@
 {
   "name": "@opentf/web-test",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "DOM testing utilities for OTF Web",
   "type": "module",
   "main": "index.js",

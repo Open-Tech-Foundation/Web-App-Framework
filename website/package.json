@@ -10,7 +10,7 @@
   "dependencies": {
     "@opentf/std": "^0.13.0",
     "@opentf/web": "latest",
-    "@opentf/web-form": "^0.1.0",
+    "@opentf/web-form": "^1.0.0",
     "zod": "^4.4.1"
   }
 }

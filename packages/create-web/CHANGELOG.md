@@ -1,5 +1,11 @@
 # @opentf/create-web
 
+## 0.5.0
+
+### Minor Changes
+
+- bb1c71b: Upgrade to new architecuture.
+
 ## 0.4.0
 
 ### Minor Changes
