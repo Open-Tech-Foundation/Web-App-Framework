@@ -8,6 +8,7 @@ const demos = [
   { href: "/products", title: "Perf Benchmark", desc: "Keyed list reconciliation over 5,000 rows", tag: "Reactivity" },
   { href: "/context-demo", title: "Context API", desc: "Scoped provider + $context with overrides", tag: "Reactivity" },
   { href: "/dnd-demo", title: "Drag & Drop", desc: "Native HTML5 drag events + keyed lists", tag: "Events" },
+  { href: "/events-demo", title: "Event Model", desc: "Callback props, emit(), on*:listen modifiers", tag: "Events" },
   { href: "/portal-demo", title: "Portals", desc: "Render to <body>; vs native <dialog>", tag: "Rendering" },
   { href: "/ref-demo", title: "Ref & Expose", desc: "$ref to elements + imperative $expose", tag: "Components" },
   { href: "/icons", title: "SVG Icons", desc: "SVG namespacing & dynamic attributes", tag: "Rendering" },
