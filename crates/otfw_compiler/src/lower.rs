@@ -1670,7 +1670,91 @@ fn normalize_jsx_text(raw: &str) -> String {
             out.push(' ');
         }
     }
+    decode_entities(&out)
+}
+
+/// Decode HTML character references in JSX text (`&amp;` → `&`, `&#38;`,
+/// `&#x26;`). Covers the common named entities plus numeric (decimal/hex)
+/// references, which between them handle any character; unknown names are left
+/// verbatim.
+fn decode_entities(input: &str) -> String {
+    if !input.contains('&') {
+        return input.to_string();
+    }
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'&' {
+            // Push the whole UTF-8 char starting at i.
+            let ch = input[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+            continue;
+        }
+        // Find the terminating ';' within a small window.
+        match input[i + 1..].find(';').filter(|&end| end > 0 && end <= 32) {
+            Some(end) => {
+                let entity = &input[i + 1..i + 1 + end];
+                if let Some(ch) = resolve_entity(entity) {
+                    out.push(ch);
+                    i += end + 2; // '&' + entity + ';'
+                    continue;
+                }
+                out.push('&');
+                i += 1;
+            }
+            None => {
+                out.push('&');
+                i += 1;
+            }
+        }
+    }
     out
+}
+
+/// Resolve a single entity body (the text between `&` and `;`) to its character.
+fn resolve_entity(entity: &str) -> Option<char> {
+    if let Some(num) = entity.strip_prefix('#') {
+        let code = if let Some(hex) = num.strip_prefix(['x', 'X']) {
+            u32::from_str_radix(hex, 16).ok()?
+        } else {
+            num.parse::<u32>().ok()?
+        };
+        return char::from_u32(code);
+    }
+    Some(match entity {
+        "amp" => '&',
+        "lt" => '<',
+        "gt" => '>',
+        "quot" => '"',
+        "apos" => '\'',
+        "nbsp" => '\u{00A0}',
+        "copy" => '©',
+        "reg" => '®',
+        "trade" => '™',
+        "hellip" => '…',
+        "mdash" => '—',
+        "ndash" => '–',
+        "lsquo" => '\u{2018}',
+        "rsquo" => '\u{2019}',
+        "ldquo" => '\u{201C}',
+        "rdquo" => '\u{201D}',
+        "deg" => '°',
+        "times" => '×',
+        "divide" => '÷',
+        "middot" => '·',
+        "bull" => '•',
+        "dagger" => '†',
+        "euro" => '€',
+        "pound" => '£',
+        "cent" => '¢',
+        "sect" => '§',
+        "para" => '¶',
+        "laquo" => '«',
+        "raquo" => '»',
+        _ => return None,
+    })
 }
 
 #[cfg(test)]
@@ -2027,6 +2111,19 @@ mod tests {
         assert_eq!(normalize_jsx_text("\n  "), "");
         // Tabs become spaces.
         assert_eq!(normalize_jsx_text("a\tb"), "a b");
+    }
+
+    #[test]
+    fn decodes_html_entities_in_jsx_text() {
+        assert_eq!(normalize_jsx_text("Drag &amp; Drop"), "Drag & Drop");
+        assert_eq!(normalize_jsx_text("a &lt; b &gt; c"), "a < b > c");
+        // Numeric references, decimal and hex.
+        assert_eq!(normalize_jsx_text("&#38; &#x26;"), "& &");
+        // Named non-ASCII.
+        assert_eq!(normalize_jsx_text("\u{00A9} 2026"), normalize_jsx_text("&copy; 2026"));
+        // Unknown / malformed references are left verbatim.
+        assert_eq!(normalize_jsx_text("AT&T"), "AT&T");
+        assert_eq!(normalize_jsx_text("&bogus;"), "&bogus;");
     }
 
     impl Lowered {
