@@ -1505,7 +1505,9 @@ impl<'a, 'r> Lowerer<'a, 'r> {
                         // Valueless attribute (`<input disabled />`): present, no value.
                         None => PropValue::Static(String::new()),
                         Some(JSXAttributeValue::StringLiteral(s)) => {
-                            PropValue::Static(s.value.as_str().to_string())
+                            // Attribute values decode character references too
+                            // (`title="a &amp; b"`), like JSX text.
+                            PropValue::Static(decode_entities(s.value.as_str()))
                         }
                         Some(JSXAttributeValue::ExpressionContainer(c)) => match &c.expression {
                             JSXExpression::EmptyExpression(_) => PropValue::Static(String::new()),
@@ -2124,6 +2126,18 @@ mod tests {
         // Unknown / malformed references are left verbatim.
         assert_eq!(normalize_jsx_text("AT&T"), "AT&T");
         assert_eq!(normalize_jsx_text("&bogus;"), "&bogus;");
+    }
+
+    #[test]
+    fn decodes_entities_in_attribute_strings() {
+        let lowered = lower("export function App() { return <a title=\"a &amp; b\">x</a>; }");
+        let ViewNode::Element { props, .. } = &lowered.ir.view else {
+            panic!("expected element, got {:?}", lowered.ir.view);
+        };
+        assert_eq!(
+            props,
+            &[Prop { name: "title".into(), value: PropValue::Static("a & b".into()) }]
+        );
     }
 
     impl Lowered {
