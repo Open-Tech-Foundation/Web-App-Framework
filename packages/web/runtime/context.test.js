@@ -67,6 +67,37 @@ describe("context", () => {
     outer.remove();
   });
 
+  test("resolves at connect time the way the compiler emits it", () => {
+    const Theme = createContext("dark");
+
+    // Mirror a compiled context consumer: enterHost(this) → useContext → exitHost().
+    let captured;
+    customElements.define(
+      "web-ctx-consumer",
+      class extends HTMLElement {
+        connectedCallback() {
+          enterHost(this);
+          try {
+            captured = useContext(Theme);
+            this.textContent = captured.value;
+          } finally {
+            exitHost();
+          }
+        }
+      },
+    );
+
+    const p = provider(Theme, "light");
+    const consumer = document.createElement("web-ctx-consumer");
+    p.appendChild(consumer); // detached
+    document.body.appendChild(p); // connect fires here, top-down
+
+    expect(consumer.textContent).toBe("light");
+    p.value = "solar";
+    expect(captured.value).toBe("solar"); // still wired to the provider signal
+    p.remove();
+  });
+
   test("the host stack restores the parent host after a nested pop", () => {
     const A = document.createElement("div");
     const B = document.createElement("div");
