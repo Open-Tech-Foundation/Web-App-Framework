@@ -136,6 +136,13 @@ export function computed(fn) {
  * next re-run and on dispose. Returns a disposer that stops the effect.
  */
 export function effect(fn) {
+  // SSG: reactivity is a client-runtime concern. During build-time pre-render we
+  // run the binding once (to drive the initial DOM from current values) and return
+  // a no-op disposer — no subscription, no reactive graph retained (SPEC §9.3).
+  if (globalThis.__OTFW_SSG__) {
+    fn();
+    return () => {};
+  }
   const node = {
     kind: "effect",
     fn,
