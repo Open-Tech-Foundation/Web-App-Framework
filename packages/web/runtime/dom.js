@@ -23,6 +23,42 @@ const AS_PROPERTY = new Set([
 // behave the same (aria-*="true"/"false").
 const ENUMERATED = new Set(["draggable", "spellcheck", "contenteditable"]);
 
+// CSS properties whose numeric values are unitless; every other numeric value
+// gets "px" appended (matching React/JSX conventions, so `style={{ width: 8 }}`
+// means 8px). Mirrors React's CSSProperty unitless list.
+const UNITLESS = new Set([
+  "animationIterationCount", "aspectRatio", "borderImageOutset", "borderImageSlice",
+  "borderImageWidth", "boxFlex", "boxFlexGroup", "boxOrdinalGroup", "columnCount",
+  "columns", "flex", "flexGrow", "flexShrink", "flexOrder", "gridArea", "gridRow",
+  "gridRowEnd", "gridRowStart", "gridColumn", "gridColumnEnd", "gridColumnStart",
+  "fontWeight", "lineClamp", "lineHeight", "opacity", "order", "orphans", "tabSize",
+  "widows", "zIndex", "zoom", "fillOpacity", "floodOpacity", "stopOpacity",
+  "strokeDasharray", "strokeDashoffset", "strokeMiterlimit", "strokeOpacity",
+  "strokeWidth",
+]);
+
+/**
+ * Apply a `style` object to an element. Numbers get "px" appended unless the
+ * property is unitless; CSS custom properties (`--foo`) go through setProperty;
+ * nullish values clear the property. A string value is treated as raw cssText.
+ */
+export function applyStyle(el, value) {
+  if (typeof value === "string") {
+    el.style.cssText = value;
+    return;
+  }
+  for (const key in value) {
+    const v = value[key];
+    if (key.startsWith("--")) {
+      el.style.setProperty(key, v == null ? "" : String(v));
+    } else if (v == null) {
+      el.style[key] = "";
+    } else {
+      el.style[key] = typeof v === "number" && !UNITLESS.has(key) ? `${v}px` : v;
+    }
+  }
+}
+
 /** Render a reactive value to its text form: null/undefined/false → "". */
 export function toText(value) {
   return value == null || value === false ? "" : String(value);
@@ -34,8 +70,8 @@ export function toText(value) {
  * else falls back to `setAttribute`.
  */
 export function setAttr(el, name, value) {
-  if (name === "style" && value && typeof value === "object") {
-    Object.assign(el.style, value);
+  if (name === "style" && value && (typeof value === "object" || typeof value === "string")) {
+    applyStyle(el, value);
     return;
   }
   if (name.startsWith("on") && typeof value === "function") {

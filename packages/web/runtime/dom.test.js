@@ -20,6 +20,12 @@ describe("setAttr", () => {
     setAttr(el, "style", { color: "red" });
     expect(el.style.color).toBe("red");
 
+    // Numbers get px appended; unitless properties don't; custom props go through.
+    setAttr(el, "style", { width: 8, opacity: 0.5, "--gap": 4 });
+    expect(el.style.width).toBe("8px");
+    expect(el.style.opacity).toBe("0.5");
+    expect(el.style.getPropertyValue("--gap")).toBe("4");
+
     setAttr(el, "id", "x"); // plain attribute
     expect(el.getAttribute("id")).toBe("x");
 
