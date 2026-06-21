@@ -12,8 +12,9 @@
 //! Both emit reactive text holes (`bindText`), dynamic attributes (`bindAttr`),
 //! event handlers, signal declarations, and compose child components by tag.
 //!
-//! Not yet supported (reported as diagnostics): member-expression component
-//! names and prop/children spreads.
+//! Member-expression component names (`<Foo.Bar/>`) are unsupported *by design* —
+//! components are Custom Elements addressed by a static tag, so a dotted runtime
+//! value has no tag to resolve (SPEC §4.0.1). It is reported as a diagnostic.
 
 use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
@@ -765,7 +766,14 @@ impl<'a> Emitter<'a> {
     fn emit_component_use(&mut self, name: &str, props: &[Prop], children: &[ViewNode]) -> String {
         let var = self.fresh("c");
         if name.contains('.') {
-            self.errors.push(format!("member-expression component not supported yet: <{name}>"));
+            // Unsupported by design: a dotted name is a runtime value with no static
+            // Custom Element tag to resolve (SPEC §4.0.1). Use a top-level component
+            // or children/$context composition instead.
+            self.errors.push(format!(
+                "member-expression component <{name}> is not supported \
+                 (components are addressed by a static tag — see SPEC §4.0.1); \
+                 give it its own component or compose via children/$context"
+            ));
             self.line(format!("const {var} = document.createComment(\"component\");"));
             return var;
         }
@@ -1280,6 +1288,21 @@ mod tests {
         );
         // A bare `on*` still uses the property fast path.
         assert!(!m.code.contains("onclick:capture"), "modifier not leaked as a name:\n{}", m.code);
+    }
+
+    #[test]
+    fn member_expression_component_is_rejected_by_design() {
+        // <Foo.Bar/> has no static Custom Element tag (SPEC §4.0.1); it must be a
+        // diagnostic, not silently broken codegen.
+        let m = emit_component(&lower(
+            "export function C() { return <Foo.Bar a={1} />; }",
+        ));
+        assert!(!m.is_complete(), "should report a diagnostic:\n{}", m.code);
+        assert!(
+            m.errors.iter().any(|e| e.contains("Foo.Bar") && e.contains("not supported")),
+            "errors: {:?}",
+            m.errors
+        );
     }
 
     #[test]

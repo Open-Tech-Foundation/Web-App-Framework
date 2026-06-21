@@ -13,8 +13,8 @@
 //! Scope of this pass (extended later):
 //! - Components are **function declarations** (named or `export default`) whose
 //!   body is top-level macro declarations / `$effect` calls + a `return <jsx>`.
-//! - `$signal` external bridge, member-expression component names, and spreads
-//!   are follow-ups.
+//! - `$signal` external bridge and spreads are follow-ups. Member-expression
+//!   component names (`<Foo.Bar/>`) are unsupported by design (SPEC §4.0.1).
 
 use std::collections::HashMap;
 

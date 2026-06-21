@@ -230,6 +230,19 @@ To prevent tag name collisions across different folders, the framework uses **De
 - **Collisions**: If two identical names resolve from different paths, the first one registered wins.
 - **Max Length**: Tag names are capped at 255 characters to comply with browser Custom Element limits.
 
+#### 4.0.1 Member-expression component names are unsupported (by design)
+Dotted/namespaced component names — `<Foo.Bar/>`, the React "compound component"
+pattern — are **intentionally not supported**, not a missing feature. Every UI
+component compiles to a Custom Element addressed by a *static* kebab-case tag
+(`Foo` → `web-foo`); a member expression like `Foo.Bar` is a runtime **value**
+lookup with no tag to register or resolve against, so it is fundamentally
+incompatible with the tag-based component model. The compiler reports it as a
+diagnostic rather than emitting a broken element.
+
+**Instead:** give the inner piece its own top-level component (`<FooBar/>`), or
+compose via children/`$context` (e.g. a `<Tabs>` provider with `<TabPanel>`
+children) — the Custom-Element-native equivalent of compound components.
+
 ### 4.1 Level 1: Static Component
 **Input**:
 ```jsx
