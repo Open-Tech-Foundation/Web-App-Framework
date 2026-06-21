@@ -1,82 +1,52 @@
-// Home page — a self-contained reactive "target selector" that exercises the
-// compiler's core patterns: $state, $derived, list rendering, conditional holes,
-// and event handlers. Kept as a single component (no cross-component callback
-// props or JSX-valued lookup tables) so it compiles cleanly on the new pipeline.
+// Home — the demo index. Every example in the playground is reachable from here
+// as a card, so the top nav can stay minimal. Cards are <Link>s (SPA navigation).
 
-export const targets = [
-  { id: 'js', label: 'JavaScript', color: '#f7df1e' },
-  { id: 'python', label: 'Python', color: '#3776ab' },
-  { id: 'go', label: 'Go', color: '#00add8' },
-  { id: 'java', label: 'Java', color: '#ed8b00' },
-  { id: 'ruby', label: 'Ruby', color: '#cc342d' },
-  { id: 'csharp', label: 'C#', color: '#239120' },
-  { id: 'php', label: 'PHP', color: '#777bb3' },
-  { id: 'cplusplus', label: 'C++', color: '#00599c' },
+import { Link } from "@opentf/web";
+
+const demos = [
+  { href: "/counter", title: "Counter", desc: "$state, $derived, $effect, lifecycle hooks", tag: "Reactivity" },
+  { href: "/products", title: "Perf Benchmark", desc: "Keyed list reconciliation over 5,000 rows", tag: "Reactivity" },
+  { href: "/context-demo", title: "Context API", desc: "Scoped provide / useContext with overrides", tag: "Reactivity" },
+  { href: "/dnd-demo", title: "Drag & Drop", desc: "Native HTML5 drag events + keyed lists", tag: "Events" },
+  { href: "/ref-demo", title: "Ref & Expose", desc: "$ref to elements + imperative $expose", tag: "Components" },
+  { href: "/icons", title: "SVG Icons", desc: "SVG namespacing & dynamic attributes", tag: "Rendering" },
+  { href: "/reconnect-demo", title: "Memory Leak", desc: "Effect cleanup on unmount", tag: "Lifecycle" },
+  { href: "/router-test", title: "Router API", desc: "Programmatic navigation & route state", tag: "Routing" },
+  { href: "/post/1", title: "Dynamic Route", desc: "[id] params via router.params", tag: "Routing" },
+  { href: "/shop/clothing/shirts", title: "Catch-all Route", desc: "[...slug] segments", tag: "Routing" },
+  { href: "/login", title: "Login", desc: "Form inputs & route guard", tag: "Routing" },
+  { href: "/about", title: "About", desc: "A plain static page", tag: "Routing" },
 ];
 
 export default function Home() {
-  let selectedTarget = $state('js');
-  let isOpen = $state(false);
-
-  const selectedInfo = $derived(
-    targets.find((t) => t.id === selectedTarget) || targets[0],
-  );
-
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-12 flex flex-col items-center justify-center gap-8">
-      <div className="text-center">
-        <h1 className="text-4xl font-black tracking-tight mb-2 bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
-          Compiler Target Selector
+    <div class="space-y-8">
+      <header class="space-y-2">
+        <h1 class="text-4xl font-black tracking-tight bg-gradient-to-r from-indigo-400 to-sky-400 bg-clip-text text-transparent">
+          OpenTF Web
         </h1>
-        <p className="text-zinc-400 text-sm">
-          Testing JSX transformation and reactivity patterns
+        <p class="text-slate-400">
+          A fullstack framework with a from-scratch IR compiler and a signal-based
+          runtime. Pick a demo to see the pipeline in action.
         </p>
-      </div>
+      </header>
 
-      <div className="bg-zinc-900/50 border border-zinc-800 p-8 rounded-2xl shadow-2xl backdrop-blur-xl">
-        <div className="flex flex-col gap-4 items-center">
-          <div className="relative">
-            <button
-              onclick={() => (isOpen = !isOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-zinc-700 transition-all text-xs font-bold uppercase tracking-wider text-zinc-100 cursor-pointer"
-            >
-              <span
-                className="w-3 h-3 rounded-full shrink-0"
-                style={`background-color: ${selectedInfo.color}`}
-              ></span>
-              <span>{selectedInfo.label}</span>
-            </button>
-
-            {isOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg overflow-hidden z-50 min-w-[180px]">
-                {targets.map((target) => (
-                  <button
-                    onclick={() => {
-                      selectedTarget = target.id;
-                      isOpen = false;
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-zinc-800 transition-all text-left cursor-pointer"
-                  >
-                    <span
-                      className="w-4 h-4 rounded-full shrink-0"
-                      style={`background-color: ${target.color}`}
-                    ></span>
-                    <span className="text-xs font-bold uppercase tracking-wider text-zinc-100">
-                      {target.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 flex items-center gap-3 px-4 py-2 bg-zinc-800/50 rounded-full border border-zinc-700/50">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-              Active:
-            </span>
-            <span className="text-sm font-mono text-blue-400">{selectedTarget}</span>
-          </div>
-        </div>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {demos.map((d) => (
+          <Link
+            href={d.href}
+            class="group block rounded-xl border border-slate-700 bg-slate-900/40 p-5 transition-colors hover:border-indigo-400 hover:bg-slate-900"
+          >
+            <div class="text-[10px] font-bold uppercase tracking-widest text-indigo-400">
+              {d.tag}
+            </div>
+            <div class="mt-2 text-lg font-semibold text-white group-hover:text-indigo-300">
+              {d.title}
+            </div>
+            <div class="mt-1 text-sm text-slate-400">{d.desc}</div>
+            <div class="mt-3 font-mono text-xs text-slate-500">{d.href}</div>
+          </Link>
+        ))}
       </div>
     </div>
   );
