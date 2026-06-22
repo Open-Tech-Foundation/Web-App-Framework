@@ -82,10 +82,11 @@ jobs:
           if npm view "$name@$version" version >/dev/null 2>&1; then
             echo "$name@$version already published, skipping."
           else
-            # --no-workspaces: the repo root is a private workspace, so without this
-            # npm runs in workspace mode and skips this package as private even from
-            # its own dir. Force single-package mode for both the flip and publish.
-            npm pkg set private=false --no-workspaces
+            # Remove the private guard (not `set private=false` — npm pkg set writes
+            # the STRING "false", which is truthy and still trips EPRIVATE).
+            # --no-workspaces: the repo root is a private workspace, so without it npm
+            # runs in workspace mode and skips this package even from its own dir.
+            npm pkg delete private --no-workspaces
             npm publish --access public --no-workspaces
           fi
         env:
