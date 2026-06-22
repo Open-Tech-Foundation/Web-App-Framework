@@ -23,6 +23,7 @@ jobs:
       # The test runner compiles `.jsx` fixtures through `otfwc` (bunfig preload), so
       # the Rust toolchain must be present; `cargo test` builds the binary.
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: oven-sh/setup-bun@v2
       - run: bun install
       # `bun run test` = `cargo test && bun test packages/web/` — the Rust suite plus
