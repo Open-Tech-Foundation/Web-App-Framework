@@ -1,0 +1,46 @@
+---
+title: Core Concepts
+description: Zero-VDOM architecture, native Web Components, and reactive component props.
+---
+
+# Core Concepts
+
+## Zero-VDOM Architecture
+
+When you write JSX in OTF Web, it is not transformed into `React.createElement` calls.
+Instead, our compiler statically analyzes your templates and converts them into
+`document.createElement`, `appendChild`, and direct attribute assignments. When state
+changes, only the specific DOM node bound to that state is updated. No diffing, no
+reconciliation loop.
+
+## Web Components Under the Hood
+
+Every capitalized function in OTF Web that contains JSX syntax (e.g. `function
+Button()`) is automatically compiled into a native custom element (`<web-button>`).
+Regular capitalized utility functions that do not return JSX are left untouched. This
+means you get style encapsulation and native lifecycle management for free on your UI
+components.
+
+```jsx
+// This OTF Web component:
+export function UserCard() {
+  return <div>User</div>;
+}
+
+// Compiles to:
+class UserCardElement extends HTMLElement { /* … */ }
+customElements.define("web-usercard", UserCardElement);
+```
+
+## Component Props
+
+Props are passed down just like in React, but they are fully reactive. If a parent
+updates a prop, the child component automatically updates without re-rendering the
+entire component.
+
+```jsx
+export function Greeting(props) {
+  // props.name is reactive!
+  return <h1>Hello, {props.name}!</h1>;
+}
+```

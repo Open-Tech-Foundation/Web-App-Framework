@@ -58,6 +58,13 @@
       "name": "@opentf/web-compiler",
       "version": "0.1.0",
     },
+    "packages/web-docs": {
+      "name": "@opentf/web-docs",
+      "version": "0.1.0",
+      "peerDependencies": {
+        "@opentf/web": "*",
+      },
+    },
     "packages/web-form": {
       "name": "@opentf/web-form",
       "version": "1.0.0",
@@ -100,6 +107,7 @@
       "name": "website",
       "dependencies": {
         "@opentf/web": "^0.5.0",
+        "@opentf/web-docs": "^0.1.0",
       },
       "devDependencies": {
         "@opentf/web-cli": "^1.0.0",
@@ -336,6 +344,8 @@
     "@opentf/web-cli": ["@opentf/web-cli@workspace:packages/web-cli"],
 
     "@opentf/web-compiler": ["@opentf/web-compiler@workspace:packages/web-compiler"],
+
+    "@opentf/web-docs": ["@opentf/web-docs@workspace:packages/web-docs"],
 
     "@opentf/web-form": ["@opentf/web-form@workspace:packages/web-form"],
 

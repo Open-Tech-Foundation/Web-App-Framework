@@ -1,0 +1,62 @@
+---
+title: Introduction
+description: Everything you need to know to build high-performance web apps with OTF Web — a zero-VDOM, signal-driven framework that compiles JSX to native Web Components.
+---
+
+# Documentation
+
+Everything you need to know to build high-performance web apps with OTF Web.
+
+## Introduction
+
+OTF Web is a revolutionary approach to building web applications. Unlike React or
+Vue, it completely eliminates the Virtual DOM. Instead, it compiles your JSX directly
+into highly optimized, imperative native DOM operations. Under the hood, every
+component is compiled into a standard Web Component, ensuring perfect interoperability
+with the web ecosystem.
+
+## Installation
+
+Start a new project instantly using our official scaffolding tool:
+
+```bash
+# npm
+npm create @opentf/web@latest my-app
+
+# pnpm
+pnpm create @opentf/web my-app
+
+# bun
+bun create @opentf/web my-app
+```
+
+```bash
+cd my-app
+bun install
+bun run dev
+```
+
+This interactive tool will guide you through choosing a styling solution and
+including optional framework modules.
+
+## Architecture
+
+OTF Web is built on three main pillars that ensure maximum performance and developer
+experience:
+
+- **Statically Analyzed JSX**
+- **Fine-grained Signals**
+- **Native Web Components**
+
+<Callout type="info" title="No Hydration">
+  HTML is sent to the client and becomes immediately interactive — no expensive
+  re-render on load.
+</Callout>
+
+<Callout type="info" title="Web Standards">
+  Every component is a standard Custom Element. Use them anywhere, even in plain HTML.
+</Callout>
+
+<Callout type="info" title="Signal Driven">
+  Updates are O(1). Changing a value only updates the specific DOM node bound to it.
+</Callout>

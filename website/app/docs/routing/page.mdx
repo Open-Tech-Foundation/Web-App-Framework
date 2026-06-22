@@ -1,0 +1,69 @@
+---
+title: Routing
+description: File-based routing, nested layouts, dynamic routes, and the reactive router API.
+---
+
+# Routing
+
+## File-based Routing
+
+OTF Web uses a file-system based router. Any file named `page.jsx` inside the `app/`
+directory becomes a route.
+
+| File                          | Route             |
+| ----------------------------- | ----------------- |
+| `app/page.jsx`                | `/`               |
+| `app/about/page.jsx`          | `/about`          |
+| `app/blog/[id]/page.jsx`      | `/blog/:id` (dynamic)     |
+| `app/docs/[...slug]/page.jsx` | `/docs/*` (catch-all)     |
+
+## Layouts
+
+Use `layout.jsx` to wrap your pages with shared UI like navigation bars or sidebars.
+Layouts can be nested indefinitely. The matched child route is passed via
+`props.children`.
+
+```jsx
+export default function DashboardLayout(props) {
+  return (
+    <div className="dashboard">
+      <Sidebar />
+      <main>{props.children}</main>
+    </div>
+  );
+}
+```
+
+## Dynamic Routes
+
+Create dynamic routes by using square brackets in filenames. The parameters are
+available via `router.params`.
+
+```jsx
+// app/user/[id]/page.jsx
+export default function UserPage() {
+  return (
+    <div>
+      <h1>User Profile</h1>
+      <p>Viewing user: {router.params.id}</p>
+    </div>
+  );
+}
+```
+
+## Router API
+
+The global `router` singleton gives you programmatic control over navigation and
+reactive access to URL state.
+
+```jsx
+import { router } from "@opentf/web";
+
+// Reactive signals
+<div>Current Path: {router.pathname}</div>
+<div>Search: {router.searchParams.get("q")}</div>
+
+// Navigation methods
+<button onclick={() => router.push("/login")}>Login</button>
+<button onclick={() => router.replace("/home")}>Home</button>
+```
