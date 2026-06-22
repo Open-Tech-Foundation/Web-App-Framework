@@ -14,7 +14,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, join } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { compileCss, usesTailwind } from "./tailwind.js";
 import {
@@ -22,6 +21,8 @@ import {
   cssPlugin,
   discoverPages,
   entrySource,
+  loadConfig,
+  loadDocsNavPlugin,
   loadProject,
   otfwPlugin,
 } from "./shared.js";
@@ -29,32 +30,12 @@ import {
 const hash = (s) => Bun.hash(s).toString(16).padStart(16, "0").slice(0, 8);
 
 // Site origin for absolute canonical / sitemap URLs. Priority: `--base-url=` flag,
-// then an optional `otfw.config.{js,json}` (`{ site: { url } }`), else "" (relative
-// canonicals, sitemap skipped with a warning).
-async function resolveBaseUrl(root) {
+// then `otfw.config` (`{ site: { url } }`), else "" (relative canonicals, sitemap
+// skipped with a warning).
+function resolveBaseUrl(config) {
   const flag = process.argv.find((a) => a.startsWith("--base-url="));
   if (flag) return flag.slice("--base-url=".length).replace(/\/+$/, "");
-
-  const json = join(root, "otfw.config.json");
-  if (existsSync(json)) {
-    try {
-      const cfg = JSON.parse(readFileSync(json, "utf8"));
-      if (cfg?.site?.url) return String(cfg.site.url).replace(/\/+$/, "");
-    } catch (e) {
-      console.warn(`⚠ could not parse otfw.config.json: ${e?.message ?? e}`);
-    }
-  }
-  for (const name of ["otfw.config.js", "otfw.config.mjs"]) {
-    const js = join(root, name);
-    if (existsSync(js)) {
-      try {
-        const cfg = (await import(pathToFileURL(js).href)).default;
-        if (cfg?.site?.url) return String(cfg.site.url).replace(/\/+$/, "");
-      } catch (e) {
-        console.warn(`⚠ could not load ${name}: ${e?.message ?? e}`);
-      }
-    }
-  }
+  if (config?.site?.url) return String(config.site.url).replace(/\/+$/, "");
   return "";
 }
 
@@ -67,6 +48,11 @@ export async function runBuild() {
     console.error(`✗ no page.jsx files found under ${appDir}`);
     process.exit(1);
   }
+
+  // Docs generator: resolve `@opentf/web-docs/nav` to the build-time nav tree when
+  // the project has a `docs` config block.
+  const config = await loadConfig(root);
+  const navPlugin = await loadDocsNavPlugin(root, appDir, config);
 
   const outDir = join(root, "dist");
   rmSync(outDir, { recursive: true, force: true });
@@ -81,7 +67,11 @@ export async function runBuild() {
   const result = await build({
     input: entry,
     resolve: { alias: { "@opentf/web": webEntry }, extensions: EXTENSIONS },
-    plugins: [otfwPlugin(otfwc, { failOnError: true }), cssPlugin()],
+    plugins: [
+      ...(navPlugin ? [navPlugin] : []),
+      otfwPlugin(otfwc, { failOnError: true }),
+      cssPlugin(),
+    ],
     output: {
       dir: join(outDir, "assets"),
       format: "esm",
@@ -133,9 +123,18 @@ export async function runBuild() {
   // (so per-route files carry the same bundle + stylesheet links).
   let ssg = null;
   if (process.argv.includes("--ssg")) {
-    const baseUrl = await resolveBaseUrl(root);
+    const baseUrl = resolveBaseUrl(config);
     const { runPrerender } = await import("./prerender.js");
-    ssg = await runPrerender({ root, pages, webEntry, otfwc, shellHtml: html, outDir, baseUrl });
+    ssg = await runPrerender({
+      root,
+      pages,
+      webEntry,
+      otfwc,
+      shellHtml: html,
+      outDir,
+      baseUrl,
+      navPlugin,
+    });
   }
 
   // Copy the public/ directory (static assets served at the root), if present.

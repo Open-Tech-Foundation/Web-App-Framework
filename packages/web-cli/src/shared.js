@@ -5,9 +5,9 @@
 // `otfwc` IR compiler as a Rolldown `transform` plugin, and let Rolldown link the
 // module graph. This module holds everything they have in common.
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { otfwcPath } from "@opentf/web-compiler";
 
@@ -98,6 +98,53 @@ function ensureCompiler(otfwc, workspace) {
     stderr: "inherit",
   });
   if (b.exitCode !== 0) process.exit(b.exitCode);
+}
+
+/**
+ * Load the optional project config (`otfw.config.{json,js,mjs}`) as a plain object.
+ * Read by the build for the site URL (SEO) and the `docs` block (docs generator).
+ */
+export async function loadConfig(root) {
+  const json = join(root, "otfw.config.json");
+  if (existsSync(json)) {
+    try {
+      return JSON.parse(readFileSync(json, "utf8")) ?? {};
+    } catch (e) {
+      console.warn(`⚠ could not parse otfw.config.json: ${e?.message ?? e}`);
+    }
+  }
+  for (const name of ["otfw.config.js", "otfw.config.mjs"]) {
+    const p = join(root, name);
+    if (existsSync(p)) {
+      try {
+        return (await import(pathToFileURL(p).href)).default ?? {};
+      } catch (e) {
+        console.warn(`⚠ could not load ${name}: ${e?.message ?? e}`);
+      }
+    }
+  }
+  return {};
+}
+
+/**
+ * The docs navigation Rolldown plugin, when the project opts into the docs
+ * generator (a `docs` block in otfw.config). Resolved from `@opentf/web-docs`
+ * (the app's own dependency); returns null when docs aren't configured or the
+ * package isn't installed, so the core toolchain stays untouched for normal apps.
+ */
+export async function loadDocsNavPlugin(root, appDir, config) {
+  const docs = config?.docs;
+  if (!docs) return null;
+  try {
+    const entry = Bun.resolveSync("@opentf/web-docs/build", root);
+    const { docsNavPlugin } = await import(pathToFileURL(entry).href);
+    return docsNavPlugin({ appDir, contentDir: docs.dir ?? "docs" });
+  } catch (e) {
+    console.warn(
+      `⚠ docs config present but @opentf/web-docs could not be loaded: ${e?.message ?? e}`,
+    );
+    return null;
+  }
 }
 
 /** Discover file-based routes under `app/`: every page/layout and the 404. */

@@ -1,0 +1,44 @@
+{
+  "name": "@opentf/web-docs",
+  "version": "0.1.0",
+  "description": "Documentation-site generator for OTF Web — themed shell components (sidebar, TOC, callouts, tabs), a build-time nav generator, and a default light/dark theme.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./theme": "./theme/index.css",
+    "./config": "./config.js",
+    "./nav": "./nav-virtual.js",
+    "./build": "./build/index.js"
+  },
+  "files": [
+    "index.js",
+    "config.js",
+    "nav-virtual.js",
+    "components",
+    "theme",
+    "build",
+    "!**/*.test.js"
+  ],
+  "keywords": [
+    "opentf",
+    "documentation",
+    "docs",
+    "mdx",
+    "static-site-generator",
+    "ssg"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Open-Tech-Foundation/Web-App-Framework.git",
+    "directory": "packages/web-docs"
+  },
+  "homepage": "https://github.com/Open-Tech-Foundation/Web-App-Framework#readme",
+  "bugs": "https://github.com/Open-Tech-Foundation/Web-App-Framework/issues",
+  "license": "MIT",
+  "peerDependencies": {
+    "@opentf/web": "*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

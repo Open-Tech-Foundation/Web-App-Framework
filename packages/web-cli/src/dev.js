@@ -17,6 +17,8 @@ import {
   cssPlugin,
   discoverPages,
   entrySource,
+  loadConfig,
+  loadDocsNavPlugin,
   loadProject,
   otfwPlugin,
 } from "./shared.js";
@@ -80,6 +82,11 @@ export async function runDev() {
   const entry = join(devDir, "entry.js");
   writeFileSync(entry, entrySource(pages, appDir));
 
+  // Docs generator: the nav plugin resolves `@opentf/web-docs/nav` to the build-time
+  // navigation tree (only when otfw.config has a `docs` block).
+  const config = await loadConfig(root);
+  const navPlugin = await loadDocsNavPlugin(root, appDir, config);
+
   // WebSocket HMR: clients on the "hmr" topic get JSON messages — a successful
   // rebuild sends { type: "reload" }; a compile/build failure sends
   // { type: "error" } so the injected overlay shows it over the last good page.
@@ -92,6 +99,7 @@ export async function runDev() {
     input: entry,
     resolve: { alias: { "@opentf/web": webEntry }, extensions: EXTENSIONS },
     plugins: [
+      ...(navPlugin ? [navPlugin] : []),
       otfwPlugin(otfwc, {
         onResult: (id, err) => (err ? compileErrors.set(id, err) : compileErrors.delete(id)),
       }),
