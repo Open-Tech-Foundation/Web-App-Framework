@@ -103,7 +103,10 @@ export function ssgComponent(tag, props, children) {
   } catch {
     inner = ""; // fail soft (client renders/handles it)
   }
-  return `<${tag}>${inner}</${tag}>`;
+  // Stamp the stable styling hook on the host (mirrors CSR's `classList.add`) so
+  // tag-hashed components are still styleable by a readable class name.
+  const cls = render && render.hostClass;
+  return cls ? `<${tag} class="${cls}">${inner}</${tag}>` : `<${tag}>${inner}</${tag}>`;
 }
 
 export { VOID };

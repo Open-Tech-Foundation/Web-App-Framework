@@ -1,5 +1,5 @@
 // Built-in custom elements self-register on import. They're used in JSX as *tags*
-// (`<Portal>` → `web-portal`), so their bindings are never referenced and a plain
+// (`<Portal>` → `web-internal-portal`), so their bindings are never referenced and a plain
 // re-export would be tree-shaken away (the element never registers). Bare imports
 // force the registration side effect to be retained.
 import "./context.js";

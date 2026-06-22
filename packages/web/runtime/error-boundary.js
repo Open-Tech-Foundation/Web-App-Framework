@@ -9,7 +9,7 @@
 // A descendant component's connectedCallback funnels a thrown error through
 // `handleError(this, …)` (emitted by the compiler): it reports the error (dev
 // overlay / logging) and walks up the DOM — hopping across portals, like
-// `readContext` — to the nearest `web-error-boundary`, which swaps its children
+// `readContext` — to the nearest `web-internal-error-boundary`, which swaps its children
 // for the fallback. `reset()` rebuilds the original subtree (snapshotted before it
 // ran) to retry. Only synchronous render/mount errors are caught; later
 // effect/event errors still go to global reporting (as with React boundaries).
@@ -24,7 +24,7 @@ export function handleError(el, error, context = {}) {
   reportError(error, context); // always log / surface in the dev overlay
   let node = el;
   while (node) {
-    const boundary = node.closest ? node.closest("web-error-boundary") : null;
+    const boundary = node.closest ? node.closest("web-internal-error-boundary") : null;
     if (boundary) {
       boundary.catch(error, context);
       return;
@@ -102,8 +102,8 @@ export class ErrorBoundaryElement extends HTMLElement {
 }
 
 // Exported so `import { ErrorBoundary } from "@opentf/web"` resolves; the import
-// side effect registers the element (JSX uses the `web-error-boundary` tag).
+// side effect registers the element (JSX uses the `web-internal-error-boundary` tag).
 export const ErrorBoundary = ErrorBoundaryElement;
-if (typeof customElements !== "undefined" && !customElements.get("web-error-boundary")) {
-  customElements.define("web-error-boundary", ErrorBoundaryElement);
+if (typeof customElements !== "undefined" && !customElements.get("web-internal-error-boundary")) {
+  customElements.define("web-internal-error-boundary", ErrorBoundaryElement);
 }

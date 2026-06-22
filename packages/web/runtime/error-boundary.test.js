@@ -26,7 +26,7 @@ customElements.define(
 describe("ErrorBoundary", () => {
   test("catches a descendant render error and shows the fallback", async () => {
     armed = true;
-    const boundary = document.createElement("web-error-boundary");
+    const boundary = document.createElement("web-internal-error-boundary");
     boundary.fallback = (error) => `caught: ${error.message}`;
     boundary.appendChild(document.createElement("web-bomb"));
     document.body.appendChild(boundary); // connect: boundary, then bomb throws
@@ -39,7 +39,7 @@ describe("ErrorBoundary", () => {
 
   test("reset() rebuilds the subtree and recovers once the cause is gone", async () => {
     armed = true;
-    const boundary = document.createElement("web-error-boundary");
+    const boundary = document.createElement("web-internal-error-boundary");
     boundary.appendChild(document.createElement("web-bomb"));
     document.body.appendChild(boundary);
     await tick();
@@ -54,6 +54,6 @@ describe("ErrorBoundary", () => {
   });
 
   test("ErrorBoundary export is the element class", () => {
-    expect(ErrorBoundary).toBe(customElements.get("web-error-boundary"));
+    expect(ErrorBoundary).toBe(customElements.get("web-internal-error-boundary"));
   });
 });

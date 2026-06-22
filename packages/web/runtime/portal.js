@@ -3,7 +3,7 @@
 //
 //   <Portal to="#toast-root"> … </Portal>   // selector, element, or default body
 //
-// `<Portal>` compiles to this built-in `web-portal` element (capitalized name →
+// `<Portal>` compiles to this built-in `web-internal-portal` element (capitalized name →
 // tag, like <ContextProvider>) — no compiler changes. At connect it moves its
 // light-DOM children to the target; on disconnect it removes them so their
 // custom-element disconnect + effect cleanups run (the part userland leaks).
@@ -52,8 +52,8 @@ export class PortalElement extends HTMLElement {
 }
 
 // Exported so `import { Portal } from "@opentf/web"` resolves; the import side
-// effect registers the element (JSX uses the `web-portal` tag).
+// effect registers the element (JSX uses the `web-internal-portal` tag).
 export const Portal = PortalElement;
-if (typeof customElements !== "undefined" && !customElements.get("web-portal")) {
-  customElements.define("web-portal", PortalElement);
+if (typeof customElements !== "undefined" && !customElements.get("web-internal-portal")) {
+  customElements.define("web-internal-portal", PortalElement);
 }

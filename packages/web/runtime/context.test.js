@@ -3,9 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { effect } from "../core/signals.js";
 import { createContext, enterHost, exitHost, readContext } from "./context.js";
 
-// Build a <web-context-provider> with a value, returning the element.
+// Build a <web-internal-context-provider> with a value, returning the element.
 function provider(context, value) {
-  const el = document.createElement("web-context-provider");
+  const el = document.createElement("web-internal-context-provider");
   el.context = context; // sets the data-otfw-ctx marker
   el.value = value;
   return el;

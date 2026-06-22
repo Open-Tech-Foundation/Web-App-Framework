@@ -3,9 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { createContext, enterHost, exitHost, readContext } from "./context.js";
 import "./portal.js";
 
-// A <web-portal> wrapping `child`, with an optional target selector.
+// A <web-internal-portal> wrapping `child`, with an optional target selector.
 function portal(child, to) {
-  const p = document.createElement("web-portal");
+  const p = document.createElement("web-internal-portal");
   if (to !== undefined) p.to = to;
   p.appendChild(child);
   return p;
@@ -63,8 +63,8 @@ describe("portal", () => {
       },
     );
 
-    // <provider value="light"> <web-portal> <consumer/> </web-portal> </provider>
-    const provider = document.createElement("web-context-provider");
+    // <provider value="light"> <web-internal-portal> <consumer/> </web-internal-portal> </provider>
+    const provider = document.createElement("web-internal-context-provider");
     provider.context = Theme;
     provider.value = "light";
     const consumer = document.createElement("web-portal-consumer");

@@ -1,6 +1,6 @@
 //! RawHtml — render a trusted HTML string as light-DOM content.
 //
-//   <RawHtml html={"<pre>…</pre>"} />   // compiles to the built-in `web-raw-html`
+//   <RawHtml html={"<pre>…</pre>"} />   // compiles to the built-in `web-internal-raw-html`
 //
 // Used by the MDX front-end for build-time syntax-highlighted code blocks: the
 // highlighted markup is static (no reactivity), so the element just assigns its
@@ -26,8 +26,8 @@ export class RawHtmlElement extends HTMLElement {
 }
 
 // Exported so `import { RawHtml } from "@opentf/web"` resolves; the import side
-// effect registers the element (JSX uses the `web-raw-html` tag).
+// effect registers the element (JSX uses the `web-internal-raw-html` tag).
 export const RawHtml = RawHtmlElement;
-if (typeof customElements !== "undefined" && !customElements.get("web-raw-html")) {
-  customElements.define("web-raw-html", RawHtmlElement);
+if (typeof customElements !== "undefined" && !customElements.get("web-internal-raw-html")) {
+  customElements.define("web-internal-raw-html", RawHtmlElement);
 }

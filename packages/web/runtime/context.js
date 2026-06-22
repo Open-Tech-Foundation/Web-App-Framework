@@ -82,8 +82,8 @@ export class ContextProviderElement extends HTMLElement {
 }
 
 // Exported so `import { ContextProvider } from "@opentf/web"` resolves; the import
-// side effect registers the element (JSX uses the `web-context-provider` tag).
+// side effect registers the element (JSX uses the `web-internal-context-provider` tag).
 export const ContextProvider = ContextProviderElement;
-if (typeof customElements !== "undefined" && !customElements.get("web-context-provider")) {
-  customElements.define("web-context-provider", ContextProviderElement);
+if (typeof customElements !== "undefined" && !customElements.get("web-internal-context-provider")) {
+  customElements.define("web-internal-context-provider", ContextProviderElement);
 }
