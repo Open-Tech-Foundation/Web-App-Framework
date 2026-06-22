@@ -1,5 +1,18 @@
 import { Link } from "@opentf/web";
 
+export const metadata = {
+  title: "About OTF Web",
+  description:
+    "OTF Web is a zero-VDOM, high-performance fullstack framework built on native Web Components and signals.",
+  canonical: "/about",
+  openGraph: { image: "/og/about.png" },
+  jsonLd: {
+    "@context": "https://schema.org",
+    "@type": "AboutPage",
+    name: "About OTF Web",
+  },
+};
+
 export default function AboutPage() {
   return (
     <div className="space-y-4">

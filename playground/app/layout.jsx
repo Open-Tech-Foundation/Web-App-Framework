@@ -1,5 +1,13 @@
 import { Link, router } from "@opentf/web";
 
+// Default site-wide metadata. Pages merge over this (e.g. their own title), so the
+// site name / default OG type apply everywhere without repetition.
+export const metadata = {
+  title: "OTF Web",
+  openGraph: { siteName: "OTF Web", type: "website" },
+  twitter: { card: "summary_large_image" },
+};
+
 export default function GlobalLayout(props) {
   return (
     <div className="min-h-screen bg-slate-900 p-8 text-slate-100">

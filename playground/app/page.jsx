@@ -3,6 +3,13 @@
 
 import { Link } from "@opentf/web";
 
+export const metadata = {
+  title: "OTF Web — fullstack framework demos",
+  description:
+    "A fullstack web framework with a from-scratch IR compiler and a signal-based runtime. Browse the live demos.",
+  canonical: "/",
+};
+
 const demos = [
   { href: "/counter", title: "Counter", desc: "$state, $derived, $effect, lifecycle hooks", tag: "Reactivity" },
   { href: "/products", title: "Perf Benchmark", desc: "Keyed list reconciliation over 5,000 rows", tag: "Reactivity" },
