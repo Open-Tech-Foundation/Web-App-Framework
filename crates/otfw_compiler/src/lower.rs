@@ -572,6 +572,36 @@ fn arrow_jsx<'a>(arrow: &'a ArrowFunctionExpression<'a>) -> Option<&'a Expressio
     }
 }
 
+/// The body expression of a zero-parameter arrow thunk (`{() => expr}` or
+/// `{() => { return expr; }}`), or `None` if the hole is not such an arrow. Lets a
+/// thunk hole be lowered identically to a bare one — the runtime already wraps
+/// every hole in a reactive getter, so an explicit thunk would otherwise be
+/// rendered as a function value.
+fn thunk_body<'a>(expr: &'a JSXExpression<'a>) -> Option<&'a Expression<'a>> {
+    let JSXExpression::ArrowFunctionExpression(arrow) = expr else { return None };
+    if !arrow.params.items.is_empty() || arrow.params.rest.is_some() {
+        return None;
+    }
+    arrow_body_expr(arrow)
+}
+
+/// The single body expression of an arrow (`() => EXPR` or `() => { return EXPR; }`).
+fn arrow_body_expr<'a>(arrow: &'a ArrowFunctionExpression<'a>) -> Option<&'a Expression<'a>> {
+    if arrow.expression {
+        match arrow.body.statements.first() {
+            Some(Statement::ExpressionStatement(es)) => Some(unwrap_paren(&es.expression)),
+            _ => None,
+        }
+    } else if arrow.body.statements.len() == 1 {
+        match &arrow.body.statements[0] {
+            Statement::ReturnStatement(ret) => ret.argument.as_ref().map(|a| unwrap_paren(a)),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
 /// A component definition's callable form: a `function` declaration/expression or
 /// an arrow function. Both expose the same params/body/JSX the lowerer needs, so
 /// `function C() {…}` and `const C = () => …` lower identically (SPEC §2.1).
@@ -1392,6 +1422,26 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         self.exprs.intern(info)
     }
 
+    /// Intern a plain expression as a reactive dynamic hole (`.value`-injected) —
+    /// used for a thunk body (`{() => expr}`).
+    fn intern_expr(&mut self, expr: &Expression) -> ExpressionId {
+        let info = inject_expr(self.source, self.scoping, &self.signals, self.props_symbol, expr);
+        self.exprs.intern(info)
+    }
+
+    /// Lower a hole given as a plain expression (the body of a `{() => …}` thunk):
+    /// a list, a JSX-bearing dynamic node, or a plain dynamic text hole — mirroring
+    /// the JSX-expression hole arms in `lower_child`.
+    fn lower_hole_expr(&mut self, expr: &'a Expression<'a>) -> Option<ViewNode> {
+        if let Some(list) = self.try_lower_list_expr(expr) {
+            Some(list)
+        } else if has_jsx_expr(expr) {
+            Some(self.lower_dynamic_node_expr(expr, expr.span()))
+        } else {
+            Some(ViewNode::Dynamic { expr: self.intern_expr(expr) })
+        }
+    }
+
     /// Lower a JSX-bearing hole (`{cond && <p/>}`) into a `DynamicNode`: a
     /// templated expression plus a node-builder branch per embedded JSX.
     fn lower_dynamic_node(&mut self, expr: &JSXExpression<'a>, span: Span) -> ViewNode {
@@ -1528,7 +1578,12 @@ impl<'a, 'r> Lowerer<'a, 'r> {
                 JSXExpression::EmptyExpression(_) => None,
                 _ if self.is_children_ref(&c.expression) => Some(ViewNode::Children),
                 _ => {
-                    if let Some(list) = self.try_lower_list(&c.expression) {
+                    // `{() => …}` thunk: lower its body as if written `{…}`. Holes
+                    // are already wrapped in a reactive getter, so an explicit thunk
+                    // would otherwise be rendered as a function value (SPEC §5.2).
+                    if let Some(body) = thunk_body(&c.expression) {
+                        self.lower_hole_expr(body)
+                    } else if let Some(list) = self.try_lower_list(&c.expression) {
                         Some(list)
                     } else if has_jsx_jsx(&c.expression) {
                         // A hole that can yield DOM nodes (`{cond && <p/>}`).
@@ -1649,6 +1704,17 @@ impl<'a, 'r> Lowerer<'a, 'r> {
     /// a plain dynamic hole.
     fn try_lower_list(&mut self, expr: &'a JSXExpression<'a>) -> Option<ViewNode> {
         let JSXExpression::CallExpression(call) = expr else { return None };
+        self.try_lower_list_call(call)
+    }
+
+    /// As [`try_lower_list`] but for a plain expression — a thunk body
+    /// (`{() => arr.map(…)}`).
+    fn try_lower_list_expr(&mut self, expr: &'a Expression<'a>) -> Option<ViewNode> {
+        let Expression::CallExpression(call) = expr else { return None };
+        self.try_lower_list_call(call)
+    }
+
+    fn try_lower_list_call(&mut self, call: &'a CallExpression<'a>) -> Option<ViewNode> {
         let Expression::StaticMemberExpression(member) = &call.callee else { return None };
         if member.property.name != "map" {
             return None;
@@ -2090,6 +2156,40 @@ mod tests {
         let lowered = lower("export function C() { let n = $state(0); return <p>{n ? 1 : 2}</p>; }");
         let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
         assert!(matches!(&children[0], ViewNode::Dynamic { .. }));
+    }
+
+    #[test]
+    fn thunk_hole_lowers_like_a_bare_hole() {
+        // `{() => …}` is a thunk: holes are already wrapped in a reactive getter, so
+        // it must lower identically to `{…}` (not render the function value). The
+        // arrow is stripped and its body drives the hole.
+
+        // JSX-bearing thunk → DynamicNode, arrow stripped from the template.
+        let l1 = lower(
+            "export function C() { let on = $state(true); return <div>{() => on ? <a/> : <b/>}</div>; }",
+        );
+        assert!(l1.errors.is_empty(), "errors: {:?}", l1.errors);
+        let ViewNode::Element { children, .. } = &l1.ir.view else { panic!() };
+        let ViewNode::DynamicNode { expr, branches } = &children[0] else {
+            panic!("expected DynamicNode, got {:?}", children[0]);
+        };
+        let code = l1.exprs.code(*expr).unwrap();
+        assert!(!code.contains("=>"), "thunk arrow must be stripped: {code}");
+        assert!(code.contains("on.value ?"), "body must drive the hole: {code}");
+        assert_eq!(branches.len(), 2);
+
+        // Plain-valued thunk → a text Dynamic hole (no function value).
+        let l2 = lower("export function C() { let n = $state(0); return <p>{() => n + 1}</p>; }");
+        let ViewNode::Element { children, .. } = &l2.ir.view else { panic!() };
+        let ViewNode::Dynamic { expr } = &children[0] else { panic!("expected Dynamic") };
+        assert_eq!(l2.exprs.code(*expr), Some("n.value + 1"));
+
+        // List thunk → a List node.
+        let l3 = lower(
+            "export function C() { let xs = $state([]); return <ul>{() => xs.map(x => <li>{x}</li>)}</ul>; }",
+        );
+        let ViewNode::Element { children, .. } = &l3.ir.view else { panic!() };
+        assert!(matches!(&children[0], ViewNode::List { .. }), "got {:?}", children[0]);
     }
 
     #[test]
