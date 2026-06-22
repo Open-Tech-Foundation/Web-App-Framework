@@ -208,6 +208,12 @@ pub struct Lowered {
     /// True when the component body uses `$context`, so codegen brackets its
     /// connect with the host push/pop that lets the resolver find the DOM host.
     pub needs_host: bool,
+    /// Names of all components declared in the same module (including this one).
+    /// Codegen uses this to tell a same-module `<Sibling/>` (address it via the
+    /// sibling's in-scope class binding) from an imported `<Other/>` (address it
+    /// via the imported binding), so component tags stay collision-free without
+    /// cross-module resolution. See `codegen::tags`.
+    pub module_components: Vec<String>,
     /// Non-fatal lowering diagnostics (unsupported constructs that were skipped).
     pub errors: Vec<String>,
 }
@@ -297,6 +303,12 @@ pub fn lower_module<'a>(
     if components.is_empty() {
         return None;
     }
+    // Every component now knows all its siblings, so a same-module `<Sibling/>`
+    // resolves to the sibling's in-scope class binding (collision-free tags).
+    let names: Vec<String> = components.iter().map(|c| c.name.clone()).collect();
+    for c in &mut components {
+        c.module_components = names.clone();
+    }
     Some(LoweredModule { components, module_stmts, module_exprs: module_lowerer.exprs })
 }
 
@@ -330,6 +342,7 @@ pub fn module_shell(module: &str, exprs: ExprTable, body: Vec<BodyItem>) -> Lowe
         on_cleanups: Vec::new(),
         children_local: None,
         needs_host: false,
+        module_components: Vec::new(),
         errors: Vec::new(),
     }
 }
@@ -420,6 +433,8 @@ fn lower_one<'a>(
         imports: Vec::new(),
         exports: Vec::new(),
     };
+    // Default to self only; `lower_module` fills in all sibling names.
+    let module_components = vec![name.clone()];
     Some(Lowered {
         ir,
         is_page: is_page_role,
@@ -441,6 +456,7 @@ fn lower_one<'a>(
         on_cleanups: classified.on_cleanups,
         children_local,
         needs_host: classified.needs_host,
+        module_components,
         errors,
     })
 }

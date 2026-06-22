@@ -6,3 +6,4 @@
 
 pub mod csr;
 pub mod ssg;
+pub mod tags;

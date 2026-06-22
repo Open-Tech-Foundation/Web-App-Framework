@@ -20,6 +20,7 @@ use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
 use otfw_ir::ExpressionId;
 
+use crate::codegen::tags;
 use crate::lower::{module_shell, BodyItem, ExprTable, Lowered, SignalDecl};
 
 /// The SVG namespace; elements under `<svg>` are created with `createElementNS`
@@ -206,7 +207,7 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
     }
 
     let class = format!("{export}Element");
-    let tag = component_tag(&export);
+    let tag = tags::def_tag(&export, &lowered.ir.id.module);
     let body = e.render("    ");
     // `onMount` callbacks run after the view is appended; a returned function is
     // collected as additional teardown.
@@ -219,6 +220,9 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
 
     let mut code = String::new();
     code.push_str(&format!("export class {class} extends HTMLElement {{\n"));
+    // Module-namespaced Custom Element tag (collision-free). Call sites address
+    // this component through the binding's `.tag` rather than recomputing it.
+    code.push_str(&format!("  static tag = {};\n", js_string(&tag)));
 
     if !props.is_empty() {
         let attrs = props.iter().map(|p| js_string(&p.attr)).collect::<Vec<_>>().join(", ");
@@ -260,6 +264,9 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
     code.push_str("    if (this._mounted) return;\n");
     code.push_str("    this._mounted = true;\n");
     code.push_str("    this._cleanups = [];\n");
+    // Stable styling hook (additive — never clobbers a consumer's class): lets CSS
+    // target the host by a readable name even though the registry tag is hashed.
+    code.push_str(&format!("    this.classList.add({});\n", js_string(&tags::css_hook(&export))));
     if host {
         code.push_str("    enterHost(this);\n");
     }
@@ -291,7 +298,11 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
     code.push_str("    this._cleanups = [];\n");
     code.push_str("  }\n");
     code.push_str("}\n");
-    code.push_str(&format!("customElements.define({}, {class});\n", js_string(&tag)));
+    // Idempotent registration: a tag is reused when the same module is evaluated in
+    // more than one chunk, and built-ins (`web-link`) may already be defined.
+    code.push_str(&format!(
+        "if (typeof customElements !== \"undefined\" && !customElements.get({class}.tag)) customElements.define({class}.tag, {class});\n"
+    ));
     if default_export {
         // Default-export the class so a consumer's `import Counter from "./Counter"`
         // resolves (the binding is unused — the component is referenced by tag — but
@@ -777,8 +788,12 @@ impl<'a> Emitter<'a> {
             self.line(format!("const {var} = document.createComment(\"component\");"));
             return var;
         }
-        let tag = component_tag(name);
-        self.line(format!("const {var} = document.createElement({});", js_string(&tag)));
+        // Address the component through a `.tag`-carrying binding: a built-in's
+        // literal, a same-module sibling's class (`{name}Element`), or an imported
+        // binding (`{name}`). See `codegen::tags`.
+        let tag_expr =
+            tags::use_tag_expr(name, &self.lowered.module_components, &format!("{name}Element"));
+        self.line(format!("const {var} = document.createElement({tag_expr});"));
         for prop in props {
             self.emit_component_prop(&var, prop);
         }
@@ -1021,27 +1036,6 @@ fn event_options(prop: &str) -> (String, String) {
     (event, arg)
 }
 
-/// The Custom Element tag for a component name: `web-` + kebab-case.
-fn component_tag(name: &str) -> String {
-    format!("web-{}", kebab(name))
-}
-
-/// `Counter` → `counter`, `UserList` → `user-list`.
-fn kebab(name: &str) -> String {
-    let mut out = String::new();
-    for (i, ch) in name.chars().enumerate() {
-        if ch.is_uppercase() {
-            if i > 0 {
-                out.push('-');
-            }
-            out.extend(ch.to_lowercase());
-        } else {
-            out.push(ch);
-        }
-    }
-    out
-}
-
 /// Render a Rust string as a double-quoted JavaScript string literal.
 fn js_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
@@ -1128,14 +1122,18 @@ mod tests {
             "export function Counter() { let count = $state(0); return <button onclick={() => count++}>{count}</button>; }",
         ));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // `web-counter-4e54f4d4`: FNV-1a hash of the module id ("/app/App.tsx", from
+        // the `lower` helper) namespaces the tag so same-named components don't collide.
         assert_eq!(
             m.code,
             "import { signal, bindText, handleError } from \"@opentf/web\";\n\
              export class CounterElement extends HTMLElement {\n  \
+             static tag = \"web-counter-4e54f4d4\";\n  \
              connectedCallback() {\n    \
              if (this._mounted) return;\n    \
              this._mounted = true;\n    \
              this._cleanups = [];\n    \
+             this.classList.add(\"web-counter\");\n    \
              try {\n    \
              const count = signal(0);\n    \
              const el0 = document.createElement(\"button\");\n    \
@@ -1153,7 +1151,7 @@ mod tests {
              this._cleanups = [];\n  \
              }\n\
              }\n\
-             customElements.define(\"web-counter\", CounterElement);\n\
+             if (typeof customElements !== \"undefined\" && !customElements.get(CounterElement.tag)) customElements.define(CounterElement.tag, CounterElement);\n\
              export default CounterElement;\n"
         );
     }
@@ -1162,7 +1160,9 @@ mod tests {
     fn page_composes_child_component_by_tag() {
         let m = emit_page(&lower("export function App() { return <div><UserList/></div>; }"));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
-        assert!(m.code.contains("document.createElement(\"web-user-list\")"), "code: {}", m.code);
+        // `<UserList/>` is not a sibling here, so it's addressed via the imported
+        // binding's `.tag` (collision-free; the hash lives on UserList's own class).
+        assert!(m.code.contains("document.createElement(UserList.tag)"), "code: {}", m.code);
     }
 
     #[test]
@@ -1405,7 +1405,8 @@ mod tests {
         assert!(out.is_complete(), "errors: {:?}", out.errors);
         // The arrow component becomes a Custom Element with its prop.
         assert!(out.code.contains("class IconElement extends HTMLElement"), "icon CE:\n{}", out.code);
-        assert!(out.code.contains("customElements.define(\"web-icon\", IconElement);"), "icon defined:\n{}", out.code);
+        assert!(out.code.contains("static tag = \"web-icon-"), "icon tag:\n{}", out.code);
+        assert!(out.code.contains("customElements.define(IconElement.tag, IconElement);"), "icon defined:\n{}", out.code);
         assert!(out.code.contains("observedAttributes = [\"size\"]"), "icon prop:\n{}", out.code);
         // No raw JSX survives into the output.
         assert!(!out.code.contains("<svg"), "no raw JSX:\n{}", out.code);
@@ -1492,7 +1493,7 @@ mod tests {
         assert!(out.code.contains("const LABEL = \"hi\";"), "helper kept:\n{}", out.code);
         // The co-located component becomes a Custom Element; the default export the page.
         assert!(out.code.contains("class BadgeElement extends HTMLElement"), "badge CE:\n{}", out.code);
-        assert!(out.code.contains("customElements.define(\"web-badge\", BadgeElement);"), "badge defined:\n{}", out.code);
+        assert!(out.code.contains("customElements.define(BadgeElement.tag, BadgeElement);"), "badge defined:\n{}", out.code);
         assert!(out.code.contains("export default function () {"), "page factory:\n{}", out.code);
     }
 
@@ -1518,7 +1519,7 @@ mod tests {
             out.code
         );
         assert!(out.code.contains("export default CounterElement;"), "default is the main class:\n{}", out.code);
-        assert!(out.code.contains("customElements.define(\"web-badge\", BadgeElement);"), "badge registered:\n{}", out.code);
+        assert!(out.code.contains("customElements.define(BadgeElement.tag, BadgeElement);"), "badge registered:\n{}", out.code);
     }
 
     #[test]
@@ -1693,7 +1694,7 @@ mod tests {
         // The user import is re-emitted (so the bundler pulls Counter in) ahead of
         // the runtime import; the component is still referenced by tag.
         let user_at = m.code.find("import Counter from \"../components/Counter\";").expect("user import");
-        let comp_at = m.code.find("document.createElement(\"web-counter\")").expect("tag");
+        let comp_at = m.code.find("document.createElement(Counter.tag)").expect("tag");
         assert!(user_at < comp_at, "import must precede use; code: {}", m.code);
     }
 
@@ -1740,7 +1741,7 @@ mod tests {
         let m = emit_page(&lower("export function App() { return <Wrap><span/></Wrap>; }"));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         // The child is built and appended to the component element.
-        assert!(m.code.contains("document.createElement(\"web-wrap\")"), "code: {}", m.code);
+        assert!(m.code.contains("document.createElement(Wrap.tag)"), "code: {}", m.code);
         assert!(m.code.contains("document.createElement(\"span\")"), "code: {}", m.code);
         assert!(m.code.contains(".appendChild(el1)"), "code: {}", m.code);
     }

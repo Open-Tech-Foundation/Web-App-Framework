@@ -19,6 +19,7 @@ use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
 use otfw_ir::ExpressionId;
 
+use crate::codegen::tags;
 use crate::lower::{BodyItem, ExprTable, Lowered, SignalDecl};
 
 /// HTML void elements (no closing tag).
@@ -119,6 +120,9 @@ struct Emitter<'a> {
     core: BTreeSet<&'static str>,
     is_page: bool,
     page_param: Option<String>,
+    /// Sibling component names, so a same-module `<Sibling/>` resolves via its
+    /// in-scope render fn (`{name}_ssg`) rather than a recomputed tag.
+    module_components: Vec<String>,
     counter: u32,
 }
 
@@ -131,6 +135,7 @@ impl<'a> Emitter<'a> {
             core: BTreeSet::new(),
             is_page: lowered.is_page,
             page_param: lowered.page_param.clone(),
+            module_components: lowered.module_components.clone(),
             counter: 0,
         }
     }
@@ -143,6 +148,7 @@ impl<'a> Emitter<'a> {
             core: BTreeSet::new(),
             is_page: false,
             page_param: None,
+            module_components: Vec::new(),
             counter: 0,
         }
     }
@@ -177,7 +183,7 @@ impl<'a> Emitter<'a> {
 
     fn component(&mut self, lowered: &Lowered) -> String {
         let name = &lowered.name;
-        let tag = component_tag(name);
+        let tag = tags::def_tag(name, &lowered.ir.id.module);
         let mut decls = String::new();
         self.emit_prop_setup(lowered, &mut decls);
         for item in &lowered.body {
@@ -193,7 +199,13 @@ impl<'a> Emitter<'a> {
         out.push_str("  } catch (e) { return \"\"; }\n"); // fail soft (client handles it)
         out.push_str("}\n");
         self.server.insert("defineSSG");
-        out.push_str(&format!("defineSSG({}, {name}_ssg);\n", js_string(&tag)));
+        // Module-namespaced tag attached to the render fn so a parent that imports
+        // this component addresses it via the binding's `.tag` (collision-free); the
+        // stable `hostClass` is stamped on the rendered host so CSS can style it by a
+        // readable name (mirrors the CSR `classList.add`).
+        out.push_str(&format!("{name}_ssg.tag = {};\n", js_string(&tag)));
+        out.push_str(&format!("{name}_ssg.hostClass = {};\n", js_string(&tags::css_hook(name))));
+        out.push_str(&format!("defineSSG({name}_ssg.tag, {name}_ssg);\n"));
         if lowered.is_default_export {
             out.push_str(&format!("export default {name}_ssg;\n"));
         }
@@ -363,7 +375,8 @@ impl<'a> Emitter<'a> {
             ));
             return "\"\"".to_string();
         }
-        let tag = component_tag(name);
+        let tag_expr =
+            tags::use_tag_expr(name, &self.module_components, &format!("{name}_ssg"));
         let mut entries: Vec<String> = Vec::new();
         for p in props {
             if p.name == "ref" || p.name.is_empty() {
@@ -384,7 +397,7 @@ impl<'a> Emitter<'a> {
         let props_obj = format!("{{ {} }}", entries.join(", "));
         let children_html = self.concat(children);
         self.server.insert("ssgComponent");
-        format!("ssgComponent({}, {props_obj}, {children_html})", js_string(&tag))
+        format!("ssgComponent({tag_expr}, {props_obj}, {children_html})")
     }
 
     /// A prop value embedding JSX (`PropValue::DynamicNode`): render each branch to
@@ -454,25 +467,6 @@ fn substitute_branches(template: &str, calls: &[String]) -> String {
 
 fn is_event(name: &str) -> bool {
     name.len() > 2 && name.starts_with("on")
-}
-
-fn component_tag(name: &str) -> String {
-    format!("web-{}", kebab(name))
-}
-
-fn kebab(name: &str) -> String {
-    let mut out = String::new();
-    for (i, ch) in name.chars().enumerate() {
-        if ch.is_uppercase() {
-            if i > 0 {
-                out.push('-');
-            }
-            out.extend(ch.to_lowercase());
-        } else {
-            out.push(ch);
-        }
-    }
-    out
 }
 
 /// Indent every non-empty line of `s` by `pad`.
@@ -579,7 +573,9 @@ mod tests {
         );
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         assert!(m.code.contains("function Counter_ssg(__props, __children)"), "fn:\n{}", m.code);
-        assert!(m.code.contains("defineSSG(\"web-counter\", Counter_ssg)"), "register:\n{}", m.code);
+        // The render fn carries a module-namespaced tag and registers under it.
+        assert!(m.code.contains("Counter_ssg.tag = \"web-counter-"), "tag:\n{}", m.code);
+        assert!(m.code.contains("defineSSG(Counter_ssg.tag, Counter_ssg)"), "register:\n{}", m.code);
         assert!(m.code.contains("__props?.[\"label\"]"), "prop wrap:\n{}", m.code);
         assert!(m.code.contains("attr(\"class\", [\"btn\", n.value>0"), "class array:\n{}", m.code);
         // Fail-soft like CSR's connectedCallback try/catch.
@@ -594,7 +590,7 @@ mod tests {
         );
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         assert!(
-            m.code.contains("ssgComponent(\"web-counter\", { label: \"hi\" }"),
+            m.code.contains("ssgComponent(Counter.tag, { label: \"hi\" }"),
             "compose:\n{}",
             m.code
         );
