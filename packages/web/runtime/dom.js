@@ -64,6 +64,13 @@ export function toText(value) {
   return value == null || value === false ? "" : String(value);
 }
 
+/** Sentinel for "nothing written yet" — distinct from any real attribute value. */
+const UNSET = Symbol("unset");
+
+/** A value safe to compare by identity for write elision (no internal mutation). */
+const isPrimitive = (v) =>
+  v === null || (typeof v !== "object" && typeof v !== "function");
+
 /**
  * clsx-style class normalization. Falsy entries are skipped; strings/numbers are
  * kept; arrays recurse; objects contribute the keys whose values are truthy. Lets
@@ -165,30 +172,64 @@ export function spread(el, obj, asProps) {
  */
 export function bindText(node, fn) {
   let inserted = [];
+  let lastText; // undefined sentinel — toText() never returns undefined
   return effect(() => {
     const value = fn();
+
+    // Primitive text: the common case. Skip the write when the rendered string
+    // is unchanged (a shared dependency can re-run this effect with the same
+    // result), so unchanged text nodes don't churn.
+    if (!(value instanceof Node) && !Array.isArray(value)) {
+      const text = toText(value);
+      if (text === lastText) return;
+      lastText = text;
+      for (const n of inserted) {
+        if (n.parentNode) n.parentNode.removeChild(n);
+      }
+      inserted = [];
+      node.data = text;
+      return;
+    }
+
+    // Node / array value (e.g. JSX stored as a value): insert before the stable
+    // text anchor. Reset the text memo so a later primitive value re-applies.
+    lastText = undefined;
     for (const n of inserted) {
       if (n.parentNode) n.parentNode.removeChild(n);
     }
     inserted = [];
-    if (value instanceof Node || Array.isArray(value)) {
-      node.data = "";
-      const parent = node.parentNode;
-      if (parent) {
-        for (const n of toNodes(value)) {
-          parent.insertBefore(n, node);
-          inserted.push(n);
-        }
+    node.data = "";
+    const parent = node.parentNode;
+    if (parent) {
+      for (const n of toNodes(value)) {
+        parent.insertBefore(n, node);
+        inserted.push(n);
       }
-    } else {
-      node.data = toText(value);
     }
   });
 }
 
-/** Wire an element attribute/prop to a reactive expression. Returns the disposer. */
+/**
+ * Wire an element attribute/prop to a reactive expression. Returns the disposer.
+ *
+ * No-op writes are elided for primitive values: when the expression recomputes
+ * to the same primitive it last wrote, the DOM write is skipped. This matters
+ * when many elements share one dependency — e.g. a keyed list where every row's
+ * `class={selected === row.id ? "danger" : ""}` subscribes to a single
+ * `selected` signal. Changing it re-runs every row's effect, but only the two
+ * rows whose class actually changes should touch the DOM; the rest would
+ * otherwise call `setAttribute` with an unchanged value and trigger needless
+ * style invalidation. Object values (style/class objects, spreads) may have
+ * mutated internally, so they are always re-applied.
+ */
 export function bindAttr(el, name, fn) {
-  return effect(() => setAttr(el, name, fn()));
+  let last = UNSET;
+  return effect(() => {
+    const value = fn();
+    if (isPrimitive(value) && Object.is(value, last)) return;
+    last = value;
+    setAttr(el, name, value);
+  });
 }
 
 /** Flatten a reactive child value into DOM nodes: nodes pass through, arrays
@@ -239,12 +280,20 @@ export function bindList(parent, sourceFn, renderItem, keyFn) {
   const anchor = document.createComment("");
   parent.appendChild(anchor);
   let cache = new Map(); // key -> { sig, node }
+  let prevKeys = []; // keys in current DOM order, for minimal-move reconciliation
 
   return effect(() => {
     const data = sourceFn();
     const items = Array.isArray(data) ? data : [];
     const next = new Map();
-    const nodes = [];
+    const nodes = new Array(items.length);
+    const newKeys = new Array(items.length);
+    // For each new position, the node's index in the *previous* order, or -1 if
+    // it is newly created. Drives the LIS-based minimal move below.
+    const prevIndex = new Array(items.length);
+
+    const prevPos = new Map();
+    for (let i = 0; i < prevKeys.length; i++) prevPos.set(prevKeys[i], i);
 
     for (let index = 0; index < items.length; index++) {
       const item = items[index];
@@ -252,13 +301,16 @@ export function bindList(parent, sourceFn, renderItem, keyFn) {
       let entry = cache.get(key);
       if (entry) {
         cache.delete(key);
-        entry.sig.value = item; // fine-grained per-item update
+        entry.sig.value = item; // fine-grained per-item update (no-op if unchanged)
+        prevIndex[index] = prevPos.has(key) ? prevPos.get(key) : -1;
       } else {
         const sig = signal(item);
         entry = { sig, node: renderItem(sig, index) };
+        prevIndex[index] = -1;
       }
       next.set(key, entry);
-      nodes.push(entry.node);
+      newKeys[index] = key;
+      nodes[index] = entry.node;
     }
 
     // Remove nodes whose keys disappeared.
@@ -266,15 +318,51 @@ export function bindList(parent, sourceFn, renderItem, keyFn) {
       if (entry.node.parentNode) entry.node.parentNode.removeChild(entry.node);
     }
     cache = next;
+    prevKeys = newKeys;
 
-    // Place nodes in order, just before the anchor (works even after the
-    // initial fragment has been flushed into the real parent).
+    // Minimal-move placement. Nodes whose previous indices form the longest
+    // increasing subsequence are already in relative order and stay put; only
+    // the rest (and newly created nodes) are inserted. A 2-row swap moves 2
+    // nodes, not the ~n nodes a naive "fix every wrong nextSibling" pass would
+    // cascade into. Walk back to front so each insertion's reference node is
+    // already in its final position.
+    const keep = longestIncreasingRun(prevIndex);
     const host = anchor.parentNode || parent;
-    let ref = anchor;
     for (let i = nodes.length - 1; i >= 0; i--) {
-      const node = nodes[i];
-      if (node.nextSibling !== ref) host.insertBefore(node, ref);
-      ref = node;
+      if (keep.has(i)) continue;
+      const ref = i + 1 < nodes.length ? nodes[i + 1] : anchor;
+      if (nodes[i].nextSibling !== ref) host.insertBefore(nodes[i], ref);
     }
   });
+}
+
+/**
+ * Indices `i` of `seq` whose values form a longest strictly-increasing
+ * subsequence (patience sorting, O(n log n)). Entries equal to -1 (new nodes)
+ * are excluded — they always need insertion. Returned as a Set for O(1) lookup
+ * during placement; these are the nodes that can stay where they are.
+ */
+function longestIncreasingRun(seq) {
+  const piles = []; // piles[k] = index of the smallest tail of a length-(k+1) run
+  const prev = new Array(seq.length).fill(-1);
+  for (let i = 0; i < seq.length; i++) {
+    const v = seq[i];
+    if (v < 0) continue; // new node — never part of the stable run
+    let lo = 0;
+    let hi = piles.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (seq[piles[mid]] < v) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) prev[i] = piles[lo - 1];
+    piles[lo] = i;
+  }
+  const keep = new Set();
+  let k = piles.length ? piles[piles.length - 1] : -1;
+  while (k >= 0) {
+    keep.add(k);
+    k = prev[k];
+  }
+  return keep;
 }

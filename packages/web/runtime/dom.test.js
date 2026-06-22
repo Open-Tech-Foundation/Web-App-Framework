@@ -84,6 +84,21 @@ describe("bindText", () => {
     expect(node.data).toBe("1");
   });
 
+  test("elides the write when the rendered text is unchanged", () => {
+    const tick = signal(0);
+    const node = document.createTextNode("");
+    let writes = 0;
+    Object.defineProperty(node, "data", {
+      get() { return this._d ?? ""; },
+      set(v) { writes++; this._d = v; },
+    });
+    bindText(node, () => { tick.value; return "constant"; });
+    expect(node.data).toBe("constant");
+    expect(writes).toBe(1);
+    tick.value = 1; // re-runs, same text → no write
+    expect(writes).toBe(1);
+  });
+
   test("inserts node-valued expressions (JSX stored as a value) and swaps them", () => {
     const parent = document.createElement("div");
     const anchor = document.createTextNode("");
@@ -136,6 +151,44 @@ describe("bindAttr", () => {
     cls.value = "off";
     expect(el.getAttribute("class")).toBe("off");
   });
+
+  test("elides DOM writes when the primitive value is unchanged", () => {
+    // Models a keyed-list row whose class depends on a shared `selected` signal:
+    // most rows recompute to the same value and must not touch the DOM.
+    const selected = signal(-1);
+    const rowId = 7;
+    const el = document.createElement("div");
+    let writes = 0;
+    const orig = el.setAttribute.bind(el);
+    el.setAttribute = (...a) => { writes++; return orig(...a); };
+
+    bindAttr(el, "class", () => (selected.value === rowId ? "danger" : ""));
+    expect(writes).toBe(1); // initial write ("")
+
+    selected.value = 999; // still not this row → recomputes to "" → no write
+    expect(writes).toBe(1);
+
+    selected.value = rowId; // now selected → one real write
+    expect(el.getAttribute("class")).toBe("danger");
+    expect(writes).toBe(2);
+
+    selected.value = 999; // deselected → one real write back to ""
+    expect(writes).toBe(3);
+  });
+
+  test("always re-applies object values (may have mutated internally)", () => {
+    const tick = signal(0);
+    const style = { width: 1 };
+    const el = document.createElement("div");
+    bindAttr(el, "style", () => {
+      tick.value; // depend on the signal
+      style.width += 1; // same object reference, new contents
+      return style;
+    });
+    expect(el.style.width).toBe("2px");
+    tick.value = 1; // re-run: same ref, but must re-apply
+    expect(el.style.width).toBe("3px");
+  });
 });
 
 describe("bindList", () => {
@@ -169,6 +222,26 @@ describe("bindList", () => {
     items.value = [{ id: 2, name: "b" }, { id: 1, name: "A" }];
     expect(text(parent)).toBe("b,A");
     expect(parent.querySelectorAll("li")[1]).toBe(firstA);
+  });
+
+  test("swapping two rows moves only those two nodes (minimal reconciliation)", () => {
+    const data = Array.from({ length: 20 }, (_, i) => ({ id: i, name: `n${i}` }));
+    const items = signal(data);
+    const parent = document.createElement("ul");
+    bindList(parent, () => items.value, render, key);
+
+    let moves = 0;
+    const orig = parent.insertBefore.bind(parent);
+    parent.insertBefore = (...a) => { moves++; return orig(...a); };
+
+    const swapped = data.slice();
+    const tmp = swapped[1];
+    swapped[1] = swapped[18];
+    swapped[18] = tmp;
+    items.value = swapped;
+
+    expect(moves).toBe(2); // not ~16 from a cascading nextSibling fix-up
+    expect(text(parent)).toBe("n0,n18,n2,n3,n4,n5,n6,n7,n8,n9,n10,n11,n12,n13,n14,n15,n16,n17,n1,n19");
   });
 
   test("falls back to index when no keyFn is given", () => {

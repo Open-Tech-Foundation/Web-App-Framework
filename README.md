@@ -79,13 +79,14 @@ shared harness. Run it yourself:
 bun run bench all
 ```
 
-**Where things stand (indicative, not yet a published claim).** On bulk creation
-(10,000 rows) OTF Web is currently the fastest of the four. On most other
-operations it sits at rough parity with React/Solid/Svelte, and on some
-single-row updates the fine-grained frameworks are presently a frame ahead — an
-area we are actively improving. These figures use a frame-quantized timer that
-cannot resolve sub-frame differences, so they are **directional, not a
-head-to-head ranking**. See the [methodology and caveats](benchmarks/README.md).
+**Where things stand (indicative, not yet a published claim).** OTF Web leads on
+list creation (1k and 10k rows), keyed swap, and clear, and is at parity with
+Solid/Svelte on the per-row update/select/remove operations. React posts lower
+numbers on some single-row updates, but that difference is **below the timer's
+one-frame resolution**, so it cannot yet be called a real gap. These figures use
+a frame-quantized timer that cannot resolve sub-frame differences, so they are
+**directional, not a head-to-head ranking**. See the
+[methodology and caveats](benchmarks/README.md).
 
 We will publish definitive numbers once tracing-based timing lands. Until then we
 treat performance as a work in progress and would rather under-claim it than
