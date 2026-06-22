@@ -128,7 +128,7 @@ export default function DocsLayout(props) {
           <div>
             <h4 className="font-bold text-[var(--text-main)] mb-3 px-2 text-xs uppercase tracking-wider opacity-50">Libraries</h4>
             <div className="flex flex-col space-y-1">
-              {navLink({ href: "/docs/web-form", children: "Forms (web-form)" })}
+              {/* web-form docs are deferred until @opentf/web-form is ported to the new runtime */}
               {navLink({ href: "/docs#testing", children: "Testing (web-test)" })}
             </div>
           </div>
@@ -140,7 +140,6 @@ export default function DocsLayout(props) {
               {navLink({ href: "/docs#api-hooks", children: "Hooks" })}
               {navLink({ href: "/docs#api-router", children: "Router" })}
               {navLink({ href: "/docs#api-attributes", children: "Elements" })}
-              {navLink({ href: "/docs/web-form/api", children: "Web Form API" })}
             </div>
           </div>
 
