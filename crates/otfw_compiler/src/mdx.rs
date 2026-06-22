@@ -48,6 +48,22 @@ pub fn mdx_to_jsx(source: &str, file: &str) -> Result<String, String> {
     if let Some(meta) = &emit.metadata {
         out.push_str(&format!("export const metadata = {meta};\n"));
     }
+    // Table of contents (headings) for docs sidebars / "On this page" — a build-time
+    // consumer of the same walk, rendered statically by the docs layout (good SEO).
+    if !emit.toc.is_empty() {
+        let entries: Vec<String> = emit
+            .toc
+            .iter()
+            .map(|(depth, id, text)| {
+                format!(
+                    "{{ depth: {depth}, id: {}, text: {} }}",
+                    js_string(id),
+                    js_string(text)
+                )
+            })
+            .collect();
+        out.push_str(&format!("export const toc = [{}];\n", entries.join(", ")));
+    }
     out.push_str(&format!(
         "export default function {}(props) {{\n  return (<>",
         component_name(file)
@@ -63,6 +79,8 @@ struct Emit {
     esm: Vec<String>,
     /// Object literal from frontmatter, if any.
     metadata: Option<String>,
+    /// Heading entries `(depth, id, text)` collected for the table of contents.
+    toc: Vec<(u8, String, String)>,
 }
 
 impl Emit {
@@ -75,8 +93,10 @@ impl Emit {
             Node::Root(n) => self.nodes(&n.children),
             Node::Heading(n) => {
                 let inner = self.nodes(&n.children);
-                let id = slugify(&node_text(node));
+                let text = node_text(node);
+                let id = slugify(&text);
                 let d = n.depth.clamp(1, 6);
+                self.toc.push((d, id.clone(), text));
                 format!("<h{d} id=\"{id}\">{inner}</h{d}>")
             }
             Node::Paragraph(n) => format!("<p>{}</p>", self.nodes(&n.children)),
@@ -446,6 +466,23 @@ mod tests {
         assert!(out.contains("export default function Guide(props)"), "{out}");
         let dashed = mdx_to_jsx("# Hi", "my-doc.md").unwrap();
         assert!(dashed.contains("export default function MyDoc(props)"), "{dashed}");
+    }
+
+    #[test]
+    fn headings_are_collected_into_a_toc_export() {
+        let out = mdx_to_jsx("# Title\n\n## First\n\n### Nested\n\n## Second", "doc.mdx").unwrap();
+        assert!(out.contains("export const toc = ["), "{out}");
+        assert!(out.contains("{ depth: 1, id: \"title\", text: \"Title\" }"), "{out}");
+        assert!(out.contains("{ depth: 2, id: \"first\", text: \"First\" }"), "{out}");
+        assert!(out.contains("{ depth: 3, id: \"nested\", text: \"Nested\" }"), "{out}");
+        // toc export precedes the component factory.
+        assert!(out.find("export const toc").unwrap() < out.find("export default function").unwrap());
+    }
+
+    #[test]
+    fn no_headings_means_no_toc_export() {
+        let out = mdx_to_jsx("just a paragraph", "doc.mdx").unwrap();
+        assert!(!out.contains("export const toc"), "{out}");
     }
 
     #[test]
