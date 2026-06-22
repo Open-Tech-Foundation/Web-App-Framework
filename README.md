@@ -11,13 +11,13 @@ A project of the [Open Tech Foundation](https://github.com/Open-Tech-Foundation)
 
 ## Overview
 
->**OTF Web** is a high-performance, native-first UI framework that compiles JSX directly into optimized, imperative native DOM operations. 
+>**OTF Web** is a native-first UI framework that compiles JSX directly into imperative DOM operations.
 
-Unlike traditional frameworks, OTF Web has **Zero-VDOM**. There is no Virtual DOM diffing or reconciliation loop. Instead, our compiler statically analyzes your components and generates the exact `document.createElement` and DOM property assignments needed. Every component you write is compiled into a **Standard Web Component**, ensuring perfect isolation and native performance.
+Unlike traditional frameworks, OTF Web has **Zero-VDOM**. There is no Virtual DOM diffing or reconciliation loop. Instead, our compiler statically analyzes your components and generates the exact `document.createElement` and DOM property assignments needed. Every component you write is compiled into a **Standard Web Component**, ensuring isolation and direct DOM updates.
 
 ## Key Features
 
-- **Zero-VDOM Architecture**: Eliminate the overhead of Virtual DOM. Updates are direct and surgical.
+- **Zero-VDOM Architecture**: No Virtual DOM diffing or reconciliation loop — updates are compiled into direct DOM operations.
 - **Native Web Components**: Your components are standard Custom Elements, compatible with any library or tool.
 - **Reactive Macros**: Use `$state`, `$derived`, and `$effect` for powerful, declarative reactivity.
 - **Boilerplate-Free**: No manual `.value` access. The compiler automatically injects reactivity where needed.
@@ -68,13 +68,28 @@ Runs a side effect whenever its reactive dependencies change.
 #### `$ref()`
 Captures a reference to a DOM element directly.
 
-## 📊 Performance Benchmarks
+## 📊 Performance
 
-OTF Web is designed for extreme performance in data-heavy applications. By bypassing the Virtual DOM, we aim for near-native speeds for large-scale DOM manipulations.
+OTF Web includes a benchmark suite ([`benchmarks/`](benchmarks/)) that implements
+the standard [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark)
+operation set against **React**, **Solid**, and **Svelte 5** through a single
+shared harness. Run it yourself:
 
-> [!NOTE]
-> **Comprehensive Benchmarks Coming Soon.**
-> We are currently preparing a standardized benchmark suite comparing OTF Web against other major frameworks (React, Svelte, Solid) across rendering, memory usage, and update latency.
+```bash
+bun run bench all
+```
+
+**Where things stand (indicative, not yet a published claim).** On bulk creation
+(10,000 rows) OTF Web is currently the fastest of the four. On most other
+operations it sits at rough parity with React/Solid/Svelte, and on some
+single-row updates the fine-grained frameworks are presently a frame ahead — an
+area we are actively improving. These figures use a frame-quantized timer that
+cannot resolve sub-frame differences, so they are **directional, not a
+head-to-head ranking**. See the [methodology and caveats](benchmarks/README.md).
+
+We will publish definitive numbers once tracing-based timing lands. Until then we
+treat performance as a work in progress and would rather under-claim it than
+overstate it.
 
 ## License
 

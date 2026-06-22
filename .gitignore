@@ -47,3 +47,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # otfwc binaries — staged into the package by CI at release time only
 packages/web-compiler/bin/
+
+# benchmark result files (generated)
+benchmarks/results/

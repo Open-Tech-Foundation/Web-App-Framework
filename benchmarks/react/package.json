@@ -1,0 +1,13 @@
+{
+  "name": "@opentf/web-bench-react",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run build.mjs",
+    "dev": "bun run build.mjs && bun --cwd dist serve"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}

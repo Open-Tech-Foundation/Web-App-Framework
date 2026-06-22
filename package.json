@@ -10,10 +10,12 @@
   "workspaces": [
     "packages/*",
     "playground",
-    "website"
+    "website",
+    "benchmarks/*"
   ],
   "scripts": {
     "dev": "bun run --cwd playground dev",
+    "bench": "bun benchmarks/run.mjs",
     "playground:build": "bun run --cwd playground build",
     "preview": "bun run website:build && wrangler dev",
     "website:dev": "bun run --cwd website dev",

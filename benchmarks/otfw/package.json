@@ -1,0 +1,15 @@
+{
+  "name": "@opentf/web-bench-otfw",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "otfw dev --port 3010",
+    "build": "otfw build"
+  },
+  "dependencies": {
+    "@opentf/web": "workspace:*"
+  },
+  "devDependencies": {
+    "@opentf/web-cli": "workspace:*"
+  }
+}
