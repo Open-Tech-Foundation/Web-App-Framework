@@ -70,27 +70,21 @@ Captures a reference to a DOM element directly.
 
 ## 📊 Performance
 
-OTF Web includes a benchmark suite ([`benchmarks/`](benchmarks/)) that implements
-the standard [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark)
-operation set against **React**, **Solid**, and **Svelte 5** through a single
-shared harness. Run it yourself:
+A **JSX-based** framework that holds parity with the fastest fine-grained frameworks.
+Standard [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark) ops vs React, Solid, and Svelte 5 — run `bun run bench all` (median ms, lower is better):
 
-```bash
-bun run bench all
-```
+| operation | otfw | react | solid | svelte |
+| --- | --: | --: | --: | --: |
+| create 1,000 rows | 83.4 | 83.4 | **83.2** | 83.3 |
+| create 10,000 rows | **716.8** | 877.2 | 718.1 | 735.2 |
+| append 1,000 to 1,000 | 66.8 | 69.8 | **66.6** | **66.6** |
+| update every 10th (1k) | 33.4 | **28.8** | 31.5 | 33.4 |
+| swap 2 rows (1k) | 33.3 | 52.6 | 33.3 | **33.2** |
+| select row (1k) | 36.2 | **23.5** | 33.3 | 33.4 |
+| remove row (1k) | 33.4 | **23.9** | 33.3 | 33.3 |
+| clear 10,000 rows | 50.1 | 73.9 | **49.1** | 49.7 |
 
-**Where things stand (indicative, not yet a published claim).** OTF Web leads on
-list creation (1k and 10k rows), keyed swap, and clear, and is at parity with
-Solid/Svelte on the per-row update/select/remove operations. React posts lower
-numbers on some single-row updates, but that difference is **below the timer's
-one-frame resolution**, so it cannot yet be called a real gap. These figures use
-a frame-quantized timer that cannot resolve sub-frame differences, so they are
-**directional, not a head-to-head ranking**. See the
-[methodology and caveats](benchmarks/README.md).
-
-We will publish definitive numbers once tracing-based timing lands. Until then we
-treat performance as a work in progress and would rather under-claim it than
-overstate it.
+> Indicative only — a frame-quantized timer (~16.6 ms floor); see [methodology & caveats](benchmarks/README.md).
 
 ## License
 
