@@ -11,6 +11,7 @@ use std::process::ExitCode;
 
 use otfw_compiler::codegen::{csr, ssg};
 use otfw_compiler::lower::lower_module;
+use otfw_compiler::mdx::mdx_to_jsx;
 use otfw_compiler::parse::ParseSession;
 
 fn main() -> ExitCode {
@@ -58,6 +59,20 @@ fn build(file: &str, as_component: bool, from_stdin: bool, ssg: bool) -> ExitCod
                 return ExitCode::FAILURE;
             }
         }
+    };
+
+    // MDX front-end: `.mdx`/`.md` lower to JSX source first, then run the normal
+    // parse → lower → codegen pipeline (the module id keeps the original extension).
+    let source = if file.ends_with(".mdx") || file.ends_with(".md") {
+        match mdx_to_jsx(&source, file) {
+            Ok(jsx) => jsx,
+            Err(e) => {
+                eprintln!("otfw: MDX error in {file}: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        source
     };
 
     let session = ParseSession::new();
