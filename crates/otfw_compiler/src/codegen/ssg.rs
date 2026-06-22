@@ -334,6 +334,11 @@ impl<'a> Emitter<'a> {
                     self.server.insert("attr");
                     dyn_attrs.push(format!("attr({}, {})", js_string(&p.name), self.code(*id)));
                 }
+                PropValue::DynamicNode { expr, branches } => {
+                    self.server.insert("attr");
+                    let code = self.node_prop_code(*expr, branches);
+                    dyn_attrs.push(format!("attr({}, {})", js_string(&p.name), code));
+                }
             }
         }
 
@@ -370,6 +375,9 @@ impl<'a> Emitter<'a> {
             let val = match &p.value {
                 PropValue::Static(v) => js_string(v),
                 PropValue::Dynamic(id) => format!("({})", self.code(*id)),
+                PropValue::DynamicNode { expr, branches } => {
+                    format!("({})", self.node_prop_code(*expr, branches))
+                }
             };
             entries.push(format!("{}: {}", js_object_key(&p.name), val));
         }
@@ -377,6 +385,18 @@ impl<'a> Emitter<'a> {
         let children_html = self.concat(children);
         self.server.insert("ssgComponent");
         format!("ssgComponent({}, {props_obj}, {children_html})", js_string(&tag))
+    }
+
+    /// A prop value embedding JSX (`PropValue::DynamicNode`): render each branch to
+    /// its HTML string wrapped as `{ __html }` and substitute the calls into the
+    /// templated expression — mirroring how `ViewNode::DynamicNode` is emitted.
+    fn node_prop_code(&mut self, expr: ExpressionId, branches: &[ViewNode]) -> String {
+        let calls: Vec<String> = branches
+            .iter()
+            .map(|b| format!("{{ __html: {} }}", self.html_expr(b)))
+            .collect();
+        let template = self.code(expr);
+        substitute_branches(&template, &calls)
     }
 
     fn list(

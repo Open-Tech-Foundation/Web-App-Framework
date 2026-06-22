@@ -1546,7 +1546,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         }
     }
 
-    fn lower_attrs(&mut self, el: &JSXElement) -> Vec<Prop> {
+    fn lower_attrs(&mut self, el: &'a JSXElement<'a>) -> Vec<Prop> {
         let mut props = Vec::new();
         for item in &el.opening_element.attributes {
             match item {
@@ -1584,14 +1584,23 @@ impl<'a, 'r> Lowerer<'a, 'r> {
                         }
                         Some(JSXAttributeValue::ExpressionContainer(c)) => match &c.expression {
                             JSXExpression::EmptyExpression(_) => PropValue::Static(String::new()),
+                            // An attribute expression that embeds JSX (`tabs={[{
+                            // content: <X/> }]}`): template it like a dynamic-node
+                            // hole so each JSX becomes a node-builder, rather than
+                            // emitting raw JSX into the output.
+                            _ if has_jsx_jsx(&c.expression) => {
+                                self.jsx_value_prop(&c.expression, c.expression.span())
+                            }
                             _ => PropValue::Dynamic(self.intern_jsx(&c.expression)),
                         },
-                        // JSX-valued props (`foo=<El/>`): kept as static source text.
+                        // Bare JSX-valued props (`foo=<El/>`): a single-branch node.
                         Some(JSXAttributeValue::Element(e)) => {
-                            PropValue::Dynamic(self.intern_static(e.span))
+                            let node = self.lower_element(e);
+                            self.single_jsx_value_prop(node)
                         }
                         Some(JSXAttributeValue::Fragment(f)) => {
-                            PropValue::Dynamic(self.intern_static(f.span))
+                            let node = ViewNode::Fragment(self.lower_children(&f.children));
+                            self.single_jsx_value_prop(node)
                         }
                     };
                     props.push(Prop { name, value });
@@ -1612,6 +1621,21 @@ impl<'a, 'r> Lowerer<'a, 'r> {
             }
         }
         props
+    }
+
+    /// Lower an attribute expression that embeds JSX into a [`PropValue::DynamicNode`]:
+    /// reuse the dynamic-node templater (each outermost JSX → a node-builder branch).
+    fn jsx_value_prop(&mut self, expr: &'a JSXExpression<'a>, span: Span) -> PropValue {
+        match self.lower_dynamic_node(expr, span) {
+            ViewNode::DynamicNode { expr, branches } => PropValue::DynamicNode { expr, branches },
+            _ => unreachable!("lower_dynamic_node always yields a DynamicNode"),
+        }
+    }
+
+    /// A bare JSX-valued prop (`foo=<El/>`): one branch, template is just its slot.
+    fn single_jsx_value_prop(&mut self, node: ViewNode) -> PropValue {
+        let expr = self.exprs.intern(ExprInfo { code: branch_placeholder(0), deps: Vec::new() });
+        PropValue::DynamicNode { expr, branches: vec![node] }
     }
 
     /// Intern a span verbatim (no reactivity), for JSX-valued props.

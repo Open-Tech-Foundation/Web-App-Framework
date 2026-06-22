@@ -894,25 +894,46 @@ impl<'a> Emitter<'a> {
             self.emit_spread(el, prop, false);
             return;
         }
-        match &prop.value {
-            PropValue::Static(value) => {
-                self.line(format!(
-                    "{el}.setAttribute({}, {});",
-                    js_string(&prop.name),
-                    js_string(value)
-                ));
-            }
+        if let PropValue::Static(value) = &prop.value {
+            self.line(format!(
+                "{el}.setAttribute({}, {});",
+                js_string(&prop.name),
+                js_string(value)
+            ));
+            return;
+        }
+        let code = self.dynamic_prop_code(&prop.value);
+        if is_listener(&prop.name) {
+            self.emit_event_listener(el, &prop.name, &code);
+        } else if is_event(&prop.name) {
+            self.line(format!("{el}.{} = {code};", prop.name.to_ascii_lowercase()));
+        } else {
+            self.uses.bind_attr = true;
+            self.bind(format!("bindAttr({el}, {}, () => ({code}))", js_string(&prop.name)));
+        }
+    }
+
+    /// The JS source for a non-static prop value. For a [`PropValue::DynamicNode`]
+    /// it emits a node-builder per embedded JSX branch and substitutes their calls
+    /// into the templated expression (so `[{ content: <X/> }]` becomes
+    /// `[{ content: C_value0() }]`).
+    fn dynamic_prop_code(&mut self, value: &PropValue) -> String {
+        match value {
             PropValue::Dynamic(expr) => {
-                let code = self.lowered.exprs.code(*expr).unwrap_or("undefined").to_string();
-                if is_listener(&prop.name) {
-                    self.emit_event_listener(el, &prop.name, &code);
-                } else if is_event(&prop.name) {
-                    self.line(format!("{el}.{} = {code};", prop.name.to_ascii_lowercase()));
-                } else {
-                    self.uses.bind_attr = true;
-                    self.bind(format!("bindAttr({el}, {}, () => ({code}))", js_string(&prop.name)));
-                }
+                self.lowered.exprs.code(*expr).unwrap_or("undefined").to_string()
             }
+            PropValue::DynamicNode { expr, branches } => {
+                let mut calls = Vec::with_capacity(branches.len());
+                for branch in branches {
+                    let fn_name = format!("{}_value{}", self.base, self.list_counter);
+                    self.list_counter += 1;
+                    self.build_fn(&fn_name, branch, "");
+                    calls.push(format!("{fn_name}()"));
+                }
+                let template = self.lowered.exprs.code(*expr).unwrap_or("null").to_string();
+                substitute_branches(&template, &calls)
+            }
+            PropValue::Static(_) => unreachable!("static props are handled before this"),
         }
     }
 
@@ -933,30 +954,27 @@ impl<'a> Emitter<'a> {
         // one, else attribute) so rich values reach component setters while plain
         // attributes (class, data-*) still land correctly. `on*` handlers are set
         // as properties verbatim — the component owns their event semantics.
-        match &prop.value {
-            PropValue::Static(value) => {
-                self.uses.set_prop = true;
-                self.line(format!(
-                    "setProp({el}, {}, {});",
-                    js_string(&prop.name),
-                    js_string(value)
-                ));
-            }
-            PropValue::Dynamic(expr) => {
-                let code = self.lowered.exprs.code(*expr).unwrap_or("undefined").to_string();
-                if is_listener(&prop.name) {
-                    self.emit_event_listener(el, &prop.name, &code);
-                } else if is_event(&prop.name) {
-                    self.line(format!("{el}[{}] = {code};", js_string(&prop.name)));
-                } else {
-                    self.uses.effect = true;
-                    self.uses.set_prop = true;
-                    self.bind(format!(
-                        "effect(() => {{ setProp({el}, {}, ({code})); }})",
-                        js_string(&prop.name)
-                    ));
-                }
-            }
+        if let PropValue::Static(value) = &prop.value {
+            self.uses.set_prop = true;
+            self.line(format!(
+                "setProp({el}, {}, {});",
+                js_string(&prop.name),
+                js_string(value)
+            ));
+            return;
+        }
+        let code = self.dynamic_prop_code(&prop.value);
+        if is_listener(&prop.name) {
+            self.emit_event_listener(el, &prop.name, &code);
+        } else if is_event(&prop.name) {
+            self.line(format!("{el}[{}] = {code};", js_string(&prop.name)));
+        } else {
+            self.uses.effect = true;
+            self.uses.set_prop = true;
+            self.bind(format!(
+                "effect(() => {{ setProp({el}, {}, ({code})); }})",
+                js_string(&prop.name)
+            ));
         }
     }
 }

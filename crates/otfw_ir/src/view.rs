@@ -68,4 +68,14 @@ pub enum PropValue {
     Static(String),
     /// A dynamic expression resolved via the Reactivity IR.
     Dynamic(ExpressionId),
+    /// A dynamic expression that embeds JSX as value(s) — e.g. an array/object
+    /// prop carrying elements (`tabs={[{ content: <X/> }]}`) or a bare JSX-valued
+    /// prop (`icon={<X/>}`). Like [`ViewNode::DynamicNode`]: `expr` is the
+    /// expression with each embedded JSX replaced by an indexed placeholder
+    /// (`\u{0}i\u{0}`); `branches` are the embedded JSX sub-trees, in slot order,
+    /// each compiled to a node-builder whose call replaces the placeholder.
+    DynamicNode {
+        expr: ExpressionId,
+        branches: Vec<ViewNode>,
+    },
 }
