@@ -1,6 +1,6 @@
 import { Link, router } from "@opentf/web";
 
-const navLink = (props) => {
+const NavLink = (props) => {
   const isHashLink = props.href.includes('#');
   const path = isHashLink ? props.href.split('#')[0] : props.href;
   const hash = isHashLink ? props.href.split('#')[1] : null;
@@ -80,48 +80,48 @@ export default function DocsLayout(props) {
           <div>
             <h4 className="font-bold text-[var(--text-main)] mb-3 px-2 text-xs uppercase tracking-wider opacity-50">Getting Started</h4>
             <div className="flex flex-col space-y-1">
-              {navLink({ href: "/docs#introduction", children: "Introduction" })}
-              {navLink({ href: "/docs#installation", children: "Installation" })}
-              {navLink({ href: "/docs#architecture", children: "Architecture" })}
+              <NavLink href="/docs#introduction">Introduction</NavLink>
+              <NavLink href="/docs#installation">Installation</NavLink>
+              <NavLink href="/docs#architecture">Architecture</NavLink>
             </div>
           </div>
 
           <div>
             <h4 className="font-bold text-[var(--text-main)] mb-3 px-2 text-xs uppercase tracking-wider opacity-50">Core Concepts</h4>
             <div className="flex flex-col space-y-1">
-              {navLink({ href: "/docs#zero-vdom", children: "Zero-VDOM" })}
-              {navLink({ href: "/docs#web-components", children: "Web Components" })}
-              {navLink({ href: "/docs#props", children: "Component Props" })}
+              <NavLink href="/docs#zero-vdom">Zero-VDOM</NavLink>
+              <NavLink href="/docs#web-components">Web Components</NavLink>
+              <NavLink href="/docs#props">Component Props</NavLink>
             </div>
           </div>
 
           <div>
             <h4 className="font-bold text-[var(--text-main)] mb-3 px-2 text-xs uppercase tracking-wider opacity-50">Reactivity</h4>
             <div className="flex flex-col space-y-1">
-              {navLink({ href: "/docs#state", children: "$state Macro" })}
-              {navLink({ href: "/docs#derived", children: "$derived Macro" })}
-              {navLink({ href: "/docs#effect", children: "$effect Macro" })}
+              <NavLink href="/docs#state">$state Macro</NavLink>
+              <NavLink href="/docs#derived">$derived Macro</NavLink>
+              <NavLink href="/docs#effect">$effect Macro</NavLink>
             </div>
           </div>
 
           <div>
             <h4 className="font-bold text-[var(--text-main)] mb-3 px-2 text-xs uppercase tracking-wider opacity-50">Routing</h4>
             <div className="flex flex-col space-y-1">
-              {navLink({ href: "/docs#file-routing", children: "File-based Routing" })}
-              {navLink({ href: "/docs#layouts", children: "Layouts" })}
-              {navLink({ href: "/docs#dynamic-routes", children: "Dynamic Routes" })}
-              {navLink({ href: "/docs#router-api", children: "Router API" })}
+              <NavLink href="/docs#file-routing">File-based Routing</NavLink>
+              <NavLink href="/docs#layouts">Layouts</NavLink>
+              <NavLink href="/docs#dynamic-routes">Dynamic Routes</NavLink>
+              <NavLink href="/docs#router-api">Router API</NavLink>
             </div>
           </div>
 
           <div>
             <h4 className="font-bold text-[var(--text-main)] mb-3 px-2 text-xs uppercase tracking-wider opacity-50">Advanced</h4>
             <div className="flex flex-col space-y-1">
-              {navLink({ href: "/docs#lists", children: "List Rendering" })}
-              {navLink({ href: "/docs#conditionals", children: "Conditional Rendering" })}
-              {navLink({ href: "/docs#lifecycle", children: "Lifecycle Hooks" })}
-              {navLink({ href: "/docs#refs", children: "DOM References" })}
-              {navLink({ href: "/docs#global-state", children: "Global State" })}
+              <NavLink href="/docs#lists">List Rendering</NavLink>
+              <NavLink href="/docs#conditionals">Conditional Rendering</NavLink>
+              <NavLink href="/docs#lifecycle">Lifecycle Hooks</NavLink>
+              <NavLink href="/docs#refs">DOM References</NavLink>
+              <NavLink href="/docs#global-state">Global State</NavLink>
             </div>
           </div>
 
@@ -129,17 +129,17 @@ export default function DocsLayout(props) {
             <h4 className="font-bold text-[var(--text-main)] mb-3 px-2 text-xs uppercase tracking-wider opacity-50">Libraries</h4>
             <div className="flex flex-col space-y-1">
               {/* web-form docs are deferred until @opentf/web-form is ported to the new runtime */}
-              {navLink({ href: "/docs#testing", children: "Testing (web-test)" })}
+              <NavLink href="/docs#testing">Testing (web-test)</NavLink>
             </div>
           </div>
 
           <div>
             <h4 className="font-bold text-[var(--text-main)] mb-3 px-2 text-xs uppercase tracking-wider opacity-50">API Reference</h4>
             <div className="flex flex-col space-y-1">
-              {navLink({ href: "/docs#api-macros", children: "Macros" })}
-              {navLink({ href: "/docs#api-hooks", children: "Hooks" })}
-              {navLink({ href: "/docs#api-router", children: "Router" })}
-              {navLink({ href: "/docs#api-attributes", children: "Elements" })}
+              <NavLink href="/docs#api-macros">Macros</NavLink>
+              <NavLink href="/docs#api-hooks">Hooks</NavLink>
+              <NavLink href="/docs#api-router">Router</NavLink>
+              <NavLink href="/docs#api-attributes">Elements</NavLink>
             </div>
           </div>
 
