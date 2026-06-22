@@ -5,6 +5,7 @@
 import "./context.js";
 import "./error-boundary.js";
 import "./portal.js";
+import "./raw-html.js";
 
 export * from "./dom.js";
 export * from "./events.js";
@@ -14,3 +15,4 @@ export * from "./router.js";
 export * from "./context.js";
 export * from "./error-boundary.js";
 export * from "./portal.js";
+export * from "./raw-html.js";

@@ -9,3 +9,5 @@ import { defineSSG } from "./ssg-runtime.js";
 defineSSG("web-context-provider", (_props, children) => children);
 defineSSG("web-portal", (_props, children) => children);
 defineSSG("web-error-boundary", (_props, children) => children);
+// RawHtml: emit the trusted HTML string inline (MDX highlighted code blocks).
+defineSSG("web-raw-html", (props) => (props && props.html != null ? String(props.html) : ""));

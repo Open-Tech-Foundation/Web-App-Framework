@@ -52,7 +52,7 @@ export const router = {
 function routeFromPath(filePath) {
   const r = filePath
     .replace(/^.*\/app/, "")
-    .replace(/\/(page|layout|404)\.(jsx|tsx)$/, "");
+    .replace(/\/(page|layout|404)\.(jsx|tsx|mdx|md)$/, "");
   return r === "" ? "/" : r;
 }
 
