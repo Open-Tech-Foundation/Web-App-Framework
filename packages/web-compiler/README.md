@@ -24,7 +24,10 @@ the cargo `target/` build).
 
 ## Releasing (CI)
 
-`bin/` is empty in git. The release workflow (`.github/workflows/release.yml`)
-cross-builds otfwc for each target, brotli-compresses each into `bin/<platform>/`,
-and publishes this one package. Versioning is owned entirely by changesets — there
-is no version-sync script.
+`bin/` is empty in git, and the package is `private: true` only as a guard so the
+monorepo `changeset publish` doesn't ship it binary-less. It is published by its
+own workflow, `.github/workflows/release-compiler.yml` (run manually after a
+release): that cross-builds otfwc for each target, brotli-compresses each into
+`bin/<platform>/`, flips `private` off, and publishes — so the package on npm is
+public. Versioning is owned entirely by changesets — there is no version-sync
+script.
