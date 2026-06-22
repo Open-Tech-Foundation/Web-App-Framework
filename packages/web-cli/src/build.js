@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { compileCss, usesTailwind } from "./tailwind.js";
 import {
@@ -26,6 +27,36 @@ import {
 } from "./shared.js";
 
 const hash = (s) => Bun.hash(s).toString(16).padStart(16, "0").slice(0, 8);
+
+// Site origin for absolute canonical / sitemap URLs. Priority: `--base-url=` flag,
+// then an optional `otfw.config.{js,json}` (`{ site: { url } }`), else "" (relative
+// canonicals, sitemap skipped with a warning).
+async function resolveBaseUrl(root) {
+  const flag = process.argv.find((a) => a.startsWith("--base-url="));
+  if (flag) return flag.slice("--base-url=".length).replace(/\/+$/, "");
+
+  const json = join(root, "otfw.config.json");
+  if (existsSync(json)) {
+    try {
+      const cfg = JSON.parse(readFileSync(json, "utf8"));
+      if (cfg?.site?.url) return String(cfg.site.url).replace(/\/+$/, "");
+    } catch (e) {
+      console.warn(`⚠ could not parse otfw.config.json: ${e?.message ?? e}`);
+    }
+  }
+  for (const name of ["otfw.config.js", "otfw.config.mjs"]) {
+    const js = join(root, name);
+    if (existsSync(js)) {
+      try {
+        const cfg = (await import(pathToFileURL(js).href)).default;
+        if (cfg?.site?.url) return String(cfg.site.url).replace(/\/+$/, "");
+      } catch (e) {
+        console.warn(`⚠ could not load ${name}: ${e?.message ?? e}`);
+      }
+    }
+  }
+  return "";
+}
 
 export async function runBuild() {
   const { root, appDir, webEntry, otfwc, exclude } = loadProject();
@@ -102,8 +133,9 @@ export async function runBuild() {
   // (so per-route files carry the same bundle + stylesheet links).
   let ssg = null;
   if (process.argv.includes("--ssg")) {
+    const baseUrl = await resolveBaseUrl(root);
     const { runPrerender } = await import("./prerender.js");
-    ssg = await runPrerender({ root, pages, webEntry, otfwc, shellHtml: html, outDir });
+    ssg = await runPrerender({ root, pages, webEntry, otfwc, shellHtml: html, outDir, baseUrl });
   }
 
   // Copy the public/ directory (static assets served at the root), if present.

@@ -4,7 +4,7 @@
 // concatenation, so no effects/lifecycle run.
 
 import { build } from "rolldown";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -18,7 +18,7 @@ function serverEntrySource(pages) {
   return (
     `${imports}\n` +
     `import { registerRoutes } from "@opentf/web";\n` +
-    `export { renderToString, collectRoutePaths } from "@opentf/web/server";\n` +
+    `export { renderRoute, renderHead, collectRoutePaths } from "@opentf/web/server";\n` +
     `registerRoutes({\n${map}\n});\n`
   );
 }
@@ -28,16 +28,64 @@ function injectMarkup(shellHtml, markup) {
   return shellHtml.replace(/(<div id="app"[^>]*>)\s*(<\/div>)/, `$1${markup}$2`);
 }
 
+// Inject per-route <head> tags before </head>, dropping the shell's default <title>
+// when the route supplies its own (so each page gets a unique, non-duplicated title).
+function injectHead(shellHtml, headHtml) {
+  if (!headHtml) return shellHtml;
+  let out = shellHtml;
+  if (/<title[\s>]/i.test(headHtml)) out = out.replace(/<title>[\s\S]*?<\/title>\s*/i, "");
+  return out.replace(/<\/head>/i, `${headHtml}\n</head>`);
+}
+
 // "/" → dist/index.html, "/post/1" → dist/post/1/index.html.
 function htmlPathFor(outDir, route) {
   return route === "/" ? join(outDir, "index.html") : join(outDir, route, "index.html");
+}
+
+// Absolute URL for sitemap/robots; "" if no base URL configured.
+function absoluteUrl(baseUrl, path) {
+  if (!baseUrl) return "";
+  return baseUrl.replace(/\/+$/, "") + (path === "/" ? "/" : path);
+}
+
+// Emit sitemap.xml (absolute <loc> per rendered path) — requires a base URL. A
+// project-supplied public/sitemap.xml takes precedence (it overwrites ours on copy).
+function writeSitemap(outDir, publicDir, baseUrl, paths) {
+  if (existsSync(join(publicDir, "sitemap.xml"))) return false;
+  if (!baseUrl) {
+    console.warn("⚠ sitemap.xml skipped: no site URL (pass --base-url or set otfw.config)");
+    return false;
+  }
+  const urls = paths
+    .map((p) => `  <url><loc>${escapeXml(absoluteUrl(baseUrl, p))}</loc></url>`)
+    .join("\n");
+  const xml =
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+  writeFileSync(join(outDir, "sitemap.xml"), xml);
+  return true;
+}
+
+// Emit a permissive robots.txt referencing the sitemap (honor a public/ override).
+function writeRobots(outDir, publicDir, baseUrl, hasSitemap) {
+  if (existsSync(join(publicDir, "robots.txt"))) return false;
+  let body = "User-agent: *\nAllow: /\n";
+  if (baseUrl && hasSitemap) body += `Sitemap: ${absoluteUrl(baseUrl, "/sitemap.xml")}\n`;
+  writeFileSync(join(outDir, "robots.txt"), body);
+  return true;
+}
+
+function escapeXml(s) {
+  return String(s).replace(/[&<>'"]/g, (c) =>
+    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === "'" ? "&apos;" : "&quot;",
+  );
 }
 
 /**
  * Pre-render the app to static HTML files under `outDir`. Returns
  * `{ count, skipped, failed }`.
  */
-export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir }) {
+export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "" }) {
   const tmp = join(root, ".otfw-ssg");
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "ssg-entry.js");
@@ -63,26 +111,38 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
 
   const { paths, skipped } = await mod.collectRoutePaths();
   const failed = [];
-  for (const route of paths) {
+  const rendered = []; // concrete paths that produced an HTML file (for the sitemap)
+  for (const { path, params } of paths) {
     try {
-      const markup = (await mod.renderToString(route)) ?? "";
-      const file = htmlPathFor(outDir, route);
+      const { html, metadata } = (await mod.renderRoute(path, params)) ?? { html: "", metadata: {} };
+      const head = mod.renderHead(metadata, { path, baseUrl });
+      const file = htmlPathFor(outDir, path);
       mkdirSync(dirname(file), { recursive: true });
-      writeFileSync(file, injectMarkup(shellHtml, markup));
+      writeFileSync(file, injectMarkup(injectHead(shellHtml, head), html));
+      rendered.push(path);
     } catch (e) {
-      failed.push(route);
-      console.error(`✗ pre-render failed for ${route}: ${e?.message ?? e}`);
+      failed.push(path);
+      console.error(`✗ pre-render failed for ${path}: ${e?.message ?? e}`);
     }
   }
 
-  // 404: any unmatched path resolves to the registered 404 page.
+  // 404: any unmatched path resolves to the registered 404 page. Mark noindex so
+  // crawlers don't index the error page, and keep it out of the sitemap.
   try {
-    const notFound = await mod.renderToString("/__otfw_404__");
-    if (notFound != null) writeFileSync(join(outDir, "404.html"), injectMarkup(shellHtml, notFound));
+    const result = await mod.renderRoute("/__otfw_404__");
+    if (result) {
+      const head = mod.renderHead({ robots: "noindex", ...result.metadata }, { baseUrl });
+      writeFileSync(join(outDir, "404.html"), injectMarkup(injectHead(shellHtml, head), result.html));
+    }
   } catch {
     /* no 404 page */
   }
 
+  // Crawl infrastructure: sitemap.xml + robots.txt (honoring public/ overrides).
+  const publicDir = join(root, "public");
+  const hasSitemap = writeSitemap(outDir, publicDir, baseUrl, rendered);
+  writeRobots(outDir, publicDir, baseUrl, hasSitemap);
+
   rmSync(tmp, { recursive: true, force: true });
-  return { count: paths.length - failed.length, skipped, failed };
+  return { count: rendered.length, skipped, failed };
 }
