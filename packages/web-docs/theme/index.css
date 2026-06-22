@@ -65,22 +65,24 @@ body {
 /* Custom elements are inline by default. Structural hosts become block-level grid
  * items; pure wrapper hosts (a link, a list node) become layout-transparent
  * (`display: contents`) so their inner semantic element participates directly in the
- * surrounding flex/grid/list. */
-web-docs-layout,
-web-navbar,
-web-sidebar,
-web-toc,
-web-footer,
-web-breadcrumbs,
-web-pagination,
-web-callout,
-web-tabs,
-web-code-group,
-web-table {
+ * surrounding flex/grid/list. Hosts are addressed by the stable `web-<kebab>` class
+ * the compiler stamps on every component (the element tag itself is module-hashed
+ * to stay collision-free, so it is not a reliable selector). */
+.web-docs-layout,
+.web-navbar,
+.web-sidebar,
+.web-toc,
+.web-footer,
+.web-breadcrumbs,
+.web-pagination,
+.web-callout,
+.web-tabs,
+.web-code-group,
+.web-table {
   display: block;
 }
-web-link,
-web-sidebar-node {
+.web-link,
+.web-sidebar-node {
   display: contents;
 }
 

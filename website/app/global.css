@@ -11,8 +11,10 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Ensure custom elements behave like blocks */
-web-navlink, web-link, web-counter, web-todolist {
+/* Ensure custom elements behave like blocks. Hosts are addressed by the stable
+ * `web-<kebab>` class the compiler stamps on every component (the element tag is
+ * module-hashed for collision-freedom, so it is not a reliable selector). */
+.web-navlink, .web-link, .web-counter, .web-todolist {
   display: block;
 }
 
