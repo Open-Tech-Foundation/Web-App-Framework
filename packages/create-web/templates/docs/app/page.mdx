@@ -1,0 +1,27 @@
+---
+title: Introduction
+description: A documentation site built with OTF Web and @opentf/web-docs.
+---
+
+# Introduction
+
+Welcome! This documentation site is authored in **MDX** — Markdown with embedded
+interactive components — and compiled to native Web Components by the OTF Web
+toolchain. Markdown becomes static HTML at build time, code is syntax-highlighted by
+the compiler, and the sidebar, table of contents, and dark mode come from
+`@opentf/web-docs`.
+
+<Callout type="tip" title="Authoring">
+  Every `page.mdx` under `app/` is a route. Add a `_meta.js` to a folder to control
+  the sidebar order and labels.
+</Callout>
+
+## Why OTF Web docs
+
+- **Zero-VDOM** runtime with fine-grained signal reactivity.
+- **Build-time syntax highlighting** — no client-side highlighter to ship.
+- **SEO-friendly SSG** — every page is pre-rendered with its own `<head>` metadata.
+
+## Next steps
+
+Head to [Getting Started](/getting-started) to scaffold your first page.

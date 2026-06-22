@@ -27,8 +27,11 @@ const MD_RE = /\.(mdx|md)$/;
  * @param {string} [opts.contentDir] Docs content folder under app/ (default "docs").
  */
 export function docsNavPlugin({ appDir, contentDir = "docs" } = {}) {
-  const root = join(appDir, contentDir);
-  const base = "/" + contentDir;
+  // `"."`/`""` means the docs live at the app root (routes at "/"); otherwise they
+  // live in app/<contentDir> (routes under "/<contentDir>").
+  const atRoot = contentDir === "." || contentDir === "";
+  const root = atRoot ? appDir : join(appDir, contentDir);
+  const base = atRoot ? "" : "/" + contentDir;
   return {
     name: "otfw-docs-nav",
     resolveId(source) {
@@ -128,7 +131,7 @@ async function buildSection(dir, route, watch) {
       items.push(
         clean({
           title: metaLabel(meta, "index") ?? fm.sidebar_label ?? fm.title ?? "Overview",
-          path: route,
+          path: route || "/",
           order: fm.order,
         }),
       );

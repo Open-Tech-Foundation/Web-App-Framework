@@ -47,6 +47,22 @@ async function init() {
         },
         {
           type: "select",
+          name: "template",
+          message: reset("Project type:"),
+          initial: 0,
+          choices: [
+            { title: reset("App"), value: "bare", description: "A minimal SPA starter" },
+            {
+              title: cyan("Documentation site"),
+              value: "docs",
+              description: "MDX docs powered by @opentf/web-docs (sidebar, TOC, dark mode)",
+            },
+          ],
+        },
+        {
+          // Styling choice applies to the App template; the docs template ships its
+          // own themed stylesheet.
+          type: (_, { template } = {}) => (template === "docs" ? null : "select"),
           name: "styling",
           message: reset("Select a styling solution:"),
           initial: 1,
@@ -71,13 +87,13 @@ async function init() {
     return;
   }
 
-  const { styling, overwrite } = result;
+  const { styling, overwrite, template = "bare" } = result;
   const root = path.join(process.cwd(), targetDir);
 
   if (overwrite) emptyDir(root);
   else if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
 
-  const templateDir = path.resolve(__dirname, "../templates/bare");
+  const templateDir = path.resolve(__dirname, `../templates/${template}`);
   // When run from inside this monorepo, point @opentf/* deps at the local packages
   // so a scaffolded app can be tested without publishing.
   const monorepoPackages = path.resolve(__dirname, "../../../packages");

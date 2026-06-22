@@ -1,0 +1,5 @@
+/* The `@import "tailwindcss"` makes the toolchain run this file through the Tailwind
+ * compiler, which also resolves and inlines the @opentf/web-docs theme (design
+ * tokens + component styles). You can add your own Tailwind utilities and CSS below. */
+@import "tailwindcss";
+@import "@opentf/web-docs/theme";

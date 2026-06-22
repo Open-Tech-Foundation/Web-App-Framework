@@ -1,0 +1,38 @@
+---
+title: Getting Started
+description: Create your first documentation page.
+---
+
+# Getting Started
+
+Create a new page by adding a `page.mdx` file under `app/`. The folder path becomes
+the route, and the frontmatter `title` becomes the sidebar label and page `<title>`.
+
+## Add a page
+
+```bash
+mkdir app/concepts
+echo "# Concepts" > app/concepts/page.mdx
+```
+
+Then list it in `app/_meta.js` to position it in the sidebar:
+
+```js
+export default {
+  index: "Introduction",
+  "getting-started": "Getting Started",
+  concepts: "Core Concepts",
+  guide: "Guide",
+};
+```
+
+## Frontmatter
+
+Each page can declare metadata consumed by the SEO `<head>` pass:
+
+| Field         | Purpose                                  |
+| ------------- | ---------------------------------------- |
+| `title`       | Page title + default sidebar label       |
+| `description` | Meta description / Open Graph            |
+| `sidebar_label` | Override the sidebar label             |
+| `order`       | Manual ordering hint                     |

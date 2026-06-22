@@ -1,0 +1,35 @@
+---
+title: Guide
+description: Components and features available in your docs.
+---
+
+# Guide
+
+`@opentf/web-docs` ships content components you can drop straight into MDX.
+
+## Callouts
+
+<Callout type="note">A neutral note.</Callout>
+<Callout type="warning" title="Careful">Something to watch out for.</Callout>
+
+## Code
+
+Fenced code blocks are highlighted at build time:
+
+```jsx
+import { onMount } from "@opentf/web";
+
+export default function Counter() {
+  let count = $state(0);
+  return <button onclick={() => count++}>Clicked {count} times</button>;
+}
+```
+
+## Tables
+
+| Component  | Use                              |
+| ---------- | -------------------------------- |
+| `Callout`  | Notes, tips, warnings            |
+| `Tabs`     | Tabbed content panels            |
+| `CodeGroup`| Grouped code samples             |
+| `Table`    | Responsive table wrapper         |
