@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 import { otfwcPath } from "@opentf/web-compiler";
 
-export const EXTENSIONS = [".jsx", ".tsx", ".js", ".ts"];
+export const EXTENSIONS = [".jsx", ".tsx", ".js", ".ts", ".mdx", ".md"];
 
 export const MIME = {
   css: "text/css",
@@ -107,7 +107,7 @@ export function discoverPages(dir, exclude) {
     if (entry.isDirectory() && exclude.has(entry.name)) continue;
     const full = `${dir}/${entry.name}`;
     if (entry.isDirectory()) out.push(...discoverPages(full, exclude));
-    else if (/^(page|layout|404)\.[jt]sx$/.test(entry.name)) out.push(full);
+    else if (/^(page|layout|404)\.(mdx|md|[jt]sx)$/.test(entry.name)) out.push(full);
   }
   return out;
 }
@@ -148,8 +148,8 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr
   return {
     name: "otfw",
     transform(code, id) {
-      if (!/\.[jt]sx$/.test(id)) return null;
-      const base = id.split("/").pop().replace(/\.[jt]sx$/, "");
+      if (!/\.(mdx|md|[jt]sx)$/.test(id)) return null;
+      const base = id.split("/").pop().replace(/\.(mdx|md|[jt]sx)$/, "");
       const isPage = base === "page" || base === "layout" || base === "404";
       const args = ["build"];
       if (!isPage) args.push("--component");
