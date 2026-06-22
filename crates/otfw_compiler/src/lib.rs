@@ -11,6 +11,9 @@
 
 pub use otfw_ir;
 
+/// Stage 0 (front-end): lower `.mdx`/`.md` to JSX source for the pipeline below.
+pub mod mdx;
+
 /// Stage 1: Parse — source text → AST. Backed by oxc.
 pub mod parse;
 
