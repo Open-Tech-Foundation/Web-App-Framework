@@ -223,21 +223,44 @@ _mapped(
 This section shows how the compiler progressively builds the OTF Web component class based on the features used in the JSX function.
 
 ### 4.0 Component Naming (Namespacing)
-To prevent tag name collisions across different folders, the framework uses **Deterministic Path-Based Namespacing**.
-- **Rule**: Tag names are prefixed with `web-` followed by the kebab-cased relative path from the project root.
-- **Example**: `app/admin/Profile.jsx` → `web-app-admin-profile`.
-- **Index Files**: `app/Button/index.jsx` omits `index` → `web-app-button`.
-- **Collisions**: If two identical names resolve from different paths, the first one registered wins.
-- **Max Length**: Tag names are capped at 255 characters to comply with browser Custom Element limits.
+A Custom Element name lives in one process-global `CustomElementRegistry`, so a tag
+derived from the bare identifier (`Counter` → `web-counter`) collides whenever two
+components — in different files or packages — share a name; the second `define`
+throws. The compiler is a per-module front-end and never resolves a callee's module,
+so tags are made collision-free **without cross-module resolution**:
+
+- **Registration tag** (definition site): `web-<kebab>-<hash>`, where `<hash>` is an
+  FNV-1a hash of the component's module id. This is unique per defining module, so
+  same-named components never collide. The class exposes it as `static tag` (and the
+  SSG render fn as `.tag`).
+- **Addressing** (call site): a component is referenced through a binding that already
+  carries its tag, never a recomputed string — the **imported binding** (`Counter.tag`)
+  for a cross-module use, or the **sibling class** (`CounterElement.tag` /
+  `Counter_ssg.tag`) for a same-module use. *Consequence:* a component used in another
+  module must be imported there (standard ESM); there is no implicit global-by-tag
+  lookup.
+- **Stable styling hook**: every host is stamped with a stable `web-<kebab>` **class**
+  (CSR `classList.add`, SSG host attribute) — independent of the hashed tag — so CSS
+  targets hosts by a readable, stable name. Classes are not registry-unique, so two
+  same-named components sharing the hook is fine for styling.
+- **Framework built-ins** use reserved, stable tags: `web-link` and `web-internal-*`
+  (`web-internal-portal`, `web-internal-context-provider`, `web-internal-error-boundary`,
+  `web-internal-raw-html`). The compiler knows these by identifier and emits the literal
+  tag (needed e.g. for `<RawHtml>` injected by the MDX front-end, which has no import to
+  reference).
+- **Registration is idempotent** (`if (!customElements.get(Class.tag)) define(…)`) so a
+  tag reused across chunks, or a built-in already defined, never throws.
+
+> Code examples elsewhere in this spec write a simplified `web-foo` tag for
+> readability; the emitted tag is the namespaced `web-foo-<hash>` described here.
 
 #### 4.0.1 Member-expression component names are unsupported (by design)
 Dotted/namespaced component names — `<Foo.Bar/>`, the React "compound component"
 pattern — are **intentionally not supported**, not a missing feature. Every UI
-component compiles to a Custom Element addressed by a *static* kebab-case tag
-(`Foo` → `web-foo`); a member expression like `Foo.Bar` is a runtime **value**
-lookup with no tag to register or resolve against, so it is fundamentally
-incompatible with the tag-based component model. The compiler reports it as a
-diagnostic rather than emitting a broken element.
+component compiles to a Custom Element addressed by a *static* tag (see §4.0); a
+member expression like `Foo.Bar` is a runtime **value** lookup with no tag to register
+or resolve against, so it is fundamentally incompatible with the tag-based component
+model. The compiler reports it as a diagnostic rather than emitting a broken element.
 
 **Instead:** give the inner piece its own top-level component (`<FooBar/>`), or
 compose via children/`$context` (e.g. a `<Tabs>` provider with `<TabPanel>`
