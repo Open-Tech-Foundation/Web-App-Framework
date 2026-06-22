@@ -25,8 +25,9 @@ const MD_RE = /\.(mdx|md)$/;
  * @param {Object} opts
  * @param {string} opts.appDir      Absolute path to the project's `app/` directory.
  * @param {string} [opts.contentDir] Docs content folder under app/ (default "docs").
+ * @param {Set<string>} [opts.exclude] Folder names to skip (mirrors route exclusions).
  */
-export function docsNavPlugin({ appDir, contentDir = "docs" } = {}) {
+export function docsNavPlugin({ appDir, contentDir = "docs", exclude = new Set() } = {}) {
   // `"."`/`""` means the docs live at the app root (routes at "/"); otherwise they
   // live in app/<contentDir> (routes under "/<contentDir>").
   const atRoot = contentDir === "." || contentDir === "";
@@ -41,7 +42,7 @@ export function docsNavPlugin({ appDir, contentDir = "docs" } = {}) {
     async load(id) {
       if (id !== RESOLVED_ID) return null;
       const watch = [];
-      const tree = existsSync(root) ? await buildSection(root, base, watch) : [];
+      const tree = existsSync(root) ? await buildSection(root, base, watch, true, exclude) : [];
       // Rebuild on changes to meta/page files during `otfw dev`.
       for (const f of watch) this.addWatchFile?.(f);
       return `export default ${JSON.stringify(tree)};\n`;
@@ -99,26 +100,34 @@ function metaLabel(meta, key) {
 }
 
 /**
- * Build the ordered items of a section directory. The directory's own `page.*`
- * (if present) becomes an "Overview"-style index entry; each subdirectory becomes a
- * child node (a link and/or a group). Order + labels come from `_meta`.
+ * Build the ordered items of a section directory. Each subdirectory becomes a child
+ * node (a link and/or a group). At the docs root (`withIndex`), the root's own
+ * `page.*` is emitted as a standalone "Overview"-style entry; in nested groups the
+ * folder's own page is the group node's link (added by `buildNode`), so it is not
+ * repeated here. Order + labels come from `_meta`.
  */
-async function buildSection(dir, route, watch) {
+async function buildSection(dir, route, watch, withIndex = false, exclude = new Set()) {
   const meta = await loadMeta(dir, watch);
   const entries = readdirSync(dir, { withFileTypes: true });
   const subdirs = entries
-    .filter((e) => e.isDirectory() && !e.name.startsWith(".") && !e.name.startsWith("_"))
+    .filter(
+      (e) =>
+        e.isDirectory() &&
+        !e.name.startsWith(".") &&
+        !e.name.startsWith("_") &&
+        !exclude.has(e.name),
+    )
     .map((e) => e.name);
 
   const items = [];
 
-  // The section's own landing page (e.g. app/docs/page.mdx → /docs).
-  const indexFile = pageFile(dir);
+  // The docs root's own landing page (e.g. app/docs/page.mdx → /docs).
+  const indexFile = withIndex ? pageFile(dir) : null;
   const keys = subdirs.slice();
   if (indexFile) keys.unshift("index");
 
   let ordered = orderKeys(keys, meta);
-  // Default the section's own landing page to the top unless `_meta` orders it.
+  // Default the landing page to the top unless `_meta` orders it.
   const metaOrdersIndex = meta && !Array.isArray(meta) && "index" in meta;
   if (indexFile && !metaOrdersIndex) {
     ordered = ["index", ...ordered.filter((k) => k !== "index")];
@@ -137,21 +146,21 @@ async function buildSection(dir, route, watch) {
       );
       continue;
     }
-    const node = await buildNode(join(dir, key), `${route}/${key}`, key, meta, watch);
+    const node = await buildNode(join(dir, key), `${route}/${key}`, key, meta, watch, exclude);
     if (node) items.push(node);
   }
   return items;
 }
 
 /** Build a single subdirectory node: its own link (if it has a page) + children. */
-async function buildNode(dir, route, key, parentMeta, watch) {
+async function buildNode(dir, route, key, parentMeta, watch, exclude) {
   const pf = pageFile(dir);
   let fm = {};
   if (pf) {
     watch.push(pf);
     if (MD_RE.test(pf)) fm = readFrontmatter(pf);
   }
-  const children = await buildSection(dir, route, watch);
+  const children = await buildSection(dir, route, watch, false, exclude);
   // A directory that has neither a page nor children contributes nothing.
   if (!pf && children.length === 0) return null;
 

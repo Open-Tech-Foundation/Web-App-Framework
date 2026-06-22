@@ -132,13 +132,13 @@ export async function loadConfig(root) {
  * (the app's own dependency); returns null when docs aren't configured or the
  * package isn't installed, so the core toolchain stays untouched for normal apps.
  */
-export async function loadDocsNavPlugin(root, appDir, config) {
+export async function loadDocsNavPlugin(root, appDir, config, exclude = new Set()) {
   const docs = config?.docs;
   if (!docs) return null;
   try {
     const entry = Bun.resolveSync("@opentf/web-docs/build", root);
     const { docsNavPlugin } = await import(pathToFileURL(entry).href);
-    return docsNavPlugin({ appDir, contentDir: docs.dir ?? "docs" });
+    return docsNavPlugin({ appDir, contentDir: docs.dir ?? "docs", exclude });
   } catch (e) {
     console.warn(
       `⚠ docs config present but @opentf/web-docs could not be loaded: ${e?.message ?? e}`,

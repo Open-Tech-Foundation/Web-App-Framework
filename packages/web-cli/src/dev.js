@@ -85,7 +85,7 @@ export async function runDev() {
   // Docs generator: the nav plugin resolves `@opentf/web-docs/nav` to the build-time
   // navigation tree (only when otfw.config has a `docs` block).
   const config = await loadConfig(root);
-  const navPlugin = await loadDocsNavPlugin(root, appDir, config);
+  const navPlugin = await loadDocsNavPlugin(root, appDir, config, exclude);
 
   // WebSocket HMR: clients on the "hmr" topic get JSON messages — a successful
   // rebuild sends { type: "reload" }; a compile/build failure sends
