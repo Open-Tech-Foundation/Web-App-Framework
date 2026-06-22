@@ -3,5 +3,6 @@
 // import). Imported as "@opentf/web/server".
 
 export * from "./ssg-runtime.js";
+export * from "./head.js";
 export * from "./render.js";
 import "./builtins.js";
