@@ -24,21 +24,25 @@ export default function Navbar(props) {
           {config.version ? <span class="otfw-navbar-version">{config.version}</span> : null}
         </Link>
 
-        <nav class="otfw-navbar-nav">
-          {links.map((l) => (
-            <NavbarLink link={l} />
-          ))}
-        </nav>
-
-        <div class="otfw-navbar-actions">
+        <div class="otfw-navbar-search">
           {config.search ? <SearchTrigger /> : null}
+        </div>
+
+        <div class="otfw-navbar-right">
+          <nav class="otfw-navbar-nav">
+            {links.map((l) => (
+              <NavbarLink link={l} />
+            ))}
+          </nav>
+          <div class="otfw-navbar-actions">
+            {config.github ? (
+              <a href={config.github} target="_blank" rel="noreferrer" class="otfw-navbar-icon" aria-label="GitHub">
+                <NavIcon name="github" />
+              </a>
+            ) : null}
+            <ThemeToggle />
+          </div>
           {config.search ? <Search /> : null}
-          {config.github ? (
-            <a href={config.github} target="_blank" rel="noreferrer" class="otfw-navbar-icon" aria-label="GitHub">
-              <NavIcon name="github" />
-            </a>
-          ) : null}
-          <ThemeToggle />
         </div>
       </div>
     </header>
