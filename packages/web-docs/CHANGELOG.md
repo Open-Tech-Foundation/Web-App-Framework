@@ -32,10 +32,13 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
-- Code-block copy button now actually copies. The delegated listener is attached to
-  the persistent `#otfw-content` root looked up from the DOM (the pattern `Toc` uses),
-  and a clipboard `execCommand` fallback was added for non-secure contexts. The prior
-  wiring attached during the layout's own mount and didn't reliably receive clicks.
+- Code-block copy button now actually copies. The earlier handler called
+  `navigator.clipboard.writeText(...)` with no error path, so the copy silently
+  failed whenever the async Clipboard API rejected (denied permission / page without
+  focus / non-secure context). It now catches the rejection and falls back to a
+  `document.execCommand("copy")` path. (The mount-time listener wiring was *not* at
+  fault — verified: the `$ref` holds the live `#otfw-content` at `onMount` and the
+  delegated click listener fires.)
 - The navbar host is now `display: contents`, so its sticky header pins to the page
   scroll container instead of scrolling away inside its own wrapper.
 - The brand takes the leading space so nav links group with the GitHub icon and theme

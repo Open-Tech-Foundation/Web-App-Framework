@@ -69,12 +69,13 @@ export default function DocsLayout(props) {
   const nav = props.nav || [];
   const frame = props.frame !== false;
 
-  // Wire the copy buttons against the persistent content root. We read it from the
-  // DOM (like Toc) rather than a `$ref`, since one delegated listener covers every
-  // current and future code block without re-running per navigation.
+  // Wire the copy buttons once with a single delegated listener on the content
+  // root. We hold the root with a `$ref` (the value is live by the time `onMount`
+  // runs). Delegation means one listener covers every code block, current and
+  // future, as the article subtree swaps on navigation.
+  const contentRef = $ref();
   onMount(() => {
-    if (typeof document === "undefined") return;
-    const root = document.getElementById("otfw-content");
+    const root = contentRef;
     if (!root) return;
     return wireCopyButtons(root);
   });
@@ -82,7 +83,7 @@ export default function DocsLayout(props) {
   const body = (
     <div class="otfw-docs">
       <Sidebar nav={nav} config={config} />
-      <main id="otfw-content" class="otfw-content" data-pagefind-body>
+      <main id="otfw-content" class="otfw-content" data-pagefind-body ref={contentRef}>
         <Breadcrumbs nav={nav} />
         <article class="otfw-prose">{props.children}</article>
         <Pagination nav={nav} />
