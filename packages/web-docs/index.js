@@ -21,6 +21,7 @@ import "./components/SearchTrigger.jsx";
 import "./components/Callout.jsx";
 import "./components/Tabs.jsx";
 import "./components/CodeGroup.jsx";
+import "./components/Steps.jsx";
 import "./components/Table.jsx";
 
 export { default as DocsLayout } from "./components/DocsLayout.jsx";
@@ -37,4 +38,5 @@ export { default as SearchTrigger } from "./components/SearchTrigger.jsx";
 export { default as Callout } from "./components/Callout.jsx";
 export { default as Tabs } from "./components/Tabs.jsx";
 export { default as CodeGroup } from "./components/CodeGroup.jsx";
+export { default as Steps } from "./components/Steps.jsx";
 export { default as Table } from "./components/Table.jsx";

@@ -438,6 +438,50 @@ body {
   padding: 0;
   font-size: inherit;
 }
+/* Copy control (added at runtime by DocsLayout). The wrapper is a non-scrolling
+ * positioning context so the button stays pinned over horizontally-scrolling code. */
+.otfw-code {
+  position: relative;
+  margin: 0 0 1.4rem;
+}
+.otfw-code pre {
+  margin: 0;
+}
+.otfw-copy {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.82);
+  font-family: var(--otfw-font);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  backdrop-filter: blur(4px);
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.otfw-code:hover .otfw-copy,
+.otfw-copy:focus-visible {
+  opacity: 1;
+}
+.otfw-copy:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.otfw-copy.is-copied {
+  opacity: 1;
+  background: color-mix(in srgb, #10b981 24%, transparent);
+  border-color: color-mix(in srgb, #10b981 55%, transparent);
+  color: #34d399;
+}
 .otfw-prose blockquote {
   margin: 0 0 1.2rem;
   padding: 0.25rem 1.1rem;
@@ -623,33 +667,36 @@ body {
  * rule adapts to light and dark automatically. */
 .otfw-callout {
   --c: var(--otfw-text-muted);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.85rem;
   margin: 1.5rem 0;
-  padding: 0.95rem 1.05rem;
+  padding: 1rem 1.1rem;
   border: 1px solid color-mix(in srgb, var(--c) 28%, var(--otfw-border));
   border-left: 3px solid var(--c);
-  border-radius: var(--otfw-radius);
+  border-radius: 0.75rem;
   background: color-mix(in srgb, var(--c) 7%, var(--otfw-bg));
-}
-.otfw-callout-title {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-weight: 700;
-  font-size: 0.92rem;
-  color: color-mix(in srgb, var(--c) 60%, var(--otfw-text));
-  margin-bottom: 0.4rem;
 }
 .otfw-callout-icon {
   display: grid;
   place-items: center;
   flex: none;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: 0.45rem;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 0.5rem;
   background: var(--c);
   color: #fff;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   line-height: 1;
+}
+.otfw-callout-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: color-mix(in srgb, var(--c) 60%, var(--otfw-text));
+  margin-bottom: 0.25rem;
+}
+.otfw-callout-content {
+  min-width: 0;
 }
 .otfw-callout-body {
   font-size: 0.92rem;
@@ -719,6 +766,48 @@ body {
 }
 .otfw-hidden {
   display: none;
+}
+
+/* ── Steps ─────────────────────────────────────────────────────────────────── */
+.otfw-steps {
+  counter-reset: otfw-step;
+  margin: 1.5rem 0;
+  padding-left: 1.75rem;
+  border-left: 1px solid var(--otfw-border);
+}
+.otfw-steps > h3,
+.otfw-steps > h4 {
+  position: relative;
+  counter-increment: otfw-step;
+  margin-top: 1.6rem;
+  font-size: 1.05rem;
+}
+.otfw-steps > h3:first-child,
+.otfw-steps > h4:first-child {
+  margin-top: 0;
+}
+.otfw-steps > h3::before,
+.otfw-steps > h4::before {
+  content: counter(otfw-step);
+  position: absolute;
+  left: calc(-1.75rem - 1px);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 999px;
+  background: var(--otfw-bg);
+  border: 1px solid var(--otfw-border);
+  color: var(--otfw-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.otfw-steps > h3:hover::before,
+.otfw-steps > h4:hover::before {
+  border-color: var(--otfw-accent);
+  color: var(--otfw-accent);
 }
 
 /* ── Table wrapper ─────────────────────────────────────────────────────────── */

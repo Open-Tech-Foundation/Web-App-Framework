@@ -7,16 +7,22 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Added
 
+- Code blocks get a copy button automatically. `DocsLayout` decorates every
+  `<pre>` in the prose at runtime (via a `MutationObserver`, so it survives client
+  navigation): a rounded copy pill that turns green and reads "Copied" on click.
+- `Steps` component — a numbered, vertically-connected walkthrough where each child
+  heading becomes a step (composes with plain Markdown headings in MDX).
 - Navbar: active-route underline that updates on SPA navigation, per-link icons via
   a named `NavIcon` registry (`nav: [{ label, href, icon, external }]`), and a
   `version` badge next to the brand.
-- `NavbarLink` and `NavIcon` are now exported from the package root.
+- `NavbarLink`, `NavIcon`, and `Steps` are now exported from the package root.
 
 ### Changed
 
-- Callouts redesigned: a single per-type accent drives a tinted fill, a filled icon
-  chip, the title color, and the accent border (derived via `color-mix`, so they
-  adapt to light/dark automatically).
+- Callouts restyled to the updated design system: a two-column grid puts the filled
+  icon chip in its own column beside the title and body, with a per-type accent
+  driving the tinted fill, border, and title color (`color-mix`, so they adapt to
+  light/dark automatically).
 - Sidebar links gained dot markers (dimmed by default, solid on the active route).
 - The navbar search trigger only renders when a search provider is configured.
 

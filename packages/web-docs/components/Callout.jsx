@@ -17,13 +17,13 @@ export default function Callout(props) {
 
   return (
     <div class={"otfw-callout otfw-callout-" + type}>
-      <div class="otfw-callout-title">
-        <span class="otfw-callout-icon" aria-hidden="true">
-          {icon}
-        </span>
-        {title}
+      <span class="otfw-callout-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <div class="otfw-callout-content">
+        <div class="otfw-callout-title">{title}</div>
+        <div class="otfw-callout-body">{props.children}</div>
       </div>
-      <div class="otfw-callout-body">{props.children}</div>
     </div>
   );
 }
