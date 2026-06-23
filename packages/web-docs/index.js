@@ -25,6 +25,8 @@ import "./components/Table.jsx";
 
 export { default as DocsLayout } from "./components/DocsLayout.jsx";
 export { default as Navbar } from "./components/Navbar.jsx";
+export { default as NavbarLink } from "./components/NavbarLink.jsx";
+export { default as NavIcon } from "./components/NavIcon.jsx";
 export { default as Sidebar } from "./components/Sidebar.jsx";
 export { default as Toc } from "./components/Toc.jsx";
 export { default as Footer } from "./components/Footer.jsx";

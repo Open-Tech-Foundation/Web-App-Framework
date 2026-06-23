@@ -11,6 +11,8 @@
  * @typedef {Object} DocsNavLink
  * @property {string} label
  * @property {string} href
+ * @property {string} [icon]        NavIcon name shown before the label (e.g. "book").
+ * @property {boolean} [external]   Render as a plain target=_blank anchor (no SPA nav).
  *
  * @typedef {Object} DocsFooter
  * @property {string} [text]
@@ -18,6 +20,7 @@
  *
  * @typedef {Object} DocsConfig
  * @property {string} [title]        Site/product name shown in the navbar.
+ * @property {string} [version]      Version badge shown next to the brand (e.g. "v0.4.0").
  * @property {string} [logo]         URL of the navbar logo image.
  * @property {string} [homeUrl]      Where the navbar brand links to (default "/").
  * @property {string} [github]       GitHub URL (shown in the navbar).
