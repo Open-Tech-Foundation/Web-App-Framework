@@ -150,7 +150,9 @@ impl Emit {
                 };
                 format!("<li>{checkbox}{}</li>", self.nodes(&n.children))
             }
-            Node::Code(n) => emit_code(n.value.as_str(), n.lang.as_deref().unwrap_or("")),
+            Node::Code(n) => {
+                emit_code(n.value.as_str(), n.lang.as_deref().unwrap_or(""), n.meta.as_deref())
+            }
             Node::Table(n) => self.emit_table(n),
             Node::TableRow(n) => format!("<tr>{}</tr>", self.nodes(&n.children)),
             Node::TableCell(n) => format!("<td>{}</td>", self.nodes(&n.children)),
@@ -263,9 +265,39 @@ fn highlight_token(lang: &str) -> &str {
     }
 }
 
-/// Build-time syntax highlighting → a single raw-HTML node (`<RawHtml>`). On any
-/// failure (unknown grammar issue) falls back to a plain escaped `<pre>`.
-fn emit_code(code: &str, lang: &str) -> String {
+/// SVG for the copy button rendered into each code block's header. The click handler
+/// is wired at runtime by the docs layout (event delegation).
+const COPY_SVG: &str = "<svg viewBox=\"0 0 24 24\" width=\"13\" height=\"13\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"/></svg>";
+
+/// Human-readable label for a fenced language, shown in a code block's header.
+/// Returns `None` for an empty token (no language chip); an unknown token is shown
+/// uppercased.
+fn display_lang(lang: &str) -> Option<String> {
+    let label = match lang.trim().to_ascii_lowercase().as_str() {
+        "" => return None,
+        "js" | "javascript" | "mjs" | "cjs" => "JavaScript",
+        "jsx" => "JSX",
+        "ts" | "typescript" => "TypeScript",
+        "tsx" => "TSX",
+        "json" => "JSON",
+        "bash" | "sh" | "shell" | "zsh" | "console" => "Shell",
+        "html" => "HTML",
+        "css" => "CSS",
+        "toml" => "TOML",
+        "yaml" | "yml" => "YAML",
+        "md" | "markdown" => "Markdown",
+        "mdx" => "MDX",
+        "rust" | "rs" => "Rust",
+        other => return Some(other.to_uppercase()),
+    };
+    Some(label.to_string())
+}
+
+/// Build-time syntax highlighting → a `<RawHtml>` node wrapping a titled code block:
+/// a header (language label, optional filename from the fence info string, and a copy
+/// button) above the highlighted `<pre>`. On a highlighting failure, falls back to a
+/// plain escaped `<pre>`.
+fn emit_code(code: &str, lang: &str, meta: Option<&str>) -> String {
     static SYNTAXES: OnceLock<SyntaxSet> = OnceLock::new();
     static THEME: OnceLock<Theme> = OnceLock::new();
     let ss = SYNTAXES.get_or_init(SyntaxSet::load_defaults_newlines);
@@ -283,8 +315,27 @@ fn emit_code(code: &str, lang: &str) -> String {
         // Fall back to the original token before giving up on plain text.
         .or_else(|| ss.find_syntax_by_token(lang))
         .unwrap_or_else(|| ss.find_syntax_plain_text());
-    let html = highlighted_html_for_string(code, ss, syntax, theme)
+    let pre = highlighted_html_for_string(code, ss, syntax, theme)
         .unwrap_or_else(|_| format!("<pre><code>{}</code></pre>", html_escape(code)));
+
+    // The fence info string after the language is treated as a filename/title, e.g.
+    // ```json package.json. A line-range meta (`{1,3}`) is not a filename.
+    let filename = meta
+        .map(str::trim)
+        .filter(|m| !m.is_empty() && !m.starts_with('{'));
+
+    let mut head = String::from("<div class=\"otfw-code-head\">");
+    if let Some(label) = display_lang(lang) {
+        head.push_str(&format!("<span class=\"otfw-code-lang\">{}</span>", html_escape(&label)));
+    }
+    if let Some(name) = filename {
+        head.push_str(&format!("<span class=\"otfw-code-name\">{}</span>", html_escape(name)));
+    }
+    head.push_str(&format!(
+        "<button class=\"otfw-copy\" type=\"button\" aria-label=\"Copy code\">{COPY_SVG}<span class=\"otfw-copy-label\">Copy</span></button></div>"
+    ));
+
+    let html = format!("<div class=\"otfw-code\">{head}{pre}</div>");
     format!("<RawHtml html={{{}}} />", js_string(&html))
 }
 
@@ -445,6 +496,22 @@ mod tests {
         let out = mdx_to_jsx("```js\nconst x = 1;\n```", "doc.mdx").unwrap();
         assert!(out.contains("<RawHtml html={\""), "{out}");
         assert!(out.contains("<pre"), "{out}");
+    }
+
+    #[test]
+    fn code_block_has_a_header_with_language_and_copy_button() {
+        let out = mdx_to_jsx("```json\n{}\n```", "doc.mdx").unwrap();
+        assert!(out.contains("otfw-code-head"), "{out}");
+        assert!(out.contains("otfw-code-lang"), "{out}");
+        assert!(out.contains("JSON"), "{out}");
+        assert!(out.contains("otfw-copy"), "{out}");
+    }
+
+    #[test]
+    fn fence_info_string_becomes_a_filename() {
+        let out = mdx_to_jsx("```json package.json\n{}\n```", "doc.mdx").unwrap();
+        assert!(out.contains("otfw-code-name"), "{out}");
+        assert!(out.contains("package.json"), "{out}");
     }
 
     #[test]
