@@ -1,0 +1,83 @@
+---
+title: Testing Strategies
+description: What to test and how — behavior over implementation, async, effects, forms, and route guards.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Testing Strategies
+
+Beyond the mechanics, a few principles keep an OTF Web suite fast, stable, and
+meaningful.
+
+## Test behavior, not implementation
+
+Assert on what the user observes — rendered text, roles, enabled/disabled state — not
+on internal signals or function calls. Behavior-level tests survive refactors.
+
+```jsx
+// ✅ observable outcome
+await user.click(getByRole("button", { name: "Add" }));
+expect(getByText("1 item")).toBeDefined();
+
+// ❌ couples the test to internals
+expect(component._count.value).toBe(1);
+```
+
+## Async and effects
+
+Reactive effects and data loads settle asynchronously. Wait for the resulting DOM with
+a `findBy*` query rather than a fixed timeout:
+
+```jsx
+test("loads the profile", async () => {
+  const { findByRole, queryByText } = render(Profile, { id: "42" });
+
+  // loading state is gone once data arrives
+  expect(await findByRole("heading", { name: "Ada Lovelace" })).toBeDefined();
+  expect(queryByText("Loading…")).toBeNull();
+});
+```
+
+<Callout type="tip" title="Avoid arbitrary waits">
+  `findBy*` polls until the element appears (or times out). It's more reliable and
+  faster than `setTimeout`-style delays.
+</Callout>
+
+## Forms
+
+Drive forms through the UI — type into fields, submit, assert on errors and the
+submitted result. This exercises `@opentf/web-form` end to end:
+
+```jsx
+test("submits valid credentials", async () => {
+  const onSubmit = mock();
+  const { getByLabelText, getByRole } = render(LoginForm, { onSubmit });
+  const user = userEvent.setup();
+
+  await user.type(getByLabelText("Email"), "ada@example.com");
+  await user.type(getByLabelText("Password"), "correct horse");
+  await user.click(getByRole("button", { name: "Sign in" }));
+
+  expect(onSubmit).toHaveBeenCalledWith({
+    email: "ada@example.com",
+    password: "correct horse",
+  });
+});
+```
+
+## Route guards and navigation
+
+Render the component under test and assert on what the guard ultimately shows —
+redirect target, or protected content — rather than mocking the router internals.
+
+## Isolation
+
+Lean on automatic [cleanup](/docs/packages/web-test/setup) so state never leaks
+between tests. When a test needs a fresh module or timer, reset it explicitly in a
+`beforeEach` rather than relying on order.
+
+<Callout type="warning" title="One assertion focus per test">
+  A test that checks several unrelated things fails ambiguously. Split distinct
+  behaviors into separate `test` cases so a failure points at one cause.
+</Callout>

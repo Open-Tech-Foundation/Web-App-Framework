@@ -1,0 +1,90 @@
+---
+title: Writing Tests
+description: The render → query → interact → assert loop, with props, cleanup, and reactive updates.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Writing Tests
+
+Every test follows the same shape: **render** a component, **query** the DOM,
+**interact**, then **assert**.
+
+## Render
+
+`render` mounts a component into a container on `document.body` and returns queries
+plus helpers.
+
+```jsx
+import { render } from "@opentf/web-test";
+import Greeting from "./Greeting.jsx";
+
+const { container, getByRole, unmount } = render(Greeting);
+```
+
+### Passing props
+
+The second argument is the component's props:
+
+```jsx
+const { getByRole } = render(Greeting, { name: "Ada" });
+expect(getByRole("heading").textContent).toBe("Hello, Ada");
+```
+
+## Assert on reactive updates
+
+Because OTF Web updates the DOM surgically, you read the node again after an
+interaction — no flush, no `act()`:
+
+```jsx
+import { test, expect } from "bun:test";
+import { render, userEvent } from "@opentf/web-test";
+import Counter from "./Counter.jsx";
+
+test("increments", async () => {
+  const { getByTestId } = render(Counter);
+  const user = userEvent.setup();
+  const btn = getByTestId("btn");
+
+  expect(btn.textContent).toBe("Count: 0");
+  await user.click(btn);
+  expect(btn.textContent).toBe("Count: 1");
+});
+```
+
+<Callout type="tip" title="Use data-testid sparingly">
+  Prefer role- and text-based queries (they mirror how users find things). Reach for
+  `data-testid` only when there's no accessible handle. See
+  [Queries](/docs/packages/web-test/queries).
+</Callout>
+
+## Cleanup
+
+With the recommended [setup](/docs/packages/web-test/setup), each test is isolated
+automatically. To tear down within a test, call `unmount`:
+
+```jsx
+const { unmount } = render(Modal, { open: true });
+// …assertions…
+unmount(); // removes the component and runs onCleanup
+```
+
+## Organizing
+
+Group related cases with `describe`, and keep one behavior per `test`:
+
+```jsx
+import { describe, test, expect } from "bun:test";
+import { render } from "@opentf/web-test";
+import LoginForm from "./LoginForm.jsx";
+
+describe("LoginForm", () => {
+  test("shows a validation error for a bad email", async () => {
+    /* … */
+  });
+
+  test("submits valid credentials", async () => {
+    /* … */
+  });
+});
+```

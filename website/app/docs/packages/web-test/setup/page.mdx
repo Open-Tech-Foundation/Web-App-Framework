@@ -1,0 +1,70 @@
+---
+title: Setup
+description: Install web-test and wire automatic JSX compilation and cleanup for your test runner.
+---
+
+import { Callout, Steps } from "@opentf/web-docs";
+
+# Setup
+
+<Steps>
+
+### Install
+
+```bash
+bun add -d @opentf/web-test
+```
+
+### Preload the setup module
+
+The setup module compiles JSX in test files and resets the DOM between tests. Register
+it as a preload so every test file picks it up. Add a `bunfig.toml` at your package or
+workspace root:
+
+```toml bunfig.toml
+[test]
+preload = ["@opentf/web-test/setup"]
+```
+
+### Write your first test
+
+```jsx Counter.test.jsx
+import { test, expect } from "bun:test";
+import { render } from "@opentf/web-test";
+import Counter from "./Counter.jsx";
+
+test("renders", () => {
+  const { getByRole } = render(Counter);
+  expect(getByRole("button")).toBeDefined();
+});
+```
+
+### Run
+
+```bash
+bun test
+```
+
+</Steps>
+
+<Callout type="info" title="Automatic cleanup">
+  The setup module calls `cleanup()` after each test, so mounted components are removed
+  and their effects disposed without per-test boilerplate. Skip the preload only if you
+  want to call `cleanup()` yourself.
+</Callout>
+
+## Without the preload
+
+If you can't preload (or use a different runner), import and clean up manually:
+
+```jsx
+import { afterEach } from "bun:test";
+import { cleanup } from "@opentf/web-test";
+
+afterEach(cleanup);
+```
+
+<Callout type="warning" title="JSX compilation">
+  Test files that import `.jsx` components rely on the preload to transpile them. Without
+  it, import the already-compiled output instead, or add the setup as a preload.
+</Callout>

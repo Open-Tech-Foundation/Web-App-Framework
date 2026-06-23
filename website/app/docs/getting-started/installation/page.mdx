@@ -3,50 +3,64 @@ title: Installation
 description: Scaffold a new OTF Web project and start the dev server.
 ---
 
-import { Callout } from "@opentf/web-docs";
+import { Callout, Tabs, Steps } from "@opentf/web-docs";
+
+export const scaffoldTabs = [
+  { label: "bun", content: "bun create @opentf/web my-app" },
+  { label: "npm", content: "npm create @opentf/web@latest my-app" },
+  { label: "pnpm", content: "pnpm create @opentf/web my-app" },
+  { label: "yarn", content: "yarn create @opentf/web my-app" },
+];
 
 # Installation
 
-## Scaffold a project
+<Steps>
 
-```bash
-bun create @opentf/web my-app
-```
+### Scaffold a project
 
-The scaffolder is interactive — it sets up the project and lets you pick a styling
-solution and optional modules. npm and pnpm work too:
+Create a new project with the initializer. It's interactive — it sets up the project
+and lets you pick a styling solution and optional modules. Use whichever package
+manager you prefer:
 
-```bash
-npm create @opentf/web@latest my-app
-pnpm create @opentf/web my-app
-```
+<Tabs tabs={scaffoldTabs} />
 
-## Run the dev server
+### Install dependencies
 
 ```bash
 cd my-app
 bun install
+```
+
+### Start the dev server
+
+```bash
 bun run dev
 ```
 
-The dev server compiles on demand and hot-reloads on save. Build for production with:
+The dev server compiles on demand and hot-reloads on save.
 
-```bash
-bun run build
-```
-
-The output in `dist/` is a static bundle you can host anywhere.
+</Steps>
 
 <Callout type="tip" title="Requirements">
   OTF Web targets modern browsers and runs its toolchain on Bun or Node 18+.
 </Callout>
 
+## Production build
+
+Build a static bundle you can host anywhere:
+
+```bash
+bun run build
+```
+
+For a fully pre-rendered site, see [Static Generation](/docs/guides/static-generation).
+
 ## Editor setup
 
-The compiler uses a custom JSX pipeline. Point your `tsconfig.json` (or
-`jsconfig.json`) at it so the language server understands your components:
+The compiler uses a custom JSX pipeline. Point your `jsconfig.json` (or
+`tsconfig.json`) at it so the language server understands your components:
 
-```json
+```json jsconfig.json
 {
   "compilerOptions": {
     "jsx": "preserve",
@@ -54,3 +68,8 @@ The compiler uses a custom JSX pipeline. Point your `tsconfig.json` (or
   }
 }
 ```
+
+<Callout type="info" title="Why jsxImportSource">
+  It tells your editor where JSX types come from, so autocomplete and type-checking
+  match what the compiler actually emits — without affecting the build.
+</Callout>

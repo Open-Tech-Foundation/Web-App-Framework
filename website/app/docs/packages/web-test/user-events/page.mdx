@@ -1,0 +1,69 @@
+---
+title: User Events
+description: Drive realistic interactions — clicks, typing, keyboard, and selection — with userEvent.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# User Events
+
+`userEvent` (re-exported from `@testing-library/user-event`) simulates real user
+interactions — dispatching the same sequence of events a browser would, rather than a
+single synthetic event.
+
+## Setup
+
+Create an instance once per test, then drive it:
+
+```jsx
+import { render, userEvent } from "@opentf/web-test";
+
+const user = userEvent.setup();
+```
+
+<Callout type="info" title="Always await">
+  Every `userEvent` action returns a Promise. Await it so the resulting reactive
+  updates have flushed before you assert.
+</Callout>
+
+## Common interactions
+
+```jsx
+const { getByRole, getByLabelText } = render(SignupForm);
+const user = userEvent.setup();
+
+await user.click(getByRole("button", { name: "Sign up" }));
+await user.type(getByLabelText("Email"), "ada@example.com");
+await user.clear(getByLabelText("Email"));
+await user.keyboard("{Enter}");
+await user.tab();
+```
+
+## Typing and forms
+
+`type` fires `keydown` / `input` / `keyup` per character, so field-level `oninput`
+handlers and validation run just as in the browser:
+
+```jsx
+test("validates on input", async () => {
+  const { getByLabelText, findByText } = render(SignupForm);
+  const user = userEvent.setup();
+
+  await user.type(getByLabelText("Email"), "not-an-email");
+  await user.tab(); // blur
+  expect(await findByText("Invalid email")).toBeDefined();
+});
+```
+
+## Selection and checkboxes
+
+```jsx
+await user.selectOptions(getByLabelText("Country"), "NL");
+await user.click(getByRole("checkbox", { name: "Subscribe" }));
+expect(getByRole("checkbox", { name: "Subscribe" }).checked).toBe(true);
+```
+
+<Callout type="tip" title="Prefer userEvent over fireEvent">
+  `userEvent` reproduces the full event sequence (focus, key events, input), which
+  catches bugs a single dispatched `click`/`input` would miss.
+</Callout>

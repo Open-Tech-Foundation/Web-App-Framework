@@ -15,43 +15,34 @@ bundles `@testing-library/dom` queries plus `user-event`.
 bun add -d @opentf/web-test
 ```
 
-## Setup
+## Why it fits OTF Web
 
-Preload the setup module so test files compile JSX automatically and the DOM is reset
-between tests. Add a `bunfig.toml` at your package or workspace root:
+- **Real DOM, real compiler.** Components run exactly as they ship — no mock renderer.
+- **Signals, not snapshots.** Updates are surgical, so you assert on the DOM after an
+  interaction with no `act()` wrapper or manual flush.
+- **Familiar API.** The Testing Library queries and `user-event` you already know.
 
-```toml
-[test]
-preload = ["@opentf/web-test/setup"]
-```
-
-<Callout type="info" title="Automatic cleanup">
-  The setup module calls `cleanup()` after each test, so mounted components are
-  removed and effects are disposed without per-test boilerplate.
+<Callout type="tip" title="Start here">
+  New to it? Follow the path: [Setup](/docs/packages/web-test/setup) →
+  [Writing Tests](/docs/packages/web-test/writing-tests) →
+  [Queries](/docs/packages/web-test/queries) →
+  [User Events](/docs/packages/web-test/user-events) →
+  [Testing Strategies](/docs/packages/web-test/strategies).
 </Callout>
 
-## Writing a test
+## At a glance
 
 ```jsx
-import { expect, test, describe } from "bun:test";
+import { test, expect } from "bun:test";
 import { render, userEvent } from "@opentf/web-test";
 import Counter from "./Counter.jsx";
 
-describe("Counter", () => {
-  test("increments on click", async () => {
-    const { getByTestId } = render(Counter);
-    const user = userEvent.setup();
-    const btn = getByTestId("btn");
-
-    expect(btn.textContent).toBe("Count: 0");
-    await user.click(btn);
-    expect(btn.textContent).toBe("Count: 1");
-  });
+test("increments on click", async () => {
+  const { getByRole } = render(Counter);
+  const user = userEvent.setup();
+  await user.click(getByRole("button"));
+  expect(getByRole("button").textContent).toBe("Count: 1");
 });
 ```
 
-Because updates are signal-driven, asserting on `textContent` after an interaction
-reflects the surgical DOM change — no `act()` wrapper or flush needed.
-
-See the [API Reference](/docs/packages/web-test/api) for `render`, queries, and
-`userEvent`.
+The [API Reference](/docs/packages/web-test/api) lists every export.

@@ -1,0 +1,67 @@
+---
+title: Queries
+description: Find elements by role, label, text, or test id — and choose the right getBy / queryBy / findBy variant.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Queries
+
+`render` returns the full set of `@testing-library/dom` queries, pre-bound to the
+rendered container. They differ along two axes: **what** you match on, and **how**
+absence/async is handled.
+
+## Variants
+
+| Variant | Not found | Multiple | Async | Use for |
+| --- | --- | --- | --- | --- |
+| `getBy*` | throws | throws | no | asserting an element is present. |
+| `queryBy*` | returns `null` | throws | no | asserting an element is **absent**. |
+| `findBy*` | rejects | rejects | yes (Promise) | waiting for async appearance. |
+
+Each has an `*AllBy*` form that returns a list instead of a single match.
+
+```jsx
+// present
+expect(getByRole("button")).toBeDefined();
+
+// absent
+expect(queryByText("Error")).toBeNull();
+
+// appears after an async update
+const row = await findByText("Loaded");
+```
+
+## What to match on
+
+Prefer queries that mirror how a user (or assistive tech) finds things — roughly in
+this order:
+
+```jsx
+getByRole("button", { name: "Save" });   // accessible role + name
+getByLabelText("Email");                  // form fields by their label
+getByPlaceholderText("Search…");
+getByText("Welcome back");
+getByTestId("submit");                     // escape hatch
+```
+
+<Callout type="tip" title="Roles first">
+  `getByRole` with a `name` covers most buttons, links, headings, and inputs, and it
+  fails loudly when your markup isn't accessible — a useful signal on its own.
+</Callout>
+
+## Matching several elements
+
+The `getAllBy*` / `queryAllBy*` forms return every match as an array — handy for
+counting or iterating:
+
+```jsx
+const items = getAllByRole("listitem");
+expect(items).toHaveLength(3);
+expect(items[0].textContent).toBe("First");
+```
+
+<Callout type="note" title="Scoping to a subtree">
+  The bound queries search the whole rendered container. To scope to a subtree, use
+  `within` from `@testing-library/dom` (web-test's query engine) on a found element.
+</Callout>
