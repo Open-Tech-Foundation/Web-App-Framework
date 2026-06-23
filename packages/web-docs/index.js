@@ -19,8 +19,8 @@ import "./components/Pagination.jsx";
 import "./components/ThemeToggle.jsx";
 import "./components/SearchTrigger.jsx";
 import "./components/Callout.jsx";
+import "./components/CodeBlock.jsx";
 import "./components/Tabs.jsx";
-import "./components/CodeGroup.jsx";
 import "./components/Steps.jsx";
 import "./components/Table.jsx";
 
@@ -36,7 +36,7 @@ export { default as Pagination } from "./components/Pagination.jsx";
 export { default as ThemeToggle } from "./components/ThemeToggle.jsx";
 export { default as SearchTrigger } from "./components/SearchTrigger.jsx";
 export { default as Callout } from "./components/Callout.jsx";
+export { default as CodeBlock } from "./components/CodeBlock.jsx";
 export { default as Tabs } from "./components/Tabs.jsx";
-export { default as CodeGroup } from "./components/CodeGroup.jsx";
 export { default as Steps } from "./components/Steps.jsx";
 export { default as Table } from "./components/Table.jsx";

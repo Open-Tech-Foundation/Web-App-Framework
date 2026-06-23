@@ -10,6 +10,8 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 - MDX code fences emit a titled code block: a `<div class="otfw-code">` wrapping a
   header (language label, an optional filename taken from the fence info string —
   e.g. ` ```json package.json ` — and a copy button) above the highlighted `<pre>`.
+  The copy button ships both a clipboard and a check glyph (`.otfw-copy-icon` /
+  `.otfw-check-icon`); the theme swaps to the green check when `.is-copied` is set.
 
 ### Fixed
 

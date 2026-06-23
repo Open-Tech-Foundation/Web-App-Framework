@@ -472,6 +472,10 @@ body {
   margin: 0;
   border: none;
   border-radius: 0;
+  /* Readable default for blocks without build-time highlighting (e.g. string content
+   * rendered by Tabs via CodeBlock). Fenced blocks carry inline syntect
+   * colors, which override this. */
+  color: #e2e8f0;
 }
 .otfw-copy {
   margin-left: auto;
@@ -498,6 +502,15 @@ body {
   background: color-mix(in srgb, #10b981 22%, transparent);
   border-color: color-mix(in srgb, #10b981 55%, transparent);
   color: #34d399;
+}
+.otfw-copy .otfw-check-icon {
+  display: none;
+}
+.otfw-copy.is-copied .otfw-copy-icon {
+  display: none;
+}
+.otfw-copy.is-copied .otfw-check-icon {
+  display: inline;
 }
 .otfw-prose blockquote {
   margin: 0 0 1.2rem;
@@ -737,24 +750,21 @@ body {
   --c: #ef4444;
 }
 
-/* ── Tabs / CodeGroup ──────────────────────────────────────────────────────── */
-.otfw-tabs,
-.otfw-codegroup {
+/* ── Tabs ──────────────────────────────────────────────────────────────────── */
+.otfw-tabs {
   margin: 1.5rem 0;
   border: 1px solid var(--otfw-border);
   border-radius: var(--otfw-radius);
   overflow: hidden;
 }
-.otfw-tabs-list,
-.otfw-codegroup-tabs {
+.otfw-tabs-list {
   display: flex;
   gap: 0.25rem;
   padding: 0.4rem;
   background: var(--otfw-bg-surface);
   border-bottom: 1px solid var(--otfw-border);
 }
-.otfw-tab,
-.otfw-codegroup-tab {
+.otfw-tab {
   padding: 0.35rem 0.85rem;
   border: none;
   border-radius: 0.4rem;
@@ -765,20 +775,22 @@ body {
   font-weight: 600;
   cursor: pointer;
 }
-.otfw-tab.otfw-active,
-.otfw-codegroup-tab.otfw-active {
+.otfw-tab.otfw-active {
   background: var(--otfw-bg);
   color: var(--otfw-accent);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
-.otfw-tabs-panels,
-.otfw-codegroup-panel {
+.otfw-tabs-panels {
   padding: 1rem 1.1rem;
 }
-.otfw-codegroup-panel pre,
 .otfw-tabs-panels pre {
   margin: 0;
   border: none;
+}
+/* A CodeBlock filling a panel shouldn't add its own trailing margin on top of the
+ * panel's padding. */
+.otfw-tab-panel > .otfw-code {
+  margin: 0;
 }
 .otfw-hidden {
   display: none;

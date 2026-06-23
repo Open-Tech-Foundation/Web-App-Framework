@@ -1,20 +1,14 @@
 ---
 title: Components
-description: Content components shipped with web-docs — callouts, tabs, code groups, and steps.
+description: Content components shipped with web-docs — callouts, tabs, and steps.
 ---
 
-import { Callout, Steps, Tabs, CodeGroup } from "@opentf/web-docs";
+import { Callout, Steps, Tabs } from "@opentf/web-docs";
 
 export const demoTabs = [
   { label: "bun", content: "bun add @opentf/web" },
   { label: "npm", content: "npm i @opentf/web" },
   { label: "pnpm", content: "pnpm add @opentf/web" },
-];
-
-export const demoGroup = [
-  { label: "bun", content: "bun create @opentf/web app" },
-  { label: "pnpm", content: "pnpm create @opentf/web app" },
-  { label: "npm", content: "npm create @opentf/web@latest app" },
 ];
 
 # Components
@@ -66,8 +60,10 @@ Run `bun run dev` and open the printed URL.
 
 ## Tabs
 
-Switchable panels. Pass `tabs` as an array of `{ label, content }`. A string
-`content` is rendered as a code line; pass a node for richer content.
+Switchable panels — handy for package-manager variants (npm / pnpm / bun) or any
+alternative content. Pass `tabs` as an array of `{ label, content }`. A string
+`content` is rendered as a code block with its own copy button; pass a node for
+richer content.
 
 ```jsx
 import { Tabs } from "@opentf/web-docs";
@@ -81,24 +77,6 @@ import { Tabs } from "@opentf/web-docs";
 Rendered:
 
 <Tabs tabs={demoTabs} />
-
-## CodeGroup
-
-Tabs specialized for grouping code (e.g. package-manager variants). Pass `items` as
-`{ label, content }`; a string `content` is wrapped in a code block.
-
-```jsx
-import { CodeGroup } from "@opentf/web-docs";
-
-<CodeGroup items={[
-  { label: "bun", content: "bun create @opentf/web app" },
-  { label: "pnpm", content: "pnpm create @opentf/web app" },
-]} />
-```
-
-Rendered:
-
-<CodeGroup items={demoGroup} />
 
 <Callout type="info" title="Code blocks get copy buttons for free">
   Any fenced code block in a docs page is highlighted at build time and decorated
