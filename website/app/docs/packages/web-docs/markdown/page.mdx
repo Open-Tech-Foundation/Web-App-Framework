@@ -1,0 +1,207 @@
+---
+title: Markdown & MDX
+description: Every Markdown and MDX feature OTF Web docs support — formatting, tables, code, and JSX components inline.
+---
+
+import { Callout, Tabs, CodeBlock, Steps } from "@opentf/web-docs";
+
+export const pmTabs = [
+  { label: "bun", content: <CodeBlock code="bun add @opentf/web" /> },
+  { label: "npm", content: <CodeBlock code="npm i @opentf/web" /> },
+];
+
+# Markdown & MDX
+
+Docs pages are `.mdx` files: **Markdown** for prose plus **JSX components** inline. The
+compiler turns them into native DOM at build time — there is no Markdown parser in the
+browser. This page lists everything you can write.
+
+<Callout type="info" title="Three things happen automatically">
+  Every heading gets a slug `id` and joins the **On this page** outline; fenced code is
+  **syntax-highlighted** at build time; and each code block gets a **copy button**. You
+  don't wire any of it.
+</Callout>
+
+## Markdown
+
+OTF Web supports CommonMark plus the common GitHub-Flavored Markdown (GFM) extensions.
+
+### Headings
+
+`#` through `######` become `<h1>`–`<h6>`. Each is slugified into an `id` and added to
+the table of contents, so it's linkable and shows in the right-hand outline.
+
+```md
+## Installation
+### Requirements
+```
+
+### Text formatting
+
+| Write | Result |
+| --- | --- |
+| `**bold**` | **bold** |
+| `*italic*` | *italic* |
+| `~~strikethrough~~` | ~~strikethrough~~ |
+| `` `inline code` `` | `inline code` |
+| `line  ` (two trailing spaces) | a hard line break |
+
+### Links and images
+
+```md
+[OTF Web](https://github.com) "optional title"
+![Alt text](/logo.svg "optional title")
+```
+
+### Lists
+
+Unordered (`-` or `*`), ordered (`1.`), and nested. An ordered list can start at a
+custom number.
+
+```md
+- First
+- Second
+  - Nested
+1. One
+2. Two
+```
+
+Renders:
+
+- First
+- Second
+  - Nested
+
+### Task lists
+
+GFM checkboxes render as disabled inputs:
+
+- [x] Scaffold the project
+- [x] Write some docs
+- [ ] Ship it
+
+### Blockquotes
+
+```md
+> A short, quoted aside.
+```
+
+> A short, quoted aside.
+
+### Horizontal rule
+
+Three dashes (`---`) draw a divider (`<hr/>`).
+
+### Tables
+
+A pipe table with a header row:
+
+```md
+| Package | Purpose |
+| --- | --- |
+| web | Runtime + signals |
+| web-docs | Docs site generator |
+```
+
+| Package | Purpose |
+| --- | --- |
+| web | Runtime + signals |
+| web-docs | Docs site generator |
+
+### Code blocks
+
+A fenced block is highlighted at build time (syntect) and decorated with a header and
+copy button. Put a **language** after the fence, and optionally a **filename** — the
+rest of the info string becomes the title shown in the header.
+
+````md
+```js app.js
+const count = $state(0);
+```
+````
+
+```js app.js
+const count = $state(0);
+```
+
+Language aliases are handled, so `jsx`, `tsx`, `ts`, and friends all highlight (they map
+to the closest available grammar).
+
+## MDX
+
+MDX is Markdown plus JavaScript modules and JSX. These features turn a static page into
+a live one.
+
+### Frontmatter
+
+A YAML block at the very top sets the page's metadata — `title` and `description` feed
+the sidebar, the document title, and search.
+
+```mdx
+---
+title: Installation
+description: Scaffold a project and start the dev server.
+---
+```
+
+### Imports
+
+Pull in components (or anything else) with a normal `import`:
+
+```mdx
+import { Callout, Tabs } from "@opentf/web-docs";
+```
+
+### Exported data
+
+Declare data with `export const` and reference it below. This is also how you pass rich
+values to a component, since JSX nodes are valid here:
+
+```mdx
+export const tabs = [
+  { label: "bun", content: <CodeBlock code="bun add @opentf/web" /> },
+  { label: "npm", content: <CodeBlock code="npm i @opentf/web" /> },
+];
+
+<Tabs tabs={tabs} />
+```
+
+Rendered:
+
+<Tabs tabs={pmTabs} />
+
+### Components inline
+
+Any imported component can be dropped into the prose like an HTML tag, and Markdown
+inside its children still renders:
+
+```mdx
+<Callout type="tip" title="Tip">
+  You can use **Markdown** inside a component's children.
+</Callout>
+```
+
+<Callout type="tip" title="Tip">
+  You can use **Markdown** inside a component's children.
+</Callout>
+
+### Expressions
+
+A `{ }` expression is evaluated as JavaScript and rendered inline — for example
+`{2 + 2}` renders: {2 + 2}.
+
+<Callout type="warning" title="Inline object & array literals in attributes">
+  A component attribute can't take an inline object/array literal
+  (`tabs={[{ label: ... }]}`) — the MDX parser rejects the commas. Declare the value
+  with `export const` and pass it by name instead, as shown above.
+</Callout>
+
+## Components you can use
+
+These ship with `@opentf/web-docs` and are documented on the
+[Components](/docs/packages/web-docs/components) page:
+
+- **Callout** — admonition boxes (note / tip / info / warning / danger).
+- **Steps** — a numbered walkthrough built from headings.
+- **Tabs** — switchable panels for alternative content.
+- **CodeBlock** — a code block for code held as a runtime value (e.g. a tab panel).
