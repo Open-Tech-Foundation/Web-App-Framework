@@ -202,9 +202,15 @@ body {
   align-items: center;
   gap: 0.5rem;
 }
+/* GitHub link and theme toggle are uniform square icon buttons, so the whole right
+ * cluster (links + icons) reads as one centered row. */
 .otfw-navbar-icon {
   display: inline-flex;
-  padding: 0.4rem;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
   border-radius: 0.5rem;
   color: var(--otfw-text-muted);
 }
@@ -226,7 +232,10 @@ body {
   font-family: inherit;
 }
 .otfw-theme-toggle {
-  padding: 0.4rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  justify-content: center;
 }
 .otfw-theme-toggle:hover,
 .otfw-search-trigger:hover {
