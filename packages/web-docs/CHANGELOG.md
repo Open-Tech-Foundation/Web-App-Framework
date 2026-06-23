@@ -8,8 +8,10 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 ### Added
 
 - Pagefind-backed docs search. Opt in with `docs.search.provider: "pagefind"`; `otfw
-  build --ssg` then indexes the pre-rendered HTML (the `data-pagefind-body` content)
-  into `dist/pagefind/`. A new `Search` modal — opened by the navbar trigger or ⌘K /
+  build --ssg` then indexes the pre-rendered pages that carry `data-pagefind-body` (the
+  docs shell — so the marketing homepage is excluded) into `dist/pagefind/`, file by
+  file so the build can show progress. A new `Search` modal — opened by the navbar
+  trigger or ⌘K /
   Ctrl+K — lazy-loads the static index on first open and queries it client-side
   (debounced, keyboard-navigable, highlighted excerpts); results are absolute URLs the
   router navigates to. No server required; in dev (no built index) it opens but returns

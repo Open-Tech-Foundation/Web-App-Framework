@@ -158,7 +158,15 @@ export async function runDocsSearchIndex(root, config, siteDir) {
   try {
     const entry = Bun.resolveSync("@opentf/web-docs/build", root);
     const { indexWithPagefind } = await import(pathToFileURL(entry).href);
-    return await indexWithPagefind({ siteDir });
+    // Live progress on a TTY (cleared before the build summary prints); on a
+    // non-interactive stream we stay quiet and let the final count line speak.
+    const tty = process.stdout.isTTY;
+    const onProgress = (done, total) => {
+      if (tty) process.stdout.write(`\r  → Pagefind: indexing ${done}/${total} page(s)…`);
+    };
+    const res = await indexWithPagefind({ siteDir, onProgress });
+    if (tty) process.stdout.write("\r\x1b[K"); // clear the progress line
+    return res;
   } catch (e) {
     console.warn(`⚠ Pagefind indexing skipped: ${e?.message ?? e}`);
     return null;
