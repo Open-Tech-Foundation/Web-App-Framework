@@ -210,6 +210,13 @@ export async function navigate(path, replace = false, isPop = false) {
     for (const n of nodes) runMount(n); // run onMount for page + every layout
     currentNodes = nodes;
     clearError({ phase: "route" }); // a good render dismisses a prior error overlay
+    // A forward navigation lands at the top of the new page (or at the targeted
+    // anchor); back/forward (`isPop`) keeps the browser's restored scroll position.
+    if (!isPop && isBrowser) {
+      const anchor = url.hash ? document.getElementById(decodeURIComponent(url.hash.slice(1))) : null;
+      if (anchor) anchor.scrollIntoView();
+      else window.scrollTo(0, 0);
+    }
   } else {
     rootEl.innerHTML = "<h1>404 — Not Found</h1>";
     currentNodes = [];
