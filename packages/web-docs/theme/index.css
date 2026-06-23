@@ -259,13 +259,6 @@ body {
   padding: 0.4rem 0.65rem;
   font-size: 0.82rem;
 }
-.otfw-search-kbd {
-  border: 1px solid var(--otfw-border);
-  border-radius: 0.3rem;
-  padding: 0 0.3rem;
-  font-size: 0.7rem;
-  font-family: var(--otfw-mono);
-}
 .otfw-search-label {
   display: none;
 }

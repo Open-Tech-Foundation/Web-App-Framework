@@ -1,5 +1,5 @@
-// Search box trigger in the navbar (⌘K). Inert in Phase 1 — it calls a global
-// opener that the Phase 2 Pagefind-backed <Search> modal installs on `window`.
+// Search box trigger in the navbar. Calls the global opener that the Pagefind-backed
+// <Search> modal installs on `window` (the ⌘K / Ctrl+K shortcut opens it too).
 
 export default function SearchTrigger() {
   const open = () => {
@@ -15,7 +15,6 @@ export default function SearchTrigger() {
         <line x1="21" y1="21" x2="16.65" y2="16.65" stroke-linecap="round" />
       </svg>
       <span class="otfw-search-label">Search</span>
-      <kbd class="otfw-search-kbd">⌘K</kbd>
     </button>
   );
 }
