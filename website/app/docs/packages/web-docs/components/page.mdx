@@ -80,11 +80,11 @@ Rendered:
 
 ## CodeBlock
 
-A standalone code block — the same header-and-copy-button chrome as a Markdown fence,
-but built from a string instead of build-time highlighting. Reach for it when the code
-doesn't come from a fence: inside `Tabs`, or anywhere you have the source as a JS
-value. Props: `code` (the source, required), and optional `lang` (a language chip) and
-`name` (a filename shown in the header).
+A code block for **dynamic, runtime code** — source you hold as a JavaScript value
+rather than a literal Markdown fence. Reach for it where a fence can't go: as the
+`content` of a `Tabs` panel, or any value built at runtime. It renders the same
+header-and-copy-button chrome as a fence. Props: `code` (the source, required), and
+optional `lang` (a language chip) and `name` (a filename shown in the header).
 
 ```jsx
 import { CodeBlock } from "@opentf/web-docs";
@@ -96,8 +96,15 @@ Rendered:
 
 <CodeBlock lang="bash" name="terminal" code="bun add @opentf/web" />
 
+<Callout type="warning" title="No syntax highlighting yet">
+  `CodeBlock` renders its code as plain (unhighlighted) text. Highlighting happens at
+  build time in the compiler, which only sees literal Markdown fences — not a runtime
+  string prop. Runtime highlighting for `CodeBlock` is deferred to future work. Prefer
+  a fenced code block when the code is static; use `CodeBlock` only when it must be a
+  value (e.g. a tab panel).
+</Callout>
+
 <Callout type="info" title="Fenced code blocks get copy buttons for free">
   A plain Markdown fence in a docs page is highlighted at build time and decorated
-  with a copy button at runtime — no component needed. Use `CodeBlock` only when the
-  code isn't a fence (e.g. a tab panel).
+  with a copy button at runtime — no component needed.
 </Callout>

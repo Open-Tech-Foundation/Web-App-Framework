@@ -1,8 +1,10 @@
 // A code block matching the MDX front-end's `.otfw-code` structure (header bar with
 // an optional language/filename label and a copy button, above a `<pre>`). Use it for
 // code that doesn't come from a Markdown fence — e.g. a code panel inside `Tabs`:
-// `{ label, content: <CodeBlock code="…" /> }`. The text is not syntax-highlighted
-// (fenced blocks are, at build time). The docs layout's single delegated listener (on
+// `{ label, content: <CodeBlock code="…" /> }`. The text is NOT syntax-highlighted —
+// highlighting is a build-time (syntect) pass that only sees literal Markdown fences,
+// not a runtime string prop; runtime highlighting here is deferred future work. The
+// docs layout's single delegated listener (on
 // `#otfw-content`) drives the copy, so no wiring is needed here. The icon glyphs go
 // through `RawHtml` because inline `<svg>` would be created in the HTML namespace and
 // not render.
