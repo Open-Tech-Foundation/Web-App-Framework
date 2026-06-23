@@ -1,0 +1,56 @@
+---
+title: Installation
+description: Scaffold a new OTF Web project and start the dev server.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Installation
+
+## Scaffold a project
+
+```bash
+bun create @opentf/web my-app
+```
+
+The scaffolder is interactive — it sets up the project and lets you pick a styling
+solution and optional modules. npm and pnpm work too:
+
+```bash
+npm create @opentf/web@latest my-app
+pnpm create @opentf/web my-app
+```
+
+## Run the dev server
+
+```bash
+cd my-app
+bun install
+bun run dev
+```
+
+The dev server compiles on demand and hot-reloads on save. Build for production with:
+
+```bash
+bun run build
+```
+
+The output in `dist/` is a static bundle you can host anywhere.
+
+<Callout type="tip" title="Requirements">
+  OTF Web targets modern browsers and runs its toolchain on Bun or Node 18+.
+</Callout>
+
+## Editor setup
+
+The compiler uses a custom JSX pipeline. Point your `tsconfig.json` (or
+`jsconfig.json`) at it so the language server understands your components:
+
+```json
+{
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "@opentf/web"
+  }
+}
+```

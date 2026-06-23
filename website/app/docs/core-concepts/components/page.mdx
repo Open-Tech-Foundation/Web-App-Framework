@@ -1,0 +1,56 @@
+---
+title: Components
+description: Every component compiles to a standard Custom Element. Props are reactive and children are slotted.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Components
+
+A PascalCase function that returns JSX compiles to a Custom Element. Import it and use
+it as a tag — no registration step.
+
+```jsx
+function Badge({ label }) {
+  return <span class="badge">{label}</span>;
+}
+
+export default function App() {
+  return <Badge label="New" />;
+}
+```
+
+`Badge.jsx` registers as `<web-badge>`, but you reference it by name.
+
+## Props
+
+Props are passed as attributes and destructured from the parameter. They are
+**reactive** — when a parent passes a new value, the child updates in place.
+
+```jsx
+function Greeting({ name = "world" }) {
+  return <h1>Hello, {name}</h1>;
+}
+```
+
+<Callout type="tip" title="Defaults">
+  Destructuring defaults (`{ name = "world" }`) work as written.
+</Callout>
+
+## Children
+
+Render passed children with `props.children`:
+
+```jsx
+function Card({ children }) {
+  return <div class="card">{children}</div>;
+}
+```
+
+## Native interop
+
+Because each component is a real `HTMLElement`, it works outside OTF Web too:
+
+```html
+<web-badge label="Beta"></web-badge>
+```

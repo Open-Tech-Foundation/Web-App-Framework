@@ -1,0 +1,34 @@
+---
+title: CLI
+description: The otfw command — dev server, production build, and static generation.
+---
+
+# CLI
+
+The `otfw` command (from `@opentf/web-cli`) drives the toolchain. Projects expose it
+through `package.json` scripts (`bun run dev`, `bun run build`).
+
+| Command | Description |
+| --- | --- |
+| `otfw dev` | Start the dev server with on-demand compile and hot reload. |
+| `otfw build` | Compile and bundle to a static `dist/`. |
+| `otfw build --ssg` | Build and pre-render every route to static HTML. |
+
+```bash
+otfw dev            # development
+otfw build --ssg    # production, static-rendered
+```
+
+## Scaffolding
+
+Create a new project with the `create` initializer:
+
+```bash
+bun create @opentf/web my-app
+```
+
+## Dev server notes
+
+- Serves your `public/` directory at the site root (e.g. `/logo.png`).
+- Compiles `.css` entries (including Tailwind) on request.
+- Surfaces compile errors in an overlay.

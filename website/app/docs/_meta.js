@@ -1,12 +1,11 @@
-// Sidebar order + labels for the docs section. Unlisted folders are appended
-// alphabetically using their frontmatter title. (web-form is route-excluded.)
+// Sidebar order + labels for the docs section. Folders without a page render as
+// group subheadings; their children are the links beneath them. Unlisted folders are
+// appended alphabetically. (web-form is route-excluded.)
 export default {
   index: "Introduction",
-  concepts: "Core Concepts",
-  reactivity: "Reactivity",
+  "getting-started": "Getting Started",
+  "core-concepts": "Core Concepts",
   routing: "Routing",
-  advanced: "Advanced",
-  testing: "Testing",
-  api: "API Reference",
-  guide: "MDX Guide",
+  guides: "Guides",
+  reference: "Reference",
 };

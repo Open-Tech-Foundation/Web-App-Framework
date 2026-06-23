@@ -1,0 +1,43 @@
+---
+title: Pages & Layouts
+description: File-based routing with nested layouts and a not-found page.
+---
+
+# Pages & Layouts
+
+Routing follows the folder tree under `app/`. A folder's `page.jsx` is its route.
+
+```text
+app/
+├─ page.jsx          # /
+├─ about/page.jsx    # /about
+└─ blog/page.jsx     # /blog
+```
+
+## Layouts
+
+A `layout.jsx` wraps every route at or below its folder. Render the active route with
+`props.children`:
+
+```jsx
+export default function Layout(props) {
+  return (
+    <div class="shell">
+      <Nav />
+      <main>{props.children}</main>
+    </div>
+  );
+}
+```
+
+Layouts nest: `app/layout.jsx` wraps `app/blog/layout.jsx` wraps `app/blog/page.jsx`.
+
+## Not found
+
+`app/404.jsx` renders when no route matches.
+
+```jsx
+export default function NotFound() {
+  return <h1>Page not found</h1>;
+}
+```

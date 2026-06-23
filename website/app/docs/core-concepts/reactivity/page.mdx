@@ -1,0 +1,62 @@
+---
+title: Reactivity
+description: Signal-based state with $state, $derived, and $effect — no .value boilerplate.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Reactivity
+
+Reactivity is signal-based, but the compiler hides the plumbing. You work with plain
+variables; updates touch only the DOM nodes that read them.
+
+## $state
+
+Declare reactive state with `$state`. Read and write it like a normal variable.
+
+```js
+let count = $state(0);
+
+count++;        // reassign
+count = 10;     // or set directly
+```
+
+Objects and arrays are reactive too — reassign to trigger updates:
+
+```js
+let todos = $state([]);
+todos = [...todos, { text: "Ship it" }];
+```
+
+## $derived
+
+`$derived` creates a cached value that recomputes only when its dependencies change.
+Pass an expression or a function:
+
+```js
+let count = $state(2);
+const doubled = $derived(count * 2);          // 4 → 6 when count is 3
+const label   = $derived(() => `x${count}`);
+```
+
+## $effect
+
+`$effect` runs a side effect and re-runs whenever any signal it reads changes.
+
+```js
+let count = $state(0);
+
+$effect(() => {
+  document.title = `Count: ${count}`;
+});
+```
+
+<Callout type="warning" title="Keep state in signals">
+  The compiler tracks values declared with `$state`. Mutating state held elsewhere
+  won't be observed.
+</Callout>
+
+## Single source of reactivity
+
+All reactive primitives come from `@opentf/web`. The runtime guards against duplicate
+copies of the signals engine being bundled, which would silently break tracking.

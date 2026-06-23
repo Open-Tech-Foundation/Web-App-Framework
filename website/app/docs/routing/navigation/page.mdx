@@ -1,0 +1,42 @@
+---
+title: Navigation
+description: Client-side navigation with the Link component and the reactive router API.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Navigation
+
+## The Link component
+
+`<Link>` performs client-side navigation — no full page reload. It renders a real
+anchor, so modified clicks (new tab, etc.) still work.
+
+```jsx
+import { Link } from "@opentf/web";
+
+<Link href="/about">About</Link>
+```
+
+## The router
+
+The global `router` is reactive — read its fields directly (no `.value`):
+
+```jsx
+import { router } from "@opentf/web";
+
+<nav class={router.pathname === "/" ? "home" : ""}>…</nav>
+```
+
+| Member | Description |
+| --- | --- |
+| `router.pathname` | Current path (reactive). |
+| `router.params` | Dynamic route params (reactive). |
+| `router.query` | Parsed query string (reactive). |
+| `router.push(path)` | Navigate, pushing a history entry. |
+| `router.replace(path)` | Navigate, replacing the current entry. |
+
+<Callout type="tip" title="Reactive reads">
+  Reading `router.pathname` inside a binding (an attribute or `{}` expression) updates
+  the UI automatically when the route changes.
+</Callout>

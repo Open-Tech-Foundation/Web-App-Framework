@@ -1,0 +1,40 @@
+---
+title: Lifecycle
+description: Run code when a component mounts and clean it up when it unmounts.
+---
+
+# Lifecycle
+
+Two global hooks cover a component's life. Neither needs an import.
+
+## onMount
+
+Runs once, after the component is connected to the DOM — the place for focus,
+measurements, subscriptions, or timers.
+
+```jsx
+export default function Clock() {
+  let now = $state(Date.now());
+
+  onMount(() => {
+    const id = setInterval(() => (now = Date.now()), 1000);
+    return () => clearInterval(id);
+  });
+
+  return <time>{now}</time>;
+}
+```
+
+Returning a function from `onMount` registers it as cleanup.
+
+## onCleanup
+
+Runs when the component is removed from the DOM. Use it to tear down anything that
+outlives a render:
+
+```jsx
+onCleanup(() => socket.close());
+```
+
+Both hooks work inside your own helper functions, so you can build reusable
+"composables" around them.

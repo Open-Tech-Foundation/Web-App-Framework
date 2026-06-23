@@ -1,0 +1,30 @@
+---
+title: Dynamic Routes
+description: Match path segments with [param] and [...rest] folders, and read them from router.params.
+---
+
+# Dynamic Routes
+
+Wrap a folder name in brackets to capture a path segment.
+
+| Folder | Matches | `router.params` |
+| --- | --- | --- |
+| `app/blog/[slug]/page.jsx` | `/blog/hello` | `{ slug: "hello" }` |
+| `app/docs/[...path]/page.jsx` | `/docs/a/b/c` | `{ path: "a/b/c" }` |
+
+`[param]` matches one segment; `[...rest]` is a catch-all matching the remainder.
+
+## Reading params
+
+Params are exposed on the reactive `router`:
+
+```jsx
+import { router } from "@opentf/web";
+
+export default function Post() {
+  return <h1>Post: {router.params.slug}</h1>;
+}
+```
+
+Reading `router.params` inside a binding keeps the view in sync as you navigate
+between matching routes.

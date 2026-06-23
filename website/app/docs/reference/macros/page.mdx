@@ -1,0 +1,42 @@
+---
+title: Reactive Macros
+description: The compiler-provided globals — $state, $derived, $effect, $ref — and lifecycle hooks.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Reactive Macros
+
+Macros are compiler globals. You never import them — the compiler rewrites them and
+injects the runtime.
+
+| Macro | Signature | Purpose |
+| --- | --- | --- |
+| `$state` | `$state(initial)` | Reactive state. Read/write the variable directly. |
+| `$derived` | `$derived(expr)` | Cached value recomputed when dependencies change. |
+| `$effect` | `$effect(() => {})` | Side effect that re-runs on dependency change. |
+| `$ref` | `$ref()` | A handle to a DOM node, bound with `ref={…}`. |
+
+```jsx
+let count = $state(0);
+const doubled = $derived(count * 2);
+
+$effect(() => console.log(doubled));
+
+const box = $ref();
+<div ref={box} />;
+```
+
+## Lifecycle hooks
+
+Also global — no import needed.
+
+| Hook | Runs |
+| --- | --- |
+| `onMount(fn)` | After the component connects to the DOM. Return a function to clean up. |
+| `onCleanup(fn)` | When the component is removed. |
+
+<Callout type="info" title="Why no .value">
+  The compiler tracks macro variables statically, so reads and writes are plain
+  variable access — the reactivity is wired at build time.
+</Callout>

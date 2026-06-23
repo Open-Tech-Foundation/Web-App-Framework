@@ -1,0 +1,32 @@
+---
+title: Route Guards
+description: Protect navigation with a centralized async route guard.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Route Guards
+
+Add `app/routeGuard.js` and it is discovered automatically. It runs before each
+navigation, so you can check sessions or pre-fetch data — and it can be async.
+
+```js
+export default async function routeGuard(to, { next, redirect }) {
+  if (to.pathname.startsWith("/admin") && !(await isLoggedIn())) {
+    return redirect("/login");
+  }
+  return next();
+}
+```
+
+| Argument | Description |
+| --- | --- |
+| `to` | The target route (`pathname`, `params`, `query`). |
+| `next()` | Allow the navigation. |
+| `redirect(path)` | Cancel and navigate elsewhere. |
+| `replace(path)` | Redirect without adding a history entry. |
+
+<Callout type="warning" title="Always resolve">
+  Return one of `next`, `redirect`, or `replace` from every path so navigation never
+  stalls.
+</Callout>

@@ -1,0 +1,42 @@
+---
+title: Styling
+description: Global CSS, CSS Modules, inline style objects, and dynamic classes.
+---
+
+# Styling
+
+OTF Web is unopinionated about styling — use whatever you like.
+
+## Global CSS
+
+Import a stylesheet from `index.html` or your entry, and use `class` as usual:
+
+```jsx
+<div class="card">…</div>
+```
+
+## CSS Modules
+
+Files named `*.module.css` are scoped — class names are hashed and imported:
+
+```jsx
+import styles from "./Card.module.css";
+
+<div class={styles.card}>…</div>
+```
+
+## Inline styles
+
+Pass a style object (camelCased properties). Values can be reactive:
+
+```jsx
+<div style={{ color: active ? "tomato" : "inherit", padding: "1rem" }} />
+```
+
+## Dynamic classes
+
+A class bound to a signal updates in place:
+
+```jsx
+<span class={done ? "line-through" : ""}>{text}</span>
+```

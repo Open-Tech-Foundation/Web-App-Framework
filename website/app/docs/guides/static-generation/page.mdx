@@ -1,0 +1,32 @@
+---
+title: Static Generation
+description: Pre-render every route to static HTML with otfw build --ssg.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Static Generation
+
+OTF Web can pre-render your routes to static HTML at build time. The output is plain
+strings — there is no server and no DOM in the render path — so it deploys to any
+static host.
+
+## Build
+
+```bash
+otfw build --ssg
+```
+
+Each route is rendered to an `.html` file under `dist/`, alongside the hashed JS and
+CSS bundles. On load, the same components take over the static markup.
+
+<Callout type="info" title="No hydration cost">
+  The static HTML is already the final markup. Components attach to it directly rather
+  than reconciling a virtual tree.
+</Callout>
+
+## What gets rendered
+
+Every `page.jsx`/`page.mdx` route is pre-rendered with its layout chain. Components
+that only run in the browser (those touching `window` during render) are skipped
+gracefully and filled in on the client.

@@ -1,0 +1,39 @@
+---
+title: Project Structure
+description: How an OTF Web project is laid out and which files have special meaning.
+---
+
+# Project Structure
+
+A new project looks like this:
+
+```text
+my-app/
+├─ app/
+│  ├─ page.jsx        # route: /
+│  ├─ layout.jsx      # shared layout wrapping all routes
+│  ├─ 404.jsx         # not-found page
+│  ├─ about/
+│  │  └─ page.jsx     # route: /about
+│  └─ global.css
+├─ index.html         # mount point + injected bundle
+└─ package.json
+```
+
+## Special files
+
+| File | Role |
+| --- | --- |
+| `page.jsx` | A route. The folder path is the URL (`app/about/page.jsx` → `/about`). |
+| `layout.jsx` | Wraps every route below it; nests with the folder tree. |
+| `404.jsx` | Rendered when no route matches. |
+| `index.html` | The HTML shell. The toolchain mounts the app into `#app` and injects the bundle. |
+
+Every other PascalCase `.jsx`/`.tsx` file is a reusable component — no registration
+needed (see [Components](/docs/core-concepts/components)).
+
+## Conventions
+
+- `.jsx`/`.tsx` files must have a default export.
+- Components are PascalCase (`UserCard.jsx`).
+- You never import `$state`, `onMount`, etc. — the compiler injects them.

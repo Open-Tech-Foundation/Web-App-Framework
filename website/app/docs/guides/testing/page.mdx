@@ -1,0 +1,36 @@
+---
+title: Testing
+description: Render components in tests with @opentf/web-test, a Testing Library-style API.
+---
+
+# Testing
+
+`@opentf/web-test` renders components into a container and returns Testing
+Library-style queries, plus `userEvent` for interactions.
+
+```js
+import { render, cleanup, userEvent } from "@opentf/web-test";
+import { afterEach, expect, test } from "vitest";
+import Counter from "./Counter.jsx";
+
+afterEach(cleanup);
+
+test("increments on click", async () => {
+  const { getByText } = render(Counter);
+
+  await userEvent.click(getByText("+"));
+
+  expect(getByText("1")).toBeTruthy();
+});
+```
+
+## API
+
+| Export | Description |
+| --- | --- |
+| `render(Component, props?)` | Mounts the component; returns `{ container, unmount, ...queries }`. |
+| `userEvent` | Simulates user interactions (click, type, …). |
+| `cleanup()` | Unmounts everything; call it after each test. |
+
+Because components are real DOM elements, queries operate on the actual rendered
+output — no special wrappers.

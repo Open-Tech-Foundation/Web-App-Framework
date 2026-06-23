@@ -1,0 +1,35 @@
+---
+title: Runtime API
+description: Values and components exported from @opentf/web.
+---
+
+# Runtime API
+
+These are imported from `@opentf/web`. (Reactive primitives are also what the macros
+compile to — prefer the macros in components.)
+
+## Reactivity
+
+| Export | Description |
+| --- | --- |
+| `signal(initial)` | Create a signal. Read/write via `.value`. |
+| `computed(fn)` | Derived signal, cached. |
+| `effect(fn)` | Run a reactive side effect; returns a disposer. |
+| `batch(fn)` | Group writes into a single update. |
+
+## Routing
+
+| Export | Description |
+| --- | --- |
+| `Link` | Client-side navigation anchor (`<Link href="…">`). |
+| `router` | Reactive route facade: `pathname`, `params`, `query`, `push`, `replace`. |
+
+## Components & utilities
+
+| Export | Description |
+| --- | --- |
+| `ErrorBoundary` | Catches render errors in its subtree and shows a fallback. |
+| `Portal` | Renders children into a different DOM location. |
+| `RawHtml` | Injects a trusted HTML string. |
+| `createContext(default)` / `readContext(ctx)` | Provide and consume context across the tree. |
+| `mount(view, target)` | Imperatively mount a view into an element. |

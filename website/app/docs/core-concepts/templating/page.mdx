@@ -1,0 +1,52 @@
+---
+title: Templating
+description: Conditionals, lists, and element refs inside JSX.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Templating
+
+JSX is standard — use ordinary JavaScript for control flow. The compiler turns dynamic
+expressions into surgical DOM updates anchored by hidden comment nodes.
+
+## Conditionals
+
+Ternaries and `&&` work inline and stay reactive:
+
+```jsx
+{isLoading ? <Spinner /> : <Content />}
+{error && <p class="error">{error}</p>}
+```
+
+## Lists
+
+Render arrays with `.map`. Give each item a stable `key` so updates reorder nodes
+instead of rebuilding them:
+
+```jsx
+<ul>
+  {todos.map((todo) => (
+    <li key={todo.id}>{todo.text}</li>
+  ))}
+</ul>
+```
+
+<Callout type="tip" title="Keys enable minimal moves">
+  With keys, reordering a list moves the existing DOM nodes (longest-increasing-subsequence
+  reconciliation) rather than re-creating them.
+</Callout>
+
+## Refs
+
+`$ref()` gives you a handle to a DOM node. Read it after mount:
+
+```jsx
+export default function Field() {
+  const input = $ref();
+
+  onMount(() => input.focus());
+
+  return <input ref={input} />;
+}
+```
