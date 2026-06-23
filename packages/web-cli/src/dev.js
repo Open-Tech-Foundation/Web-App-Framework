@@ -156,11 +156,18 @@ export async function runDev() {
       : html + injected;
   }
 
-  // Serve a static file from the project root (no traversal outside it). Tailwind
+  // Serve a static file from the project root, falling back to `public/` (whose
+  // contents the build copies to the dist root, so `/logo.png` resolves there in
+  // production — mirror that in dev). No traversal outside the project. Tailwind
   // entry stylesheets are compiled on request.
   async function serveStatic(pathname) {
-    const file = join(root, pathname);
-    if (!file.startsWith(root) || !existsSync(file)) return null;
+    let file = join(root, pathname);
+    if (!file.startsWith(root)) return null;
+    if (!existsSync(file)) {
+      const fromPublic = join(root, "public", pathname);
+      if (!fromPublic.startsWith(join(root, "public") + "/") || !existsSync(fromPublic)) return null;
+      file = fromPublic;
+    }
     const ext = pathname.split(".").pop();
     if (ext === "css") {
       const source = readFileSync(file, "utf8");
