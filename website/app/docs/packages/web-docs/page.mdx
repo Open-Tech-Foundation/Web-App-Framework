@@ -1,0 +1,69 @@
+---
+title: web-docs
+description: A documentation-site generator for OTF Web — themed shell, build-time nav, and MDX content.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# @opentf/web-docs
+
+The documentation theme that powers this very site. It layers a themed shell —
+navbar, sidebar, table of contents, breadcrumbs, prev/next — over your MDX content,
+and generates the navigation tree from the file system at build time.
+
+```bash
+bun add @opentf/web-docs
+```
+
+<Callout type="info" title="A package, not a fork">
+  Your docs site is an ordinary OTF Web app that imports web-docs. The same compiler,
+  router, and SSG build it — there is no separate documentation runtime.
+</Callout>
+
+## Content is MDX
+
+`.mdx` files are routes: Markdown plus JSX components. Each page starts with
+frontmatter; `title` feeds the sidebar, breadcrumbs, and `<title>`.
+
+```mdx
+---
+title: Reactivity
+description: Signal-based state.
+---
+
+# Reactivity
+
+Prose, `inline code`, and components side by side.
+
+import { Callout } from "@opentf/web-docs";
+
+<Callout type="tip">Mix components into Markdown freely.</Callout>
+```
+
+Fenced code is highlighted at build time, and every code block gets a copy button
+automatically.
+
+## The shell
+
+Wrap your docs routes in `DocsLayout`, fed by the generated nav tree:
+
+```jsx
+// app/docs/layout.jsx
+import { DocsLayout } from "@opentf/web-docs";
+import nav from "@opentf/web-docs/nav";
+import config from "../../otfw.config.js";
+
+export default function Layout(props) {
+  return (
+    <DocsLayout config={config.docs} nav={nav}>
+      {props.children}
+    </DocsLayout>
+  );
+}
+```
+
+`@opentf/web-docs/nav` is a virtual module: the build plugin scans your docs folder
+and resolves it to the ordered tree the sidebar renders.
+
+Continue with [Components](/docs/packages/web-docs/components) and
+[Configuration](/docs/packages/web-docs/configuration).

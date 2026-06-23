@@ -1,0 +1,84 @@
+---
+title: web-form
+description: A reactive, path-based form engine for OTF Web — signal-bound fields, nested state, and pluggable validation.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# @opentf/web-form
+
+A high-performance form engine built on OTF Web's signals. Fields bind directly to
+state, updates are surgical (no re-render), and deeply nested values are addressed by
+path string.
+
+```bash
+bun add @opentf/web-form
+```
+
+## createForm
+
+`createForm` returns a stable form object holding reactive `values`, `errors`, and
+status flags. Bind inputs with `register` and submit with `handleSubmit`.
+
+```jsx
+import { createForm } from "@opentf/web-form";
+
+export function LoginForm() {
+  const form = createForm({
+    initialValues: { email: "", password: "" },
+  });
+
+  const onSubmit = (values) => console.log(values);
+
+  return (
+    <form onsubmit={form.handleSubmit(onSubmit)}>
+      <input {...form.register("email")} type="email" />
+      <input {...form.register("password")} type="password" />
+      <button type="submit">Sign in</button>
+    </form>
+  );
+}
+```
+
+`register(path)` spreads the four bindings a field needs — `name`, `value`,
+`oninput`, and `onblur` — so a controlled input is one line.
+
+<Callout type="tip" title="Works with any input">
+  `register` follows the standard `value` / `oninput` contract, so it binds native
+  inputs and custom components alike — including checkboxes (it also returns
+  `checked`).
+</Callout>
+
+## Reactive state
+
+Read `form.values`, `form.errors`, and `form.touched` directly in your template —
+they are reactive proxies, so only the nodes that read a changed path update.
+
+```jsx
+<p>Hello, {form.values.email || "stranger"}</p>
+{form.errors.email ? <span class="error">{form.errors.email}</span> : null}
+```
+
+## Status flags
+
+The form exposes derived flags for submit buttons and UI state:
+
+| Flag | Meaning |
+| --- | --- |
+| `isValid` | No errors are currently set. |
+| `isChanged` | Values differ from `initialValues`. |
+| `isTouched` | At least one field has been blurred. |
+| `isSubmitting` | An async submit handler is in flight. |
+| `isValidating` | An async validator is running. |
+| `isSubmitted` | A submit has completed successfully. |
+| `submitCount` | Number of submit attempts. |
+
+```jsx
+<button type="submit" disabled={form.isSubmitting || !form.isValid}>
+  {form.isSubmitting ? "Saving…" : "Save"}
+</button>
+```
+
+Next: [Validation](/docs/packages/web-form/validation) ·
+[Nested State](/docs/packages/web-form/nested-state) ·
+[API Reference](/docs/packages/web-form/api).

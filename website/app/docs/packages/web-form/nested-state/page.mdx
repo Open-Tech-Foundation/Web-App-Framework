@@ -1,0 +1,60 @@
+---
+title: Nested State
+description: Address deeply nested objects and arrays with path strings for fine-grained, efficient updates.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Nested State
+
+web-form addresses state by **path string**, so objects and arrays nest to any depth
+without special wiring. A write touches only the signals along that path.
+
+```jsx
+const form = createForm({
+  initialValues: {
+    profile: { firstName: "", lastName: "" },
+    settings: { notifications: { email: true } },
+  },
+});
+
+<input {...form.register("profile.firstName")} />
+<input {...form.register("settings.notifications.email")} type="checkbox" />
+```
+
+Read nested values and errors with ordinary property access on the reactive proxies:
+
+```jsx
+<p>{form.values.profile.firstName}</p>
+{form.errors.profile?.firstName ? (
+  <span class="error">{form.errors.profile.firstName}</span>
+) : null}
+```
+
+## Arrays
+
+Index into arrays with bracket-free dotted paths:
+
+```jsx
+const form = createForm({
+  initialValues: { tags: ["", ""] },
+});
+
+<input {...form.register("tags.0")} />
+<input {...form.register("tags.1")} />
+```
+
+<Callout type="tip" title="Fine-grained by design">
+  Because each path owns its own signal, editing `tags.1` never re-runs effects that
+  read `tags.0` — large forms stay fast without memoization.
+</Callout>
+
+## Resetting
+
+`reset()` returns the form to its `initialValues`; pass an object to reset to new
+baseline values (and make them the new "initial" for `isChanged`).
+
+```jsx
+form.reset();                              // back to initial
+form.reset({ profile: { firstName: "Ada" } }); // new baseline
+```

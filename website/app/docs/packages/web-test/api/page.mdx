@@ -1,0 +1,49 @@
+---
+title: API Reference
+description: render, queries, userEvent, and cleanup.
+---
+
+# API Reference
+
+## `render(Component, props?)`
+
+Mounts `Component` into a container appended to `document.body` and returns:
+
+| Member | Description |
+| --- | --- |
+| `container` | The element the component was rendered into. |
+| `unmount()` | Removes the component and runs cleanup. |
+| `…queries` | All `@testing-library/dom` bound queries (`getByText`, `getByTestId`, `queryByRole`, …). |
+
+```jsx
+const { container, getByRole, unmount } = render(Greeting, { name: "Ada" });
+expect(getByRole("heading").textContent).toBe("Hello, Ada");
+unmount();
+```
+
+## Queries
+
+The returned queries are `@testing-library/dom` queries pre-bound to the container.
+The usual variants apply:
+
+- `getBy*` — throws if not found (assert presence).
+- `queryBy*` — returns `null` if not found (assert absence).
+- `findBy*` — returns a Promise (await async appearance).
+
+## `userEvent`
+
+Re-exported from `@testing-library/user-event` for realistic interactions.
+
+```jsx
+import { userEvent } from "@opentf/web-test";
+
+const user = userEvent.setup();
+await user.click(getByTestId("submit"));
+await user.type(getByLabelText("Email"), "ada@example.com");
+```
+
+## `cleanup()`
+
+Removes all mounted components and disposes their effects. Called automatically after
+each test by the recommended setup; call it manually only if you opt out of the
+preload.

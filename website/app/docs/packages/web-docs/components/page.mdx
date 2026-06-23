@@ -1,0 +1,87 @@
+---
+title: Components
+description: Content components shipped with web-docs — callouts, tabs, code groups, and steps.
+---
+
+import { Callout, Steps } from "@opentf/web-docs";
+
+# Components
+
+Import these from `@opentf/web-docs` and use them inline in any `.mdx` page.
+
+## Callout
+
+Admonition box. `type` is `note`, `tip`, `info`, `warning`, or `danger`; `title` is
+optional and defaults to the type.
+
+```mdx
+import { Callout } from "@opentf/web-docs";
+
+<Callout type="warning" title="Heads up">
+  APIs may change while OTF Web is in pre-release.
+</Callout>
+```
+
+<Callout type="note">A neutral note.</Callout>
+<Callout type="tip" title="Tip">Pass a bare expression to `$derived(a + b)`.</Callout>
+<Callout type="warning" title="Experimental">Pre-release APIs may change.</Callout>
+<Callout type="danger" title="Avoid">Don't mutate state outside a signal.</Callout>
+
+## Steps
+
+Numbered walkthrough. Each child heading becomes a numbered step, so it composes with
+plain Markdown.
+
+```mdx
+import { Steps } from "@opentf/web-docs";
+
+<Steps>
+### Install
+Run `bun add @opentf/web`.
+
+### Start the dev server
+Run `bun run dev`.
+</Steps>
+```
+
+<Steps>
+### Install
+Run `bun add @opentf/web`.
+
+### Start the dev server
+Run `bun run dev` and open the printed URL.
+</Steps>
+
+## Tabs
+
+Switchable panels. Pass `tabs` as an array of `{ label, content }`.
+
+```jsx
+import { Tabs } from "@opentf/web-docs";
+
+<Tabs
+  tabs={[
+    { label: "bun", content: <pre><code>bun add @opentf/web</code></pre> },
+    { label: "npm", content: <pre><code>npm i @opentf/web</code></pre> },
+  ]}
+/>
+```
+
+## CodeGroup
+
+Tabs specialized for grouping code blocks (e.g. package-manager variants). Pass
+`items` as `{ label, content }` where `content` is a fenced code block.
+
+```jsx
+import { CodeGroup } from "@opentf/web-docs";
+
+<CodeGroup items={[
+  { label: "bun", content: <pre><code>bun create @opentf/web app</code></pre> },
+  { label: "pnpm", content: <pre><code>pnpm create @opentf/web app</code></pre> },
+]} />
+```
+
+<Callout type="info" title="Code blocks get copy buttons for free">
+  Any fenced code block in a docs page is highlighted at build time and decorated
+  with a copy button at runtime — no component needed.
+</Callout>

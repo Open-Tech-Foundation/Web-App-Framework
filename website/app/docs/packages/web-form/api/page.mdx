@@ -1,0 +1,60 @@
+---
+title: API Reference
+description: createForm options, the returned form object, and the register binding.
+---
+
+# API Reference
+
+## `createForm(options)`
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `initialValues` | `object` | The starting form state. Defines the shape for `register` paths. |
+| `validator` | `(values) => { errors }` | Returns path-keyed errors (may be async). |
+| `mode` | `"onSubmit" \| "onBlur" \| "onChange"` | When to validate. Default `onSubmit`. |
+| `reValidateMode` | `"onSubmit" \| "onBlur" \| "onChange"` | When to re-validate after the first error. |
+
+Returns a stable `form` object.
+
+## The `form` object
+
+### Methods
+
+| Member | Description |
+| --- | --- |
+| `register(path)` | Returns `{ name, value, checked, error, isTouched, oninput, onblur }` to spread onto an input. |
+| `handleSubmit(fn)` | Returns a submit handler; validates, then calls `fn(values)` only when valid. |
+| `reset(values?)` | Resets to `initialValues`, or to `values` (which become the new baseline). |
+
+### Reactive state
+
+| Member | Description |
+| --- | --- |
+| `values` | Reactive proxy of the current values (read nested paths directly). |
+| `errors` | Reactive proxy of current errors, keyed by path. |
+| `touched` | Reactive proxy of blurred fields. |
+| `changed` | Reactive proxy of fields changed since mount. |
+
+### Status flags
+
+| Flag | Description |
+| --- | --- |
+| `isValid` | No errors currently set. |
+| `isChanged` | Values differ from `initialValues`. |
+| `isTouched` | At least one field blurred. |
+| `isSubmitting` | Async submit in flight. |
+| `isValidating` | Async validator running. |
+| `isSubmitted` | A submit completed successfully. |
+| `submitCount` | Number of submit attempts. |
+
+## `register(path)` bindings
+
+| Prop | Purpose |
+| --- | --- |
+| `name` | The field path. |
+| `value` | Current value (bound to the field's signal). |
+| `checked` | Same signal, for checkbox/radio inputs. |
+| `error` | Current error for this path, if any. |
+| `isTouched` | Whether this field has been blurred. |
+| `oninput` | Writes the input's value (or `checked`) back to state. |
+| `onblur` | Marks touched and triggers `onBlur`-mode validation. |

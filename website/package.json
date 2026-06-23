@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "EXCLUDE_ROUTES=forms-demo,web-form otfw dev",
-    "build": "EXCLUDE_ROUTES=forms-demo,web-form otfw build",
-    "build:ssg": "EXCLUDE_ROUTES=forms-demo,web-form otfw build --ssg"
+    "dev": "otfw dev",
+    "build": "otfw build",
+    "build:ssg": "otfw build --ssg"
   },
   "dependencies": {
     "@opentf/web": "^0.5.0",

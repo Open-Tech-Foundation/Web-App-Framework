@@ -1,0 +1,85 @@
+---
+title: Validation
+description: Validate with a plain function or a schema library like Zod, and control when validation runs.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Validation
+
+A validator is any function that receives the current values and returns an `errors`
+object keyed by field path. Return an empty object when everything is valid.
+
+```jsx
+const form = createForm({
+  initialValues: { email: "", age: 0 },
+  validator: (values) => {
+    const errors = {};
+    if (!values.email.includes("@")) errors.email = "Invalid email";
+    if (values.age < 18) errors.age = "Must be 18 or older";
+    return { errors };
+  },
+});
+```
+
+Errors surface on `form.errors` by the same path you registered:
+
+```jsx
+<input {...form.register("email")} />
+{form.errors.email ? <span class="error">{form.errors.email}</span> : null}
+```
+
+## Schema validation (Zod)
+
+Wrap a schema in a small resolver that maps issues to the path-keyed shape:
+
+```jsx
+import { z } from "zod";
+
+const schema = z.object({
+  email: z.string().email("Invalid email"),
+  age: z.number().min(18, "Must be 18 or older"),
+});
+
+const zodResolver = (schema) => (values) => {
+  const result = schema.safeParse(values);
+  if (result.success) return { errors: {} };
+  const errors = {};
+  for (const issue of result.error.issues) {
+    errors[issue.path.join(".")] = issue.message;
+  }
+  return { errors };
+};
+
+const form = createForm({
+  initialValues: { email: "", age: 0 },
+  validator: zodResolver(schema),
+  mode: "onBlur",
+});
+```
+
+<Callout type="info" title="Async validators">
+  A validator may return a Promise. While it resolves, `form.isValidating` is `true`
+  — useful for server-side uniqueness checks.
+</Callout>
+
+## When validation runs
+
+The `mode` option controls the trigger:
+
+| `mode` | Validates… |
+| --- | --- |
+| `onSubmit` | only on submit (default). |
+| `onBlur` | when a field loses focus, and on submit. |
+| `onChange` | on every keystroke, and immediately on mount. |
+
+```jsx
+const form = createForm({
+  initialValues: { email: "" },
+  validator,
+  mode: "onChange",
+});
+```
+
+`handleSubmit` always runs the validator first and only calls your handler when
+`isValid` is `true`, so a final check is guaranteed regardless of `mode`.

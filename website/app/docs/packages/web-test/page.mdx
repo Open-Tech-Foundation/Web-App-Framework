@@ -1,0 +1,57 @@
+---
+title: web-test
+description: DOM testing for OTF Web — render components, drive interactions, and assert on reactive updates.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# @opentf/web-test
+
+A testing utility for OTF Web, inspired by Testing Library. It renders components into
+a real DOM (`happy-dom`), compiles JSX through the framework's own compiler, and
+bundles `@testing-library/dom` queries plus `user-event`.
+
+```bash
+bun add -d @opentf/web-test
+```
+
+## Setup
+
+Preload the setup module so test files compile JSX automatically and the DOM is reset
+between tests. Add a `bunfig.toml` at your package or workspace root:
+
+```toml
+[test]
+preload = ["@opentf/web-test/setup"]
+```
+
+<Callout type="info" title="Automatic cleanup">
+  The setup module calls `cleanup()` after each test, so mounted components are
+  removed and effects are disposed without per-test boilerplate.
+</Callout>
+
+## Writing a test
+
+```jsx
+import { expect, test, describe } from "bun:test";
+import { render, userEvent } from "@opentf/web-test";
+import Counter from "./Counter.jsx";
+
+describe("Counter", () => {
+  test("increments on click", async () => {
+    const { getByTestId } = render(Counter);
+    const user = userEvent.setup();
+    const btn = getByTestId("btn");
+
+    expect(btn.textContent).toBe("Count: 0");
+    await user.click(btn);
+    expect(btn.textContent).toBe("Count: 1");
+  });
+});
+```
+
+Because updates are signal-driven, asserting on `textContent` after an interaction
+reflects the surgical DOM change — no `act()` wrapper or flush needed.
+
+See the [API Reference](/docs/packages/web-test/api) for `render`, queries, and
+`userEvent`.

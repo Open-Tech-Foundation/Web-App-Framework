@@ -1,0 +1,66 @@
+---
+title: Configuration
+description: Site-wide options in otfw.config.js and per-folder ordering with _meta.js.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Configuration
+
+## Site config
+
+Site-wide options live under `docs` in `otfw.config.js` — brand, version, GitHub
+link, and the top-level nav (which supports per-link icons).
+
+```js
+import { defineDocsConfig } from "@opentf/web-docs/config";
+
+export default defineDocsConfig({
+  docs: {
+    title: "OTF Web",
+    version: "v0.4.0",
+    logo: "/logo.png",
+    github: "https://github.com/Open-Tech-Foundation/Web-App-Framework",
+    nav: [
+      { label: "Home", href: "/" },
+      { label: "Docs", href: "/docs" },
+    ],
+  },
+});
+```
+
+## The sidebar tree
+
+The sidebar is generated from the folder tree under your docs directory. A folder
+with a `page.*` becomes a link; a folder **without** one becomes a group subheading
+over its children. Nesting is arbitrary.
+
+Each folder's `_meta.js` sets the order and labels of its children. Listed keys come
+first in declared order; unlisted folders are appended alphabetically.
+
+```js
+// app/docs/_meta.js
+export default {
+  index: "Introduction",
+  "getting-started": "Getting Started",
+  "core-concepts": "Core Concepts",
+  packages: "Packages",
+  reference: "Reference",
+};
+```
+
+<Callout type="tip" title="Labels and order in one place">
+  A string value is the label (`"getting-started": "Getting Started"`). Omit a folder
+  from `_meta.js` and it still appears — just alphabetically, using a humanized name.
+</Callout>
+
+## Page frontmatter
+
+Per-page frontmatter controls how a page shows up:
+
+| Key | Effect |
+| --- | --- |
+| `title` | Sidebar label, breadcrumb, and document title. |
+| `description` | Meta description for SEO. |
+| `sidebar_label` | Overrides the sidebar text when it should differ from `title`. |
+| `order` | Tie-breaks ordering among siblings. |
