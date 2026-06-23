@@ -16,12 +16,13 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 - `Steps` component — a numbered, vertically-connected walkthrough where each child
   heading becomes a step (composes with plain Markdown headings in MDX).
 - `CodeBlock` component — renders the same `.otfw-code` header-and-`<pre>` structure
-  as the MDX front-end (including the copy button), so the docs layout's single
-  delegated copy listener handles it for free. Exported from the package root.
-- `Tabs` accepts a string `content` and renders it through `CodeBlock` — so a string
-  panel carries the same header and working copy button as a fenced block. Pass JSX
-  `content` for anything that isn't code. (`Tabs` also covers the package-manager
-  "code group" pattern, so a separate `CodeGroup` is no longer shipped.)
+  as the MDX front-end (including the copy button), for code that doesn't come from a
+  Markdown fence. The docs layout's single delegated copy listener handles it for
+  free. Exported from the package root.
+- `Tabs` renders `content` as-is — a string is plain text, a node is the node. For a
+  code panel with a copy button, pass a `CodeBlock`
+  (`{ label, content: <CodeBlock code="…" /> }`). `Tabs` covers the package-manager
+  "code group" pattern this way, so a separate `CodeGroup` is no longer shipped.
 - Navbar: active-route underline that updates on SPA navigation, per-link icons via
   a named `NavIcon` registry (`nav: [{ label, href, icon, external }]`), and a
   `version` badge next to the brand.

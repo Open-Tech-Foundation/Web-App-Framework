@@ -3,12 +3,12 @@ title: Components
 description: Content components shipped with web-docs — callouts, tabs, and steps.
 ---
 
-import { Callout, Steps, Tabs } from "@opentf/web-docs";
+import { Callout, Steps, Tabs, CodeBlock } from "@opentf/web-docs";
 
 export const demoTabs = [
-  { label: "bun", content: "bun add @opentf/web" },
-  { label: "npm", content: "npm i @opentf/web" },
-  { label: "pnpm", content: "pnpm add @opentf/web" },
+  { label: "bun", content: <CodeBlock code="bun add @opentf/web" /> },
+  { label: "npm", content: <CodeBlock code="npm i @opentf/web" /> },
+  { label: "pnpm", content: <CodeBlock code="pnpm add @opentf/web" /> },
 ];
 
 # Components
@@ -61,16 +61,16 @@ Run `bun run dev` and open the printed URL.
 ## Tabs
 
 Switchable panels — handy for package-manager variants (npm / pnpm / bun) or any
-alternative content. Pass `tabs` as an array of `{ label, content }`. A string
-`content` is rendered as a code block with its own copy button; pass a node for
-richer content.
+alternative content. Pass `tabs` as an array of `{ label, content }`. `content` is
+rendered as-is: a string is plain text, a node is the node. For a code panel with a
+copy button, pass a `CodeBlock`.
 
 ```jsx
-import { Tabs } from "@opentf/web-docs";
+import { Tabs, CodeBlock } from "@opentf/web-docs";
 
 <Tabs tabs={[
-  { label: "bun", content: "bun add @opentf/web" },
-  { label: "npm", content: "npm i @opentf/web" },
+  { label: "bun", content: <CodeBlock code="bun add @opentf/web" /> },
+  { label: "npm", content: <CodeBlock code="npm i @opentf/web" /> },
 ]} />
 ```
 

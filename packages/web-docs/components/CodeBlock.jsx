@@ -1,10 +1,11 @@
 // A code block matching the MDX front-end's `.otfw-code` structure (header bar with
-// an optional language/filename label and a copy button, above a `<pre>`). Used by
-// `Tabs` for string content — which doesn't pass through the MDX highlighter — so
-// those panels get the same copy button as fenced blocks. The docs layout's single
-// delegated listener (on `#otfw-content`) drives the copy, so no wiring is needed
-// here. The icon glyphs go through `RawHtml` because inline `<svg>` would be created
-// in the HTML namespace and not render.
+// an optional language/filename label and a copy button, above a `<pre>`). Use it for
+// code that doesn't come from a Markdown fence — e.g. a code panel inside `Tabs`:
+// `{ label, content: <CodeBlock code="…" /> }`. The text is not syntax-highlighted
+// (fenced blocks are, at build time). The docs layout's single delegated listener (on
+// `#otfw-content`) drives the copy, so no wiring is needed here. The icon glyphs go
+// through `RawHtml` because inline `<svg>` would be created in the HTML namespace and
+// not render.
 import { RawHtml } from "@opentf/web";
 
 const COPY_SVG =

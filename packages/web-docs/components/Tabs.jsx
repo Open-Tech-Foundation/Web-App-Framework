@@ -1,10 +1,8 @@
-// Generic tabbed panel. `tabs` is an array of `{ label, content }`.
+// Generic tabbed panel. `tabs` is an array of `{ label, content }`. `content` is
+// rendered as-is: a string is plain text, a node is the node. For a code panel with a
+// copy button, pass a `CodeBlock`: `{ label, content: <CodeBlock code="…" /> }`.
 //
-//   <Tabs tabs={[{ label: "npm", content: <…/> }, …]} />
-//
-// String `content` is treated as code and rendered through `CodeBlock`, so the panel
-// gets the same header + copy button as a fenced block; pass JSX for anything else.
-import CodeBlock from "./CodeBlock.jsx";
+//   <Tabs tabs={[{ label: "npm", content: <CodeBlock code="npm i …" /> }, …]} />
 
 export default function Tabs(props) {
   let active = $state(0);
@@ -25,11 +23,7 @@ export default function Tabs(props) {
       <div class="otfw-tabs-panels">
         {tabs.map((tab, i) => (
           <div class={active === i ? "otfw-tab-panel" : "otfw-tab-panel otfw-hidden"}>
-            {typeof tab.content === "string" ? (
-              <CodeBlock code={tab.content} lang={tab.lang} name={tab.name} />
-            ) : (
-              tab.content
-            )}
+            {tab.content}
           </div>
         ))}
       </div>
