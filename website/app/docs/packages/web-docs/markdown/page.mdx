@@ -32,9 +32,14 @@ OTF Web supports CommonMark plus the common GitHub-Flavored Markdown (GFM) exten
 the table of contents, so it's linkable and shows in the right-hand outline.
 
 ```md
-## Installation
-### Requirements
+#### A fourth-level heading
+##### A fifth-level heading
 ```
+
+Renders (and note they appear in the **On this page** outline):
+
+#### A fourth-level heading
+##### A fifth-level heading
 
 ### Text formatting
 
@@ -49,9 +54,15 @@ the table of contents, so it's linkable and shows in the right-hand outline.
 ### Links and images
 
 ```md
-[OTF Web](https://github.com) "optional title"
-![Alt text](/logo.svg "optional title")
+[OTF Web on GitHub](https://github.com/opentf/Web-App-Framework)
+![OTF Web logo](/logo.png "OTF Web")
 ```
+
+Renders:
+
+[OTF Web on GitHub](https://github.com/opentf/Web-App-Framework)
+
+![OTF Web logo](/logo.png "OTF Web")
 
 ### Lists
 
@@ -72,6 +83,9 @@ Renders:
 - Second
   - Nested
 
+1. One
+2. Two
+
 ### Task lists
 
 GFM checkboxes render as disabled inputs:
@@ -90,7 +104,19 @@ GFM checkboxes render as disabled inputs:
 
 ### Horizontal rule
 
-Three dashes (`---`) draw a divider (`<hr/>`).
+Three dashes on their own line draw a divider (`<hr/>`):
+
+```md
+above
+
+---
+
+below
+```
+
+Renders:
+
+---
 
 ### Tables
 
@@ -195,13 +221,3 @@ A `{ }` expression is evaluated as JavaScript and rendered inline — for exampl
   (`tabs={[{ label: ... }]}`) — the MDX parser rejects the commas. Declare the value
   with `export const` and pass it by name instead, as shown above.
 </Callout>
-
-## Components you can use
-
-These ship with `@opentf/web-docs` and are documented on the
-[Components](/docs/packages/web-docs/components) page:
-
-- **Callout** — admonition boxes (note / tip / info / warning / danger).
-- **Steps** — a numbered walkthrough built from headings.
-- **Tabs** — switchable panels for alternative content.
-- **CodeBlock** — a code block for code held as a runtime value (e.g. a tab panel).

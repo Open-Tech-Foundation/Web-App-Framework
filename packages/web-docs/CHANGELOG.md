@@ -39,6 +39,12 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
+- Prose lists render their markers again. A host Tailwind preflight (`list-style:
+  none` on every `ul`/`ol`) stripped bullets and numbers from `.otfw-prose`; the theme
+  now sets `disc`/`decimal` (and `circle` for nested lists) explicitly. Loose list
+  items no longer add block spacing from their wrapping `<p>`.
+- GFM task lists keep the checkbox on the same line as its label (the label is a block
+  `<p>`, which previously wrapped below the checkbox) and drop the list bullet.
 - Code-block copy button now actually copies. The earlier handler called
   `navigator.clipboard.writeText(...)` with no error path, so the copy silently
   failed whenever the async Clipboard API rejected (denied permission / page without
