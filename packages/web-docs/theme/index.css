@@ -480,6 +480,21 @@ body {
   color: var(--otfw-text-muted);
   text-decoration: line-through;
 }
+/* An unclassed <button> in prose (e.g. an inline interactive demo). Component
+ * buttons carry their own class, so this only catches bare demo buttons. */
+.otfw-prose button:not([class]) {
+  font: inherit;
+  cursor: pointer;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--otfw-border);
+  border-radius: 0.5rem;
+  background: var(--otfw-bg-surface);
+  color: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.otfw-prose button:not([class]):hover {
+  border-color: var(--otfw-accent);
+}
 .otfw-prose a {
   color: var(--otfw-accent);
   text-decoration: none;

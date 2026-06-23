@@ -10,6 +10,15 @@ export const pmTabs = [
   { label: "npm", content: <CodeBlock code="npm i @opentf/web" /> },
 ];
 
+export function Counter(props) {
+  let count = $state(0);
+  return (
+    <button onclick={() => (count += 1)}>
+      {props.children} {count}
+    </button>
+  );
+}
+
 # Markdown & MDX
 
 Docs pages are `.mdx` files: **Markdown** for prose plus **JSX components** inline. The
@@ -230,6 +239,29 @@ inside its children still renders:
 <Callout type="tip" title="Tip">
   You can use **Markdown** inside a component's children.
 </Callout>
+
+### Interactive components
+
+Components compile to real custom elements backed by signals, so you can define one
+right in the page with `export function` and use it inline — `$state` makes it
+interactive, no extra wiring. Markdown still works in the children.
+
+```mdx
+export function Counter(props) {
+  let count = $state(0);
+  return (
+    <button onclick={() => (count += 1)}>
+      {props.children} {count}
+    </button>
+  );
+}
+
+<Counter>**Clicks**: </Counter>
+```
+
+Renders (click it):
+
+<Counter>**Clicks**: </Counter>
 
 ### Expressions
 
