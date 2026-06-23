@@ -32,6 +32,10 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
+- Code-block copy button now actually copies. The delegated listener is attached to
+  the persistent `#otfw-content` root looked up from the DOM (the pattern `Toc` uses),
+  and a clipboard `execCommand` fallback was added for non-secure contexts. The prior
+  wiring attached during the layout's own mount and didn't reliably receive clicks.
 - The navbar host is now `display: contents`, so its sticky header pins to the page
   scroll container instead of scrolling away inside its own wrapper.
 - The brand takes the leading space so nav links group with the GitHub icon and theme

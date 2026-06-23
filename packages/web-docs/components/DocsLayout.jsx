@@ -19,14 +19,38 @@ import Pagination from "./Pagination.jsx";
 
 // Each code block ships a header with a copy button (built by the MDX front-end). The
 // button markup is static HTML, so we wire its click with one delegated listener on
-// the content root — which keeps working as the article subtree swaps on navigation,
-// with no per-element bookkeeping or MutationObserver.
+// the persistent content root — which keeps working as the article subtree swaps on
+// navigation, with no per-element bookkeeping.
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+// For non-secure contexts / browsers without the async clipboard API.
+function fallbackCopy(text) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+  } catch (e) {
+    /* clipboard unavailable */
+  }
+}
+
 function wireCopyButtons(root) {
   const onClick = (e) => {
     const btn = e.target.closest && e.target.closest(".otfw-copy");
     if (!btn || !root.contains(btn)) return;
-    const pre = btn.closest(".otfw-code")?.querySelector("pre");
-    navigator.clipboard?.writeText(pre ? pre.innerText : "");
+    const pre = btn.closest(".otfw-code") && btn.closest(".otfw-code").querySelector("pre");
+    copyText(pre ? pre.innerText : "");
     const label = btn.querySelector(".otfw-copy-label");
     btn.classList.add("is-copied");
     if (label) label.textContent = "Copied";
@@ -45,18 +69,20 @@ export default function DocsLayout(props) {
   const nav = props.nav || [];
   const frame = props.frame !== false;
 
-  const contentRef = $ref();
-
+  // Wire the copy buttons against the persistent content root. We read it from the
+  // DOM (like Toc) rather than a `$ref`, since one delegated listener covers every
+  // current and future code block without re-running per navigation.
   onMount(() => {
-    const root = contentRef;
+    if (typeof document === "undefined") return;
+    const root = document.getElementById("otfw-content");
     if (!root) return;
-    onCleanup(wireCopyButtons(root));
+    return wireCopyButtons(root);
   });
 
   const body = (
     <div class="otfw-docs">
       <Sidebar nav={nav} config={config} />
-      <main id="otfw-content" class="otfw-content" data-pagefind-body ref={contentRef}>
+      <main id="otfw-content" class="otfw-content" data-pagefind-body>
         <Breadcrumbs nav={nav} />
         <article class="otfw-prose">{props.children}</article>
         <Pagination nav={nav} />
