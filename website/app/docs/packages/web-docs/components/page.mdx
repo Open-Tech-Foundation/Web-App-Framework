@@ -1,6 +1,6 @@
 ---
 title: Components
-description: Content components shipped with web-docs — callouts, tabs, and steps.
+description: Content components shipped with web-docs — callouts, steps, tabs, and code blocks.
 ---
 
 import { Callout, Steps, Tabs, CodeBlock } from "@opentf/web-docs";
@@ -78,7 +78,26 @@ Rendered:
 
 <Tabs tabs={demoTabs} />
 
-<Callout type="info" title="Code blocks get copy buttons for free">
-  Any fenced code block in a docs page is highlighted at build time and decorated
-  with a copy button at runtime — no component needed.
+## CodeBlock
+
+A standalone code block — the same header-and-copy-button chrome as a Markdown fence,
+but built from a string instead of build-time highlighting. Reach for it when the code
+doesn't come from a fence: inside `Tabs`, or anywhere you have the source as a JS
+value. Props: `code` (the source, required), and optional `lang` (a language chip) and
+`name` (a filename shown in the header).
+
+```jsx
+import { CodeBlock } from "@opentf/web-docs";
+
+<CodeBlock lang="bash" name="terminal" code="bun add @opentf/web" />
+```
+
+Rendered:
+
+<CodeBlock lang="bash" name="terminal" code="bun add @opentf/web" />
+
+<Callout type="info" title="Fenced code blocks get copy buttons for free">
+  A plain Markdown fence in a docs page is highlighted at build time and decorated
+  with a copy button at runtime — no component needed. Use `CodeBlock` only when the
+  code isn't a fence (e.g. a tab panel).
 </Callout>
