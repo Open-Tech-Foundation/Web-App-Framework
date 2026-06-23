@@ -266,7 +266,19 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
     code.push_str("    this._cleanups = [];\n");
     // Stable styling hook (additive — never clobbers a consumer's class): lets CSS
     // target the host by a readable name even though the registry tag is hashed.
+    // When the component declares a `class` prop, the hook lives on the same observed
+    // attribute as that prop, so the `classList.add` below would re-enter
+    // `attributeChangedCallback` and overwrite the prop signal (which the consumer set
+    // via the property bridge, not the attribute) with the post-stamp string. Bracket
+    // the stamp with a flag so that one synthetic mutation is ignored by the prop sync.
+    let guards_class = props.iter().any(|p| p.attr == "class");
+    if guards_class {
+        code.push_str("    this._stampingHostClass = true;\n");
+    }
     code.push_str(&format!("    this.classList.add({});\n", js_string(&tags::css_hook(&export))));
+    if guards_class {
+        code.push_str("    this._stampingHostClass = false;\n");
+    }
     if host {
         code.push_str("    enterHost(this);\n");
     }
@@ -288,6 +300,10 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
 
     if !props.is_empty() {
         code.push_str("  attributeChangedCallback(name, _old, value) {\n");
+        if guards_class {
+            // Ignore the host-class hook's own `classList.add` (see connectedCallback).
+            code.push_str("    if (this._stampingHostClass) return;\n");
+        }
         code.push_str("    const sig = this._props[name];\n");
         code.push_str("    if (sig) sig.value = value;\n");
         code.push_str("  }\n");
@@ -1215,6 +1231,31 @@ mod tests {
             m.code
         );
         assert!(m.code.contains("bindText(t1, () => (name.value))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn class_prop_host_stamp_is_guarded_against_prop_clobber() {
+        // A component whose root carries a `class` prop shares the attribute with the
+        // host-styling hook. The stamp must not re-enter attributeChangedCallback and
+        // overwrite the consumer's class — so it is bracketed by a guard flag.
+        let m = emit_component(&lower(
+            "export default function Link({ href, class: className, children }) { return <a href={href} class={className}>{children}</a>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("static observedAttributes = [\"href\", \"class\"];"), "code: {}", m.code);
+        assert!(m.code.contains("this._stampingHostClass = true;"), "code: {}", m.code);
+        assert!(m.code.contains("this._stampingHostClass = false;"), "code: {}", m.code);
+        assert!(m.code.contains("if (this._stampingHostClass) return;"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn no_class_prop_means_no_stamp_guard() {
+        // Components without a `class` prop keep the bare additive stamp — no guard.
+        let m = emit_component(&lower(
+            "export function Greet({ name }) { return <div>{name}</div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(!m.code.contains("_stampingHostClass"), "code: {}", m.code);
     }
 
     #[test]
