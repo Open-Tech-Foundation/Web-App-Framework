@@ -7,11 +7,15 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Added
 
-- Code blocks get a copy button automatically. `DocsLayout` decorates every
-  `<pre>` in the prose at runtime (via a `MutationObserver`, so it survives client
-  navigation): a rounded copy pill that turns green and reads "Copied" on click.
+- Code blocks now render a header bar — a language label, an optional filename (from
+  the fence info string, e.g. ` ```json package.json `), and a copy button on the
+  right that turns green and reads "Copied" on click. The header markup is emitted by
+  the MDX front-end; `DocsLayout` wires the copy action with one delegated listener,
+  so it keeps working across client navigation with no per-element bookkeeping.
 - `Steps` component — a numbered, vertically-connected walkthrough where each child
   heading becomes a step (composes with plain Markdown headings in MDX).
+- `Tabs` and `CodeGroup` now accept a string `content`/`item` and wrap it in a code
+  block, so they're ergonomic in MDX (where nested JSX in an attribute is awkward).
 - Navbar: active-route underline that updates on SPA navigation, per-link icons via
   a named `NavIcon` registry (`nav: [{ label, href, icon, external }]`), and a
   `version` badge next to the brand.

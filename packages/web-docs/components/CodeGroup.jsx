@@ -20,7 +20,13 @@ export default function CodeGroup(props) {
       </div>
       {items.map((it, i) => (
         <div class={active === i ? "otfw-codegroup-panel" : "otfw-codegroup-panel otfw-hidden"}>
-          {it.content}
+          {typeof it.content === "string" ? (
+            <pre>
+              <code>{it.content}</code>
+            </pre>
+          ) : (
+            it.content
+          )}
         </div>
       ))}
     </div>

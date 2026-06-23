@@ -21,7 +21,13 @@ export default function Tabs(props) {
       <div class="otfw-tabs-panels">
         {tabs.map((tab, i) => (
           <div class={active === i ? "otfw-tab-panel" : "otfw-tab-panel otfw-hidden"}>
-            {tab.content}
+            {typeof tab.content === "string" ? (
+              <pre>
+                <code>{tab.content}</code>
+              </pre>
+            ) : (
+              tab.content
+            )}
           </div>
         ))}
       </div>

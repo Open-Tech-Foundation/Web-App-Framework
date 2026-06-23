@@ -438,47 +438,64 @@ body {
   padding: 0;
   font-size: inherit;
 }
-/* Copy control (added at runtime by DocsLayout). The wrapper is a non-scrolling
- * positioning context so the button stays pinned over horizontally-scrolling code. */
+/* Titled code block (built by the MDX front-end): a header bar — language label,
+ * optional filename, and a copy button on the right — above the highlighted <pre>.
+ * The wrapper owns the radius and clips the corners of the dark header and code. */
 .otfw-code {
-  position: relative;
   margin: 0 0 1.4rem;
+  border: 1px solid var(--otfw-border);
+  border-radius: var(--otfw-radius);
+  overflow: hidden;
+  background: #2b303b;
+}
+.otfw-code-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.5rem 0.4rem 0.95rem;
+  background: #23272f;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.otfw-code-lang {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.45);
+}
+.otfw-code-name {
+  font-family: var(--otfw-mono);
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.82);
 }
 .otfw-code pre {
   margin: 0;
+  border: none;
+  border-radius: 0;
 }
 .otfw-copy {
-  position: absolute;
-  top: 0.6rem;
-  right: 0.6rem;
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.3rem 0.6rem;
+  padding: 0.28rem 0.6rem;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
   font-family: var(--otfw-font);
   font-size: 0.72rem;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
-  opacity: 0;
-  backdrop-filter: blur(4px);
-  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-.otfw-code:hover .otfw-copy,
-.otfw-copy:focus-visible {
-  opacity: 1;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 .otfw-copy:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.14);
   color: #fff;
 }
 .otfw-copy.is-copied {
-  opacity: 1;
-  background: color-mix(in srgb, #10b981 24%, transparent);
+  background: color-mix(in srgb, #10b981 22%, transparent);
   border-color: color-mix(in srgb, #10b981 55%, transparent);
   color: #34d399;
 }
