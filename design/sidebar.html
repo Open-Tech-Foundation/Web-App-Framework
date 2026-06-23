@@ -1,0 +1,57 @@
+<!-- @dsCard group="MDX" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docs Sidebar — OTF Web</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#fff; --surface:#f8fafc; --text:#0f172a; --muted:#64748b; --border:#e2e8f0;
+    --accent:#ff851b; --accent-soft:rgba(255,133,27,.1);
+    --font:'Geist',system-ui,sans-serif;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:var(--font); background:var(--surface); color:var(--text); padding:32px; }
+  .sidebar { width:280px; background:var(--bg); border:1px solid var(--border); border-radius:16px; padding:20px 14px; }
+  .group { margin-bottom:18px; }
+  .group-label { font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-weight:700; padding:0 12px 8px; }
+  a { display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--muted);
+    font-size:14px; font-weight:500; padding:8px 12px; border-radius:9px; transition:all .12s ease; }
+  a:hover { color:var(--text); background:var(--surface); }
+  a.active { color:var(--accent); background:var(--accent-soft); font-weight:700; }
+  a .dot { width:5px; height:5px; border-radius:99px; background:currentColor; opacity:.4; }
+  a.active .dot { opacity:1; }
+  .sub { margin-left:10px; border-left:1px solid var(--border); padding-left:6px; }
+  .sub a { font-size:13.5px; }
+</style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="group">
+      <div class="group-label">Getting Started</div>
+      <a class="active"><span class="dot"></span>Introduction</a>
+      <a><span class="dot"></span>Installation</a>
+      <a><span class="dot"></span>Project Structure</a>
+    </div>
+    <div class="group">
+      <div class="group-label">Core Concepts</div>
+      <a><span class="dot"></span>Components</a>
+      <a><span class="dot"></span>Reactivity</a>
+      <div class="sub">
+        <a>$state &amp; $derived</a>
+        <a>$effect</a>
+        <a>$ref</a>
+      </div>
+      <a><span class="dot"></span>Routing</a>
+    </div>
+    <div class="group">
+      <div class="group-label">Guides</div>
+      <a><span class="dot"></span>Static Generation</a>
+      <a><span class="dot"></span>Testing</a>
+      <a><span class="dot"></span>Forms</a>
+    </div>
+  </aside>
+</body>
+</html>

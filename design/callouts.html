@@ -1,0 +1,67 @@
+<!-- @dsCard group="MDX" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Callouts — OTF Web</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#fff; --text:#0f172a; --muted:#64748b; --border:#e2e8f0;
+    --font:'Geist',system-ui,sans-serif;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); padding:40px; max-width:760px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin:0 0 18px; font-weight:700; }
+
+  .callout {
+    display:grid; grid-template-columns:auto 1fr; gap:14px;
+    border:1px solid var(--c-border); background:var(--c-bg);
+    border-left:3px solid var(--c); border-radius:12px;
+    padding:16px 18px; margin-bottom:16px;
+  }
+  .callout .icon {
+    width:26px; height:26px; border-radius:8px; display:grid; place-items:center;
+    background:var(--c); color:#fff; font-size:15px; line-height:1;
+  }
+  .callout .title { font-weight:700; font-size:14px; color:var(--c-title); margin-bottom:4px; }
+  .callout .body { font-size:14px; line-height:1.6; color:var(--text); }
+  .callout .body code { font-family:'Geist Mono',monospace; font-size:.85em; background:rgba(15,23,42,.06); padding:1px 5px; border-radius:5px; }
+
+  .note    { --c:#64748b; --c-bg:#f8fafc; --c-border:#e2e8f0; --c-title:#334155; }
+  .tip     { --c:#10b981; --c-bg:#ecfdf5; --c-border:#a7f3d0; --c-title:#047857; }
+  .info    { --c:#3b82f6; --c-bg:#eff6ff; --c-border:#bfdbfe; --c-title:#1d4ed8; }
+  .warning { --c:#f59e0b; --c-bg:#fffbeb; --c-border:#fde68a; --c-title:#b45309; }
+  .danger  { --c:#ef4444; --c-bg:#fef2f2; --c-border:#fecaca; --c-title:#b91c1c; }
+</style>
+</head>
+<body>
+  <h2>Callouts &middot; MDX</h2>
+
+  <div class="callout note">
+    <div class="icon">✎</div>
+    <div><div class="title">Note</div><div class="body">Every component compiles to a standard Custom Element — usable anywhere, even plain HTML.</div></div>
+  </div>
+
+  <div class="callout tip">
+    <div class="icon">💡</div>
+    <div><div class="title">Tip</div><div class="body">Pass a bare expression to <code>$derived(a + b)</code> — the compiler wraps it for you.</div></div>
+  </div>
+
+  <div class="callout info">
+    <div class="icon">ℹ</div>
+    <div><div class="title">Signal driven</div><div class="body">Updates are surgical. Changing a value only touches the DOM node bound to it.</div></div>
+  </div>
+
+  <div class="callout warning">
+    <div class="icon">⚠</div>
+    <div><div class="title">Experimental</div><div class="body">APIs may change while OTF Web is in pre-release.</div></div>
+  </div>
+
+  <div class="callout danger">
+    <div class="icon">⛔</div>
+    <div><div class="title">Avoid</div><div class="body">Don't mutate state outside a signal — the compiler can't track it.</div></div>
+  </div>
+</body>
+</html>

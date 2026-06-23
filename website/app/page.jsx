@@ -2,501 +2,198 @@ import { Link } from "@opentf/web";
 import CodeBlock from "./components/CodeBlock.jsx";
 import Counter from "./components/Counter.jsx";
 import TodoList from "./components/TodoList.jsx";
+import {
+  benchmark,
+  capabilities,
+  counterDemo,
+  features,
+  todoDemo,
+} from "./home-data.js";
+
+export const metadata = {
+  title: "OTF Web — The native-first framework for modern web apps",
+  description:
+    "A high-performance, zero-VDOM framework that compiles JSX to native DOM. Built with signals and standard Web Components.",
+  canonical: "/",
+};
+
+// Status pill styles, keyed by capability status. Theme-aware translucent fills.
+const STATUS = {
+  supported: {
+    label: "Supported",
+    cls: "inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/20",
+  },
+  beta: {
+    label: "Beta",
+    cls: "inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-sky-500/10 text-sky-600 border border-sky-500/20",
+  },
+  planned: {
+    label: "Planned",
+    cls: "inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-600 border border-amber-500/20",
+  },
+};
 
 export default function HomePage() {
-  const counterCode = `export default function Counter() {
-  let count = $state(0);
-
-  return (
-    <div className="flex gap-4 items-center">
-      <button onclick={() => count--}>-</button>
-      <span className="text-2xl font-bold">{count}</span>
-      <button onclick={() => count++}>+</button>
-    </div>
+  // Flatten the grouped capabilities to a single list (plain data — done here, not
+  // inside JSX, so the render is one flat .map with no per-item locals).
+  const caps = capabilities.flatMap((g) =>
+    g.items.map((i) => ({ ...i, category: g.category })),
   );
-}`;
-
-  const counterCompiled = `class CounterElement extends HTMLElement {
-  connectedCallback() {
-    let count = _signal(0);
-    const rootElement = (() => {
-      const el0 = document.createElement("div");
-      const el1 = document.createElement("button");
-      el1.onclick = () => count.value--;
-      el1.textContent = "-";
-      el0.appendChild(el1);
-      
-      const el3 = document.createElement("span");
-      _renderDynamic(el3, () => count.value);
-      el0.appendChild(el3);
-      
-      const el4 = document.createElement("button");
-      el4.onclick = () => count.value++;
-      el4.textContent = "+";
-      el0.appendChild(el4);
-      return el0;
-    })();
-    this.appendChild(rootElement);
-  }
-}
-customElements.define("web-counter", CounterElement);`;
-
-  const todoCode = `export default function TodoList() {
-  let todos = $state([{ id: 1, text: "Learn OTF Web", done: false }]);
-  
-  const toggle = (id) => {
-    todos = todos.map(t => t.id === id ? { ...t, done: !t.done } : t);
-  };
-  
-  return (
-    <ul className="space-y-2">
-      {todos.map(todo => (
-        <li key={todo.id}>
-          <input type="checkbox" checked={todo.done} onchange={() => toggle(todo.id)} />
-          <span className={todo.done ? "line-through" : ""}>{todo.text}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}`;
-
-  const todoCompiled = `class TodoListElement extends HTMLElement {
-  connectedCallback() {
-    let todos = _signal([{ id: 1, text: "Learn OTF Web", done: false }]);
-    const toggle = id => {
-      todos.value = todos.value.map(t => t.id === id ? { ...t, done: !t.done } : t);
-    };
-    const rootElement = (() => {
-      const el0 = document.createElement("ul");
-      _renderDynamic(el0, () => todos.value.map(todo => (() => {
-        const el0 = document.createElement("li");
-        el0._key = todo.id;
-        const el1 = document.createElement("input");
-        el1.setAttribute("type", "checkbox");
-        _effect(() => el1.checked = todo.done);
-        el1.onchange = () => toggle(todo.id);
-        el0.appendChild(el1);
-        const el2 = document.createElement("span");
-        _effect(() => el2.className = todo.done ? "line-through" : "");
-        _renderDynamic(el2, () => todo.text);
-        el0.appendChild(el2);
-        return el0;
-      })()));
-      return el0;
-    })();
-    this.appendChild(rootElement);
-  }
-}
-customElements.define("web-todolist", TodoListElement);`;
 
   return (
     <div className="flex-1 max-w-6xl mx-auto px-8 w-full pb-24">
-      {/* Hero Section */}
-      <section className="py-24 text-center max-w-3xl mx-auto space-y-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/20 rounded-full text-[10px] font-bold uppercase tracking-wider">
+      {/* Hero */}
+      <section className="hero-glow text-center max-w-3xl mx-auto py-28 space-y-7">
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/25 rounded-full text-[11px] font-bold uppercase tracking-wider">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent)]"></span>
           </span>
-          Experimental
+          Experimental Pre-release
         </div>
 
-        <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-[var(--text-main)] leading-[1.1]">
-          The <span className="text-accent">native-first</span> framework for <br />
-          modern web apps.
+        <h1 className="text-5xl md:text-7xl font-black tracking-tight text-[var(--text-main)] leading-[1.05]">
+          The <span className="text-[var(--accent)]">native-first</span> framework for modern web apps.
         </h1>
 
-        <p className="text-xl text-[var(--text-muted)] leading-relaxed">
+        <p className="text-xl text-[var(--text-muted)] leading-relaxed max-w-xl mx-auto">
           A high-performance, zero-VDOM framework that compiles JSX to native DOM.
-          <br />
           Built with signals and standard Web Components.
         </p>
 
-        <div className="flex justify-center gap-4 pt-4">
+        <div className="flex justify-center pt-2">
           <Link href="/docs" className="transition-all active:scale-95">
-            <span className="inline-flex items-center justify-center bg-[var(--text-main)] text-[var(--bg-main)] px-8 py-3 rounded-xl font-bold hover:opacity-90 shadow-md gap-2">
-              Get Started 🚀
+            <span className="inline-flex items-center justify-center gap-2 bg-[var(--text-main)] text-[var(--bg-main)] px-7 py-3 rounded-xl font-bold hover:opacity-90 shadow-lg">
+              Get Started
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
             </span>
           </Link>
         </div>
-      </section>
 
-      {/* Feature Grid */}
-      <section className="py-16 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-        <div className="p-6 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] space-y-3 transition-colors">
-          <div className="text-3xl">⚡️</div>
-          <h3 className="font-bold text-[var(--text-main)]">Zero VDOM</h3>
-          <p className="text-sm text-[var(--text-muted)]">Eliminate diffing overhead. OTF Web maps state changes directly to the DOM for unmatched runtime performance.</p>
-        </div>
-
-        <div className="p-6 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] space-y-3 transition-colors">
-          <div className="text-3xl">🧩</div>
-          <h3 className="font-bold text-[var(--text-main)]">Native Components</h3>
-          <p className="text-sm text-[var(--text-muted)]">Interoperate with the entire web ecosystem. Every OTF Web component is a standard Web Component.</p>
-        </div>
-
-        <div className="p-6 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] space-y-3 transition-colors">
-          <div className="text-3xl">⚛️</div>
-          <h3 className="font-bold text-[var(--text-main)]">Atomic Reactivity</h3>
-          <p className="text-sm text-[var(--text-muted)]">Powered by $state macro. Fine-grained updates ensure only the specific parts of the UI change when data does.</p>
-        </div>
-
-        <div className="p-6 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] space-y-3 transition-colors">
-          <div className="text-3xl">🛣️</div>
-          <h3 className="font-bold text-[var(--text-main)]">File-based Routing</h3>
-          <p className="text-sm text-[var(--text-muted)]">A familiar, powerful routing system supporting nested layouts, dynamic segments, and catch-all paths.</p>
+        <div className="flex justify-center pt-1">
+          <code className="mono inline-flex items-center gap-3 px-4 py-2.5 border border-[var(--border)] rounded-xl bg-[var(--bg-surface)] text-sm text-[var(--text-main)]">
+            <span className="text-[var(--accent)]">$</span> bun create @opentf/web my-app
+            <span className="text-[var(--text-muted)]">⧉</span>
+          </code>
         </div>
       </section>
-      {/* Capabilities Matrix */}
-      <section className="py-24 space-y-12">
-        <div className="text-center space-y-4">
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Capabilities & Roadmap</h2>
-          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">A transparent look at our current features and future direction.</p>
+
+      {/* Feature grid */}
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {features.map((f) => (
+          <div className="p-6 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] space-y-3 transition-colors hover:border-[var(--accent)]/40">
+            <div className="text-3xl">{f.icon}</div>
+            <h3 className="font-bold text-[var(--text-main)]">{f.title}</h3>
+            <p className="text-sm text-[var(--text-muted)] leading-relaxed">{f.desc}</p>
+          </div>
+        ))}
+      </section>
+
+      {/* Live demos */}
+      <section className="py-24 space-y-16">
+        <div className="text-center space-y-3">
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">See what it compiles to.</h2>
+          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
+            Write JSX. The compiler emits a standard Custom Element built from direct DOM operations — this is the real output, not a virtual DOM.
+          </p>
         </div>
 
-        <div className="max-w-4xl mx-auto overflow-hidden bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl shadow-sm transition-colors">
+        <div className="grid md:grid-cols-2 gap-8 items-center bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
+          <div className="p-12 border-b md:border-b-0 md:border-r border-[var(--border)] bg-[var(--bg-surface)] flex flex-col items-center justify-center min-h-[300px]">
+            <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-8">Live Preview</div>
+            <Counter />
+          </div>
+          <div className="p-6">
+            <CodeBlock code={counterDemo.code} compiled={counterDemo.compiled} />
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-8 items-center bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
+          <div className="p-6 order-2 md:order-1">
+            <CodeBlock code={todoDemo.code} compiled={todoDemo.compiled} />
+          </div>
+          <div className="p-12 border-t md:border-t-0 md:border-l border-[var(--border)] bg-[var(--bg-surface)] flex flex-col items-center justify-center min-h-[300px] order-1 md:order-2">
+            <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-8">Live Preview</div>
+            <TodoList />
+          </div>
+        </div>
+      </section>
+
+      {/* Benchmark */}
+      <section className="py-12 space-y-8">
+        <div className="text-center space-y-3">
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Fast where it counts.</h2>
+          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
+            The standard js-framework-benchmark operation set vs React, Solid, and Svelte 5 — one shared harness. Median ms, lower is better.
+          </p>
+        </div>
+
+        <div className="max-w-3xl mx-auto bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse text-sm">
               <thead>
-                <tr className="bg-[var(--bg-surface)] border-b border-[var(--border)] transition-colors">
-                  <th className="px-8 py-4 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Feature</th>
-                  <th className="px-8 py-4 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Status</th>
-                  <th className="px-8 py-4 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Description</th>
+                <tr className="bg-[var(--bg-surface)] border-b border-[var(--border)]">
+                  <th className="px-6 py-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Operation</th>
+                  <th className="px-4 py-3 text-xs font-bold text-[var(--accent)] uppercase tracking-widest text-right">otfw</th>
+                  <th className="px-4 py-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest text-right">react</th>
+                  <th className="px-4 py-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest text-right">solid</th>
+                  <th className="px-4 py-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest text-right">svelte</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">CSR (Client Rendering)</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">High-performance SPA engine ready for production.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Zero-VDOM Updates</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">Standard JSX support, almost on par with industry leaders. Hardening with massive test coverage.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Reactive Macros</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">Boilerplate-free reactivity system ($state, $derived, $effect) built on fine-grained Signals.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Performance Defaults</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">Minimal core runtime and efficient updates for maximum speed.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Route-level Splitting</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Automatic code splitting for every route segment.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Lazy Loading</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Fine-grained component-level lazy loading and prefetching.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">File-based Router</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">Next.js style directory routing with client-side navigation.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Nested Layouts</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">Hierarchical UI structures with persistent state across route changes.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Route Guards</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">Protect routes with custom logic and redirection.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Middleware</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Advanced request processing and transformations.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Enterprise Forms</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">Deep-proxy reactive forms with async validation.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Testing Library</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">React Testing Library-equivalent utilities for native components.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">CLI Scaffolding Tool</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">Get started instantly with our `create-web` project generator.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Security First</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">XSS-safe by default (no innerHTML) and built-in route protection.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">SSR (Server Rendering)</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Planned for unified full-stack support.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">TypeScript Support</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">First-class type safety and TSX support across the ecosystem.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">MDX Support</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Integrated MDX engine for high-performance documentation and blogs.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Devtool Ecosystem</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Browser extension with component, state, and network tracing capabilities.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Internationalization (i18n)</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Routing-level i18n, translation loading, and locale-aware formatting.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Accessibility (a11y)</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Built-in ARIA helpers, a11y checks, and keyboard navigation defaults.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Dev Error Overlay</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Rich error details and interactive stack traces for a superior dev experience.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">High-speed Compiler</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Future migration to a low-level, ultra-fast compilation engine.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">SSG (Static Generation)</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">High-performance static site engine.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">API Routes</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Integrated server-side API endpoints for a unified full-stack experience.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Data Fetching</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Integrated client-side fetching with caching and sync.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">HMR (Hot Reloading)</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Real-time dev experience via Vite/Bun.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">CSS Modules</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">Native support for scoped styling via Vite.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">TailwindCSS</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3.5" d="M5 13l4 4L19 7"></path></svg>
-                      Supported
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)]">Seamless integration with Utility-first CSS via Vite.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Image Optimization</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Automated image processing and lazy-loading.</td>
-                </tr>
-                <tr>
-                  <td className="px-8 py-5 font-bold text-[var(--text-main)]">Font Optimization</td>
-                  <td className="px-8 py-5">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold uppercase tracking-wider border border-amber-100">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                      Planned
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-[var(--text-muted)] italic">Zero-layout-shift font delivery.</td>
-                </tr>
+                {benchmark.rows.map((row) => (
+                  <tr>
+                    <td className="px-6 py-3 font-medium text-[var(--text-main)]">{row.op}</td>
+                    <td className={row.best === 0 ? "px-4 py-3 text-right font-mono font-bold text-[var(--accent)]" : "px-4 py-3 text-right font-mono text-[var(--text-main)]"}>{row.values[0]}</td>
+                    <td className={row.best === 1 ? "px-4 py-3 text-right font-mono font-bold text-[var(--text-main)]" : "px-4 py-3 text-right font-mono text-[var(--text-muted)]"}>{row.values[1]}</td>
+                    <td className={row.best === 2 ? "px-4 py-3 text-right font-mono font-bold text-[var(--text-main)]" : "px-4 py-3 text-right font-mono text-[var(--text-muted)]"}>{row.values[2]}</td>
+                    <td className={row.best === 3 ? "px-4 py-3 text-right font-mono font-bold text-[var(--text-main)]" : "px-4 py-3 text-right font-mono text-[var(--text-muted)]"}>{row.values[3]}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
+        <p className="text-center text-xs text-[var(--text-muted)]">
+          Indicative only — a frame-quantized timer (~16.6&nbsp;ms floor). Run it yourself: <span className="mono">bun run bench all</span>.
+        </p>
       </section>
 
-      {/* Demos Section */}
-      <section className="py-24 space-y-24">
-        <div className="text-center space-y-4">
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Built for developers.</h2>
-          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">See how easy it is to build reactive applications with OTF Web. No boilerplate, just standard JavaScript and JSX.</p>
+      {/* Capabilities & roadmap */}
+      <section className="py-24 space-y-12">
+        <div className="text-center space-y-3">
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Capabilities &amp; roadmap</h2>
+          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">A transparent look at what ships today and what's next.</p>
         </div>
 
-        {/* Counter Demo */}
-        <div className="grid md:grid-cols-2 gap-8 items-center bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm transition-colors">
-          <div className="p-12 border-b md:border-b-0 md:border-r border-[var(--border)] bg-[var(--bg-surface)] flex flex-col items-center justify-center min-h-[300px] transition-colors">
-            <div className="text-sm font-bold text-[var(--text-muted)] uppercase tracking-widest mb-8">Live Preview</div>
-            <Counter />
-          </div>
-          <div className="p-8">
-            <CodeBlock code={counterCode} compiled={counterCompiled} />
-          </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {caps.map((cap) => (
+            <div className="p-5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl flex flex-col gap-2 transition-colors hover:border-[var(--accent)]/40">
+              <div className="flex items-start justify-between gap-3">
+                <span className="font-semibold text-[var(--text-main)] leading-snug">{cap.name}</span>
+                <span className={STATUS[cap.status].cls}>{STATUS[cap.status].label}</span>
+              </div>
+              <p className="text-sm text-[var(--text-muted)] leading-relaxed">{cap.desc}</p>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] opacity-60 mt-1">{cap.category}</div>
+            </div>
+          ))}
         </div>
+      </section>
 
-        {/* Todo List Demo */}
-        <div className="grid md:grid-cols-2 gap-8 items-center bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm transition-colors">
-          <div className="p-8 order-2 md:order-1">
-            <CodeBlock code={todoCode} compiled={todoCompiled} />
-          </div>
-          <div className="p-12 border-t md:border-t-0 md:border-l border-[var(--border)] bg-[var(--bg-surface)] flex flex-col items-center justify-center min-h-[400px] order-1 md:order-2 transition-colors">
-            <div className="text-sm font-bold text-[var(--text-muted)] uppercase tracking-widest mb-8">Live Preview</div>
-            <TodoList />
+      {/* CTA */}
+      <section className="py-12">
+        <div className="max-w-4xl mx-auto text-center bg-[var(--bg-surface)] border border-[var(--border)] rounded-3xl px-8 py-16 space-y-6">
+          <h2 className="text-3xl md:text-4xl font-black tracking-tight text-[var(--text-main)]">Build something native-first.</h2>
+          <p className="text-[var(--text-muted)] max-w-xl mx-auto">Scaffold a project in seconds and read the guides to go from zero to a compiled, signal-driven app.</p>
+          <div className="flex justify-center gap-4 flex-wrap">
+            <Link href="/docs" className="transition-all active:scale-95">
+              <span className="inline-flex items-center gap-2 bg-[var(--text-main)] text-[var(--bg-main)] px-7 py-3 rounded-xl font-bold hover:opacity-90 shadow-lg">Read the docs</span>
+            </Link>
+            <a href="https://github.com/Open-Tech-Foundation/Web-App-Framework" target="_blank" className="transition-all active:scale-95">
+              <span className="inline-flex items-center gap-2 bg-[var(--bg-main)] text-[var(--text-main)] border border-[var(--border)] px-7 py-3 rounded-xl font-bold hover:border-[var(--accent)]/40">View on GitHub</span>
+            </a>
           </div>
         </div>
       </section>

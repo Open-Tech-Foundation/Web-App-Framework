@@ -1,0 +1,68 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buttons — OTF Web</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#fff; --surface:#f8fafc; --text:#0f172a; --muted:#64748b; --border:#e2e8f0;
+    --accent:#ff851b; --accent-hover:#e67512; --accent-soft:rgba(255,133,27,.1);
+    --font:'Geist',system-ui,sans-serif;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:var(--font); background:var(--bg); color:var(--text); padding:40px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin:0 0 16px; font-weight:700; }
+  .row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:24px; }
+  .btn { font-family:inherit; font-weight:600; border-radius:12px; border:1px solid transparent;
+    cursor:pointer; display:inline-flex; align-items:center; gap:8px; transition:all .15s ease;
+    line-height:1; }
+  .btn:active { transform:translateY(1px) scale(.99); }
+  /* sizes */
+  .sm { padding:8px 14px; font-size:13px; }
+  .md { padding:11px 20px; font-size:14px; }
+  .lg { padding:14px 26px; font-size:16px; }
+  /* variants */
+  .primary { background:var(--accent); color:#fff; box-shadow:0 1px 2px rgba(15,23,42,.12), 0 8px 24px -12px var(--accent); }
+  .primary:hover { background:var(--accent-hover); }
+  .solid { background:var(--text); color:var(--bg); }
+  .solid:hover { opacity:.9; }
+  .secondary { background:var(--bg); color:var(--text); border-color:var(--border); }
+  .secondary:hover { background:var(--surface); border-color:var(--muted); }
+  .ghost { background:transparent; color:var(--muted); }
+  .ghost:hover { color:var(--text); background:var(--surface); }
+  .soft { background:var(--accent-soft); color:var(--accent-hover); }
+  .soft:hover { background:rgba(255,133,27,.18); }
+  svg { width:1em; height:1em; }
+</style>
+</head>
+<body>
+  <h2>Variants</h2>
+  <div class="row">
+    <button class="btn md primary">Get Started
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="btn md solid">Documentation</button>
+    <button class="btn md secondary">View on GitHub</button>
+    <button class="btn md ghost">Learn more</button>
+    <button class="btn md soft">npm create</button>
+  </div>
+
+  <h2>Sizes</h2>
+  <div class="row">
+    <button class="btn sm primary">Small</button>
+    <button class="btn md primary">Medium</button>
+    <button class="btn lg primary">Large</button>
+  </div>
+
+  <h2>Install pill</h2>
+  <div class="row">
+    <code style="display:inline-flex;align-items:center;gap:12px;padding:12px 18px;border:1px solid var(--border);border-radius:12px;background:var(--surface);font-family:'Geist Mono',monospace;font-size:14px">
+      <span style="color:var(--accent)">$</span> bun create @opentf/web my-app
+      <span style="color:var(--muted)">⧉</span>
+    </code>
+  </div>
+</body>
+</html>

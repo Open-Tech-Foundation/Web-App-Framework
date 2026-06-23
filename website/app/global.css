@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 @import "@opentf/web-docs/theme";
 
@@ -80,5 +80,14 @@ body {
   background-color: rgba(255, 133, 27, 0.1);
   color: #ff851b !important;
   font-weight: 700;
+}
+
+/* Landing hero glow — soft accent halo behind the headline. */
+.hero-glow {
+  background: radial-gradient(60% 60% at 50% 0%, var(--accent-soft), transparent 70%);
+}
+
+.mono {
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
 }
 

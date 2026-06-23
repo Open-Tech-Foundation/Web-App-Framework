@@ -1,0 +1,60 @@
+<!-- @dsCard group="Marketing" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hero — OTF Web</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#fff; --surface:#f8fafc; --text:#0f172a; --muted:#64748b; --border:#e2e8f0;
+    --accent:#ff851b; --accent-hover:#e67512; --accent-soft:rgba(255,133,27,.1);
+    --font:'Geist',system-ui,sans-serif; --mono:'Geist Mono',ui-monospace,monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:var(--font); color:var(--text);
+    background:
+      radial-gradient(60% 50% at 50% 0%, var(--accent-soft), transparent 70%),
+      var(--bg);
+    padding:72px 24px; text-align:center; }
+  .wrap { max-width:760px; margin:0 auto; }
+  .badge { display:inline-flex; align-items:center; gap:8px; padding:5px 12px; border-radius:99px;
+    background:var(--accent-soft); color:var(--accent-hover); border:1px solid rgba(255,133,27,.25);
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+  .badge .ping { position:relative; width:7px; height:7px; }
+  .badge .ping::before { content:""; position:absolute; inset:0; border-radius:99px; background:var(--accent); animation:ping 1.6s cubic-bezier(0,0,.2,1) infinite; }
+  .badge .ping::after { content:""; position:absolute; inset:0; border-radius:99px; background:var(--accent); }
+  @keyframes ping { 75%,100% { transform:scale(2.4); opacity:0; } }
+  h1 { font-size:64px; line-height:1.05; letter-spacing:-.03em; font-weight:900; margin:28px 0 0; }
+  h1 .accent { color:var(--accent); }
+  p { font-size:19px; line-height:1.6; color:var(--muted); margin:22px auto 0; max-width:600px; }
+  .cta { display:flex; gap:14px; justify-content:center; margin-top:34px; flex-wrap:wrap; }
+  .btn { font-family:inherit; font-weight:600; font-size:15px; padding:13px 24px; border-radius:13px;
+    border:1px solid transparent; cursor:pointer; display:inline-flex; align-items:center; gap:8px; transition:all .15s; }
+  .btn.primary { background:var(--accent); color:#fff; box-shadow:0 10px 30px -12px var(--accent); }
+  .btn.primary:hover { background:var(--accent-hover); }
+  .btn.secondary { background:var(--bg); color:var(--text); border-color:var(--border); }
+  .btn.secondary:hover { background:var(--surface); }
+  .install { margin-top:26px; display:inline-flex; align-items:center; gap:12px; padding:11px 18px;
+    border:1px solid var(--border); border-radius:12px; background:var(--surface);
+    font-family:var(--mono); font-size:14px; color:var(--text); }
+  .install .dollar { color:var(--accent); }
+  .install .copy { color:var(--muted); cursor:pointer; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <span class="badge"><span class="ping"></span>Experimental Pre-release</span>
+    <h1>The <span class="accent">native-first</span> framework for modern web apps.</h1>
+    <p>A high-performance, zero-VDOM framework that compiles JSX to native DOM. Built with signals and standard Web Components.</p>
+    <div class="cta">
+      <button class="btn primary">Get Started
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="btn secondary">View on GitHub</button>
+    </div>
+    <div class="install"><span class="dollar">$</span> bun create @opentf/web my-app <span class="copy">⧉</span></div>
+  </div>
+</body>
+</html>
