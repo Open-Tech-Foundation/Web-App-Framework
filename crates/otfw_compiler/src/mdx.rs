@@ -247,6 +247,22 @@ fn expression(value: &str) -> String {
     format!("{{{value}}}")
 }
 
+/// Map a fenced-code language token to a grammar token syntect's *default* set
+/// actually ships. The bundled Sublime grammars have no `jsx`/`tsx`/`ts`/`mdx`
+/// entries, so those tokens silently fall back to plain text (no highlighting) —
+/// which is most of our examples. Alias them to the closest available grammar
+/// (`js`, `md`, `bash`) so they highlight. An unknown token is returned as-is.
+fn highlight_token(lang: &str) -> &str {
+    match lang.trim().to_ascii_lowercase().as_str() {
+        "jsx" | "tsx" | "ts" | "typescript" | "javascript" | "mjs" | "cjs" => "js",
+        "mdx" | "markdown" => "md",
+        "sh" | "shell" | "zsh" | "console" | "shellscript" => "bash",
+        "yml" => "yaml",
+        "rs" => "rust",
+        _ => lang,
+    }
+}
+
 /// Build-time syntax highlighting → a single raw-HTML node (`<RawHtml>`). On any
 /// failure (unknown grammar issue) falls back to a plain escaped `<pre>`.
 fn emit_code(code: &str, lang: &str) -> String {
@@ -261,8 +277,11 @@ fn emit_code(code: &str, lang: &str) -> String {
             .expect("syntect default theme")
     });
 
+    let token = highlight_token(lang);
     let syntax = ss
-        .find_syntax_by_token(lang)
+        .find_syntax_by_token(token)
+        // Fall back to the original token before giving up on plain text.
+        .or_else(|| ss.find_syntax_by_token(lang))
         .unwrap_or_else(|| ss.find_syntax_plain_text());
     let html = highlighted_html_for_string(code, ss, syntax, theme)
         .unwrap_or_else(|_| format!("<pre><code>{}</code></pre>", html_escape(code)));
@@ -426,6 +445,25 @@ mod tests {
         let out = mdx_to_jsx("```js\nconst x = 1;\n```", "doc.mdx").unwrap();
         assert!(out.contains("<RawHtml html={\""), "{out}");
         assert!(out.contains("<pre"), "{out}");
+    }
+
+    #[test]
+    fn jsx_token_highlights_via_the_js_grammar() {
+        // `jsx` has no grammar in syntect's default set; without the alias it would
+        // render as plain text (no colored spans).
+        let out = mdx_to_jsx("```jsx\nconst x = 1;\n```", "doc.mdx").unwrap();
+        assert!(out.contains("<span style=\\\"color:"), "expected colored spans: {out}");
+    }
+
+    #[test]
+    fn highlight_token_aliases_cover_common_doc_languages() {
+        assert_eq!(highlight_token("jsx"), "js");
+        assert_eq!(highlight_token("tsx"), "js");
+        assert_eq!(highlight_token("ts"), "js");
+        assert_eq!(highlight_token("mdx"), "md");
+        assert_eq!(highlight_token("shell"), "bash");
+        assert_eq!(highlight_token("rs"), "rust");
+        assert_eq!(highlight_token("python"), "python");
     }
 
     #[test]
