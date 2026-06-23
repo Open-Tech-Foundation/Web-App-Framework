@@ -8,7 +8,13 @@ export default defineDocsConfig({
   // `frame={false}` (sidebar · content · TOC only) — see app/docs/layout.jsx.
   docs: {
     title: "OTF Web",
+    version: "v0.4.0",
+    logo: "/logo.png",
     dir: "docs",
     github: "https://github.com/Open-Tech-Foundation/Web-App-Framework",
+    nav: [
+      { label: "Home", href: "/" },
+      { label: "Docs", href: "/docs" },
+    ],
   },
 });

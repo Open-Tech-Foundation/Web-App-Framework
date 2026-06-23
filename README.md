@@ -14,7 +14,7 @@ Built with signals and standard Web Components.
 ---
 
 > [!CAUTION]
-> **Experimental pre-release.** APIs and architecture may change as we harden toward production.
+> **Alpha.** APIs and architecture may change as we harden toward production.
 
 ## Why OTF Web
 

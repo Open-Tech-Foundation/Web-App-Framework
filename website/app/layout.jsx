@@ -1,23 +1,13 @@
-import { Link } from "@opentf/web";
-import ThemeToggle from "./components/ThemeToggle.jsx";
+import { Navbar } from "@opentf/web-docs";
+import config from "../otfw.config.js";
 
+// The site is itself a product of @opentf/web-docs (Nextra-style): the navbar — brand,
+// version badge, active-route underline, GitHub icon, theme toggle — comes from the
+// theme package, driven by otfw.config.js. The docs section reuses it via frame={false}.
 export default function WebsiteLayout(props) {
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg-main)] text-[var(--text-main)]">
-      <header className="sticky top-0 z-50 bg-[var(--bg-main)]/80 backdrop-blur-md border-b border-[var(--border)] px-8 py-4 flex justify-between items-center transition-colors">
-        <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="Logo" className="w-8 h-8" />
-          <span className="font-bold tracking-tight text-lg text-[var(--text-main)]">OTF Web</span>
-          <span className="px-2 py-0.5 bg-[var(--accent)]/10 text-[var(--accent)] rounded text-[10px] uppercase tracking-wider font-bold">v0.4.0</span>
-        </div>
-
-        <nav className="flex items-center gap-8 text-sm font-medium text-[var(--text-muted)]">
-          <Link href="/" className="hover:text-[var(--text-main)] transition-colors">Home</Link>
-          <Link href="/docs" className="hover:text-[var(--text-main)] transition-colors">Docs</Link>
-          <a href="https://github.com/Open-Tech-Foundation/Web-App-Framework" target="_blank" className="hover:text-[var(--text-main)] transition-colors">GitHub</a>
-          <ThemeToggle />
-        </nav>
-      </header>
+      <Navbar config={config.docs} />
 
       <main className="flex-1 flex flex-col">
         {props.children}

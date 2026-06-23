@@ -1,6 +1,7 @@
 import { Link } from "@opentf/web";
 import CodeBlock from "./components/CodeBlock.jsx";
 import Counter from "./components/Counter.jsx";
+import InstallPill from "./components/InstallPill.jsx";
 import TodoList from "./components/TodoList.jsx";
 import {
   benchmark,
@@ -49,7 +50,7 @@ export default function HomePage() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent)]"></span>
           </span>
-          Experimental Pre-release
+          Alpha
         </div>
 
         <h1 className="text-5xl md:text-7xl font-black tracking-tight text-[var(--text-main)] leading-[1.05]">
@@ -73,10 +74,7 @@ export default function HomePage() {
         </div>
 
         <div className="flex justify-center pt-1">
-          <code className="mono inline-flex items-center gap-3 px-4 py-2.5 border border-[var(--border)] rounded-xl bg-[var(--bg-surface)] text-sm text-[var(--text-main)]">
-            <span className="text-[var(--accent)]">$</span> bun create @opentf/web my-app
-            <span className="text-[var(--text-muted)]">⧉</span>
-          </code>
+          <InstallPill command="bun create @opentf/web my-app" />
         </div>
       </section>
 
