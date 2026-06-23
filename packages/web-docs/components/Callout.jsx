@@ -5,7 +5,7 @@
 const ICONS = {
   note: "✎",
   tip: "💡",
-  info: "ℹ",
+  info: "🛈",
   warning: "⚠",
   danger: "⛔",
 };

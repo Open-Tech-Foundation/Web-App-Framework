@@ -19,10 +19,10 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Changed
 
-- Callouts restyled to the updated design system: a two-column grid puts the filled
-  icon chip in its own column beside the title and body, with a per-type accent
-  driving the tinted fill, border, and title color (`color-mix`, so they adapt to
-  light/dark automatically).
+- Callouts restyled to the updated design system: a two-column grid puts a plain,
+  accent-tinted icon in its own column beside the title and body, with a per-type
+  accent driving the tinted fill, border, and title color (`color-mix`, so they
+  adapt to light/dark automatically).
 - Sidebar links gained dot markers (dimmed by default, solid on the active route).
 - The navbar search trigger only renders when a search provider is configured.
 

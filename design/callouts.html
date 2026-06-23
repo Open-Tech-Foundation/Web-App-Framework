@@ -23,7 +23,11 @@
   }
   .callout .icon {
     width:26px; height:26px; border-radius:8px; display:grid; place-items:center;
-    background:var(--c); color:#fff; font-size:15px; line-height:1;
+    color:var(--c); font-size:18px; line-height:1;
+  }
+  /* filled variant (background) — opt-in via tweak */
+  body[data-iconstyle="filled"] .callout .icon {
+    background:var(--c); color:#fff; font-size:15px;
   }
   .callout .title { font-weight:700; font-size:14px; color:var(--c-title); margin-bottom:4px; }
   .callout .body { font-size:14px; line-height:1.6; color:var(--text); }
@@ -50,7 +54,7 @@
   </div>
 
   <div class="callout info">
-    <div class="icon">ℹ</div>
+    <div class="icon">🛈</div>
     <div><div class="title">Signal driven</div><div class="body">Updates are surgical. Changing a value only touches the DOM node bound to it.</div></div>
   </div>
 

@@ -677,16 +677,15 @@ body {
   border-radius: 0.75rem;
   background: color-mix(in srgb, var(--c) 7%, var(--otfw-bg));
 }
+/* Plain icon (design default): the glyph is tinted with the accent, no filled chip. */
 .otfw-callout-icon {
   display: grid;
   place-items: center;
   flex: none;
   width: 1.65rem;
   height: 1.65rem;
-  border-radius: 0.5rem;
-  background: var(--c);
-  color: #fff;
-  font-size: 0.95rem;
+  color: var(--c);
+  font-size: 1.15rem;
   line-height: 1;
 }
 .otfw-callout-title {
