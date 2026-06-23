@@ -258,22 +258,39 @@ body {
   color: var(--otfw-text-muted);
 }
 .otfw-sidebar-link {
-  display: block;
-  padding: 0.3rem 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.6rem;
   border-radius: 0.45rem;
   font-size: 0.875rem;
   color: var(--otfw-text-muted);
   text-decoration: none;
   transition: color 0.12s, background 0.12s;
 }
+.otfw-sidebar-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 99px;
+  background: currentColor;
+  opacity: 0.35;
+  transition: opacity 0.12s;
+}
 .otfw-sidebar-link:hover {
   color: var(--otfw-text);
   background: var(--otfw-bg-surface);
+}
+.otfw-sidebar-link:hover .otfw-sidebar-dot {
+  opacity: 0.6;
 }
 .otfw-sidebar-link.otfw-active {
   color: var(--otfw-accent);
   background: var(--otfw-accent-soft);
   font-weight: 600;
+}
+.otfw-sidebar-link.otfw-active .otfw-sidebar-dot {
+  opacity: 1;
 }
 
 /* ── Content ───────────────────────────────────────────────────────────────── */
@@ -538,38 +555,60 @@ body {
 }
 
 /* ── Callout ───────────────────────────────────────────────────────────────── */
+/* Per-type accent color `--c` drives a tinted fill, border, title color and a
+ * filled icon chip — all derived from the one color via color-mix, so the same
+ * rule adapts to light and dark automatically. */
 .otfw-callout {
+  --c: var(--otfw-text-muted);
   margin: 1.5rem 0;
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--otfw-border);
-  border-left-width: 3px;
+  padding: 0.95rem 1.05rem;
+  border: 1px solid color-mix(in srgb, var(--c) 28%, var(--otfw-border));
+  border-left: 3px solid var(--c);
   border-radius: var(--otfw-radius);
-  background: var(--otfw-bg-surface);
+  background: color-mix(in srgb, var(--c) 7%, var(--otfw-bg));
 }
 .otfw-callout-title {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
   font-weight: 700;
+  font-size: 0.92rem;
+  color: color-mix(in srgb, var(--c) 60%, var(--otfw-text));
   margin-bottom: 0.4rem;
+}
+.otfw-callout-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.45rem;
+  background: var(--c);
+  color: #fff;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+.otfw-callout-body {
+  font-size: 0.92rem;
+  line-height: 1.65;
 }
 .otfw-callout-body > :last-child {
   margin-bottom: 0;
 }
 .otfw-callout-note {
-  border-left-color: var(--otfw-text-muted);
+  --c: var(--otfw-text-muted);
 }
 .otfw-callout-tip {
-  border-left-color: #10b981;
+  --c: #10b981;
 }
 .otfw-callout-info {
-  border-left-color: #3b82f6;
+  --c: #3b82f6;
 }
 .otfw-callout-warning {
-  border-left-color: #f59e0b;
+  --c: #f59e0b;
 }
 .otfw-callout-danger {
-  border-left-color: #ef4444;
+  --c: #ef4444;
 }
 
 /* ── Tabs / CodeGroup ──────────────────────────────────────────────────────── */

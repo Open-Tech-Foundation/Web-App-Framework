@@ -14,6 +14,7 @@ export default function SidebarNode(props) {
           href={item.path}
           class={router.pathname === item.path ? "otfw-sidebar-link otfw-active" : "otfw-sidebar-link"}
         >
+          <span class="otfw-sidebar-dot" aria-hidden="true"></span>
           {item.title}
         </Link>
       ) : (
