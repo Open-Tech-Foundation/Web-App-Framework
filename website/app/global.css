@@ -11,10 +11,12 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Ensure custom elements behave like blocks. Hosts are addressed by the stable
+/* Demo component hosts behave as blocks. Hosts are addressed by the stable
  * `web-<kebab>` class the compiler stamps on every component (the element tag is
- * module-hashed for collision-freedom, so it is not a reliable selector). */
-.web-navlink, .web-link, .web-counter, .web-todolist {
+ * module-hashed for collision-freedom, so it is not a reliable selector). `.web-link`
+ * is intentionally left to the web-docs theme (display: contents) so the navbar's
+ * <a> participates directly in the flex layout. */
+.web-counter, .web-todolist {
   display: block;
 }
 

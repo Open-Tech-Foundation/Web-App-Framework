@@ -69,7 +69,6 @@ body {
  * the compiler stamps on every component (the element tag itself is module-hashed
  * to stay collision-free, so it is not a reliable selector). */
 .web-docs-layout,
-.web-navbar,
 .web-sidebar,
 .web-toc,
 .web-footer,
@@ -81,6 +80,11 @@ body {
 .web-table {
   display: block;
 }
+/* The navbar host must be transparent so its sticky <header> sticks to the page
+ * scroll container, not to its own wrapper. Link hosts are transparent so the inner
+ * <a> participates directly in the navbar/list flex layout. */
+.web-navbar,
+.web-navbar-link,
 .web-link,
 .web-sidebar-node {
   display: contents;
@@ -138,12 +142,14 @@ body {
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
+/* Brand sits on the left; the nav links and actions group together on the right. */
+.otfw-navbar-brand {
+  margin-right: auto;
+}
 .otfw-navbar-nav {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 1.5rem;
-  margin-right: auto;
-  height: 100%;
   font-size: 0.9rem;
 }
 .otfw-navbar-link {
@@ -151,22 +157,21 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  height: 100%;
   color: var(--otfw-text-muted);
   text-decoration: none;
   font-weight: 500;
   transition: color 0.15s;
 }
-/* Subtle accent underline pinned to the navbar's bottom edge; scales in on the
- * active route (and faintly on hover). */
+/* Subtle accent underline beneath the link; scales in on the active route (and
+ * faintly on hover). */
 .otfw-navbar-link::after {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -1px;
+  bottom: -0.45rem;
   height: 2px;
-  border-radius: 2px 2px 0 0;
+  border-radius: 2px;
   background: var(--otfw-accent);
   transform: scaleX(0);
   transition: transform 0.18s ease, opacity 0.18s ease;
