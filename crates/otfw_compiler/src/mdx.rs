@@ -88,6 +88,30 @@ impl Emit {
         nodes.iter().map(|n| self.node(n)).collect()
     }
 
+    /// Render a Markdown `Text` node, collapsing inline whitespace to single spaces —
+    /// the way HTML and CommonMark render prose. markdown-rs keeps a soft line break as
+    /// a literal newline in the value (`is\n**bold**` → Text "is\n"); left as-is, the
+    /// downstream JSX compiler trims that boundary newline and fuses the words into
+    /// "isbold". Collapsing runs of whitespace (incl. newlines) to a single space — and
+    /// preserving a leading/trailing one — keeps words and inline marks separated.
+    /// Code is never routed here (`InlineCode`/`Code` keep their literal whitespace).
+    fn text(&self, n: &markdown::mdast::Text) -> String {
+        let mut collapsed = String::with_capacity(n.value.len());
+        let mut prev_ws = false;
+        for c in n.value.chars() {
+            if c.is_whitespace() {
+                if !prev_ws {
+                    collapsed.push(' ');
+                }
+                prev_ws = true;
+            } else {
+                collapsed.push(c);
+                prev_ws = false;
+            }
+        }
+        jsx_text(&collapsed)
+    }
+
     fn node(&mut self, node: &Node) -> String {
         match node {
             Node::Root(n) => self.nodes(&n.children),
@@ -100,7 +124,7 @@ impl Emit {
                 format!("<h{d} id=\"{id}\">{inner}</h{d}>")
             }
             Node::Paragraph(n) => format!("<p>{}</p>", self.nodes(&n.children)),
-            Node::Text(n) => jsx_text(&n.value),
+            Node::Text(n) => self.text(n),
             Node::Strong(n) => format!("<strong>{}</strong>", self.nodes(&n.children)),
             Node::Emphasis(n) => format!("<em>{}</em>", self.nodes(&n.children)),
             Node::Delete(n) => format!("<del>{}</del>", self.nodes(&n.children)),
@@ -491,6 +515,18 @@ mod tests {
         assert!(out.contains("<p>"));
         assert!(out.contains("<strong>b</strong>"));
         assert!(out.contains("<em>c</em>"));
+    }
+
+    #[test]
+    fn soft_line_break_before_inline_mark_keeps_a_space() {
+        // A wrapped paragraph (`is\n**bold**`) must not fuse into "isbold": the soft
+        // line break collapses to a single space, like HTML/CommonMark rendering.
+        let out = mdx_to_jsx("code is\n**highlighted** now", "doc.mdx").unwrap();
+        assert!(out.contains("code is <strong>highlighted</strong> now"), "{out}");
+        // A literal space at the boundary stays a single space (not doubled).
+        let lit = mdx_to_jsx("code is **highlighted**", "doc.mdx").unwrap();
+        assert!(lit.contains("code is <strong>highlighted</strong>"), "{lit}");
+        assert!(!lit.contains("is  <strong>"), "{lit}");
     }
 
     #[test]

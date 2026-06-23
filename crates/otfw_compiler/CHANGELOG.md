@@ -15,6 +15,13 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
+- MDX prose no longer fuses words across a soft line break. A wrapped paragraph like
+  `code is\n**highlighted**` kept the newline in the text node; the downstream JSX
+  compiler then trimmed that boundary newline, rendering "ishighlighted". Inline text
+  whitespace (incl. soft line breaks) is now collapsed to a single space — as HTML and
+  CommonMark render it — so words and inline marks stay separated. Code spans/fences
+  keep their literal whitespace. Affects every output path (CSR and SSG share the
+  compiled module).
 - MDX syntax highlighting now covers JSX/TSX/TS/MDX code fences. syntect's default
   grammar set has no `jsx`/`tsx`/`ts`/`mdx` entries, so those fences silently fell
   back to plain text (no highlighting) — which was most of the documentation's
