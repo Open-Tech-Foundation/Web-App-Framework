@@ -36,6 +36,9 @@ The `[Unreleased]` section is renamed to the new version number at release time.
   adapt to light/dark automatically).
 - Sidebar links gained dot markers (dimmed by default, solid on the active route).
 - The navbar search trigger only renders when a search provider is configured.
+- Prose now styles all six heading levels: `h4`–`h6` were unstyled (browser defaults,
+  nearly indistinguishable); they now continue the descending size scale, with `h6`
+  set in small uppercase muted text.
 
 ### Fixed
 

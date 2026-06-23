@@ -28,18 +28,26 @@ OTF Web supports CommonMark plus the common GitHub-Flavored Markdown (GFM) exten
 
 ### Headings
 
-`#` through `######` become `<h1>`–`<h6>`. Each is slugified into an `id` and added to
-the table of contents, so it's linkable and shows in the right-hand outline.
+`#` through `######` become `<h1>`–`<h6>`. Each is slugified into an `id` so it's
+linkable; the `##` and `###` levels also populate the **On this page** outline.
 
 ```md
-#### A fourth-level heading
-##### A fifth-level heading
+# Heading level 1
+## Heading level 2
+### Heading level 3
+#### Heading level 4
+##### Heading level 5
+###### Heading level 6
 ```
 
-Renders (and note they appear in the **On this page** outline):
+Renders:
 
-#### A fourth-level heading
-##### A fifth-level heading
+<h1>Heading level 1</h1>
+<h2>Heading level 2</h2>
+<h3>Heading level 3</h3>
+<h4>Heading level 4</h4>
+<h5>Heading level 5</h5>
+<h6>Heading level 6</h6>
 
 ### Text formatting
 
@@ -90,6 +98,14 @@ Renders:
 
 GFM checkboxes render as disabled inputs:
 
+```md
+- [x] Scaffold the project
+- [x] Write some docs
+- [ ] Ship it
+```
+
+Renders:
+
 - [x] Scaffold the project
 - [x] Write some docs
 - [ ] Ship it
@@ -116,7 +132,11 @@ below
 
 Renders:
 
+above
+
 ---
+
+below
 
 ### Tables
 
@@ -213,8 +233,15 @@ inside its children still renders:
 
 ### Expressions
 
-A `{ }` expression is evaluated as JavaScript and rendered inline — for example
-`{2 + 2}` renders: {2 + 2}.
+A `{ }` expression is evaluated as JavaScript and rendered inline.
+
+```mdx
+The answer is {2 + 2}.
+```
+
+Renders:
+
+The answer is {2 + 2}.
 
 <Callout type="warning" title="Inline object & array literals in attributes">
   A component attribute can't take an inline object/array literal
