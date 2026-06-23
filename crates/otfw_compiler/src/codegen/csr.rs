@@ -261,6 +261,10 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
         e.uses.host = true;
     }
     code.push_str("  connectedCallback() {\n");
+    // A synchronous DOM move fires disconnect→connect in the same task; cancel any
+    // teardown scheduled by that disconnect so the component (and its live effects)
+    // survives the move instead of being torn down and left mounted-but-dead.
+    code.push_str("    this._pendingTeardown = false;\n");
     code.push_str("    if (this._mounted) return;\n");
     code.push_str("    this._mounted = true;\n");
     code.push_str("    this._cleanups = [];\n");
@@ -309,9 +313,21 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
         code.push_str("  }\n");
     }
 
+    // Defer teardown to a microtask so a same-task reconnect (a DOM move, e.g. a layout
+    // slotting `{props.children}` into its own subtree) can cancel it. Only a real
+    // removal — still disconnected when the microtask runs — disposes effects and clears
+    // `_mounted`, allowing a later genuine remount to re-initialize.
     code.push_str("  disconnectedCallback() {\n");
-    code.push_str("    if (this._cleanups) for (const dispose of this._cleanups) dispose();\n");
-    code.push_str("    this._cleanups = [];\n");
+    code.push_str("    this._pendingTeardown = true;\n");
+    code.push_str("    const __teardown = () => {\n");
+    code.push_str("      if (!this._pendingTeardown) return;\n");
+    code.push_str("      this._pendingTeardown = false;\n");
+    code.push_str("      if (this._cleanups) for (const dispose of this._cleanups) dispose();\n");
+    code.push_str("      this._cleanups = [];\n");
+    code.push_str("      this._mounted = false;\n");
+    code.push_str("    };\n");
+    code.push_str("    if (typeof queueMicrotask !== \"undefined\") queueMicrotask(__teardown);\n");
+    code.push_str("    else Promise.resolve().then(__teardown);\n");
     code.push_str("  }\n");
     code.push_str("}\n");
     // Idempotent registration: a tag is reused when the same module is evaluated in
@@ -1146,6 +1162,7 @@ mod tests {
              export class CounterElement extends HTMLElement {\n  \
              static tag = \"web-counter-4e54f4d4\";\n  \
              connectedCallback() {\n    \
+             this._pendingTeardown = false;\n    \
              if (this._mounted) return;\n    \
              this._mounted = true;\n    \
              this._cleanups = [];\n    \
@@ -1163,8 +1180,16 @@ mod tests {
              }\n  \
              }\n  \
              disconnectedCallback() {\n    \
-             if (this._cleanups) for (const dispose of this._cleanups) dispose();\n    \
-             this._cleanups = [];\n  \
+             this._pendingTeardown = true;\n    \
+             const __teardown = () => {\n      \
+             if (!this._pendingTeardown) return;\n      \
+             this._pendingTeardown = false;\n      \
+             if (this._cleanups) for (const dispose of this._cleanups) dispose();\n      \
+             this._cleanups = [];\n      \
+             this._mounted = false;\n    \
+             };\n    \
+             if (typeof queueMicrotask !== \"undefined\") queueMicrotask(__teardown);\n    \
+             else Promise.resolve().then(__teardown);\n  \
              }\n\
              }\n\
              if (typeof customElements !== \"undefined\" && !customElements.get(CounterElement.tag)) customElements.define(CounterElement.tag, CounterElement);\n\

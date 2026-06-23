@@ -15,6 +15,16 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
+- Components survive a DOM move instead of going inert. A custom element's
+  `disconnectedCallback` disposed its reactive effects, while `connectedCallback`'s
+  `if (this._mounted) return` guard blocked re-initialization — so any element that was
+  disconnected and reconnected (e.g. a layout slotting `{props.children}` into its own
+  subtree via `replaceChildren`, which moves every nested node) ended up mounted but
+  dead: signals no longer updated the DOM. Teardown is now deferred to a microtask and
+  cancelled if the element reconnects in the same task, so a synchronous move keeps the
+  component and its live effects intact; only a real removal tears down (and clears
+  `_mounted` so a later genuine remount re-initializes). This is what made interactive
+  components inside a `DocsLayout`-wrapped page stop reacting.
 - MDX prose no longer fuses words across a soft line break. A wrapped paragraph like
   `code is\n**highlighted**` kept the newline in the text node; the downstream JSX
   compiler then trimmed that boundary newline, rendering "ishighlighted". Inline text
