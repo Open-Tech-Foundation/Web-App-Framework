@@ -440,11 +440,45 @@ body {
 .otfw-prose li:has(> input[type="checkbox"]) {
   list-style: none;
 }
-.otfw-prose li > input[type="checkbox"] {
-  margin-right: 0.5em;
-}
 .otfw-prose li:has(> input[type="checkbox"]) > p {
   display: inline;
+}
+/* Custom checkbox so checked vs. unchecked read at a glance (the native disabled
+ * box is nearly identical in both states). Unchecked is an empty bordered box;
+ * checked fills with the accent and draws a white tick. */
+.otfw-prose li > input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0 0.55em 0 0;
+  border: 1.5px solid var(--otfw-border);
+  border-radius: 0.3rem;
+  background: var(--otfw-bg-surface);
+  vertical-align: -0.18em;
+  position: relative;
+  opacity: 1; /* override the browser's disabled-input dimming */
+  cursor: default;
+}
+.otfw-prose li > input[type="checkbox"]:checked {
+  background: var(--otfw-accent);
+  border-color: var(--otfw-accent);
+}
+.otfw-prose li > input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 0.34rem;
+  top: 0.13rem;
+  width: 0.26rem;
+  height: 0.52rem;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+/* Completed items: mute and strike the label so the list scans top-to-bottom. */
+.otfw-prose li:has(> input[type="checkbox"]:checked) > p {
+  color: var(--otfw-text-muted);
+  text-decoration: line-through;
 }
 .otfw-prose a {
   color: var(--otfw-accent);
