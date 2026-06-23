@@ -25,6 +25,7 @@ import {
   loadDocsNavPlugin,
   loadProject,
   otfwPlugin,
+  runDocsSearchIndex,
 } from "./shared.js";
 
 const hash = (s) => Bun.hash(s).toString(16).padStart(16, "0").slice(0, 8);
@@ -141,6 +142,10 @@ export async function runBuild() {
   const publicDir = join(root, "public");
   if (existsSync(publicDir)) cpSync(publicDir, outDir, { recursive: true });
 
+  // Docs search: index the pre-rendered HTML with Pagefind (when SSG + opted in).
+  let search = null;
+  if (ssg) search = await runDocsSearchIndex(root, config, outDir);
+
   const chunks = result.output.filter((o) => o.type === "chunk").length;
   const ms = Math.round(performance.now() - t0);
   console.log(`\n  OTF Web build`);
@@ -153,5 +158,6 @@ export async function runBuild() {
           : ""),
     );
   }
+  if (search) console.log(`  → Pagefind indexed ${search.pages} page(s)`);
   console.log("");
 }

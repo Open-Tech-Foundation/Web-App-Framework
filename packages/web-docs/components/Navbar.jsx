@@ -6,6 +6,7 @@
 
 import ThemeToggle from "./ThemeToggle.jsx";
 import SearchTrigger from "./SearchTrigger.jsx";
+import Search from "./Search.jsx";
 import NavbarLink from "./NavbarLink.jsx";
 import NavIcon from "./NavIcon.jsx";
 import { Link } from "@opentf/web";
@@ -31,6 +32,7 @@ export default function Navbar(props) {
 
         <div class="otfw-navbar-actions">
           {config.search ? <SearchTrigger /> : null}
+          {config.search ? <Search /> : null}
           {config.github ? (
             <a href={config.github} target="_blank" rel="noreferrer" class="otfw-navbar-icon" aria-label="GitHub">
               <NavIcon name="github" />

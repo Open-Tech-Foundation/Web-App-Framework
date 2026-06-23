@@ -262,6 +262,102 @@ body {
   }
 }
 
+/* ── Search modal (Pagefind) ───────────────────────────────────────────────── */
+.web-search {
+  display: contents;
+}
+.otfw-search-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 1rem 1rem;
+  background: color-mix(in srgb, #000 45%, transparent);
+  backdrop-filter: blur(2px);
+}
+.otfw-search-modal.is-open {
+  display: flex;
+}
+.otfw-search-panel {
+  width: 100%;
+  max-width: 36rem;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--otfw-bg-elevated);
+  border: 1px solid var(--otfw-border);
+  border-radius: 0.9rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.otfw-search-field {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--otfw-border);
+  color: var(--otfw-text-muted);
+}
+.otfw-search-input-field {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  outline: none;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--otfw-text);
+}
+.otfw-search-esc {
+  border: 1px solid var(--otfw-border);
+  border-radius: 0.3rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
+  font-family: var(--otfw-mono);
+}
+.otfw-search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem;
+  overflow-y: auto;
+}
+.otfw-search-result {
+  display: block;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  color: var(--otfw-text);
+}
+.otfw-search-result.is-active {
+  background: var(--otfw-accent-soft);
+}
+.otfw-search-result-title {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.otfw-search-result-excerpt {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--otfw-text-muted);
+  margin-top: 0.15rem;
+  line-height: 1.5;
+}
+.otfw-search-result-excerpt mark {
+  background: var(--otfw-accent-soft);
+  color: var(--otfw-accent);
+  border-radius: 0.2rem;
+  padding: 0 0.1rem;
+}
+.otfw-search-empty {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--otfw-text-muted);
+  font-size: 0.9rem;
+}
+
 /* ── Docs grid ─────────────────────────────────────────────────────────────── */
 .otfw-docs {
   max-width: 90rem;

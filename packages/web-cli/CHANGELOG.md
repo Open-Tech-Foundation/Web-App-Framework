@@ -5,6 +5,13 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ## [Unreleased]
 
+### Added
+
+- `otfw build --ssg` runs a docs search index pass when the project's docs config sets
+  `search.provider: "pagefind"`: after pre-rendering, it indexes `dist/` with Pagefind
+  (via `@opentf/web-docs/build`'s `indexWithPagefind`) and reports the page count. No-op
+  for projects without docs search configured.
+
 ### Fixed
 
 - Dev server now serves `public/` assets (e.g. `/logo.png`), falling back to the

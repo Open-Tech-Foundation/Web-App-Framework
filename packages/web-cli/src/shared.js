@@ -147,6 +147,24 @@ export async function loadDocsNavPlugin(root, appDir, config, exclude = new Set(
   }
 }
 
+/**
+ * Run Pagefind over the built site when the docs config opts into it
+ * (`docs.search.provider === "pagefind"`). Indexes the pre-rendered HTML in `siteDir`
+ * and writes `<siteDir>/pagefind/`. No-op (returns null) otherwise. Resolved from the
+ * app's `@opentf/web-docs` so the hook ships with the docs package.
+ */
+export async function runDocsSearchIndex(root, config, siteDir) {
+  if (config?.docs?.search?.provider !== "pagefind") return null;
+  try {
+    const entry = Bun.resolveSync("@opentf/web-docs/build", root);
+    const { indexWithPagefind } = await import(pathToFileURL(entry).href);
+    return await indexWithPagefind({ siteDir });
+  } catch (e) {
+    console.warn(`⚠ Pagefind indexing skipped: ${e?.message ?? e}`);
+    return null;
+  }
+}
+
 /** Discover file-based routes under `app/`: every page/layout and the 404. */
 export function discoverPages(dir, exclude) {
   const out = [];

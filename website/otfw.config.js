@@ -16,5 +16,8 @@ export default defineDocsConfig({
       { label: "Home", href: "/" },
       { label: "Docs", href: "/docs" },
     ],
+    // Static search: `otfw build --ssg` indexes the pre-rendered HTML with Pagefind
+    // into dist/pagefind/; the navbar ⌘K trigger and modal query it at runtime.
+    search: { provider: "pagefind" },
   },
 });
