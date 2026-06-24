@@ -530,6 +530,11 @@ body {
   opacity: 0;
   transition: opacity 0.12s ease;
 }
+/* The `#` is presentational only — drawn here, not as a DOM text node, so it never
+   leaks into heading text read by the TOC or the search index. */
+.otfw-heading-anchor::before {
+  content: "#";
+}
 .otfw-prose :is(h1, h2, h3, h4, h5, h6):hover .otfw-heading-anchor,
 .otfw-heading-anchor:focus-visible {
   opacity: 1;

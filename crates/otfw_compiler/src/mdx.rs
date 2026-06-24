@@ -121,10 +121,12 @@ impl Emit {
                 let id = slugify(&text);
                 let d = n.depth.clamp(1, 6);
                 self.toc.push((d, id.clone(), text));
-                // A self-linking anchor (the hover `#`) so each heading is shareable;
-                // `aria-hidden` keeps it out of the accessibility tree.
+                // A self-linking anchor (the hover `#`) so each heading is shareable.
+                // The `#` glyph is drawn by CSS (`::before`), not a text node, so it
+                // stays out of any text extraction of the heading — the TOC, Pagefind
+                // titles, etc. `aria-hidden` keeps it out of the accessibility tree.
                 format!(
-                    "<h{d} id=\"{id}\">{inner}<a class=\"otfw-heading-anchor\" href=\"#{id}\" aria-hidden=\"true\" tabindex=\"-1\">#</a></h{d}>"
+                    "<h{d} id=\"{id}\">{inner}<a class=\"otfw-heading-anchor\" href=\"#{id}\" aria-hidden=\"true\" tabindex=\"-1\"></a></h{d}>"
                 )
             }
             Node::Paragraph(n) => format!("<p>{}</p>", self.nodes(&n.children)),
