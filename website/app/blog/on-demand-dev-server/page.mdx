@@ -1,0 +1,86 @@
+---
+title: Inside the on-demand dev server
+description: How OTF Web boots in milliseconds by compiling only the route you visit — and how a module graph keeps hot reloads precise.
+date: 2026-06-25
+author: OTF Team
+author_avatar: /blog/avatar-otf.svg
+author_role: Core
+cover: /blog/cover-on-demand.svg
+tags: internals, toolchain, performance
+---
+
+A dev server has one job before anything else: get out of your way. If `dev` takes
+fifteen seconds to come up, every restart is a context switch. OTF Web's dev server
+now boots in about **40 milliseconds** on our docs site — not by doing the same work
+faster, but by doing **less work, later**.
+
+## The old shape: compile everything, then serve
+
+The first version bundled the whole app up front. Every route, every component, every
+MDX page went through the compiler before the first request was answered. Two things
+made that slow:
+
+1. **A process per file.** The compiler ran as a subprocess invoked once per module,
+   so startup paid the binary-startup cost dozens of times, serially.
+2. **Eager compilation.** Even though routes were code-split, *all* of them were
+   compiled at boot — you paid for 34 routes to look at one.
+
+## Step one: one compiler, not hundreds
+
+The first fix was to stop spawning. The compiler gained a long-lived `serve` mode that
+reads compile requests on stdin and writes results on stdout, staying up across
+requests:
+
+```text
+<id_len> <source_len> <component> <ssg>\n  <id bytes><source bytes>
+→ OK <len>\n<code>     or     ERR <len>\n<message>
+```
+
+One process compiles every module. That alone took the initial bundle from ~16.7s to
+~3.1s — the binary-startup cost is paid once.
+
+## Step two: compile only what's requested
+
+The remaining 3.1s was all the routes we hadn't looked at yet. So the dev server
+stopped bundling up front and started serving like the browser asks — module by
+module:
+
+- `/@fw.js` — the runtime, bundled once and shared by every chunk through an import
+  map (so the router and signal registry are a single instance).
+- `/bundle.js` — the app entry: `mountApp` plus a route table whose loaders point at
+  `/__route/<id>.js` URLs. The route modules are **not** in this bundle.
+- `/__route/<id>.js` — one route, compiled the first time you navigate to it, then
+  cached.
+
+Startup compiles nothing. The first paint pays for the entry and the runtime; each
+route pays its own way on first visit, then serves from memory in well under a
+millisecond.
+
+## The piece that makes hot reload precise: a module graph
+
+On-demand serving raises a question: when a file changes, *what do you invalidate?*
+Drop too much and you recompile the world; drop too little and you serve stale code.
+
+The answer is a **module graph** — nodes are modules, edges are imports, each node
+carries a content fingerprint. When a file changes, the graph answers "what
+transitively imports this?" and the dev server drops exactly those cached chunks. Edit
+a component used by one post and that post's chunk recompiles; an unrelated route stays
+warm.
+
+```text
+edit  app/components/CounterDemo.jsx
+  → affected = { …/docs/page.mdx, … }   // only importers
+  → drop those route chunks, reload
+```
+
+The same graph is what will drive incremental builds and the client/server split as the
+toolchain grows. It's the quiet foundation under the fast feeling.
+
+## Where this is going
+
+The dev server is still a stepping stone — the long-term home for the graph and the
+build orchestration is the Rust toolchain, where it can share data structures with the
+bundler instead of serializing across a boundary. But the shape is set: **start
+instantly, compile on demand, invalidate precisely.**
+
+If you've used the dev server and something felt slow, we want to hear about it.

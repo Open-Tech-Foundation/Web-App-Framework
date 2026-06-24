@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80" role="img" aria-label="OTF Team">
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff851b"/>
+      <stop offset="1" stop-color="#e0640a"/>
+    </linearGradient>
+  </defs>
+  <circle cx="40" cy="40" r="40" fill="url(#a)"/>
+  <path d="M24 28h32v8H44v24h-8V36H24z" fill="#fff"/>
+</svg>

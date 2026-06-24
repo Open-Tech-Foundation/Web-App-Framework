@@ -1,0 +1,147 @@
+---
+title: Blog
+description: Add a blog to your site with @opentf/web-docs — a generated post list plus banner, meta, reading-time, and TOC components.
+---
+
+import { Callout, Steps, Tabs, CodeBlock } from "@opentf/web-docs";
+
+# Blog
+
+`@opentf/web-docs` ships a small blog feature alongside the docs generator. You write
+posts as MDX with frontmatter; the toolchain generates the post list and provides the
+layout and components (banner, meta, reading time, table of contents).
+
+<Callout type="tip" title="See it live">
+  The [blog on this site](/blog) is the reference demo for this feature — the index,
+  the post pages, cover images, author info, reading time, and the on-page TOC are all
+  built with the components described here. Browse `website/app/blog/` in the repo to
+  see the exact files.
+</Callout>
+
+## Turn it on
+
+<Steps>
+
+### Add a `blog` block to `otfw.config.js`
+
+```js otfw.config.js
+import { defineDocsConfig } from "@opentf/web-docs/config";
+
+export default defineDocsConfig({
+  docs: { /* … */ },
+  blog: {
+    dir: "blog", // posts live under app/blog (the default)
+  },
+});
+```
+
+This activates a build-time plugin that scans `app/<dir>` and resolves the virtual
+module `@opentf/web-docs/posts` to your post list — sorted newest-first, with reading
+time computed for you.
+
+### Write a post
+
+Each post is a folder with a `page.mdx`. The body is pure content; the banner is built
+from frontmatter.
+
+```mdx app/blog/hello-world/page.mdx
+---
+title: Hello world
+description: Our first post.
+date: 2026-06-25
+author: Ada Lovelace
+author_avatar: /blog/ada.jpg
+author_role: Engineering
+cover: /blog/hello.jpg
+tags: announcements, web
+---
+
+Your markdown here. No need to repeat the title or date — the layout renders the
+banner from the frontmatter above.
+```
+
+`app/blog/hello-world/page.mdx` → `/blog/hello-world`.
+
+### Add the layout
+
+```jsx app/blog/layout.jsx
+import { BlogLayout } from "@opentf/web-docs";
+import { posts } from "@opentf/web-docs/posts";
+import config from "../../otfw.config.js";
+
+export default function (props) {
+  return (
+    <BlogLayout config={config.docs} posts={posts} frame={false}>
+      {props.children}
+    </BlogLayout>
+  );
+}
+```
+
+`BlogLayout` shows the post banner + TOC on a post, and just the children on the index.
+Use `frame={false}` when your site already provides the navbar/footer.
+
+### Add the index
+
+```jsx app/blog/page.jsx
+import { PostList } from "@opentf/web-docs";
+import { posts } from "@opentf/web-docs/posts";
+
+export default function BlogIndex() {
+  return <PostList posts={posts} />;
+}
+```
+
+</Steps>
+
+## Frontmatter fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `title` | string | Falls back to a humanized slug. |
+| `description` | string | Shown on the banner and the index card. |
+| `date` | string | `YYYY-MM-DD`; drives newest-first ordering. |
+| `author` | string | Name shown in the meta row. |
+| `author_avatar` | string | Image URL shown next to the name. |
+| `author_role` | string | Optional label after the name. |
+| `cover` | string | Cover image (banner + card). |
+| `tags` | string | Comma-separated; rendered as chips. |
+| `order` | number | Overrides date ordering when present. |
+
+<Callout type="info" title="Frontmatter is flat">
+  Values are scalars (string/number/boolean). `tags` is a comma-separated string that
+  the plugin splits into an array — YAML lists aren't parsed.
+</Callout>
+
+## The generated post list
+
+`@opentf/web-docs/posts` exports the array used by the index and the layout. Each entry
+is plain data, so you can build your own listing if you don't want `PostList`:
+
+```jsx
+import { posts } from "@opentf/web-docs/posts";
+// posts: { slug, path, title, description, date, author, authorAvatar,
+//          authorRole, cover, tags, readingTime, order }[]
+```
+
+## Components
+
+| Component | Use |
+| --- | --- |
+| `BlogLayout` | Section layout — banner + TOC on posts, children on the index. |
+| `PostList` / `PostCard` | The index listing. |
+| `PostBanner` | Cover + title + description + meta (used by `BlogLayout`). |
+| `PostMeta` | The date · author · reading-time row. |
+| `ReadingTime` | A `N min read` label. |
+
+## Search
+
+Posts are indexed automatically. `BlogLayout` marks the post article with
+`data-pagefind-body`, so `otfw build --ssg` picks blog posts up in the same Pagefind
+index as your docs — no extra configuration. The index page is intentionally not
+indexed (it's just a list of links).
+
+<Callout type="info" title="No RSS yet">
+  An RSS/Atom feed isn't generated. If you need one, the `@opentf/web-docs/posts` list
+  has everything required to emit it from a build hook.
+</Callout>

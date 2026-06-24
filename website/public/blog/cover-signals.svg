@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="525" viewBox="0 0 1200 525" role="img" aria-label="How signals work">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="525" fill="url(#bg)"/>
+  <g stroke="#475569" stroke-width="2" fill="none">
+    <path d="M250 262 H950"/>
+  </g>
+  <g fill="#0f172a" stroke="#ff851b" stroke-width="3">
+    <circle cx="250" cy="262" r="26"/><circle cx="500" cy="262" r="26"/><circle cx="750" cy="262" r="26"/><circle cx="950" cy="262" r="26"/>
+  </g>
+  <g font-family="ui-monospace, monospace" font-size="18" fill="#e2e8f0" text-anchor="middle">
+    <text x="250" y="268">count</text><text x="500" y="268">×2</text><text x="750" y="268">tax</text><text x="950" y="268">DOM</text>
+  </g>
+  <text x="80" y="470" font-family="system-ui, sans-serif" font-size="36" font-weight="800" fill="#f8fafc">update only what changed</text>
+</svg>

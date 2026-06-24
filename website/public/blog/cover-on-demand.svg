@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="525" viewBox="0 0 1200 525" role="img" aria-label="On-demand dev server">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff851b"/>
+      <stop offset="1" stop-color="#febc2e"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="525" fill="url(#bg)"/>
+  <!-- module graph motif: nodes + edges, lit on demand -->
+  <g stroke="#334155" stroke-width="2" fill="none">
+    <path d="M300 160 L520 260"/><path d="M820 160 L600 260"/>
+    <path d="M560 280 L420 400"/><path d="M560 280 L760 400"/>
+  </g>
+  <g stroke="url(#accent)" stroke-width="3" fill="none" opacity="0.9">
+    <path d="M300 160 L520 260"/><path d="M560 280 L760 400"/>
+  </g>
+  <g font-family="ui-monospace, monospace" font-size="20" fill="#e2e8f0" text-anchor="middle">
+    <circle cx="300" cy="160" r="34" fill="#0f172a" stroke="url(#accent)" stroke-width="3"/><text x="300" y="167">entry</text>
+    <circle cx="820" cy="160" r="34" fill="#0f172a" stroke="#475569" stroke-width="2"/><text x="820" y="167">route</text>
+    <circle cx="560" cy="270" r="34" fill="#0f172a" stroke="url(#accent)" stroke-width="3"/><text x="560" y="277">fw</text>
+    <circle cx="420" cy="400" r="30" fill="#0f172a" stroke="#475569" stroke-width="2"/><text x="420" y="407">dom</text>
+    <circle cx="760" cy="400" r="30" fill="#0f172a" stroke="url(#accent)" stroke-width="3"/><text x="760" y="407">signals</text>
+  </g>
+  <text x="80" y="470" font-family="system-ui, sans-serif" font-size="34" font-weight="800" fill="#f8fafc">Compile only what you visit</text>
+</svg>
