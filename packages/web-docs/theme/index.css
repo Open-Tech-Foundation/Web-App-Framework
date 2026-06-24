@@ -1109,7 +1109,10 @@ body {
 @media (min-width: 1280px) {
   .otfw-blog-post {
     grid-template-columns: minmax(0, 1fr) var(--otfw-toc-width);
-    align-items: start;
+    /* No `align-items: start` — the TOC column is a <web-toc> custom element that
+       must stretch to the row height so its inner `position: sticky` nav has travel
+       room (mirrors `.otfw-docs`). With `start` the host shrinks to content and the
+       TOC scrolls away with the page. */
   }
   .otfw-blog-post .otfw-blog-main {
     margin: 0;

@@ -20,6 +20,11 @@
 
 ### Fixed
 
+- Blog post TOC now stays pinned while scrolling. The TOC column is a `<web-toc>`
+  custom-element host, and the blog post grid set `align-items: start`, so the host
+  shrank to its content height and its inner `position: sticky` nav had no travel room
+  — it scrolled away with the page. Dropping `align-items: start` lets the host stretch
+  to the row height (as in the docs grid), so the TOC sticks.
 - Code-block copy buttons now work in any layout, not just the docs shell. `CodeBlock`
   wires its own `onclick` (and MDX fences use the self-wiring `web-internal-code-block`
   built-in), so the delegated copy listener that lived in `DocsLayout` — and silently
