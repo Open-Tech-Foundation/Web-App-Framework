@@ -44,17 +44,31 @@ export default function Search() {
     try {
       const pf = await loadPagefind();
       const search = await pf.search(q);
-      const top = (search.results || []).slice(0, 8);
+      const top = (search.results || []).slice(0, 6);
       const data = await Promise.all(top.map((r) => r.data()));
       if (mine !== token) return; // a newer query superseded this one
-      results = data.map((d) => ({
-        url: d.url,
-        title: (d.meta && d.meta.title) || d.url,
-        // The breadcrumb trail (indexed via data-pagefind-meta) shows which page a
-        // result is from — handy when one term hits many pages. Normalize separators.
-        crumb: d.meta && d.meta.breadcrumb ? d.meta.breadcrumb.replace(/\s*\/\s*/g, " › ") : "",
-        excerpt: d.excerpt,
-      }));
+      // Flatten to heading-anchored sub-results so each row deep-links to the matched
+      // section (`/page/#heading`) rather than the page top. Pagefind builds these from
+      // the body's headings; a page with none falls back to a single page-level row.
+      const flat = [];
+      for (const d of data) {
+        const crumb = d.meta && d.meta.breadcrumb ? d.meta.breadcrumb.replace(/\s*\/\s*/g, " › ") : "";
+        const subs =
+          d.sub_results && d.sub_results.length
+            ? d.sub_results
+            : [{ title: (d.meta && d.meta.title) || d.url, url: d.url, excerpt: d.excerpt }];
+        for (const s of subs.slice(0, 4)) {
+          flat.push({
+            url: s.url,
+            title: s.title || (d.meta && d.meta.title) || d.url,
+            crumb,
+            excerpt: s.excerpt,
+          });
+          if (flat.length >= 10) break;
+        }
+        if (flat.length >= 10) break;
+      }
+      results = flat;
       active = 0;
     } catch (e) {
       if (mine === token) results = [];

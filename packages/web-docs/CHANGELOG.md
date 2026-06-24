@@ -12,10 +12,12 @@ The `[Unreleased]` section is renamed to the new version number at release time.
   docs shell — so the marketing homepage is excluded) into `dist/pagefind/`, file by
   file so the build can show progress. A new `Search` modal — opened by the navbar
   trigger or ⌘K / Ctrl+K — lazy-loads the static index on first open and queries it
-  client-side (debounced, keyboard-navigable, highlighted excerpts); each result shows
-  the page's breadcrumb trail (captured via `data-pagefind-meta="breadcrumb"` on the
-  `Breadcrumbs` nav, so a term that hits many pages is easy to tell apart) and links to
-  an absolute URL the router navigates to. No server required; in dev (no built index)
+  client-side (debounced, keyboard-navigable, highlighted excerpts). Results are
+  section-level: each page is split into its heading-anchored sub-results (Pagefind
+  `sub_results`), so a hit deep-links to the matched heading (`/page/#heading`) and the
+  router scrolls there, rather than dumping you at the page top. Each row shows the
+  page's breadcrumb trail (captured via `data-pagefind-meta="breadcrumb"` on the
+  `Breadcrumbs` nav, so a term that hits many pages is easy to tell apart). No server required; in dev (no built index)
   it opens but returns nothing, as expected. The build hook ships as `indexWithPagefind`
   from `@opentf/web-docs/build`.
 - Code blocks now render a header bar — a language label, an optional filename (from
