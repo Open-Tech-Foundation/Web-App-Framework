@@ -225,7 +225,22 @@ export async function runDev() {
       onChange(file);
     }
   });
-  process.once("exit", () => watcher.close());
+  // Ctrl+C is the normal way to stop a dev server, so treat it as a clean shutdown
+  // (exit 0) rather than the conventional 130 — otherwise `bun run dev` reports it as
+  // a failure. The compiler child is torn down by its own `exit` hook.
+  const shutdown = () => {
+    try {
+      watcher.close();
+    } catch {}
+    process.exit(0);
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+  process.once("exit", () => {
+    try {
+      watcher.close();
+    } catch {}
+  });
 
   const indexPath = join(root, "index.html");
   // Import map (so `@opentf/web` resolves to the shared runtime chunk) + entry + the

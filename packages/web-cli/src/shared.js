@@ -216,6 +216,7 @@ export async function moduleGraph(otfwc, webEntry, roots) {
     stdout: "pipe",
     stderr: "pipe",
   });
+  proc.unref(); // a short read-only crawl — never let it hold up shutdown
   const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
   if (exitCode !== 0) {
     console.error(`✗ otfwc graph failed:\n${await new Response(proc.stderr).text()}`);
@@ -352,17 +353,12 @@ export function startCompilerServer(otfwc) {
       proc.kill();
     } catch {}
   };
-  // One-shot builds exit when done; dev keeps the process (and child) alive. Either
-  // way, don't leak the child past our own exit.
+  // Clean up the child whenever this process exits — for any reason and at any exit
+  // code. We deliberately don't trap SIGINT/SIGTERM here: a helper shouldn't dictate
+  // the whole process's exit code (that's the command's call), and the child also
+  // receives the terminal's group signal directly. The `exit` hook is enough to avoid
+  // leaking it. (One-shot builds exit when done; the dev server until it's stopped.)
   process.once("exit", close);
-  process.once("SIGINT", () => {
-    close();
-    process.exit(130);
-  });
-  process.once("SIGTERM", () => {
-    close();
-    process.exit(143);
-  });
 
   return { compile, close };
 }
