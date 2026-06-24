@@ -17,7 +17,7 @@
 // `public/` assets are served as before. Project root = cwd, like `vite`/`next dev`.
 
 import { rolldown } from "rolldown";
-import { existsSync, mkdirSync, readFileSync, watch, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, watch, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { compileCss, usesTailwind } from "./tailwind.js";
@@ -268,11 +268,15 @@ export async function runDev() {
   }
 
   async function serveStatic(pathname) {
+    // Only serve regular files — a request whose path is a directory (e.g. a route
+    // like `/blog` that also exists as `public/blog/`) must fall through to the SPA
+    // shell, not try to read the directory.
+    const isFile = (f) => existsSync(f) && statSync(f).isFile();
     let file = join(root, pathname);
     if (!file.startsWith(root)) return null;
-    if (!existsSync(file)) {
+    if (!isFile(file)) {
       const fromPublic = join(root, "public", pathname);
-      if (!fromPublic.startsWith(join(root, "public") + "/") || !existsSync(fromPublic)) return null;
+      if (!fromPublic.startsWith(join(root, "public") + "/") || !isFile(fromPublic)) return null;
       file = fromPublic;
     }
     const ext = pathname.split(".").pop();

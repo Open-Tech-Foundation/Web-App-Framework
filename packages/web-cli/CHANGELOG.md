@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `otfw dev` static serving now skips directories. A request whose path is also a
+  directory under `public/` (e.g. the route `/blog` when `public/blog/` holds post
+  assets) tried to `readFileSync` the directory and threw `EISDIR`; it now falls
+  through to the SPA shell, and real files under that directory still serve.
+
 ### Changed
 
 - Register the blog posts plugin alongside the docs nav plugin. `loadDocsNavPlugin`
