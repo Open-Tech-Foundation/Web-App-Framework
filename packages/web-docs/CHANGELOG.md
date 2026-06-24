@@ -8,11 +8,15 @@
   in `defineDocsConfig` turns on a build-time `blogPostsPlugin` that scans
   `app/<dir>/<slug>/page.mdx`, reads each post's frontmatter, computes a reading-time
   estimate, and resolves the virtual module `@opentf/web-docs/posts` to the ordered
-  post list (newest-first; a numeric `order` overrides). New components: `BlogLayout`
-  (post banner + prose + reused TOC on a post, the listing on the index), `PostList` /
-  `PostCard`, `PostBanner`, `PostMeta`, and `ReadingTime`. New package exports
-  `@opentf/web-docs/posts` and `blogPostsPlugin` (from `@opentf/web-docs/build`), plus
-  blog theme styles.
+  post list (newest-first; a numeric `order` overrides). Frontmatter supported:
+  `title`, `description`, `date`, `author`, `author_avatar`, `author_role`, `cover`,
+  `tags`, `order`. New components: `BlogLayout` (post banner + prose + reused TOC on a
+  post, the listing on the index), `PostList` / `PostCard` (with optional cover
+  thumbnails), `PostBanner` (cover image + title + meta), `PostMeta` (date · author
+  with avatar · reading time), and `ReadingTime`. Posts are picked up by Pagefind
+  search automatically (the post article carries `data-pagefind-body`). New package
+  exports `@opentf/web-docs/posts` and `blogPostsPlugin` (from
+  `@opentf/web-docs/build`), plus blog theme styles.
 
 ### Fixed
 

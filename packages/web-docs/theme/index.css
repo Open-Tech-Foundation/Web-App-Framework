@@ -1219,3 +1219,40 @@ body {
   padding: 2rem 0;
   color: var(--otfw-text-muted);
 }
+
+/* ── Blog: cover images & author ───────────────────────────────────────────── */
+.otfw-post-cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 7;
+  object-fit: cover;
+  border-radius: 0.85rem;
+  border: 1px solid var(--otfw-border);
+  margin-bottom: 1.75rem;
+}
+.otfw-post-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.otfw-post-avatar {
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 9999px;
+  object-fit: cover;
+  border: 1px solid var(--otfw-border);
+}
+.otfw-post-author-role {
+  color: var(--otfw-text-muted);
+  opacity: 0.8;
+}
+/* Cards with a cover use a media + body two-row layout. */
+.otfw-post-card-cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 8;
+  object-fit: cover;
+  border-radius: 0.6rem;
+  border: 1px solid var(--otfw-border);
+  margin-bottom: 1rem;
+}

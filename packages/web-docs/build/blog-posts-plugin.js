@@ -67,7 +67,11 @@ function collectPosts(root, base, exclude, watch) {
         title: fm.title ?? humanize(entry.name),
         description: fm.description,
         date: fm.date != null ? String(fm.date) : undefined,
+        // Cover image (frontmatter `cover`) — shown on the post banner and the card.
+        cover: fm.cover,
         author: fm.author,
+        authorAvatar: fm.author_avatar,
+        authorRole: fm.author_role,
         // Frontmatter is flat scalars, so `tags: a, b` arrives as a string; normalize
         // to a trimmed array. Components can render chips from it.
         tags: typeof fm.tags === "string" ? splitTags(fm.tags) : undefined,

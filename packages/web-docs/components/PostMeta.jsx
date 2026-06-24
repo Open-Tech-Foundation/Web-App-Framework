@@ -16,12 +16,20 @@ export default function PostMeta(props) {
   const post = props.post || props;
   return (
     <div class="otfw-post-meta">
+      {post.author ? (
+        <span class="otfw-post-author">
+          {post.authorAvatar ? (
+            <img class="otfw-post-avatar" src={post.authorAvatar} alt={post.author} loading="lazy" />
+          ) : null}
+          <span class="otfw-post-author-name">{post.author}</span>
+          {post.authorRole ? <span class="otfw-post-author-role">{post.authorRole}</span> : null}
+        </span>
+      ) : null}
       {post.date ? (
         <time class="otfw-post-date" datetime={String(post.date)}>
           {formatDate(post.date)}
         </time>
       ) : null}
-      {post.author ? <span class="otfw-post-author">{post.author}</span> : null}
       {post.readingTime ? <ReadingTime minutes={post.readingTime} /> : null}
     </div>
   );
