@@ -41,6 +41,14 @@ The `[Unreleased]` section is renamed to the new version number at release time.
   `version` badge next to the brand.
 - `NavbarLink`, `NavIcon`, and `Steps` are now exported from the package root.
 
+- Headings show a hover `#` anchor link (the MDX front-end now emits an
+  `.otfw-heading-anchor` after each heading). It's dimmed and only fades in on heading
+  hover or keyboard focus, turning accent-colored on its own hover, so a reader can grab
+  a stable link to any section. All six heading levels share `scroll-margin-top` (was
+  `h2`/`h3` only) so an anchored heading lands clear of the sticky navbar.
+- Aligned Markdown tables render aligned: the MDX front-end emits inline `text-align`
+  per column from the `:--:` delimiter row, which wins over the prose table default.
+
 ### Changed
 
 - Callouts restyled to the updated design system: a two-column grid puts a plain,

@@ -511,9 +511,31 @@ body {
   color: var(--otfw-text-muted);
   margin: 1.3rem 0 0.5rem;
 }
+.otfw-prose h1,
 .otfw-prose h2,
-.otfw-prose h3 {
+.otfw-prose h3,
+.otfw-prose h4,
+.otfw-prose h5,
+.otfw-prose h6 {
   scroll-margin-top: calc(var(--otfw-navbar-height) + 1rem);
+}
+
+/* Self-linking heading anchor (the hover `#`). Hidden until the heading is
+   hovered or the anchor itself is focused, so it doesn't clutter the page. */
+.otfw-heading-anchor {
+  margin-left: 0.4rem;
+  color: var(--otfw-text-muted);
+  font-weight: 400;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.otfw-prose :is(h1, h2, h3, h4, h5, h6):hover .otfw-heading-anchor,
+.otfw-heading-anchor:focus-visible {
+  opacity: 1;
+}
+.otfw-heading-anchor:hover {
+  color: var(--otfw-accent);
 }
 .otfw-prose p,
 .otfw-prose ul,

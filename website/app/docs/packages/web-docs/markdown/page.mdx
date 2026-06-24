@@ -163,6 +163,21 @@ A pipe table with a header row:
 | web | Runtime + signals |
 | web-docs | Docs site generator |
 
+Use a colon in the delimiter row to set per-column alignment — `:--` left, `:-:`
+center, `--:` right:
+
+```md
+| Left | Center | Right |
+| :--- | :----: | ----: |
+| web | runtime | 0.5.0 |
+| web-docs | generator | 0.1.0 |
+```
+
+| Left | Center | Right |
+| :--- | :----: | ----: |
+| web | runtime | 0.5.0 |
+| web-docs | generator | 0.1.0 |
+
 ### Code blocks
 
 A fenced block is highlighted at build time (syntect) and decorated with a header and

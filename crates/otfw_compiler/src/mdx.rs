@@ -121,7 +121,11 @@ impl Emit {
                 let id = slugify(&text);
                 let d = n.depth.clamp(1, 6);
                 self.toc.push((d, id.clone(), text));
-                format!("<h{d} id=\"{id}\">{inner}</h{d}>")
+                // A self-linking anchor (the hover `#`) so each heading is shareable;
+                // `aria-hidden` keeps it out of the accessibility tree.
+                format!(
+                    "<h{d} id=\"{id}\">{inner}<a class=\"otfw-heading-anchor\" href=\"#{id}\" aria-hidden=\"true\" tabindex=\"-1\">#</a></h{d}>"
+                )
             }
             Node::Paragraph(n) => format!("<p>{}</p>", self.nodes(&n.children)),
             Node::Text(n) => self.text(n),
@@ -199,23 +203,36 @@ impl Emit {
     }
 
     /// GFM table: first row is the header (`<th>` cells), the rest are `<td>`.
+    /// Per-column alignment (the `:--:` delimiter row) becomes an inline
+    /// `style="text-align:…"` on each cell; `AlignKind::None` adds nothing.
     fn emit_table(&mut self, table: &markdown::mdast::Table) -> String {
+        use markdown::mdast::AlignKind;
+        let align_attr = |col: usize| match table.align.get(col) {
+            Some(AlignKind::Left) => " style=\"text-align:left\"",
+            Some(AlignKind::Right) => " style=\"text-align:right\"",
+            Some(AlignKind::Center) => " style=\"text-align:center\"",
+            _ => "",
+        };
         let mut head = String::new();
         let mut body = String::new();
         for (i, row) in table.children.iter().enumerate() {
             let Node::TableRow(r) = row else { continue };
+            let tag = if i == 0 { "th" } else { "td" };
+            let cells: String = r
+                .children
+                .iter()
+                .enumerate()
+                .map(|(col, c)| match c {
+                    Node::TableCell(cell) => {
+                        format!("<{tag}{}>{}</{tag}>", align_attr(col), self.nodes(&cell.children))
+                    }
+                    _ => String::new(),
+                })
+                .collect();
             if i == 0 {
-                let cells: String = r
-                    .children
-                    .iter()
-                    .map(|c| match c {
-                        Node::TableCell(cell) => format!("<th>{}</th>", self.nodes(&cell.children)),
-                        _ => String::new(),
-                    })
-                    .collect();
                 head = format!("<thead><tr>{cells}</tr></thead>");
             } else {
-                body.push_str(&self.node(row));
+                body.push_str(&format!("<tr>{cells}</tr>"));
             }
         }
         format!("<table>{head}<tbody>{body}</tbody></table>")
@@ -506,7 +523,26 @@ mod tests {
     #[test]
     fn heading_gets_a_slug_id() {
         let out = mdx_to_jsx("# Hello World", "doc.mdx").unwrap();
-        assert!(out.contains("<h1 id=\"hello-world\">Hello World</h1>"), "{out}");
+        assert!(out.contains("<h1 id=\"hello-world\">Hello World"), "{out}");
+    }
+
+    #[test]
+    fn heading_gets_a_self_link_anchor() {
+        let out = mdx_to_jsx("## Get Started", "doc.mdx").unwrap();
+        assert!(
+            out.contains("<a class=\"otfw-heading-anchor\" href=\"#get-started\""),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn table_columns_carry_alignment() {
+        let src = "| A | B | C |\n| :-- | :-: | --: |\n| 1 | 2 | 3 |";
+        let out = mdx_to_jsx(src, "doc.mdx").unwrap();
+        assert!(out.contains("<th style=\"text-align:left\">A</th>"), "{out}");
+        assert!(out.contains("<th style=\"text-align:center\">B</th>"), "{out}");
+        assert!(out.contains("<th style=\"text-align:right\">C</th>"), "{out}");
+        assert!(out.contains("<td style=\"text-align:center\">2</td>"), "{out}");
     }
 
     #[test]
