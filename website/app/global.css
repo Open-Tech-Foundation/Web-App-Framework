@@ -16,7 +16,7 @@ html {
  * module-hashed for collision-freedom, so it is not a reliable selector). `.web-link`
  * is intentionally left to the web-docs theme (display: contents) so the navbar's
  * <a> participates directly in the flex layout. */
-.web-counter, .web-todolist {
+.web-reactive-trace {
   display: block;
 }
 
@@ -141,5 +141,256 @@ body {
 }
 .install-copy-label.is-copied {
   color: #10b981;
+}
+
+/* ── Reactive-trace demo ─────────────────────────────────────────────────────
+   A signal graph (left) wired to a live cart (right). Pulses/flashes are driven
+   by real $effect runs in ReactiveTrace.jsx; this file is only the static look. */
+.trace {
+  max-width: 56rem;
+  margin: 0 auto;
+}
+.trace-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+.trace-legend {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.trace-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+}
+.trace-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 9999px;
+}
+.trace-dot.is-state {
+  background: var(--accent);
+}
+.trace-dot.is-derived {
+  background: transparent;
+  border: 2px solid var(--text-muted);
+}
+.trace-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--bg-main);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.trace-toggle-knob {
+  width: 1.6rem;
+  height: 0.9rem;
+  border-radius: 9999px;
+  background: var(--border);
+  position: relative;
+  transition: background 0.15s;
+  flex: none;
+}
+.trace-toggle-knob::after {
+  content: "";
+  position: absolute;
+  top: 0.1rem;
+  left: 0.1rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 9999px;
+  background: var(--bg-main);
+  transition: transform 0.15s;
+}
+.trace-toggle.is-on {
+  color: #ef4444;
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+.trace-toggle.is-on .trace-toggle-knob {
+  background: #ef4444;
+}
+.trace-toggle.is-on .trace-toggle-knob::after {
+  transform: translateX(0.7rem);
+}
+
+.trace-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  align-items: stretch;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  padding: 1.5rem;
+}
+@media (min-width: 768px) {
+  .trace-panels {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Graph */
+.trace-graph-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 0.5rem;
+}
+.trace-graph {
+  position: relative;
+  width: 340px;
+  height: 300px;
+}
+.trace-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+.trace-edge {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2;
+}
+.trace-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+.trace-node-chip {
+  display: block;
+  padding: 0.3rem 0.7rem;
+  border-radius: 9999px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+  will-change: transform;
+}
+.trace-node.is-state .trace-node-chip {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1.5px solid var(--accent);
+}
+.trace-node.is-derived .trace-node-chip {
+  background: var(--bg-main);
+  color: var(--text-main);
+  border: 1.5px solid var(--text-muted);
+}
+.trace-node-aside .trace-node-chip {
+  opacity: 0.85;
+}
+
+/* Live DOM cart */
+.trace-dom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1.25rem 1.4rem;
+}
+.trace-dom-head {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  margin-bottom: 0.6rem;
+}
+.trace-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0;
+}
+.trace-label {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.trace-value {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.4rem;
+}
+.trace-value.is-derived {
+  color: var(--text-main);
+}
+.trace-row-total .trace-label,
+.trace-row-total .trace-value {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+.trace-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.trace-stepper button {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg-main);
+  color: var(--text-main);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.trace-stepper button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.trace-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.5rem 0;
+}
+.trace-coupon {
+  width: 7.5rem;
+  text-align: right;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 0.9rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg-main);
+  color: var(--text-main);
+}
+.trace-coupon:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.trace-caption {
+  margin-top: 1.1rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  max-width: 38rem;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.5;
 }
 

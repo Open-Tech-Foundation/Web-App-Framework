@@ -1,5 +1,6 @@
 import { Link } from "@opentf/web";
 import InstallPill from "./components/InstallPill.jsx";
+import ReactiveTrace from "./components/ReactiveTrace.jsx";
 import { benchmark, capabilities } from "./home-data.js";
 
 export const metadata = {
@@ -67,6 +68,19 @@ export default function HomePage() {
         <div className="flex justify-center pt-1">
           <InstallPill command="bun create @opentf/web my-app" />
         </div>
+      </section>
+
+      {/* Reactive trace — watch a change flow through the signal graph to the DOM */}
+      <section className="py-24 space-y-12">
+        <div className="text-center space-y-3">
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Watch a change flow.</h2>
+          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
+            Fine-grained signals, no virtual DOM. Edit a value and the update travels only
+            the dependency path it has to — flashing the exact DOM nodes it owns, and
+            nothing else.
+          </p>
+        </div>
+        <ReactiveTrace />
       </section>
 
       {/* Benchmark */}
