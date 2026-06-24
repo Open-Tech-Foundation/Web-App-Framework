@@ -1087,3 +1087,135 @@ body {
   background: var(--otfw-bg-surface);
   font-weight: 600;
 }
+
+/* ── Blog ──────────────────────────────────────────────────────────────────── */
+.otfw-blog {
+  max-width: 90rem;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+.otfw-blog-main {
+  width: 100%;
+  max-width: var(--otfw-content-max);
+  margin: 0 auto;
+  padding: 3rem 0;
+}
+/* A post gets content + a sticky "On this page" TOC on wide screens. */
+.otfw-blog-post {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2.5rem;
+}
+@media (min-width: 1280px) {
+  .otfw-blog-post {
+    grid-template-columns: minmax(0, 1fr) var(--otfw-toc-width);
+    align-items: start;
+  }
+  .otfw-blog-post .otfw-blog-main {
+    margin: 0;
+    justify-self: end;
+  }
+}
+.otfw-blog-back {
+  display: inline-block;
+  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+  color: var(--otfw-text-muted);
+  text-decoration: none;
+}
+.otfw-blog-back:hover {
+  color: var(--otfw-text);
+}
+
+/* Post banner (title + description + meta). */
+.otfw-post-banner {
+  margin-bottom: 2.5rem;
+  padding-bottom: 1.75rem;
+  border-bottom: 1px solid var(--otfw-border);
+}
+.otfw-post-title {
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--otfw-text);
+}
+.otfw-post-desc {
+  margin-top: 0.75rem;
+  font-size: 1.15rem;
+  color: var(--otfw-text-muted);
+  line-height: 1.5;
+}
+
+/* Meta row: date · author · reading time. */
+.otfw-post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--otfw-text-muted);
+}
+.otfw-post-meta > * + *::before {
+  content: "·";
+  margin-right: 0.75rem;
+  color: var(--otfw-border);
+}
+.otfw-reading-time,
+.otfw-post-author,
+.otfw-post-date {
+  white-space: nowrap;
+}
+
+/* Tags. */
+.otfw-post-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.otfw-post-tag {
+  padding: 0.15rem 0.6rem;
+  border-radius: 9999px;
+  background: var(--otfw-bg-surface);
+  border: 1px solid var(--otfw-border);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--otfw-text-muted);
+}
+
+/* Index listing. */
+.otfw-post-list {
+  display: flex;
+  flex-direction: column;
+}
+.otfw-post-card {
+  display: block;
+  padding: 1.6rem 0;
+  border-top: 1px solid var(--otfw-border);
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.otfw-post-card:hover .otfw-post-card-title {
+  color: var(--otfw-accent);
+}
+.otfw-post-card .otfw-post-meta {
+  margin-top: 0;
+}
+.otfw-post-card-title {
+  margin-top: 0.4rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--otfw-text);
+  transition: color 0.15s;
+}
+.otfw-post-card-desc {
+  margin-top: 0.4rem;
+  color: var(--otfw-text-muted);
+  line-height: 1.5;
+}
+.otfw-post-empty {
+  padding: 2rem 0;
+  color: var(--otfw-text-muted);
+}

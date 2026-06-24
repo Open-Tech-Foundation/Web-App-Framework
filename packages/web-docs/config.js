@@ -29,9 +29,16 @@
  * @property {DocsFooter} [footer]   Footer content.
  * @property {{ provider?: string }} [search]  Search provider (Phase 2: "pagefind").
  *
+ * @typedef {Object} BlogConfig
+ * @property {string} [dir]   Blog content folder under app/ (default "blog"). Each
+ *                            `<dir>/<slug>/page.mdx` is a post; its frontmatter
+ *                            (title, description, date, author, tags) feeds the
+ *                            generated `@opentf/web-docs/posts` list.
+ *
  * @typedef {Object} SiteConfig
  * @property {{ url?: string }} [site]   Canonical site origin (for SEO / sitemap).
  * @property {DocsConfig} [docs]         Documentation generator config.
+ * @property {BlogConfig} [blog]         Blog generator config.
  */
 
 /**

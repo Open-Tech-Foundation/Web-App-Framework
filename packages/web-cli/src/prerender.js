@@ -85,7 +85,7 @@ function escapeXml(s) {
  * Pre-render the app to static HTML files under `outDir`. Returns
  * `{ count, skipped, failed }`.
  */
-export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", navPlugin = null, onCompile, onRender }) {
+export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", docsPlugins = [], onCompile, onRender }) {
   const tmp = join(root, ".otfw-ssg");
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "ssg-entry.js");
@@ -99,7 +99,7 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
       extensions: EXTENSIONS,
     },
     plugins: [
-      ...(navPlugin ? [navPlugin] : []),
+      ...docsPlugins,
       otfwPlugin(otfwc, { failOnError: true, target: "ssg", onResult: (id) => onCompile?.(id) }),
       cssPlugin(),
     ],

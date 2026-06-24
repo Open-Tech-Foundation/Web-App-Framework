@@ -29,7 +29,7 @@ import {
   discoverPages,
   entrySource,
   loadConfig,
-  loadDocsNavPlugin,
+  loadDocsPlugins,
   loadProject,
   moduleGraph,
   otfwPlugin,
@@ -102,7 +102,7 @@ export async function runDev() {
   writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl));
 
   const config = await loadConfig(root);
-  const navPlugin = await loadDocsNavPlugin(root, appDir, config, exclude);
+  const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
 
   let server;
   const publish = (msg) => server?.publish("hmr", JSON.stringify(msg));
@@ -113,7 +113,7 @@ export async function runDev() {
     onResult: (id, err) => (err ? compileErrors.set(id, err) : compileErrors.delete(id)),
   });
   const css = cssPlugin();
-  const plugins = [...(navPlugin ? [navPlugin] : []), otfw, css];
+  const plugins = [...docsPlugins, otfw, css];
 
   // Bundle `input` to a single ESM string in memory (no disk). `external` ids are
   // left as bare imports (resolved by the browser via the import map / route URLs).

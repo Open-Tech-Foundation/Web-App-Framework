@@ -132,18 +132,24 @@ export async function loadConfig(root) {
  * (the app's own dependency); returns null when docs aren't configured or the
  * package isn't installed, so the core toolchain stays untouched for normal apps.
  */
-export async function loadDocsNavPlugin(root, appDir, config, exclude = new Set()) {
+export async function loadDocsPlugins(root, appDir, config, exclude = new Set()) {
   const docs = config?.docs;
-  if (!docs) return null;
+  const blog = config?.blog;
+  if (!docs && !blog) return [];
   try {
     const entry = Bun.resolveSync("@opentf/web-docs/build", root);
-    const { docsNavPlugin } = await import(pathToFileURL(entry).href);
-    return docsNavPlugin({ appDir, contentDir: docs.dir ?? "docs", exclude });
+    const { docsNavPlugin, blogPostsPlugin } = await import(pathToFileURL(entry).href);
+    const plugins = [];
+    // Resolves `@opentf/web-docs/nav` to the generated sidebar tree.
+    if (docs) plugins.push(docsNavPlugin({ appDir, contentDir: docs.dir ?? "docs", exclude }));
+    // Resolves `@opentf/web-docs/posts` to the generated post list.
+    if (blog) plugins.push(blogPostsPlugin({ appDir, contentDir: blog.dir ?? "blog", exclude }));
+    return plugins;
   } catch (e) {
     console.warn(
-      `⚠ docs config present but @opentf/web-docs could not be loaded: ${e?.message ?? e}`,
+      `⚠ docs/blog config present but @opentf/web-docs could not be loaded: ${e?.message ?? e}`,
     );
-    return null;
+    return [];
   }
 }
 

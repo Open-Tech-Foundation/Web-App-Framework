@@ -22,7 +22,7 @@ import {
   discoverPages,
   entrySource,
   loadConfig,
-  loadDocsNavPlugin,
+  loadDocsPlugins,
   loadProject,
   otfwPlugin,
   runDocsSearchIndex,
@@ -54,7 +54,7 @@ export async function runBuild() {
   // Docs generator: resolve `@opentf/web-docs/nav` to the build-time nav tree when
   // the project has a `docs` config block.
   const config = await loadConfig(root);
-  const navPlugin = await loadDocsNavPlugin(root, appDir, config, exclude);
+  const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
 
   const outDir = join(root, "dist");
   rmSync(outDir, { recursive: true, force: true });
@@ -77,7 +77,7 @@ export async function runBuild() {
     input: entry,
     resolve: { alias: { "@opentf/web": webEntry }, extensions: EXTENSIONS },
     plugins: [
-      ...(navPlugin ? [navPlugin] : []),
+      ...docsPlugins,
       otfwPlugin(otfwc, {
         failOnError: true,
         onResult: (id) => buildStep.update(`${basename(id)}  (${++compiled})`),
@@ -154,7 +154,7 @@ export async function runBuild() {
       shellHtml: html,
       outDir,
       baseUrl,
-      navPlugin,
+      docsPlugins,
       onCompile: (id) => ssgStep.update(`compiling ${basename(id)}  (${++ssgCompiled})`),
       onRender: (done, total) => ssgStep.update(`rendering ${done}/${total}`),
     });

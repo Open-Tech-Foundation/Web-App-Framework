@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- Blog support, the marketing-blog counterpart of the docs generator. A `blog` block
+  in `defineDocsConfig` turns on a build-time `blogPostsPlugin` that scans
+  `app/<dir>/<slug>/page.mdx`, reads each post's frontmatter, computes a reading-time
+  estimate, and resolves the virtual module `@opentf/web-docs/posts` to the ordered
+  post list (newest-first; a numeric `order` overrides). New components: `BlogLayout`
+  (post banner + prose + reused TOC on a post, the listing on the index), `PostList` /
+  `PostCard`, `PostBanner`, `PostMeta`, and `ReadingTime`. New package exports
+  `@opentf/web-docs/posts` and `blogPostsPlugin` (from `@opentf/web-docs/build`), plus
+  blog theme styles.
+
 ### Fixed
 
 - Code-block copy buttons now work in any layout, not just the docs shell. `CodeBlock`

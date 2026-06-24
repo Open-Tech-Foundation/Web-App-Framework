@@ -4,6 +4,11 @@
 
 ### Changed
 
+- Register the blog posts plugin alongside the docs nav plugin. `loadDocsNavPlugin`
+  becomes `loadDocsPlugins`, returning every active `@opentf/web-docs` build plugin —
+  the nav generator when `docs` is configured and the post-list generator when `blog`
+  is — so `@opentf/web-docs/posts` resolves in dev, build, and SSG.
+
 - `otfw dev` is now on-demand (Vite-style): nothing is compiled at startup. The
   runtime (`@opentf/web`) is bundled once on first request and shared by every chunk
   through an import map; the entry's route loaders point at `/__route/<id>.js` URLs;

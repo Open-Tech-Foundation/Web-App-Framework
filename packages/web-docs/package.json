@@ -8,12 +8,14 @@
     "./theme": "./theme/index.css",
     "./config": "./config.js",
     "./nav": "./nav-virtual.js",
+    "./posts": "./posts-virtual.js",
     "./build": "./build/index.js"
   },
   "files": [
     "index.js",
     "config.js",
     "nav-virtual.js",
+    "posts-virtual.js",
     "components",
     "theme",
     "build",

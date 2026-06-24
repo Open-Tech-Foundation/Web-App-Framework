@@ -5,4 +5,5 @@
 // from web-cli keeps all docs-specific build logic owned by this package.
 
 export { docsNavPlugin } from "./docs-nav-plugin.js";
+export { blogPostsPlugin } from "./blog-posts-plugin.js";
 export { indexWithPagefind } from "./pagefind.js";
