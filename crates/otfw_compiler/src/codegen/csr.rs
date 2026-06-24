@@ -325,6 +325,13 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
     code.push_str("      if (this._cleanups) for (const dispose of this._cleanups) dispose();\n");
     code.push_str("      this._cleanups = [];\n");
     code.push_str("      this._mounted = false;\n");
+    // Drop the built subtree so a reused element instance remounts clean. Most hosts are
+    // discarded with their parent on removal, but a module-level JSX node held in a
+    // `const` and re-inserted across client navigations is the same instance each time —
+    // without this, `connectedCallback`'s build would `appendChild` over the stale
+    // subtree and accumulate one copy per visit. Guarded by `_pendingTeardown` above, so
+    // a same-task move (which keeps `_mounted`) never reaches here and never clears.
+    code.push_str("      this.replaceChildren();\n");
     code.push_str("    };\n");
     code.push_str("    if (typeof queueMicrotask !== \"undefined\") queueMicrotask(__teardown);\n");
     code.push_str("    else Promise.resolve().then(__teardown);\n");
@@ -1186,7 +1193,8 @@ mod tests {
              this._pendingTeardown = false;\n      \
              if (this._cleanups) for (const dispose of this._cleanups) dispose();\n      \
              this._cleanups = [];\n      \
-             this._mounted = false;\n    \
+             this._mounted = false;\n      \
+             this.replaceChildren();\n    \
              };\n    \
              if (typeof queueMicrotask !== \"undefined\") queueMicrotask(__teardown);\n    \
              else Promise.resolve().then(__teardown);\n  \
