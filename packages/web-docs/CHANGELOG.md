@@ -60,8 +60,8 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 - GFM task lists keep the checkbox on the same line as its label (the label is a block
   `<p>`, which previously wrapped below the checkbox) and drop the list bullet. The
   checkbox is now a custom control — an empty bordered box when unchecked, accent-filled
-  with a white tick when checked, plus a muted strikethrough label — so done vs. todo
-  read at a glance (the native disabled box looked nearly identical in both states).
+  with a white tick when checked, plus a muted label — so done vs. todo read at a glance
+  (the native disabled box looked nearly identical in both states).
 - Code-block copy button now actually copies. The earlier handler called
   `navigator.clipboard.writeText(...)` with no error path, so the copy silently
   failed whenever the async Clipboard API rejected (denied permission / page without

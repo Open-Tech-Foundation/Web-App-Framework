@@ -584,10 +584,9 @@ body {
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
-/* Completed items: mute and strike the label so the list scans top-to-bottom. */
+/* Completed items: mute the label (the filled check already marks it done). */
 .otfw-prose li:has(> input[type="checkbox"]:checked) > p {
   color: var(--otfw-text-muted);
-  text-decoration: line-through;
 }
 /* An unclassed <button> in prose (e.g. an inline interactive demo). Component
  * buttons carry their own class, so this only catches bare demo buttons. */
