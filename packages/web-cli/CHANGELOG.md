@@ -4,6 +4,15 @@
 
 ### Changed
 
+- `otfw dev` is now on-demand (Vite-style): nothing is compiled at startup. The
+  runtime (`@opentf/web`) is bundled once on first request and shared by every chunk
+  through an import map; the entry's route loaders point at `/__route/<id>.js` URLs;
+  and each route (page or layout) compiles the first time it's visited, then caches.
+  The module graph (`otfwc graph`) drives HMR — a file change drops only the cached
+  chunks whose dependency subgraph reaches it (its `affected` set), so an unrelated
+  route stays warm. On the docs site startup drops from ~16.7s to ~40ms; a route's
+  first visit costs ~30–400ms and is then served from cache in well under a
+  millisecond. `otfw build` is unchanged (eager Rolldown bundle).
 - `otfw dev` / `otfw build` now compile every module through a single long-lived
   `otfwc serve` process instead of spawning `otfwc build` per file. The toolchain pays
   the compiler-binary startup cost once, which is the dominant dev-server start cost —

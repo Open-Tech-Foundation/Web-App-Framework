@@ -1,12 +1,23 @@
-// `otfw dev` — the CSR dev server.
+// `otfw dev` — the CSR dev server (on-demand / lazy-route).
 //
-// Drives Rolldown in watch mode (the `otfwc` compiler as a transform plugin) and
-// serves the project's index.html with WebSocket live-reload on rebuild. Tailwind
-// stylesheets are compiled on the fly (see ./tailwind.js). The project root is the
-// current working directory, like `vite` / `next dev`.
+// Unlike a single eager bundle, this serves modules as the browser asks for them:
+//
+//   • /@fw.js          — the runtime (`@opentf/web`), bundled once and shared by
+//                        every chunk through an import map (so the router and signal
+//                        registry are one instance).
+//   • /bundle.js       — the app entry: `mountApp` + a route table whose loaders are
+//                        `() => import("/__route/<id>.js")`. The route modules are
+//                        *not* in this bundle.
+//   • /__route/<id>.js — one route (page or layout) compiled on first navigation,
+//                        with `@opentf/web` external, then cached in memory.
+//
+// So startup compiles the entry + runtime only; each route's cost is paid the first
+// time it's visited. The module graph (`otfwc graph`) drives HMR: on a file change
+// it tells us exactly which cached chunks to drop before a reload. Tailwind/CSS and
+// `public/` assets are served as before. Project root = cwd, like `vite`/`next dev`.
 
-import { watch } from "rolldown";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { rolldown } from "rolldown";
+import { existsSync, mkdirSync, readFileSync, watch, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { compileCss, usesTailwind } from "./tailwind.js";
@@ -20,13 +31,13 @@ import {
   loadConfig,
   loadDocsNavPlugin,
   loadProject,
+  moduleGraph,
   otfwPlugin,
 } from "./shared.js";
 
 // Resolve the start port. An explicit `--port <n>` / `-p <n>` / `--port=<n>` is
 // honored exactly (fail fast if it's busy); with no flag we default to 3000 and
-// scan upward for a free port. (No PORT env: this is a dev tool, and OpenTF's
-// production output is static — there's no long-running server to take PORT.)
+// scan upward for a free port.
 function resolvePort() {
   const argv = process.argv.slice(3); // args after `dev`
   for (let i = 0; i < argv.length; i++) {
@@ -63,7 +74,15 @@ function serve(start, explicit, options) {
   process.exit(1);
 }
 
+// A route file ↔ its `/__route/<id>.js` URL. The id is the file path, base64url so
+// it survives a URL path segment; decoding recovers the absolute path to compile.
+const ROUTE_PREFIX = "/__route/";
+const toRouteUrl = (file) => `${ROUTE_PREFIX}${Buffer.from(file).toString("base64url")}.js`;
+const fromRouteUrl = (pathname) =>
+  Buffer.from(pathname.slice(ROUTE_PREFIX.length, -".js".length), "base64url").toString("utf8");
+
 export async function runDev() {
+  const bootStart = Date.now();
   const { root, appDir, webEntry, otfwc, exclude } = loadProject();
   const { port: startPort, explicit: explicitPort } = resolvePort();
   if (!Number.isInteger(startPort) || startPort < 1 || startPort > 65535) {
@@ -78,67 +97,144 @@ export async function runDev() {
   }
 
   const devDir = join(root, ".dev");
-  mkdirSync(join(devDir, "csr"), { recursive: true });
-  const entry = join(devDir, "entry.js");
-  writeFileSync(entry, entrySource(pages, appDir));
+  mkdirSync(devDir, { recursive: true });
+  const entryFile = join(devDir, "entry.js");
+  writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl));
 
-  // Docs generator: the nav plugin resolves `@opentf/web-docs/nav` to the build-time
-  // navigation tree (only when otfw.config has a `docs` block).
   const config = await loadConfig(root);
   const navPlugin = await loadDocsNavPlugin(root, appDir, config, exclude);
 
-  // WebSocket HMR: clients on the "hmr" topic get JSON messages — a successful
-  // rebuild sends { type: "reload" }; a compile/build failure sends
-  // { type: "error" } so the injected overlay shows it over the last good page.
   let server;
   const publish = (msg) => server?.publish("hmr", JSON.stringify(msg));
-  // Per-module compile diagnostics (keyed by id); a clean build clears them.
   const compileErrors = new Map();
 
-  const watcher = watch({
-    input: entry,
-    resolve: { alias: { "@opentf/web": webEntry }, extensions: EXTENSIONS },
-    plugins: [
-      ...(navPlugin ? [navPlugin] : []),
-      otfwPlugin(otfwc, {
-        onResult: (id, err) => (err ? compileErrors.set(id, err) : compileErrors.delete(id)),
-      }),
-      cssPlugin(),
-    ],
-    output: {
-      dir: join(devDir, "csr"),
-      format: "esm",
-      entryFileNames: "bundle.js",
-    },
+  // One persistent compiler (one `otfwc serve` child) shared by every build below.
+  const otfw = otfwPlugin(otfwc, {
+    onResult: (id, err) => (err ? compileErrors.set(id, err) : compileErrors.delete(id)),
   });
-  watcher.on("event", (e) => {
-    if (e.code === "BUNDLE_END") {
-      e.result?.close?.();
-      if (compileErrors.size > 0) {
-        const [id, message] = [...compileErrors][0];
-        console.error(`✗ ${compileErrors.size} compile error(s)`);
-        publish({ type: "error", kind: "compile", id, message });
-      } else {
-        console.log(`✓ bundled in ${e.duration}ms`);
-        publish({ type: "reload" });
+  const css = cssPlugin();
+  const plugins = [...(navPlugin ? [navPlugin] : []), otfw, css];
+
+  // Bundle `input` to a single ESM string in memory (no disk). `external` ids are
+  // left as bare imports (resolved by the browser via the import map / route URLs).
+  // `alias` lets the runtime build resolve its own `@opentf/web` self-imports.
+  async function bundle({ input, external, alias }) {
+    const b = await rolldown({
+      input,
+      resolve: { alias: alias || {}, extensions: EXTENSIONS },
+      external,
+      plugins,
+    });
+    try {
+      const { output } = await b.generate({ format: "esm", codeSplitting: false });
+      return output[0].code;
+    } finally {
+      await b.close();
+    }
+  }
+
+  // The shared runtime, bundled once. Its components compile to `import … from
+  // "@opentf/web"`; aliasing that back to the entry keeps them inside this bundle.
+  async function buildFramework() {
+    return bundle({ input: webEntry, alias: { "@opentf/web": webEntry } });
+  }
+  // The app entry: route loaders point at `/__route/…` (external — fetched lazily)
+  // and `@opentf/web` is external (→ import map → /@fw.js).
+  async function buildEntry() {
+    return bundle({
+      input: entryFile,
+      external: (id) => id === "@opentf/web" || id.startsWith(ROUTE_PREFIX),
+    });
+  }
+  // One route module (page or layout) + its components/web-docs, runtime external.
+  async function buildRoute(file) {
+    return bundle({ input: file, external: ["@opentf/web"] });
+  }
+
+  // Everything is built on first request and cached (Vite-style), so startup does no
+  // compilation at all. `null` means "needs (re)building".
+  let fwCode = null;
+  let entryCode = null;
+  const routeCache = new Map(); // route file → compiled chunk
+
+  // A build error becomes a thrown-on-load stub so the overlay shows it in place.
+  const errorStub = (id, msg) =>
+    `throw new Error(${JSON.stringify(`Compile error in ${id}\n\n${msg}`)});`;
+
+  // Compile `file` (framework / entry / route) on demand, surfacing a compile error
+  // as a thrown-on-load stub. `build` is the matching builder.
+  async function compileOnce(file, build) {
+    try {
+      const code = await build(file);
+      compileErrors.delete(file);
+      return code;
+    } catch (e) {
+      const msg = e?.message ?? String(e);
+      compileErrors.set(file, msg);
+      publish({ type: "error", kind: "compile", id: file, message: msg });
+      return errorStub(file, msg);
+    }
+  }
+  const serveFramework = async () => (fwCode ??= await compileOnce(webEntry, buildFramework));
+  const serveEntry = async () => (entryCode ??= await compileOnce(entryFile, buildEntry));
+  async function serveRoute(file) {
+    if (!routeCache.has(file)) routeCache.set(file, await compileOnce(file, buildRoute));
+    return routeCache.get(file);
+  }
+
+  // The module graph powers precise invalidation; build it in the background so it
+  // never blocks startup. Until it's ready, a change clears every cache (safe).
+  let graph = { has: () => false, affected: () => new Set() };
+  const refreshGraph = () =>
+    moduleGraph(otfwc, webEntry, [...pages, webEntry]).then((g) => (graph = g));
+  refreshGraph();
+
+  // On a change, drop only the cached chunks the edited file reaches (its graph
+  // dependents); a reload then rebuilds them on demand. An unknown file (e.g. a
+  // workspace package we treat as external) clears everything to be safe.
+  function onChange(file) {
+    refreshGraph();
+    const hit = graph.has(file) ? graph.affected(file) : null;
+    if (!hit) {
+      fwCode = entryCode = null;
+      routeCache.clear();
+    } else {
+      if (hit.has(webEntry)) fwCode = null;
+      if (file === entryFile || pages.includes(file)) entryCode = null;
+      for (const f of [...routeCache.keys()]) if (hit.has(f)) routeCache.delete(f);
+    }
+    if (compileErrors.size > 0) {
+      const [id, message] = [...compileErrors][0];
+      publish({ type: "error", kind: "compile", id, message });
+    } else {
+      publish({ type: "reload" });
+    }
+  }
+
+  // Watch app sources; a new page/layout file regenerates the route table.
+  const watcher = watch(appDir, { recursive: true }, (_evt, name) => {
+    if (!name) return;
+    const file = join(appDir, name);
+    if (/\.(mdx|md|[jt]sx|css)$/.test(name)) {
+      if (/^(page|layout|404)\.(mdx|md|[jt]sx)$/.test(name.split("/").pop()) && !pages.includes(file)) {
+        const fresh = discoverPages(appDir, exclude);
+        pages.length = 0;
+        pages.push(...fresh);
+        writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl));
       }
-    } else if (e.code === "ERROR") {
-      const message = e.error?.message ?? String(e.error);
-      console.error("✗ build error:\n", message);
-      publish({ type: "error", kind: "build", message, stack: e.error?.stack });
+      onChange(file);
     }
   });
+  process.once("exit", () => watcher.close());
 
   const indexPath = join(root, "index.html");
-
-  // Injected into the served HTML: our bundle + the dev error overlay / reload
-  // client (reconnects and reloads once the server is back after a restart).
+  // Import map (so `@opentf/web` resolves to the shared runtime chunk) + entry + the
+  // dev overlay / reload client. The import map must precede the module script.
   const injected =
+    `<script type="importmap">{"imports":{"@opentf/web":"/@fw.js"}}</script>\n` +
     `<script type="module" src="/bundle.js"></script>\n` +
     `<script>${overlayClient}</script>\n`;
 
-  // Use the project's index.html as the shell, stripping any module entry script
-  // (the app would be double-loaded) and injecting our bundle + reload client.
   function buildHtml() {
     let html;
     if (existsSync(indexPath)) {
@@ -156,10 +252,6 @@ export async function runDev() {
       : html + injected;
   }
 
-  // Serve a static file from the project root, falling back to `public/` (whose
-  // contents the build copies to the dist root, so `/logo.png` resolves there in
-  // production — mirror that in dev). No traversal outside the project. Tailwind
-  // entry stylesheets are compiled on request.
   async function serveStatic(pathname) {
     let file = join(root, pathname);
     if (!file.startsWith(root)) return null;
@@ -171,24 +263,25 @@ export async function runDev() {
     const ext = pathname.split(".").pop();
     if (ext === "css") {
       const source = readFileSync(file, "utf8");
-      const css = usesTailwind(source)
+      const out = usesTailwind(source)
         ? await compileCss(file, source, root).catch((err) => {
             console.error(`✗ tailwind failed for ${pathname}:\n${err?.message ?? err}`);
             return source;
           })
         : source;
-      return new Response(css, { headers: { "content-type": "text/css" } });
+      return new Response(out, { headers: { "content-type": "text/css" } });
     }
     return new Response(readFileSync(file), {
       headers: { "content-type": MIME[ext] ?? "application/octet-stream" },
     });
   }
 
+  const js = (code) => new Response(code, { headers: { "content-type": "text/javascript" } });
+
   server = serve(startPort, explicitPort, {
     websocket: {
       open: (ws) => {
         ws.subscribe("hmr");
-        // A client connecting while a compile error is outstanding sees it now.
         if (compileErrors.size > 0) {
           const [id, message] = [...compileErrors][0];
           ws.send(JSON.stringify({ type: "error", kind: "compile", id, message }));
@@ -198,38 +291,23 @@ export async function runDev() {
     async fetch(req, srv) {
       const { pathname } = new URL(req.url);
       if (pathname === "/__hmr") {
-        return srv.upgrade(req)
-          ? undefined
-          : new Response("upgrade failed", { status: 400 });
+        return srv.upgrade(req) ? undefined : new Response("upgrade failed", { status: 400 });
       }
-      // Built output: the entry bundle and code-split chunks live in .dev/csr.
-      if (pathname.endsWith(".js")) {
-        const built = join(devDir, "csr", pathname);
-        if (built.startsWith(join(devDir, "csr") + "/") && existsSync(built)) {
-          return new Response(readFileSync(built), {
-            headers: { "content-type": "text/javascript" },
-          });
-        }
-        if (pathname === "/bundle.js") {
-          return new Response("// building…", {
-            headers: { "content-type": "text/javascript" },
-          });
-        }
+      if (pathname === "/@fw.js") return js(await serveFramework());
+      if (pathname === "/bundle.js") return js(await serveEntry());
+      if (pathname.startsWith(ROUTE_PREFIX) && pathname.endsWith(".js")) {
+        return js(await serveRoute(fromRouteUrl(pathname)));
       }
-      // Static assets referenced by index.html (css, public/, etc).
       if (pathname !== "/") {
         const asset = await serveStatic(pathname);
         if (asset) return asset;
-        if (/\.[a-z0-9]+$/i.test(pathname)) {
-          return new Response("not found", { status: 404 });
-        }
+        if (/\.[a-z0-9]+$/i.test(pathname)) return new Response("not found", { status: 404 });
       }
-      return new Response(buildHtml(), {
-        headers: { "content-type": "text/html" },
-      });
+      return new Response(buildHtml(), { headers: { "content-type": "text/html" } });
     },
   });
 
   console.log(`\n  OTF Web dev server`);
-  console.log(`  → http://localhost:${server.port}  (${pages.length} routes)\n`);
+  console.log(`  → http://localhost:${server.port}  (${pages.length} routes, on-demand)`);
+  console.log(`  ✓ ready in ${Date.now() - bootStart}ms — routes compile on first visit\n`);
 }

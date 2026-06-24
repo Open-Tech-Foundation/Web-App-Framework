@@ -187,10 +187,14 @@ export function findGuard(appDir) {
 /**
  * The app entry source: hand `mountApp` a route map of lazy `() => import()`
  * loaders (so each route code-splits into its own chunk) plus the optional guard.
+ *
+ * `loaderUrl(filePath)` maps each route file to the specifier its loader imports.
+ * The production build imports the file directly (Rolldown code-splits it); the dev
+ * server passes a `/__route/…` URL so the route compiles on first navigation.
  */
-export function entrySource(pages, appDir) {
+export function entrySource(pages, appDir, loaderUrl = (p) => p) {
   const map = pages
-    .map((p) => `    [${JSON.stringify(p)}]: () => import(${JSON.stringify(p)}),`)
+    .map((p) => `    [${JSON.stringify(p)}]: () => import(${JSON.stringify(loaderUrl(p))}),`)
     .join("\n");
   const guard = findGuard(appDir);
   return (
@@ -199,6 +203,56 @@ export function entrySource(pages, appDir) {
     `mountApp({\n  pages: {\n${map}\n  },\n` +
     `  target: document.getElementById("app"),${guard ? "\n  guard," : ""}\n});\n`
   );
+}
+
+/**
+ * Crawl the module graph via `otfwc graph` and return a queryable handle. Used by
+ * the dev server to invalidate precisely: `affected(file)` is every module that
+ * transitively imports `file` (so editing it rebuilds exactly those route chunks).
+ * `roots` are the entries to crawl from (the route/layout files + the runtime).
+ */
+export async function moduleGraph(otfwc, webEntry, roots) {
+  const proc = Bun.spawn([otfwc, "graph", `--web=${webEntry}`, ...roots], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+  if (exitCode !== 0) {
+    console.error(`✗ otfwc graph failed:\n${await new Response(proc.stderr).text()}`);
+    return { affected: () => new Set(), has: () => false };
+  }
+  let modules = [];
+  try {
+    modules = JSON.parse(stdout).modules;
+  } catch {
+    return { affected: () => new Set(), has: () => false };
+  }
+  // Reverse adjacency: target → importers, for transitive-dependents queries.
+  const importers = new Map();
+  for (const m of modules) {
+    for (const dep of m.deps) {
+      if (dep.external) continue;
+      if (!importers.has(dep.target)) importers.set(dep.target, []);
+      importers.get(dep.target).push(m.id);
+    }
+  }
+  const ids = new Set(modules.map((m) => m.id));
+  return {
+    has: (id) => ids.has(id),
+    affected(file) {
+      const out = new Set();
+      const queue = [file];
+      while (queue.length) {
+        const id = queue.shift();
+        if (out.has(id)) continue;
+        out.add(id);
+        for (const importer of importers.get(id) || []) {
+          if (!out.has(importer)) queue.push(importer);
+        }
+      }
+      return out;
+    },
+  };
 }
 
 /**
