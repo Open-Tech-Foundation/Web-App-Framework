@@ -149,6 +149,44 @@ body {
 .trace {
   max-width: 56rem;
   margin: 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--bg-surface);
+  box-shadow: 0 24px 50px -28px rgba(2, 6, 23, 0.45);
+  overflow: hidden;
+}
+/* macOS-style window chrome around the live demo. */
+.trace-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-main);
+}
+.trace-light {
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 9999px;
+  flex: none;
+}
+.trace-light.is-red {
+  background: #ff5f57;
+}
+.trace-light.is-amber {
+  background: #febc2e;
+}
+.trace-light.is-green {
+  background: #28c840;
+}
+.trace-titlebar-label {
+  margin-left: 0.5rem;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.trace-body {
+  padding: 1.75rem;
 }
 .trace-toolbar {
   display: flex;

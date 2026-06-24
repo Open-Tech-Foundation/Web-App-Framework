@@ -186,6 +186,13 @@ export default function ReactiveTrace() {
 
   return (
     <div className="trace" ref={rootRef}>
+      <div className="trace-titlebar">
+        <span className="trace-light is-red"></span>
+        <span className="trace-light is-amber"></span>
+        <span className="trace-light is-green"></span>
+        <span className="trace-titlebar-label">Cart.jsx — preview</span>
+      </div>
+      <div className="trace-body">
       <div className="trace-toolbar">
         <div className="trace-legend">
           <span className="trace-legend-item">
@@ -307,6 +314,7 @@ export default function ReactiveTrace() {
         the rest stay dark. (Staggered to show dependency order; the real flush is
         synchronous.)
       </p>
+      </div>
     </div>
   );
 }
