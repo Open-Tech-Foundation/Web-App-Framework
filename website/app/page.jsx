@@ -1,15 +1,6 @@
 import { Link } from "@opentf/web";
-import CodeBlock from "./components/CodeBlock.jsx";
-import Counter from "./components/Counter.jsx";
 import InstallPill from "./components/InstallPill.jsx";
-import TodoList from "./components/TodoList.jsx";
-import {
-  benchmark,
-  capabilities,
-  counterDemo,
-  features,
-  todoDemo,
-} from "./home-data.js";
+import { benchmark, capabilities } from "./home-data.js";
 
 export const metadata = {
   title: "OTF Web — The native-first framework for modern web apps",
@@ -75,47 +66,6 @@ export default function HomePage() {
 
         <div className="flex justify-center pt-1">
           <InstallPill command="bun create @opentf/web my-app" />
-        </div>
-      </section>
-
-      {/* Feature grid */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {features.map((f) => (
-          <div className="p-6 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border)] space-y-3 transition-colors hover:border-[var(--accent)]/40">
-            <div className="text-3xl">{f.icon}</div>
-            <h3 className="font-bold text-[var(--text-main)]">{f.title}</h3>
-            <p className="text-sm text-[var(--text-muted)] leading-relaxed">{f.desc}</p>
-          </div>
-        ))}
-      </section>
-
-      {/* Live demos */}
-      <section className="py-24 space-y-16">
-        <div className="text-center space-y-3">
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">See what it compiles to.</h2>
-          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            Write JSX. The compiler emits a standard Custom Element built from direct DOM operations — this is the real output, not a virtual DOM.
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-8 items-center bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
-          <div className="p-12 border-b md:border-b-0 md:border-r border-[var(--border)] bg-[var(--bg-surface)] flex flex-col items-center justify-center min-h-[300px]">
-            <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-8">Live Preview</div>
-            <Counter />
-          </div>
-          <div className="p-6">
-            <CodeBlock code={counterDemo.code} compiled={counterDemo.compiled} />
-          </div>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-8 items-center bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
-          <div className="p-6 order-2 md:order-1">
-            <CodeBlock code={todoDemo.code} compiled={todoDemo.compiled} />
-          </div>
-          <div className="p-12 border-t md:border-t-0 md:border-l border-[var(--border)] bg-[var(--bg-surface)] flex flex-col items-center justify-center min-h-[300px] order-1 md:order-2">
-            <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-8">Live Preview</div>
-            <TodoList />
-          </div>
         </div>
       </section>
 
