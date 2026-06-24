@@ -20,8 +20,10 @@ export default function Breadcrumbs(props) {
   // Direct-child `.map` (not wrapped in a `{() => …}` thunk) so the compiler
   // lowers it to a reactive list whose item renderer receives `it`/`i`. The
   // source re-runs on `router.pathname`, so the trail tracks navigation.
+  // `data-pagefind-meta="breadcrumb"` exposes this trail to the search index, so each
+  // result can show which page (and section) it belongs to.
   return (
-    <nav class="otfw-breadcrumbs" aria-label="Breadcrumb">
+    <nav class="otfw-breadcrumbs" aria-label="Breadcrumb" data-pagefind-meta="breadcrumb">
       {(findTrail(nav, router.pathname, []) || []).map((it, i) => (
         <span class="otfw-crumb">
           {i > 0 ? <span class="otfw-crumb-sep">/</span> : null}

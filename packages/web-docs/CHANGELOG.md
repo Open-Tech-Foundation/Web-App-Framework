@@ -11,12 +11,13 @@ The `[Unreleased]` section is renamed to the new version number at release time.
   build --ssg` then indexes the pre-rendered pages that carry `data-pagefind-body` (the
   docs shell — so the marketing homepage is excluded) into `dist/pagefind/`, file by
   file so the build can show progress. A new `Search` modal — opened by the navbar
-  trigger or ⌘K /
-  Ctrl+K — lazy-loads the static index on first open and queries it client-side
-  (debounced, keyboard-navigable, highlighted excerpts); results are absolute URLs the
-  router navigates to. No server required; in dev (no built index) it opens but returns
-  nothing, as expected. The build hook ships as `indexWithPagefind` from
-  `@opentf/web-docs/build`.
+  trigger or ⌘K / Ctrl+K — lazy-loads the static index on first open and queries it
+  client-side (debounced, keyboard-navigable, highlighted excerpts); each result shows
+  the page's breadcrumb trail (captured via `data-pagefind-meta="breadcrumb"` on the
+  `Breadcrumbs` nav, so a term that hits many pages is easy to tell apart) and links to
+  an absolute URL the router navigates to. No server required; in dev (no built index)
+  it opens but returns nothing, as expected. The build hook ships as `indexWithPagefind`
+  from `@opentf/web-docs/build`.
 - Code blocks now render a header bar — a language label, an optional filename (from
   the fence info string, e.g. ` ```json package.json `), and a copy button on the
   right that, on click, turns green, swaps its clipboard glyph for a check icon, and

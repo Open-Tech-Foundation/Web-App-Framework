@@ -50,6 +50,9 @@ export default function Search() {
       results = data.map((d) => ({
         url: d.url,
         title: (d.meta && d.meta.title) || d.url,
+        // The breadcrumb trail (indexed via data-pagefind-meta) shows which page a
+        // result is from — handy when one term hits many pages. Normalize separators.
+        crumb: d.meta && d.meta.breadcrumb ? d.meta.breadcrumb.replace(/\s*\/\s*/g, " › ") : "",
         excerpt: d.excerpt,
       }));
       active = 0;
@@ -155,6 +158,7 @@ export default function Search() {
                 }}
                 onmouseenter={() => (active = i)}
               >
+                {r.crumb ? <span class="otfw-search-result-crumb">{r.crumb}</span> : null}
                 <span class="otfw-search-result-title">{r.title}</span>
                 <span class="otfw-search-result-excerpt">
                   <RawHtml html={r.excerpt} />

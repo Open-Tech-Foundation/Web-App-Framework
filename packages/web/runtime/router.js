@@ -19,8 +19,17 @@ import { runCleanup, runMount } from "./mount.js";
 
 const isBrowser = typeof window !== "undefined";
 
+/**
+ * Drop a trailing slash (except for the root "/") so `router.pathname` matches the
+ * no-trailing-slash route table and nav paths regardless of how the URL was entered —
+ * a static host serves `/docs/x/`, a Pagefind result links to `/docs/x/`, etc. Without
+ * this, `/docs/x/` wouldn't match the `/docs/x` nav entry and the breadcrumb / active
+ * sidebar link / TOC would silently blank out.
+ */
+const normalizePath = (p) => (p || "/").replace(/(.)\/+$/, "$1");
+
 const state = {
-  pathname: signal(isBrowser ? window.location.pathname : "/"),
+  pathname: signal(isBrowser ? normalizePath(window.location.pathname) : "/"),
   searchParams: signal(new URLSearchParams(isBrowser ? window.location.search : "")),
   params: signal({}),
 };
@@ -116,7 +125,7 @@ export async function buildRouteNode(match, query = {}) {
  * pre-rendered. The client uses `navigate` instead.
  */
 export function setRouteState({ pathname = "/", search = "", params = {} } = {}) {
-  state.pathname.value = pathname;
+  state.pathname.value = normalizePath(pathname);
   state.searchParams.value = new URLSearchParams(search);
   state.params.value = params;
 }
@@ -177,7 +186,7 @@ export async function navigate(path, replace = false, isPop = false) {
     matchRoute(url.pathname) ||
     (routes.notFound ? { entry: routes.notFound, params: {}, route: null } : null);
 
-  state.pathname.value = url.pathname;
+  state.pathname.value = normalizePath(url.pathname);
   state.searchParams.value = url.searchParams;
   state.params.value = match ? match.params : {};
 

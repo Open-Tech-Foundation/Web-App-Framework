@@ -339,6 +339,13 @@ body {
 .otfw-search-result.is-active {
   background: var(--otfw-accent-soft);
 }
+.otfw-search-result-crumb {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--otfw-text-muted);
+  letter-spacing: 0.01em;
+  margin-bottom: 0.1rem;
+}
 .otfw-search-result-title {
   display: block;
   font-weight: 600;
