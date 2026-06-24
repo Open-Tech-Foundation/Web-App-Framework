@@ -29,17 +29,17 @@ export default function Pagination(props) {
   return (
     <nav class="otfw-pagination" aria-label="Pagination">
       {pos.prev ? (
-        <Link href={pos.prev.path} class="otfw-page-link otfw-page-prev">
+        <Link href={pos.prev?.path} class="otfw-page-link otfw-page-prev">
           <span class="otfw-page-dir">← Previous</span>
-          <span class="otfw-page-title">{pos.prev.title}</span>
+          <span class="otfw-page-title">{pos.prev?.title}</span>
         </Link>
       ) : (
         <span class="otfw-page-spacer" />
       )}
       {pos.next ? (
-        <Link href={pos.next.path} class="otfw-page-link otfw-page-next">
+        <Link href={pos.next?.path} class="otfw-page-link otfw-page-next">
           <span class="otfw-page-dir">Next →</span>
-          <span class="otfw-page-title">{pos.next.title}</span>
+          <span class="otfw-page-title">{pos.next?.title}</span>
         </Link>
       ) : (
         <span class="otfw-page-spacer" />

@@ -63,6 +63,11 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
+- `Pagination` no longer throws `Cannot read properties of null (reading 'title')`
+  when navigating to the first or last page. The prev/next branches read
+  `pos.prev.title` / `pos.next.title` inside a reactive binding; once `pos.prev`
+  (or `.next`) became `null` on navigation, that binding re-ran against `null` before
+  the branch tore down. The inner reads are now optional-chained (`pos.prev?.title`).
 - Prose lists render their markers again. A host Tailwind preflight (`list-style:
   none` on every `ul`/`ol`) stripped bullets and numbers from `.otfw-prose`; the theme
   now sets `disc`/`decimal` (and `circle` for nested lists) explicitly. Loose list

@@ -4,7 +4,8 @@ import ReactiveTrace from "./components/ReactiveTrace.jsx";
 import { benchmark, capabilities } from "./home-data.js";
 
 export const metadata = {
-  title: "OTF Web — The native-first framework for modern web apps",
+  // Absolute: the homepage keeps its full title instead of the "%s — OTF Web" template.
+  title: { absolute: "OTF Web — The native-first framework for modern web apps" },
   description:
     "A high-performance, zero-VDOM framework that compiles JSX to native DOM. Built with signals and standard Web Components.",
   canonical: "/",

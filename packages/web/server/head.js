@@ -72,6 +72,20 @@ function absUrl(baseUrl, p) {
   return baseUrl.replace(/\/+$/, "") + (p.startsWith("/") ? p : `/${p}`);
 }
 
+/**
+ * Resolve a `title` (string or `{ absolute }`) against an optional `template`
+ * containing `%s`. A plain string is wrapped by the template; `{ absolute }` (or a
+ * template without `%s`) is used verbatim. Returns null when there is no title.
+ */
+function resolveTitle(title, template) {
+  if (title != null && typeof title === "object") {
+    return title.absolute != null ? String(title.absolute) : null;
+  }
+  if (title == null) return null;
+  const s = String(title);
+  return template && template.includes("%s") ? template.replace("%s", s) : s;
+}
+
 /** `<meta name|property="key" content="value">` (omitted when value is null). */
 function metaTag(kind, key, content) {
   if (content == null || content === "") return "";
@@ -106,7 +120,10 @@ export function renderHead(meta = {}, { path = "/", baseUrl = "" } = {}) {
   const tags = [];
   const push = (s) => s && tags.push(s);
 
-  const title = meta.title;
+  // Resolve the display title. `title` is a string (wrapped by an inherited
+  // `titleTemplate` like "%s — OTF Web") or `{ absolute }` to bypass the template —
+  // so a layout can brand every child page while the homepage keeps a bespoke title.
+  const title = resolveTitle(meta.title, meta.titleTemplate);
   const description = meta.description;
   if (title != null) push(`<title>${escapeHtml(title)}</title>`);
   push(metaTag("name", "description", description));

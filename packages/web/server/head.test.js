@@ -51,6 +51,21 @@ describe("renderHead", () => {
     expect(html).toContain('<meta name="twitter:title" content="About">');
   });
 
+  test("applies titleTemplate to a string title and uses it for OG/Twitter", () => {
+    const html = renderHead({ title: "Installation", titleTemplate: "%s — OTF Web" }, {});
+    expect(html).toContain("<title>Installation — OTF Web</title>");
+    expect(html).toContain('<meta property="og:title" content="Installation — OTF Web">');
+    expect(html).toContain('<meta name="twitter:title" content="Installation — OTF Web">');
+  });
+
+  test("an absolute title bypasses the titleTemplate", () => {
+    const html = renderHead(
+      { title: { absolute: "OTF Web — native-first" }, titleTemplate: "%s — OTF Web" },
+      {},
+    );
+    expect(html).toContain("<title>OTF Web — native-first</title>");
+  });
+
   test("canonical falls back to the route path when not set", () => {
     const html = renderHead({}, { path: "/p", baseUrl: "https://x.com" });
     expect(html).toContain('<link rel="canonical" href="https://x.com/p">');

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- SEO head: `titleTemplate` (a string with `%s`) lets a layout brand every child
+  page's `<title>` — e.g. `titleTemplate: "%s — OTF Web"` renders a page titled
+  `Installation` as `Installation — OTF Web`. A page opts out with
+  `title: { absolute: "…" }`. The templated/absolute title is also used for the
+  `og:title` / `twitter:title` fallbacks.
+
 ### Fixed
 
 - `router.pathname` now drops a trailing slash (except for root `/`), so a URL like

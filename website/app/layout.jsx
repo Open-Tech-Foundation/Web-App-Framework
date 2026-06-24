@@ -1,6 +1,20 @@
 import { Navbar } from "@opentf/web-docs";
 import config from "../otfw.config.js";
 
+// Site-wide SEO defaults, inherited by every route (least-specific in the metadata
+// merge). `titleTemplate` brands every child page's `<title>` (e.g. "Installation —
+// OTF Web"); a page can opt out with `title: { absolute: "…" }`. The description and
+// `og:site_name` act as fallbacks when a page doesn't set its own.
+export const metadata = {
+  titleTemplate: "%s — OTF Web",
+  description:
+    "A high-performance, zero-VDOM framework that compiles JSX to native DOM. Built with signals and standard Web Components.",
+  openGraph: {
+    siteName: "OTF Web",
+    type: "website",
+  },
+};
+
 // The site is itself a product of @opentf/web-docs (Nextra-style): the navbar — brand,
 // version badge, active-route underline, GitHub icon, theme toggle — comes from the
 // theme package, driven by otfw.config.js. The docs section reuses it via frame={false}.
