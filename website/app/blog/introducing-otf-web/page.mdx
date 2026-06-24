@@ -1,0 +1,21 @@
+---
+title: Introducing OTF Web
+description: Why we built a native-first, zero-VDOM framework that compiles JSX to real DOM.
+date: 2026-06-24
+author: OTF Team
+tags: announcements, framework
+---
+
+Most frameworks ship a virtual DOM and diff it on every change. OTF Web takes a
+different path: the compiler turns your JSX into the exact `createElement` and update
+calls your view needs, so there's no reconciliation loop at runtime.
+
+## What that buys you
+
+- **No VDOM** — a change updates only the DOM node bound to it.
+- **Native components** — every component is a real `HTMLElement`.
+- **Fine-grained signals** — `$state`, `$derived`, and `$effect` wire reactivity at
+  compile time.
+
+It's early, but the core is fast and the model is simple. Give it a try and tell us
+what breaks.

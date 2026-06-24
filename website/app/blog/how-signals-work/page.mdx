@@ -1,0 +1,28 @@
+---
+title: How fine-grained signals work
+description: A look at the reactive graph that updates only the DOM nodes a change touches.
+date: 2026-06-10
+author: OTF Team
+tags: internals, reactivity
+---
+
+A signal is a value plus the set of computations that read it. When the value changes,
+only those computations re-run — and in OTF Web, a computation is often a single DOM
+update.
+
+```jsx
+let count = $state(0);
+const doubled = $derived(count * 2);
+```
+
+Reading `count` inside a binding subscribes that binding to it. Reassigning `count`
+notifies exactly its subscribers — `doubled`, and any DOM node showing either value.
+Nothing else on the page is visited.
+
+That's the whole idea behind "zero-VDOM": the dependency graph already knows what to
+update, so there's nothing to diff.
+
+## Why it matters
+
+No diffing means no per-frame reconciliation work that scales with your view size —
+updates scale with what actually changed.

@@ -15,9 +15,17 @@ export default defineDocsConfig({
     nav: [
       { label: "Home", href: "/" },
       { label: "Docs", href: "/docs" },
+      { label: "Blog", href: "/blog" },
     ],
     // Static search: `otfw build --ssg` indexes the pre-rendered HTML with Pagefind
     // into dist/pagefind/; the navbar ⌘K trigger and modal query it at runtime.
     search: { provider: "pagefind" },
+  },
+
+  // Blog generator: posts live under app/blog/<slug>/page.mdx. The toolchain resolves
+  // `@opentf/web-docs/posts` to the post list (title/date/reading time from
+  // frontmatter) for the index and the post banners.
+  blog: {
+    dir: "blog",
   },
 });
