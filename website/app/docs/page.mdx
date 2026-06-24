@@ -4,6 +4,7 @@ description: OTF Web is a native-first, zero-VDOM framework that compiles JSX to
 ---
 
 import { Callout } from "@opentf/web-docs";
+import CounterDemo from "../components/CounterDemo.jsx";
 
 # Introduction
 
@@ -34,6 +35,10 @@ export default function Counter() {
 
 `count` is a signal. Reassigning it updates only the text node it feeds — nothing else
 re-runs.
+
+<CounterDemo />
+
+That button is the snippet above, compiled and running — click it.
 
 <Callout type="info" title="No hydration step">
   The compiled output builds the DOM directly and is interactive immediately. There is
