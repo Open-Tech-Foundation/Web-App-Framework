@@ -8,10 +8,11 @@
 //! cache) described in `ARCHITECTURE.md` §8 is implemented here over time.
 
 use std::io::{self, BufRead, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use otfw_compiler::codegen::{csr, ssg};
+use otfw_compiler::graph::{DiskVfs, ModuleGraph, Resolver};
 use otfw_compiler::lower::lower_module;
 use otfw_compiler::mdx::mdx_to_jsx;
 use otfw_compiler::parse::ParseSession;
@@ -33,15 +34,101 @@ fn main() -> ExitCode {
             }
         }
         Some("serve") => serve(),
+        Some("graph") => graph_cmd(&args[2..]),
         _ => {
             println!("otfwc: OTF Web IR compiler (foundation). See ARCHITECTURE.md.");
             println!("usage: otfwc build [--component] [--stdin] <file.tsx>   # parse → lower → CSR codegen");
             println!("  default emits a page factory; --component emits a Custom Element class");
             println!("  --stdin reads source from stdin; <file> is used only for the module id");
             println!("       otfwc serve   # long-lived compiler: framed requests on stdin, results on stdout");
+            println!("       otfwc graph [--web=<path>] <entry...>   # crawl the module graph as JSON");
             ExitCode::SUCCESS
         }
     }
+}
+
+/// Crawl the module graph from one or more entry files and print it as JSON
+/// (`{ "modules": [ { id, fingerprint, env, external, deps: [...] } ] }`). `--web`
+/// points the `@opentf/web` alias at the runtime entry; without it the framework
+/// import resolves as an external leaf. The orchestrator consumes this to compile a
+/// route's subgraph on demand and to invalidate precisely on a change (§5.2).
+fn graph_cmd(args: &[String]) -> ExitCode {
+    let mut web_entry: Option<PathBuf> = None;
+    let mut entries: Vec<PathBuf> = Vec::new();
+    for a in args {
+        if let Some(p) = a.strip_prefix("--web=") {
+            web_entry = Some(PathBuf::from(p));
+        } else if a.starts_with("--") {
+            eprintln!("otfwc graph: unknown flag {a}");
+            return ExitCode::FAILURE;
+        } else {
+            entries.push(PathBuf::from(a));
+        }
+    }
+    if entries.is_empty() {
+        eprintln!("usage: otfwc graph [--web=<path>] <entry...>");
+        return ExitCode::FAILURE;
+    }
+
+    // Default the `@opentf/web` alias to a non-existent path when unspecified, so the
+    // framework import falls through to an external leaf rather than erroring.
+    let resolver = Resolver::new(web_entry.unwrap_or_else(|| PathBuf::from("@opentf/web")));
+    let graph = ModuleGraph::build(&entries, &resolver, &DiskVfs);
+
+    let mut out = String::from("{\"modules\":[");
+    for (i, node) in graph.nodes.values().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        let env = match node.environment {
+            otfw_compiler::graph::Environment::Client => "client",
+            otfw_compiler::graph::Environment::Server => "server",
+            otfw_compiler::graph::Environment::Shared => "shared",
+        };
+        out.push_str(&format!(
+            "{{\"id\":{},\"fingerprint\":{},\"env\":\"{env}\",\"external\":{},\"deps\":[",
+            json_str(&node.id),
+            json_str(&node.fingerprint),
+            node.external,
+        ));
+        for (j, edge) in node.deps.iter().enumerate() {
+            if j > 0 {
+                out.push(',');
+            }
+            out.push_str(&format!(
+                "{{\"specifier\":{},\"target\":{},\"dynamic\":{},\"external\":{}}}",
+                json_str(&edge.specifier),
+                json_str(&edge.target),
+                edge.dynamic,
+                edge.external,
+            ));
+        }
+        out.push_str("]}");
+    }
+    out.push_str("]}");
+    println!("{out}");
+    eprintln!("otfwc graph: {} module(s)", graph.nodes.len());
+    ExitCode::SUCCESS
+}
+
+/// Minimal JSON string encoder (escapes the characters JSON requires); enough for
+/// file paths and hex fingerprints without pulling in a serialization dependency.
+fn json_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// Compile one module to its emitted JS. `as_component` selects the Custom Element

@@ -4,6 +4,14 @@
 
 ### Added
 
+- Module graph (ARCHITECTURE.md §5.2): a crawl of the app's modules — nodes =
+  resolved files, edges = static and dynamic (`import()`) dependencies — with a
+  content fingerprint per node. It answers a route's transitive dependency subgraph
+  (the unit to compile on demand, stopping at lazy `import()` boundaries) and a
+  changed file's transitive dependents (the precise rebuild set). Exposed as
+  `otfwc graph [--web=<path>] <entry...>`, which prints it as JSON for the
+  orchestrator to consume. Foundation for lazy route compilation and precise HMR;
+  not yet wired into the dev server.
 - `otfwc serve`: a long-lived compiler mode. It reads framed requests on stdin
   (`<id_len> <source_len> <component> <ssg>\n` + id bytes + source bytes) and writes
   `OK <len>\n<code>` / `ERR <len>\n<message>` replies on stdout, staying up across

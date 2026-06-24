@@ -25,3 +25,7 @@ pub mod lower;
 
 /// Stage 4: Codegen — IR consumers per target (CSR / Hydrate / SSG / SSR / API).
 pub mod codegen;
+
+/// Module graph (§5.2): module → dependency edges + fingerprints, for on-demand
+/// compilation and precise incremental rebuilds.
+pub mod graph;
