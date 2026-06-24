@@ -12,6 +12,14 @@
   shareable. It's visually hidden until the heading is hovered (styled by the consuming
   theme).
 
+### Changed
+
+- Prebuilt `otfwc` binaries now ship brotli-compressed (`bin/<platform>/otfwc[.exe].br`,
+  ~0.65 MB vs ~2.3 MB raw); a `postinstall` decompresses only the host's binary, and
+  `otfwcPath()` decompresses lazily as a fallback (for `--ignore-scripts` installs).
+  Uses Node's `zlib` — no extra runtime/CLI dependency — and yields a byte-identical,
+  runnable binary.
+
 ## 0.1.0
 
 ### Minor Changes

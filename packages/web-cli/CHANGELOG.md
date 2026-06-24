@@ -7,6 +7,13 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Added
 
+- The toolchain now resolves and compiles `.mdx`/`.md` modules (through `otfwc`'s MDX
+  front-end), so Markdown/MDX routes build like `.jsx`/`.tsx`.
+- SSG build pass: injects per-route `<head>` (from each route's resolved metadata),
+  pre-renders dynamic routes, and emits `sitemap.xml` + `robots.txt` for the built site.
+- Docs-site generator integration: a nav plugin builds the sidebar tree from the docs
+  directory, dedups group landing pages, and honors route exclusions — driven by the
+  project's `otfw.config.js` docs config (`@opentf/web-docs`).
 - `otfw build` now reports its phases. Each phase — compiling routes & components,
   pre-rendering pages, building the search index — shows an animated spinner with live
   detail (the current file, or an `N/total` count) on a TTY, then collapses to a green
