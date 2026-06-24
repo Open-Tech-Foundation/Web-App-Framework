@@ -27,6 +27,7 @@ import {
   otfwPlugin,
   runDocsSearchIndex,
 } from "./shared.js";
+import { fmtMs, step } from "./reporter.js";
 
 const hash = (s) => Bun.hash(s).toString(16).padStart(16, "0").slice(0, 8);
 
@@ -65,12 +66,22 @@ export async function runBuild() {
   const entry = join(tmp, "entry.js");
   writeFileSync(entry, entrySource(pages, appDir));
 
+  console.log("\n  OTF Web — production build\n");
+
+  // Phase 1: compile every route/component (jsx/mdx → native DOM) and bundle. The
+  // compiler runs as a synchronous subprocess per file, so the per-file `onResult`
+  // is what drives the live progress line.
+  const buildStep = step("Compiling routes & components");
+  let compiled = 0;
   const result = await build({
     input: entry,
     resolve: { alias: { "@opentf/web": webEntry }, extensions: EXTENSIONS },
     plugins: [
       ...(navPlugin ? [navPlugin] : []),
-      otfwPlugin(otfwc, { failOnError: true }),
+      otfwPlugin(otfwc, {
+        failOnError: true,
+        onResult: (id) => buildStep.update(`${basename(id)}  (${++compiled})`),
+      }),
       cssPlugin(),
     ],
     output: {
@@ -80,6 +91,9 @@ export async function runBuild() {
       chunkFileNames: "[name]-[hash].js",
       minify: true,
     },
+    // The compiler runs a subprocess per file, so it dominates plugin time by design;
+    // silence Rolldown's plugin-timing advisory rather than print it every build.
+    checks: { pluginTimings: false },
   });
   rmSync(tmp, { recursive: true, force: true });
 
@@ -101,6 +115,7 @@ export async function runBuild() {
   );
 
   // Compile each local <link rel="stylesheet" href="/..."> and rewrite the href.
+  buildStep.update("styles");
   const links = [...html.matchAll(/<link\b[^>]*\bhref=["']([^"']+)["'][^>]*>/gi)];
   for (const [, href] of links) {
     if (!href.startsWith("/")) continue; // leave external/CDN links alone
@@ -120,12 +135,17 @@ export async function runBuild() {
     : html + script;
   writeFileSync(join(outDir, "index.html"), html);
 
+  const chunks = result.output.filter((o) => o.type === "chunk").length;
+  buildStep.done(`Compiled ${pages.length} routes · bundled ${chunks} chunks`);
+
   // SSG: pre-render each route into static HTML using the shell we just composed
   // (so per-route files carry the same bundle + stylesheet links).
   let ssg = null;
   if (process.argv.includes("--ssg")) {
     const baseUrl = resolveBaseUrl(config);
     const { runPrerender } = await import("./prerender.js");
+    const ssgStep = step("Pre-rendering pages");
+    let ssgCompiled = 0;
     ssg = await runPrerender({
       root,
       pages,
@@ -135,7 +155,13 @@ export async function runBuild() {
       outDir,
       baseUrl,
       navPlugin,
+      onCompile: (id) => ssgStep.update(`compiling ${basename(id)}  (${++ssgCompiled})`),
+      onRender: (done, total) => ssgStep.update(`rendering ${done}/${total}`),
     });
+    ssgStep.done(
+      `Pre-rendered ${ssg.count} page(s)` +
+        (ssg.skipped.length ? ` · ${ssg.skipped.length} dynamic route(s) skipped` : ""),
+    );
   }
 
   // Copy the public/ directory (static assets served at the root), if present.
@@ -144,20 +170,13 @@ export async function runBuild() {
 
   // Docs search: index the pre-rendered HTML with Pagefind (when SSG + opted in).
   let search = null;
-  if (ssg) search = await runDocsSearchIndex(root, config, outDir);
-
-  const chunks = result.output.filter((o) => o.type === "chunk").length;
-  const ms = Math.round(performance.now() - t0);
-  console.log(`\n  OTF Web build`);
-  console.log(`  → dist/  (${pages.length} routes, ${chunks} chunks) in ${ms}ms`);
-  if (ssg) {
-    console.log(
-      `  → pre-rendered ${ssg.count} HTML file(s)` +
-        (ssg.skipped.length
-          ? `; skipped ${ssg.skipped.length} dynamic route(s) without getStaticPaths`
-          : ""),
+  if (ssg && config?.docs?.search?.provider === "pagefind") {
+    const searchStep = step("Building search index");
+    search = await runDocsSearchIndex(root, config, outDir, (done, total) =>
+      searchStep.update(`${done}/${total} pages`),
     );
+    searchStep.done(`Search index — ${search?.pages ?? 0} page(s)`);
   }
-  if (search) console.log(`  → Pagefind indexed ${search.pages} page(s)`);
-  console.log("");
+
+  console.log(`\n  → dist/  ready in ${fmtMs(performance.now() - t0)}\n`);
 }

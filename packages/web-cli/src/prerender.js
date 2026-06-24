@@ -85,7 +85,7 @@ function escapeXml(s) {
  * Pre-render the app to static HTML files under `outDir`. Returns
  * `{ count, skipped, failed }`.
  */
-export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", navPlugin = null }) {
+export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", navPlugin = null, onCompile, onRender }) {
   const tmp = join(root, ".otfw-ssg");
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "ssg-entry.js");
@@ -100,10 +100,11 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
     },
     plugins: [
       ...(navPlugin ? [navPlugin] : []),
-      otfwPlugin(otfwc, { failOnError: true, target: "ssg" }),
+      otfwPlugin(otfwc, { failOnError: true, target: "ssg", onResult: (id) => onCompile?.(id) }),
       cssPlugin(),
     ],
     output: { dir: join(tmp, "out"), format: "esm", entryFileNames: "server.js" },
+    checks: { pluginTimings: false },
   });
 
   // The runtime defines `class … extends HTMLElement` at load (for CSR custom
@@ -116,7 +117,9 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
   const { paths, skipped } = await mod.collectRoutePaths();
   const failed = [];
   const rendered = []; // concrete paths that produced an HTML file (for the sitemap)
+  let renderedCount = 0;
   for (const { path, params } of paths) {
+    onRender?.(++renderedCount, paths.length);
     try {
       const { html, metadata } = (await mod.renderRoute(path, params)) ?? { html: "", metadata: {} };
       const head = mod.renderHead(metadata, { path, baseUrl });

@@ -153,20 +153,12 @@ export async function loadDocsNavPlugin(root, appDir, config, exclude = new Set(
  * and writes `<siteDir>/pagefind/`. No-op (returns null) otherwise. Resolved from the
  * app's `@opentf/web-docs` so the hook ships with the docs package.
  */
-export async function runDocsSearchIndex(root, config, siteDir) {
+export async function runDocsSearchIndex(root, config, siteDir, onProgress) {
   if (config?.docs?.search?.provider !== "pagefind") return null;
   try {
     const entry = Bun.resolveSync("@opentf/web-docs/build", root);
     const { indexWithPagefind } = await import(pathToFileURL(entry).href);
-    // Live progress on a TTY (cleared before the build summary prints); on a
-    // non-interactive stream we stay quiet and let the final count line speak.
-    const tty = process.stdout.isTTY;
-    const onProgress = (done, total) => {
-      if (tty) process.stdout.write(`\r  → Pagefind: indexing ${done}/${total} page(s)…`);
-    };
-    const res = await indexWithPagefind({ siteDir, onProgress });
-    if (tty) process.stdout.write("\r\x1b[K"); // clear the progress line
-    return res;
+    return await indexWithPagefind({ siteDir, onProgress });
   } catch (e) {
     console.warn(`⚠ Pagefind indexing skipped: ${e?.message ?? e}`);
     return null;
