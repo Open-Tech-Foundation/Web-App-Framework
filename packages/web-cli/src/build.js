@@ -25,6 +25,7 @@ import {
   loadDocsPlugins,
   loadProject,
   otfwPlugin,
+  runBlogFeed,
   runDocsSearchIndex,
 } from "./shared.js";
 import { fmtMs, step } from "./reporter.js";
@@ -176,6 +177,15 @@ export async function runBuild() {
       searchStep.update(`${done}/${total} pages`),
     );
     searchStep.done(`Search index — ${search?.pages ?? 0} page(s)`);
+  }
+
+  // Blog RSS feed (when a `blog` block + site URL are configured). Written after the
+  // public/ copy so a project-supplied feed override isn't clobbered.
+  if (config?.blog) {
+    const feedStep = step("Generating RSS feed");
+    const feed = await runBlogFeed(root, appDir, config, outDir, resolveBaseUrl(config), exclude);
+    if (feed) feedStep.done(`RSS feed — ${feed.count} post(s) → ${feed.path}`);
+    else feedStep.done("RSS feed — skipped");
   }
 
   console.log(`\n  → dist/  ready in ${fmtMs(performance.now() - t0)}\n`);

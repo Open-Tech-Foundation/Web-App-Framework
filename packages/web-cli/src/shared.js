@@ -5,7 +5,7 @@
 // `otfwc` IR compiler as a Rolldown `transform` plugin, and let Rolldown link the
 // module graph. This module holds everything they have in common.
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -167,6 +167,48 @@ export async function runDocsSearchIndex(root, config, siteDir, onProgress) {
     return await indexWithPagefind({ siteDir, onProgress });
   } catch (e) {
     console.warn(`⚠ Pagefind indexing skipped: ${e?.message ?? e}`);
+    return null;
+  }
+}
+
+/**
+ * Generate the blog RSS feed when the project has a `blog` config and a base URL.
+ * Scans the post folders, renders RSS 2.0, and writes `<siteDir>/<blogDir>/rss.xml`.
+ * A project-supplied `public/<blogDir>/rss.xml` takes precedence (it overwrites ours
+ * on the public/ copy). Returns `{ path, url, count }` or null (no blog / no base URL
+ * / package missing). Resolved from the app's `@opentf/web-docs`.
+ */
+export async function runBlogFeed(root, appDir, config, siteDir, baseUrl, exclude = new Set()) {
+  const blog = config?.blog;
+  if (!blog) return null;
+  if (!baseUrl) {
+    console.warn("⚠ blog RSS feed skipped: no site URL (pass --base-url or set otfw.config)");
+    return null;
+  }
+  const contentDir = blog.dir ?? "blog";
+  if (existsSync(join(root, "public", contentDir, "rss.xml"))) return null; // honor override
+  try {
+    const entry = Bun.resolveSync("@opentf/web-docs/build", root);
+    const { loadPosts, renderBlogFeed } = await import(pathToFileURL(entry).href);
+    const posts = loadPosts({ appDir, contentDir, exclude });
+    const feedPath = `/${contentDir}/rss.xml`;
+    const title = blog.title || (config?.docs?.title ? `${config.docs.title} Blog` : "Blog");
+    const xml = renderBlogFeed({
+      posts,
+      baseUrl,
+      feedPath,
+      channel: {
+        title,
+        description: blog.description || title,
+        link: `/${contentDir}`,
+      },
+    });
+    const out = join(siteDir, contentDir, "rss.xml");
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, xml);
+    return { path: feedPath, url: baseUrl.replace(/\/+$/, "") + feedPath, count: posts.length };
+  } catch (e) {
+    console.warn(`⚠ blog RSS feed skipped: ${e?.message ?? e}`);
     return null;
   }
 }

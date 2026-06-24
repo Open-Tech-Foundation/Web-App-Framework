@@ -4,6 +4,13 @@
 
 ### Added
 
+- Blog RSS feed. `loadPosts({ appDir, contentDir })` (the `blogPostsPlugin`'s scan,
+  exposed as a callable) and `renderBlogFeed({ posts, baseUrl, channel })` (a pure RSS
+  2.0 renderer) are exported from `@opentf/web-docs/build`. `otfw build` writes
+  `<dir>/rss.xml` when `site.url` and a `blog` block are set — posts newest-first with
+  absolute links, `<pubDate>` (RFC-822 from `date`), `<dc:creator>` (from `author`), and
+  a `<category>` per tag. New `blog.title` / `blog.description` config fields set the
+  channel metadata; a `public/<dir>/rss.xml` override is honored.
 - Blog support, the marketing-blog counterpart of the docs generator. A `blog` block
   in `defineDocsConfig` turns on a build-time `blogPostsPlugin` that scans
   `app/<dir>/<slug>/page.mdx`, reads each post's frontmatter, computes a reading-time

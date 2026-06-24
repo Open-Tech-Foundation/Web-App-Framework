@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `otfw build` generates the blog RSS feed. When a project has a `blog` block and a
+  base URL (`--base-url` or `site.url`), `runBlogFeed` scans the posts via
+  `@opentf/web-docs/build` and writes `dist/<blogDir>/rss.xml` after the `public/` copy
+  (so a project-supplied feed override isn't clobbered). Skipped with a warning when no
+  base URL is set.
+
 ### Fixed
 
 - `otfw dev` static serving now skips directories. A request whose path is also a

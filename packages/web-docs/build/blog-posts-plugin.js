@@ -41,6 +41,22 @@ export function blogPostsPlugin({ appDir, contentDir = "blog", exclude = new Set
   };
 }
 
+/**
+ * Scan the blog content folder and return the ordered post list — the same array the
+ * `blogPostsPlugin` virtual module exposes, but callable directly (used by the RSS
+ * feed generator at build time). Returns `[]` when the folder is absent.
+ *
+ * @param {Object} opts
+ * @param {string} opts.appDir
+ * @param {string} [opts.contentDir]
+ * @param {Set<string>} [opts.exclude]
+ */
+export function loadPosts({ appDir, contentDir = "blog", exclude = new Set() } = {}) {
+  const root = join(appDir, contentDir);
+  if (!existsSync(root)) return [];
+  return collectPosts(root, "/" + contentDir, exclude, []);
+}
+
 function collectPosts(root, base, exclude, watch) {
   const posts = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {

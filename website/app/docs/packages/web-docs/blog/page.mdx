@@ -141,7 +141,32 @@ Posts are indexed automatically. `BlogLayout` marks the post article with
 index as your docs — no extra configuration. The index page is intentionally not
 indexed (it's just a list of links).
 
-<Callout type="info" title="No RSS yet">
-  An RSS/Atom feed isn't generated. If you need one, the `@opentf/web-docs/posts` list
-  has everything required to emit it from a build hook.
+## RSS feed
+
+`otfw build` writes an RSS 2.0 feed to `<dir>/rss.xml` (e.g. `/blog/rss.xml`) whenever a
+`blog` block and a `site.url` are configured. Posts appear newest-first with absolute
+links, `<pubDate>` (from `date`), `<dc:creator>` (from `author`), and a `<category>` per
+tag.
+
+```js otfw.config.js
+export default defineDocsConfig({
+  site: { url: "https://example.com" }, // required — feeds need absolute URLs
+  blog: {
+    dir: "blog",
+    title: "Example Blog",          // RSS channel title (optional)
+    description: "Notes from the team", // RSS channel description (optional)
+  },
+});
+```
+
+Add an autodiscovery link to your `index.html` `<head>` so readers and browsers find it:
+
+```html index.html
+<link rel="alternate" type="application/rss+xml" title="Example Blog" href="/blog/rss.xml" />
+```
+
+<Callout type="info" title="Bring your own feed">
+  Drop a `public/<dir>/rss.xml` to take over the feed entirely — the generator detects
+  the override and won't overwrite it. The feed is skipped (with a warning) when no
+  `site.url` is set, since feed entries must be absolute URLs.
 </Callout>
