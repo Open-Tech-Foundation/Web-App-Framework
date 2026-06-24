@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `otfwc serve`: a long-lived compiler mode. It reads framed requests on stdin
+  (`<id_len> <source_len> <component> <ssg>\n` + id bytes + source bytes) and writes
+  `OK <len>\n<code>` / `ERR <len>\n<message>` replies on stdout, staying up across
+  requests (and across compile errors). Lets the toolchain compile every module
+  through one process instead of spawning `otfwc build` per file.
+
 ### Fixed
 
 - Component DOM no longer accumulates on client-side re-navigation. A component's

@@ -202,29 +202,143 @@ export function entrySource(pages, appDir) {
 }
 
 /**
+ * Start a long-lived `otfwc serve` process and talk to it over a framed
+ * stdin/stdout protocol (see crates/otfw_cli/src/main.rs `serve`). One process
+ * compiles every module, so the toolchain pays the binary-startup cost once
+ * instead of spawning a subprocess per file — the dominant dev-server cost.
+ *
+ * `compile(id, source, component, ssg)` resolves to the emitted JS or rejects with
+ * the compiler diagnostic. Requests are serialized through a FIFO queue: the server
+ * is single-threaded, replies arrive in request order, so the head of the queue
+ * always pairs with the next frame. The child is killed when this process exits.
+ */
+export function startCompilerServer(otfwc) {
+  const proc = Bun.spawn([otfwc, "serve"], {
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "inherit",
+  });
+  // Don't let the long-lived child keep the event loop open: a one-shot `otfw build`
+  // must exit once the bundle is written (the dev server stays alive on its own via
+  // `Bun.serve`). The `exit` handler below still tears the child down, and the child
+  // also sees EOF on its stdin pipe when we go.
+  proc.unref();
+  const reader = proc.stdout.getReader();
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  const queue = []; // { resolve, reject } in request order
+  let buf = new Uint8Array(0);
+  let pumping = false;
+  let dead = false;
+
+  const append = (a, b) => {
+    const out = new Uint8Array(a.length + b.length);
+    out.set(a);
+    out.set(b, a.length);
+    return out;
+  };
+  const die = (err) => {
+    dead = true;
+    while (queue.length) queue.shift().reject(err);
+  };
+
+  // Drain reply frames as they arrive, resolving queued requests in order. A frame
+  // is `<status> <byteLen>\n` followed by exactly `byteLen` bytes of payload.
+  async function pump() {
+    if (pumping) return;
+    pumping = true;
+    try {
+      while (queue.length) {
+        let nl = buf.indexOf(10);
+        while (nl === -1) {
+          const { value, done } = await reader.read();
+          if (done) return die(new Error("otfwc serve exited"));
+          buf = append(buf, value);
+          nl = buf.indexOf(10);
+        }
+        const [status, lenStr] = dec.decode(buf.subarray(0, nl)).split(" ");
+        const len = Number(lenStr);
+        while (buf.length < nl + 1 + len) {
+          const { value, done } = await reader.read();
+          if (done) return die(new Error("otfwc serve exited"));
+          buf = append(buf, value);
+        }
+        const payload = dec.decode(buf.subarray(nl + 1, nl + 1 + len));
+        buf = buf.slice(nl + 1 + len);
+        const job = queue.shift();
+        if (status === "OK") job.resolve(payload);
+        else job.reject(new Error(payload));
+      }
+    } finally {
+      pumping = false;
+    }
+  }
+
+  function compile(id, source, component, ssg) {
+    if (dead) return Promise.reject(new Error("otfwc serve is not running"));
+    return new Promise((resolve, reject) => {
+      queue.push({ resolve, reject });
+      const idB = enc.encode(id);
+      const srcB = enc.encode(source);
+      proc.stdin.write(enc.encode(`${idB.length} ${srcB.length} ${component ? 1 : 0} ${ssg ? 1 : 0}\n`));
+      proc.stdin.write(idB);
+      proc.stdin.write(srcB);
+      proc.stdin.flush();
+      pump();
+    });
+  }
+
+  const close = () => {
+    if (dead) return;
+    dead = true;
+    try {
+      proc.stdin.end();
+    } catch {}
+    try {
+      proc.kill();
+    } catch {}
+  };
+  // One-shot builds exit when done; dev keeps the process (and child) alive. Either
+  // way, don't leak the child past our own exit.
+  process.once("exit", close);
+  process.once("SIGINT", () => {
+    close();
+    process.exit(130);
+  });
+  process.once("SIGTERM", () => {
+    close();
+    process.exit(143);
+  });
+
+  return { compile, close };
+}
+
+/**
  * Rolldown plugin: compile `.jsx`/`.tsx` through the `otfwc` IR compiler. Page /
  * layout / 404 modules become factories; everything else a Custom Element. On a
  * compile error it emits a diagnostic stub (so one bad route doesn't sink the
  * build) unless `failOnError` is set (production builds should fail loudly).
  * `onResult(id, errorMessageOrNull)` is called per module so the dev server can
  * push compile diagnostics to the error overlay and clear them once fixed.
+ *
+ * Compilation runs through one persistent `otfwc serve` process per plugin instance
+ * (see `startCompilerServer`).
  */
 export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr" } = {}) {
+  const server = startCompilerServer(otfwc);
   return {
     name: "otfw",
-    transform(code, id) {
+    async transform(code, id) {
       if (!/\.(mdx|md|[jt]sx)$/.test(id)) return null;
       const base = id.split("/").pop().replace(/\.(mdx|md|[jt]sx)$/, "");
       const isPage = base === "page" || base === "layout" || base === "404";
-      const args = ["build"];
-      if (!isPage) args.push("--component");
-      if (target === "ssg") args.push("--target=ssg");
-      args.push("--stdin", id);
-      const proc = Bun.spawnSync([otfwc, ...args], {
-        stdin: new TextEncoder().encode(code),
-      });
-      if (proc.exitCode !== 0) {
-        const msg = proc.stderr.toString();
+      try {
+        const out = await server.compile(id, code, !isPage, target === "ssg");
+        onResult?.(id, null);
+        // Side effects (e.g. customElements.define) must survive bundling.
+        return { code: out, moduleSideEffects: true };
+      } catch (e) {
+        const msg = e?.message ?? String(e);
         onResult?.(id, msg);
         if (failOnError) {
           this.error(`otfwc failed for ${id}:\n${msg}`);
@@ -237,9 +351,6 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr
           ` return pre; }`;
         return { code: stub, moduleSideEffects: true };
       }
-      onResult?.(id, null);
-      // Side effects (e.g. customElements.define) must survive bundling.
-      return { code: proc.stdout.toString(), moduleSideEffects: true };
     },
   };
 }
