@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- MDX fenced code blocks now compile to the `CodeFence` built-in
+  (`web-internal-code-block`) instead of an inert `RawHtml`, so the copy button carries
+  its own behavior and works in any layout.
+
 ### Added
 
 - Module graph (ARCHITECTURE.md §5.2): a crawl of the app's modules — nodes =

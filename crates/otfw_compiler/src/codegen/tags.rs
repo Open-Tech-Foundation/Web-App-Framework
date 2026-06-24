@@ -26,6 +26,7 @@ pub fn builtin_tag(name: &str) -> Option<&'static str> {
         "Link" => "web-link",
         "Portal" => "web-internal-portal",
         "RawHtml" => "web-internal-raw-html",
+        "CodeFence" => "web-internal-code-block",
         "ErrorBoundary" => "web-internal-error-boundary",
         "ContextProvider" => "web-internal-context-provider",
         _ => return None,

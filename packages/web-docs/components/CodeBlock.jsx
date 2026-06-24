@@ -4,11 +4,10 @@
 // `{ label, content: <CodeBlock code="…" /> }`. The text is NOT syntax-highlighted —
 // highlighting is a build-time (syntect) pass that only sees literal Markdown fences,
 // not a runtime string prop; runtime highlighting here is deferred future work. The
-// docs layout's single delegated listener (on
-// `#otfw-content`) drives the copy, so no wiring is needed here. The icon glyphs go
-// through `RawHtml` because inline `<svg>` would be created in the HTML namespace and
-// not render.
-import { RawHtml } from "@opentf/web";
+// copy button owns its own behavior via `onclick` (see `copyWithFeedback`), so it
+// works in any layout — not just the docs shell. The icon glyphs go through `RawHtml`
+// because inline `<svg>` would be created in the HTML namespace and not render.
+import { RawHtml, copyWithFeedback } from "@opentf/web";
 
 const COPY_SVG =
   '<svg class="otfw-copy-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
@@ -22,7 +21,12 @@ export default function CodeBlock(props) {
       <div class="otfw-code-head">
         {props.lang ? <span class="otfw-code-lang">{props.lang}</span> : null}
         {props.name ? <span class="otfw-code-name">{props.name}</span> : null}
-        <button class="otfw-copy" type="button" aria-label="Copy code">
+        <button
+          class="otfw-copy"
+          type="button"
+          aria-label="Copy code"
+          onclick={(e) => copyWithFeedback(e.currentTarget, props.code)}
+        >
           <RawHtml html={ICONS} />
           <span class="otfw-copy-label">Copy</span>
         </button>

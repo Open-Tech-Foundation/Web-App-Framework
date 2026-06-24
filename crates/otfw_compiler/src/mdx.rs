@@ -380,8 +380,11 @@ fn emit_code(code: &str, lang: &str, meta: Option<&str>) -> String {
         "<button class=\"otfw-copy\" type=\"button\" aria-label=\"Copy code\">{COPY_SVG}{CHECK_SVG}<span class=\"otfw-copy-label\">Copy</span></button></div>"
     ));
 
+    // Emitted as the `CodeFence` built-in (→ `web-internal-code-block`), not a plain
+    // `RawHtml`: same trusted-HTML rendering, but the element wires its own copy
+    // button on connect, so copy works wherever the block is rendered.
     let html = format!("<div class=\"otfw-code\">{head}{pre}</div>");
-    format!("<RawHtml html={{{}}} />", js_string(&html))
+    format!("<CodeFence html={{{}}} />", js_string(&html))
 }
 
 /// Concatenated text of a node's descendants (for heading ids).
@@ -568,9 +571,11 @@ mod tests {
     }
 
     #[test]
-    fn fenced_code_is_highlighted_into_rawhtml() {
+    fn fenced_code_is_highlighted_into_a_code_fence() {
         let out = mdx_to_jsx("```js\nconst x = 1;\n```", "doc.mdx").unwrap();
-        assert!(out.contains("<RawHtml html={\""), "{out}");
+        // The self-wiring code-block built-in, not a plain RawHtml (so its copy
+        // button works without a delegated listener in the layout).
+        assert!(out.contains("<CodeFence html={\""), "{out}");
         assert!(out.contains("<pre"), "{out}");
     }
 

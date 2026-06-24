@@ -11,3 +11,6 @@ defineSSG("web-internal-portal", (_props, children) => children);
 defineSSG("web-internal-error-boundary", (_props, children) => children);
 // RawHtml: emit the trusted HTML string inline (MDX highlighted code blocks).
 defineSSG("web-internal-raw-html", (props) => (props && props.html != null ? String(props.html) : ""));
+// CodeFence: same inline HTML as RawHtml; the copy button wires up on the client
+// when the element upgrades (SSG output is static, the behavior is CSR-only).
+defineSSG("web-internal-code-block", (props) => (props && props.html != null ? String(props.html) : ""));
