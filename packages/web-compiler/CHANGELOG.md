@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `cond ? items.map((i) => <X/>) : <y/>` — a `.map` nested inside a conditional now
+  lowers to a keyed `bindList` (like a top-level `.map`) instead of hoisting the item
+  JSX out of the callback, which dropped the map parameter and produced a runtime
+  `ReferenceError: i is not defined`. The item builder again keeps its parameter in
+  scope.
+
 ### Changed
 
 - MDX fenced code blocks now compile to the `CodeFence` built-in

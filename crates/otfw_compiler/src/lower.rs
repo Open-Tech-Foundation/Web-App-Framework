@@ -1266,10 +1266,14 @@ fn has_jsx_expr(expr: &Expression) -> bool {
     p.found
 }
 
-/// One embedded JSX branch of a dynamic node region.
+/// One embedded JSX branch of a dynamic node region. A `List` branch is a whole
+/// `arr.map((item) => <JSX/>)` call captured intact (not descended into), so it
+/// lowers to a keyed `bindList` whose item builder keeps the map parameter in scope —
+/// rather than the inner JSX being hoisted into a builder that can't see `item`.
 enum JsxBranch<'a> {
     Element(&'a JSXElement<'a>),
     Fragment(&'a JSXFragment<'a>),
+    List(&'a CallExpression<'a>),
 }
 
 impl JsxBranch<'_> {
@@ -1277,8 +1281,22 @@ impl JsxBranch<'_> {
         match self {
             JsxBranch::Element(e) => e.span,
             JsxBranch::Fragment(f) => f.span,
+            JsxBranch::List(c) => c.span,
         }
     }
+}
+
+/// `arr.map((item[, i]) => <JSX/>)` — a list region that must lower to `bindList`
+/// rather than have its item JSX hoisted out of the callback (which drops `item`).
+fn is_jsx_map_call(call: &CallExpression) -> bool {
+    let Expression::StaticMemberExpression(member) = &call.callee else { return false };
+    if member.property.name != "map" {
+        return false;
+    }
+    let Some(Argument::ArrowFunctionExpression(arrow)) = call.arguments.first() else {
+        return false;
+    };
+    arrow_jsx(arrow).is_some()
 }
 
 /// Collects, for a dynamic node region, the signal-reference ends for `.value`
@@ -1313,6 +1331,17 @@ impl<'a> Visit<'a> for NodeTemplater<'a, '_> {
             return;
         }
         walk::walk_static_member_expression(self, it);
+    }
+    fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
+        // A `.map((item) => <JSX/>)` is a single list region, not independent JSX
+        // branches: capture the whole call so it lowers to `bindList`. Descending
+        // would extract the inner JSX as a branch hoisted out of the callback, where
+        // the map parameter is no longer in scope.
+        if is_jsx_map_call(it) {
+            self.branches.push(JsxBranch::List(self.alloc(it)));
+            return;
+        }
+        walk::walk_call_expression(self, it);
     }
     fn visit_jsx_element(&mut self, it: &JSXElement<'a>) {
         self.branches.push(JsxBranch::Element(self.alloc(it)));
@@ -1501,13 +1530,23 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         let template = build_template(self.source, span, ends, &branches);
         let branch_nodes = branches
             .into_iter()
-            .map(|b| match b {
-                JsxBranch::Element(e) => self.lower_element(e),
-                JsxBranch::Fragment(f) => ViewNode::Fragment(self.lower_children(&f.children)),
-            })
+            .map(|b| self.lower_branch(b))
             .collect();
         let expr = self.exprs.intern(ExprInfo { code: template, deps: Vec::new() });
         ViewNode::DynamicNode { expr, branches: branch_nodes }
+    }
+
+    /// Lower one embedded branch of a dynamic region. A `List` branch (`arr.map(…)`)
+    /// becomes a keyed list (so codegen builds it with `bindList` into its own
+    /// fragment); an element/fragment lowers as an ordinary view.
+    fn lower_branch(&mut self, branch: JsxBranch<'a>) -> ViewNode {
+        match branch {
+            JsxBranch::Element(e) => self.lower_element(e),
+            JsxBranch::Fragment(f) => ViewNode::Fragment(self.lower_children(&f.children)),
+            JsxBranch::List(c) => {
+                self.try_lower_list_call(c).unwrap_or_else(|| ViewNode::Fragment(Vec::new()))
+            }
+        }
     }
 
     /// Lower a preserved body statement. Statements without JSX are kept verbatim
@@ -1538,13 +1577,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
             (t.ends, t.branches)
         };
         let template = build_template(self.source, stmt.span(), ends, &branches);
-        let nodes = branches
-            .into_iter()
-            .map(|b| match b {
-                JsxBranch::Element(e) => self.lower_element(e),
-                JsxBranch::Fragment(f) => ViewNode::Fragment(self.lower_children(&f.children)),
-            })
-            .collect();
+        let nodes = branches.into_iter().map(|b| self.lower_branch(b)).collect();
         BodyItem::Jsx { template, nodes }
     }
 
@@ -2130,6 +2163,32 @@ mod tests {
         assert_eq!(tag, "li");
         let ViewNode::Dynamic { expr } = &li[0] else { panic!() };
         assert_eq!(lowered.exprs.code(*expr), Some("i.value.name"));
+    }
+
+    #[test]
+    fn lowers_map_inside_conditional_as_a_list_branch() {
+        // `cond ? arr.map(...) : <empty/>` — the map must lower to a List branch so
+        // the item builder keeps its parameter in scope (regression: it used to hoist
+        // the inner JSX out of the callback, dropping `i` → "i is not defined").
+        let lowered = lower(
+            "export function L() { let items = $state([]); return <ul>{items.length ? items.map(i => <li>{i.name}</li>) : <p>empty</p>}</ul>; }",
+        );
+        assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        let ViewNode::DynamicNode { branches, .. } = &children[0] else {
+            panic!("expected dynamic node, got {:?}", children[0]);
+        };
+        // First branch is the `.map`, lowered as a keyed list (not a hoisted element).
+        let ViewNode::List { item_param, item, .. } = &branches[0] else {
+            panic!("expected list branch, got {:?}", branches[0]);
+        };
+        assert_eq!(item_param, "i");
+        let ViewNode::Element { tag, children: li, .. } = &**item else { panic!() };
+        assert_eq!(tag, "li");
+        let ViewNode::Dynamic { expr } = &li[0] else { panic!() };
+        assert_eq!(lowered.exprs.code(*expr), Some("i.value.name"));
+        // Second branch is the plain `<p>` fallback.
+        assert!(matches!(&branches[1], ViewNode::Element { .. }));
     }
 
     #[test]
