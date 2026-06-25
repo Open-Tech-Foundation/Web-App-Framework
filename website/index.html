@@ -9,9 +9,15 @@
     <script>
       (function () {
         try {
+          // "theme" holds the chosen mode: "light" | "dark" | "system" (or unset).
+          // Resolve "system"/unset to the OS preference so the first paint is correct.
+          var s = localStorage.getItem("theme");
           var t =
-            localStorage.getItem("theme") ||
-            (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+            s === "light" || s === "dark"
+              ? s
+              : matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
           document.documentElement.setAttribute("data-theme", t);
         } catch (e) {}
       })();

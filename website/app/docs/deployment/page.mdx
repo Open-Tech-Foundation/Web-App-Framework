@@ -1,0 +1,38 @@
+---
+title: Deployment
+description: Build your OTF Web app and ship the static output to any host.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Deployment
+
+An OTF Web app compiles to **static files** — a hashed JS bundle, CSS, and (optionally)
+pre-rendered HTML. There is no server runtime to operate: build once and serve `dist/`
+from any static host or CDN.
+
+There are two output modes, both produced by `otfw build`:
+
+- **[Production Build](/docs/deployment/build)** — a single-page app: one `index.html`
+  shell plus the bundle. The client renders every route. Best for app-like sites behind
+  auth or with mostly dynamic content.
+- **[Static Generation](/docs/deployment/static-generation)** — additionally
+  pre-renders every route to its own `.html` file (`--ssg`). Best for content and
+  marketing sites that need SEO and instant first paint.
+
+<Callout type="tip" title="Same bundle, more HTML">
+  SSG doesn't change your app — it runs the same components through a string renderer at
+  build time, then the client bundle takes over the markup on load. You can start with a
+  plain build and turn on `--ssg` later with no code changes.
+</Callout>
+
+## Hosting
+
+`dist/` is self-contained static output. Point any of these at it:
+
+- A static host / CDN (Netlify, Vercel, Cloudflare Pages, GitHub Pages, S3 + CloudFront).
+- Any web server (nginx, Caddy) serving the folder.
+
+For a **single-page** build, configure the host to fall back to `index.html` for unknown
+paths so client-side routes resolve. A fully **static-generated** site needs no fallback
+— every route already has its own HTML file.

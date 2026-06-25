@@ -4,5 +4,4 @@ export default {
   queries: "Queries",
   "user-events": "User Events",
   strategies: "Testing Strategies",
-  api: "API Reference",
 };

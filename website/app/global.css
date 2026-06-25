@@ -235,16 +235,35 @@ body {
 .trace-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 1rem;
   margin-bottom: 1.25rem;
   flex-wrap: wrap;
+}
+/* Legend now lives in the footer beneath the panels (with the caption). */
+.trace-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+/* In the footer the caption is left-aligned and takes the remaining width. */
+.trace-footer .trace-caption {
+  margin: 0;
+  text-align: left;
+  flex: 1 1 18rem;
+  max-width: none;
 }
 .trace-legend {
   display: flex;
   gap: 1rem;
   font-size: 0.8rem;
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 .trace-legend-item {
   display: inline-flex;

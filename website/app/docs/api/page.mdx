@@ -1,0 +1,27 @@
+---
+title: API Reference
+description: Every export across the OTF Web ecosystem — the core runtime, reactive macros, the CLI, and each package.
+---
+
+import { Cards, Card } from "@opentf/web-docs";
+
+# API Reference
+
+Complete reference for everything OTF Web exports, grouped by package. Start with the
+**Core** runtime and **Reactive Macros** — the rest are optional add-ons.
+
+## Core
+
+<Cards>
+  <Card title="Core" href="/docs/api/core" desc="The @opentf/web runtime — mountApp, router, Link, lifecycle, and helpers." />
+  <Card title="Reactive Macros" href="/docs/api/macros" desc="$state, $derived, $effect, $ref, and the lifecycle hooks the compiler provides." />
+  <Card title="CLI" href="/docs/api/cli" desc="The otfw command — dev server, production build, and static generation." />
+</Cards>
+
+## Packages
+
+<Cards>
+  <Card title="web-form" href="/docs/api/web-form" desc="createForm, the form object, and the register binding for forms and validation." />
+  <Card title="web-test" href="/docs/api/web-test" desc="render, queries, userEvent, and cleanup for component testing." />
+  <Card title="web-docs" href="/docs/api/web-docs" desc="Config, layouts, components, and build plugins for docs & blog sites." />
+</Cards>

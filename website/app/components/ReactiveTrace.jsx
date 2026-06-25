@@ -194,14 +194,6 @@ export default function ReactiveTrace() {
       </div>
       <div className="trace-body">
       <div className="trace-toolbar">
-        <div className="trace-legend">
-          <span className="trace-legend-item">
-            <span className="trace-dot is-state"></span>$state
-          </span>
-          <span className="trace-legend-item">
-            <span className="trace-dot is-derived"></span>$derived
-          </span>
-        </div>
         <button
           className={showVdom ? "trace-toggle is-on" : "trace-toggle"}
           onclick={() => (showVdom = !showVdom)}
@@ -309,11 +301,21 @@ export default function ReactiveTrace() {
         </div>
       </div>
 
-      <p className="trace-caption">
-        Edit a field. Only the nodes that actually depend on it recompute and flash —
-        the rest stay dark. (Staggered to show dependency order; the real flush is
-        synchronous.)
-      </p>
+      <div className="trace-footer">
+        <p className="trace-caption">
+          Edit a field. Only the nodes that actually depend on it recompute and flash —
+          the rest stay dark. (Staggered to show dependency order; the real flush is
+          synchronous.)
+        </p>
+        <div className="trace-legend">
+          <span className="trace-legend-item">
+            <span className="trace-dot is-state"></span>$state
+          </span>
+          <span className="trace-legend-item">
+            <span className="trace-dot is-derived"></span>$derived
+          </span>
+        </div>
+      </div>
       </div>
     </div>
   );

@@ -15,10 +15,12 @@ export default defineDocsConfig({
     // (or a `lastUpdated` frontmatter override).
     lastUpdated: true,
     github: "https://github.com/Open-Tech-Foundation/Web-App-Framework",
+    // Source repo, used for per-page "Edit this page" links.
+    repoUrl: "https://github.com/Open-Tech-Foundation/Web-App-Framework",
     nav: [
       { label: "Home", href: "/" },
       { label: "Docs", href: "/docs" },
-      { label: "Blog", href: "/blog" },
+      { label: "API", href: "/docs/api" },
     ],
     // Static search: `otfw build --ssg` indexes the pre-rendered HTML with Pagefind
     // into dist/pagefind/; the navbar ⌘K trigger and modal query it at runtime.

@@ -6,7 +6,7 @@ export default {
   "getting-started": "Getting Started",
   "core-concepts": "Core Concepts",
   routing: "Routing",
-  guides: "Guides",
   packages: "Packages",
-  reference: "Reference",
+  deployment: "Deployment",
+  api: "API",
 };
