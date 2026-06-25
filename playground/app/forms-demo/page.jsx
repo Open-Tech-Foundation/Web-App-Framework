@@ -16,6 +16,24 @@ const inputErr = inputBase + " border-red-500/60 bg-red-500/5";
 const badge = "flex items-center justify-center p-2.5 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all";
 const badgeOn = badge + " bg-emerald-500/10 border-emerald-500/30 text-emerald-400";
 const badgeOff = badge + " bg-slate-800/20 border-slate-700/30 text-slate-500";
+const errMsg = "block text-[10px] text-red-400 font-bold mt-1 ml-1";
+const knobOn = "px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-bold transition-all";
+const knobOff = "px-3 py-1.5 rounded-lg text-slate-400 text-[11px] font-bold hover:text-white transition-all";
+
+// Live validation-mode switcher. `onpick(mode)` is a callback prop the form
+// passes down; clicking a mode re-configures the live form via _updateConfig.
+function ModeKnob({ value, onpick }) {
+  return (
+    <div class="flex items-center gap-2">
+      <span class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Mode</span>
+      <div class="flex gap-1 p-1 bg-slate-950/40 rounded-xl border border-slate-800/50">
+        <button type="button" onclick={() => onpick("onChange")} class={value === "onChange" ? knobOn : knobOff}>onChange</button>
+        <button type="button" onclick={() => onpick("onBlur")} class={value === "onBlur" ? knobOn : knobOff}>onBlur</button>
+        <button type="button" onclick={() => onpick("onSubmit")} class={value === "onSubmit" ? knobOn : knobOff}>onSubmit</button>
+      </div>
+    </div>
+  );
+}
 
 function BasicForm() {
   const schema = z.object({
@@ -23,11 +41,16 @@ function BasicForm() {
     email: z.string().email("Invalid email address"),
   });
 
+  let mode = $state("onBlur");
   const form = createForm({
     initialValues: { username: "", email: "" },
     validator: zodResolver(schema),
     mode: "onBlur",
   });
+  const pickMode = (m) => {
+    mode = m;
+    form._updateConfig(m, "onChange"); // reconfigure the live form
+  };
 
   const onSubmit = async (values) => {
     await new Promise((r) => setTimeout(r, 1200));
@@ -37,9 +60,12 @@ function BasicForm() {
   return (
     <div class="grid lg:grid-cols-[1fr_320px] gap-10 items-start">
       <section class="bg-slate-800/20 backdrop-blur-2xl p-8 rounded-3xl border border-slate-700/50 shadow-2xl">
-        <div class="mb-6">
-          <h2 class="text-2xl font-black text-white tracking-tight">Basic account</h2>
-          <p class="text-slate-500 text-xs font-medium">Zod validation · validates on blur</p>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h2 class="text-2xl font-black text-white tracking-tight">Basic account</h2>
+            <p class="text-slate-500 text-xs font-medium">Zod validation</p>
+          </div>
+          <ModeKnob value={mode} onpick={pickMode} />
         </div>
 
         <div class="grid grid-cols-3 gap-3 mb-8">
@@ -90,6 +116,7 @@ function ComplexForm() {
     preferences: z.object({ newsletter: z.boolean() }),
   });
 
+  let mode = $state("onBlur");
   const form = createForm({
     initialValues: {
       profile: { firstName: "", lastName: "" },
@@ -99,6 +126,10 @@ function ComplexForm() {
     validator: zodResolver(schema),
     mode: "onBlur",
   });
+  const pickMode = (m) => {
+    mode = m;
+    form._updateConfig(m, "onChange"); // reconfigure the live form
+  };
 
   const addSkill = () => form.values.skills.push("");
   const removeSkill = (i) => form.values.skills.splice(i, 1);
@@ -111,9 +142,12 @@ function ComplexForm() {
   return (
     <div class="grid lg:grid-cols-[1fr_320px] gap-10 items-start">
       <section class="bg-slate-800/20 backdrop-blur-2xl p-8 rounded-3xl border border-slate-700/50 shadow-2xl">
-        <div class="mb-6">
-          <h2 class="text-2xl font-black text-white tracking-tight">Advanced profile</h2>
-          <p class="text-slate-500 text-xs font-medium">Nested paths · dynamic array · checkbox</p>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h2 class="text-2xl font-black text-white tracking-tight">Advanced profile</h2>
+            <p class="text-slate-500 text-xs font-medium">Nested paths · dynamic array · checkbox</p>
+          </div>
+          <ModeKnob value={mode} onpick={pickMode} />
         </div>
 
         <div class="grid grid-cols-3 gap-3 mb-8">
@@ -127,10 +161,12 @@ function ComplexForm() {
             <div>
               <label class="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">First name</label>
               <input {...form.register("profile.firstName")} class={form.errors.profile?.firstName ? inputErr : inputOk} />
+              {form.errors.profile?.firstName && <span class={errMsg}>{form.errors.profile.firstName}</span>}
             </div>
             <div>
               <label class="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Last name</label>
               <input {...form.register("profile.lastName")} class={form.errors.profile?.lastName ? inputErr : inputOk} />
+              {form.errors.profile?.lastName && <span class={errMsg}>{form.errors.profile.lastName}</span>}
             </div>
           </div>
 
@@ -141,12 +177,16 @@ function ComplexForm() {
             </div>
             <div class="space-y-3">
               {form.values.skills.map((_, index) => (
-                <div class="flex gap-2">
-                  <input {...form.register(`skills.${index}`)} placeholder="Skill name…" class={form.errors.skills?.[index] ? inputErr : inputOk} />
-                  <button type="button" onclick={() => removeSkill(index)} class="px-4 rounded-xl border border-slate-700/50 text-slate-500 hover:text-red-400 hover:bg-red-400/5 transition-all">✕</button>
+                <div class="flex gap-2 items-start">
+                  <div class="flex-1">
+                    <input {...form.register(`skills.${index}`)} placeholder="Skill name…" class={form.errors.skills?.[index] ? inputErr : inputOk} />
+                    {form.errors.skills?.[index] && <span class={errMsg}>{form.errors.skills[index]}</span>}
+                  </div>
+                  <button type="button" onclick={() => removeSkill(index)} class="px-4 py-3 rounded-xl border border-slate-700/50 text-slate-500 hover:text-red-400 hover:bg-red-400/5 transition-all">✕</button>
                 </div>
               ))}
             </div>
+            {typeof form.errors.skills === "string" && <span class={errMsg}>{form.errors.skills}</span>}
           </div>
 
           <label class="flex items-center justify-between p-4 rounded-xl border border-slate-700/30 bg-slate-900/20 mb-6 cursor-pointer">
