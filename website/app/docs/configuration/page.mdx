@@ -68,40 +68,31 @@ The main documentation section. Common fields:
 See [Packages → web-docs → Configuration](/docs/packages/web-docs/configuration) for the
 exhaustive field reference and per-folder `_meta.js` ordering.
 
-## Multiple sections (`docs.sections`)
+## Multiple sections
 
-A section like an [API reference](/api) is **another branch of the same `DocsLayout`** —
-not a special case. List the content folders in `docs.sections` and each gets its own
-generated sidebar, breadcrumbs, prev/next, and (with `lastUpdated`) the "Last updated" /
-"Edit this page" line — the same traits as the main docs.
-
-```js otfw.config.js
-docs: {
-  sections: ["docs", "api"], // each a top-level section: /docs and /api
-  lastUpdated: true,         // applies to every section
-}
-```
-
-Then each section just needs a layout that hands `DocsLayout` the shared section map
-(it selects the right branch by route, so the two layouts are identical):
+A section like an [API reference](/api) is just **another folder with a `DocsLayout`** —
+no config. Any top-level folder under `app/` that has a layout rendering `DocsLayout`
+becomes its own section with its own generated sidebar, breadcrumbs, prev/next, and
+(with `lastUpdated`) the "Last updated" / "Edit this page" line — the same traits as the
+main docs.
 
 ```jsx app/api/layout.jsx
 import { DocsLayout } from "@opentf/web-docs";
-import nav from "@opentf/web-docs/nav";
 import config from "../../otfw.config.js";
 
 export default function (props) {
   return (
-    <DocsLayout config={config.docs} nav={nav} frame={false}>
+    <DocsLayout config={config.docs} frame={false}>
       {props.children}
     </DocsLayout>
   );
 }
 ```
 
-`@opentf/web-docs/nav` is a map of `{ "/docs": tree, "/api": tree }`; `DocsLayout` picks
-the branch whose base prefixes the current route. Sidebar order/labels come from each
-section's `_meta.js`, the same as the docs.
+That's the whole thing — the same layout as `app/docs/layout.jsx`. `DocsLayout` reads the
+generated nav and scopes it to the current route, so `app/api/**` shows the `/api` sidebar
+(ordered by each folder's `_meta.js`). Add a third section by adding a folder and a copy
+of this file.
 
 ## `blog`
 

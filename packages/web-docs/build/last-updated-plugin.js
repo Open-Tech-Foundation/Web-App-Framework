@@ -1,14 +1,15 @@
 // Build-time "last updated" map generator (a Rolldown plugin), sibling of the nav and
-// blog-posts plugins. It walks the configured docs/blog folders, resolves each page's
-// last-updated time (git commit or frontmatter override — see last-updated.js), and
-// resolves the virtual module `@opentf/web-docs/updated` to a `{ [routePath]: ISO }`
-// map. Layouts look the current route up in that map to render a "Last updated" line.
+// blog-posts plugins. It walks every page under `app/`, resolves each one's last-updated
+// time (git commit or frontmatter override — see last-updated.js), and resolves the
+// virtual module `@opentf/web-docs/updated` to a `{ [routePath]: ISO }` map. Layouts look
+// the current route up in that map to render a "Last updated" line — so every section
+// gets it from one switch, no per-section config.
 //
 // The same map is needed by the SSG step for the `article:modified_time` SEO tag, so
 // the scan is exposed as a callable (`loadLastUpdated`) too.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 
 import { readFrontmatter } from "./frontmatter.js";
@@ -22,11 +23,9 @@ const MD_RE = /\.(mdx|md)$/;
 /**
  * @param {Object} opts
  * @param {string} opts.appDir
- * @param {Array<{dir: string}>} opts.sections  Content roots to scan, e.g.
- *   `[{ dir: "docs" }, { dir: "blog" }]`. A `dir` of "." / "" means the app root.
- * @param {Set<string>} [opts.exclude]
+ * @param {Set<string>} [opts.exclude] Folder names to skip (mirrors route exclusions).
  */
-export function lastUpdatedPlugin({ appDir, sections = [], exclude = new Set() } = {}) {
+export function lastUpdatedPlugin({ appDir, exclude = new Set() } = {}) {
   return {
     name: "otfw-last-updated",
     resolveId(source) {
@@ -35,7 +34,7 @@ export function lastUpdatedPlugin({ appDir, sections = [], exclude = new Set() }
     load(id) {
       if (id !== RESOLVED_ID) return null;
       const watch = [];
-      const { updated, editPaths } = collect(appDir, sections, exclude, watch);
+      const { updated, editPaths } = collect(appDir, exclude, watch);
       for (const f of watch) this.addWatchFile?.(f);
       // Default export: the `{ route: ISO }` last-updated map. Named `editPaths`:
       // `{ route: repo-relative-file }`, for building "Edit this page" links.
@@ -51,8 +50,8 @@ export function lastUpdatedPlugin({ appDir, sections = [], exclude = new Set() }
  * The `{ [routePath]: ISO }` last-updated map, callable directly (used by the SSG SEO
  * step). Mirrors what the virtual module exposes.
  */
-export function loadLastUpdated({ appDir, sections = [], exclude = new Set() } = {}) {
-  return collect(appDir, sections, exclude, []).updated;
+export function loadLastUpdated({ appDir, exclude = new Set() } = {}) {
+  return collect(appDir, exclude, []).updated;
 }
 
 /** Git repo root containing `dir`, or null (so edit links degrade gracefully). */
@@ -68,24 +67,19 @@ function gitRoot(dir) {
   }
 }
 
-function collect(appDir, sections, exclude, watch) {
+function collect(appDir, exclude, watch) {
   const updated = {};
   const editPaths = {};
   const root0 = gitRoot(appDir);
-  for (const { dir } of sections) {
-    const atRoot = dir === "." || dir === "";
-    const root = atRoot ? appDir : join(appDir, dir);
-    const base = atRoot ? "" : "/" + dir;
-    if (!existsSync(root)) continue;
-    walk(root, base, exclude, (file, route) => {
-      watch.push(file);
-      const fm = MD_RE.test(file) ? readFrontmatter(file) : {};
-      const iso = resolveLastUpdated(file, fm.lastUpdated);
-      if (iso) updated[route] = iso;
-      // Repo-relative path (POSIX separators) for the "Edit this page" link.
-      if (root0) editPaths[route] = relative(root0, file).split(/[\\/]/).join("/");
-    });
-  }
+  // One walk over every page under app/ — covers all sections (and the home page).
+  walk(appDir, "", exclude, (file, route) => {
+    watch.push(file);
+    const fm = MD_RE.test(file) ? readFrontmatter(file) : {};
+    const iso = resolveLastUpdated(file, fm.lastUpdated);
+    if (iso) updated[route] = iso;
+    // Repo-relative path (POSIX separators) for the "Edit this page" link.
+    if (root0) editPaths[route] = relative(root0, file).split(/[\\/]/).join("/");
+  });
   return { updated, editPaths };
 }
 

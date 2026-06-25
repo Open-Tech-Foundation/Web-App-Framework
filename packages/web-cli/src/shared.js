@@ -142,15 +142,14 @@ export async function loadDocsPlugins(root, appDir, config, exclude = new Set())
       pathToFileURL(entry).href
     );
     const plugins = [];
-    // Resolves `@opentf/web-docs/nav` to the generated section map (one tree per
-    // section: docs, api, …). Each section is a DocsLayout branch with the same traits.
-    if (docs) plugins.push(docsNavPlugin({ appDir, sections: docsSections(config), exclude }));
+    // Resolves `@opentf/web-docs/nav` to a section map — one generated tree per top-level
+    // folder under app/. Any folder with a DocsLayout becomes a section automatically.
+    if (docs) plugins.push(docsNavPlugin({ appDir, exclude }));
     // Resolves `@opentf/web-docs/posts` to the generated post list.
     if (blog) plugins.push(blogPostsPlugin({ appDir, contentDir: blog.dir ?? "blog", exclude }));
-    // Resolves `@opentf/web-docs/updated` to the per-page last-updated map, for the
-    // sections that opt in (`docs.lastUpdated` / `blog.lastUpdated`).
-    const sections = lastUpdatedSections(config);
-    if (sections.length) plugins.push(lastUpdatedPlugin({ appDir, sections, exclude }));
+    // Resolves `@opentf/web-docs/updated` to the per-page last-updated map (every route),
+    // when last-updated is turned on anywhere.
+    if (wantsLastUpdated(config)) plugins.push(lastUpdatedPlugin({ appDir, exclude }));
     return plugins;
   } catch (e) {
     console.warn(
@@ -160,41 +159,23 @@ export async function loadDocsPlugins(root, appDir, config, exclude = new Set())
   }
 }
 
-/**
- * Content sections that opt into "last updated" tracking — `{ dir }` for each of
- * `docs` / `blog` whose config sets `lastUpdated: true`. Empty when neither does.
- */
-/**
- * The docs content sections — `docs.sections` (a list of folder names) if present,
- * else the single `docs.dir` (default "docs"). Each is a DocsLayout branch.
- */
-export function docsSections(config) {
-  const docs = config?.docs;
-  if (!docs) return [];
-  return docs.sections?.length ? docs.sections : [docs.dir ?? "docs"];
-}
-
-export function lastUpdatedSections(config) {
-  const sections = [];
-  // Every docs section shares the "last updated" trait (one `docs.lastUpdated` switch).
-  if (config?.docs?.lastUpdated) for (const dir of docsSections(config)) sections.push({ dir });
-  if (config?.blog?.lastUpdated) sections.push({ dir: config.blog.dir ?? "blog" });
-  return sections;
+/** Whether "last updated" tracking is enabled anywhere (`docs`/`blog` `lastUpdated`). */
+export function wantsLastUpdated(config) {
+  return Boolean(config?.docs?.lastUpdated || config?.blog?.lastUpdated);
 }
 
 /**
- * Build the `{ [routePath]: ISO }` last-updated map for the opted-in sections (the
- * same map the `@opentf/web-docs/updated` virtual module exposes). Used by the SSG step
- * to emit `article:modified_time`. Returns `{}` when nothing opts in or the package
- * can't be loaded.
+ * Build the `{ [routePath]: ISO }` last-updated map for every page (the same map the
+ * `@opentf/web-docs/updated` virtual module exposes). Used by the SSG step to emit
+ * `article:modified_time`. Returns `{}` when last-updated is off or the package can't
+ * be loaded.
  */
 export async function runLastUpdated(root, appDir, config, exclude = new Set()) {
-  const sections = lastUpdatedSections(config);
-  if (!sections.length) return {};
+  if (!wantsLastUpdated(config)) return {};
   try {
     const entry = Bun.resolveSync("@opentf/web-docs/build", root);
     const { loadLastUpdated } = await import(pathToFileURL(entry).href);
-    return loadLastUpdated({ appDir, sections, exclude });
+    return loadLastUpdated({ appDir, exclude });
   } catch (e) {
     console.warn(`⚠ last-updated map skipped: ${e?.message ?? e}`);
     return {};

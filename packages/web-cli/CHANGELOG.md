@@ -4,9 +4,10 @@
 
 ### Added
 
-- `docs.sections` (a list of content folders) registers the nav generator for every
-  section and includes them all in the last-updated/edit-link scan, so additional doc
-  sections (e.g. `/api`) get the same treatment as the main docs from one switch.
+- The nav and last-updated generators now scan every top-level folder under `app/`, so
+  additional doc sections (e.g. `/api`) need no config — any folder with a `DocsLayout`
+  gets a generated sidebar and (with `lastUpdated`) the same last-updated/edit links as
+  the main docs.
 - `otfw build` / `otfw dev` register the `@opentf/web-docs` last-updated plugin when a
   section opts in (`docs.lastUpdated` / `blog.lastUpdated`), resolving
   `@opentf/web-docs/updated` to the per-page git/frontmatter timestamp map. During SSG,

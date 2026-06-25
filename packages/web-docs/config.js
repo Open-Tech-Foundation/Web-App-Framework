@@ -27,11 +27,9 @@
  * @property {string} [repoUrl]      Source repository URL. When set (with `lastUpdated`),
  *                            each docs page gets an "Edit this page" link to its file on
  *                            GitHub (`<repoUrl>/edit/main/<path>`).
- * @property {string} [dir]          Docs content folder under app/ (default "docs").
- * @property {string[]} [sections]   Multiple content folders, each a `DocsLayout` branch
- *                            with its **own** generated sidebar (e.g. `["docs", "api"]`).
- *                            Defaults to `[dir]`. All sections share these `docs` traits
- *                            (navbar, search, `lastUpdated`, …).
+ * @property {string} [dir]          Docs content folder under app/ (default "docs"). Any
+ *                            other top-level folder with a `DocsLayout` is its own section
+ *                            (e.g. `app/api` → `/api`) — no extra config needed.
  * @property {DocsNavLink[]} [nav]   Top-level navbar links.
  * @property {DocsFooter} [footer]   Footer content.
  * @property {{ provider?: string }} [search]  Search provider (Phase 2: "pagefind").

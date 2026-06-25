@@ -10,9 +10,6 @@ export default defineDocsConfig({
     title: "OTF Web",
     version: "v0.4.0",
     logo: "/logo.png",
-    // Two doc sections, each a DocsLayout branch with its own generated sidebar: the
-    // main docs and a standalone API reference (/api).
-    sections: ["docs", "api"],
     // Show a "Last updated" line per page (every section), sourced from each file's
     // last git commit (or a `lastUpdated` frontmatter override).
     lastUpdated: true,

@@ -22,19 +22,16 @@ const PAGE_RE = /^page\.(mdx|md|[jt]sx)$/;
 const MD_RE = /\.(mdx|md)$/;
 
 /**
- * Generates `@opentf/web-docs/nav` as a **section map** — `{ [base]: tree }`, one entry
- * per content section (e.g. `/docs`, `/api`). Each section is a `DocsLayout` branch; the
- * layout picks its own subtree by the current route, so all sections share the same
- * traits (generated sidebar, breadcrumbs, prev/next).
+ * Generates `@opentf/web-docs/nav` as a **section map** — `{ "/<dir>": tree }`, one entry
+ * per top-level folder under `app/`. Each folder is a potential `DocsLayout` section; the
+ * layout selects its own subtree by the current route, so any number of sections (`/docs`,
+ * `/api`, …) "just work" with no config — drop a folder in and give it a `DocsLayout`.
  *
  * @param {Object} opts
  * @param {string} opts.appDir       Absolute path to the project's `app/` directory.
- * @param {string[]} [opts.sections]  Section content folders under app/ (default
- *                            `["docs"]`). `"."`/`""` = the app root (routes at "/").
  * @param {Set<string>} [opts.exclude] Folder names to skip (mirrors route exclusions).
  */
-export function docsNavPlugin({ appDir, sections = ["docs"], exclude = new Set() } = {}) {
-  const dirs = sections.length ? sections : ["docs"];
+export function docsNavPlugin({ appDir, exclude = new Set() } = {}) {
   return {
     name: "otfw-docs-nav",
     resolveId(source) {
@@ -45,13 +42,13 @@ export function docsNavPlugin({ appDir, sections = ["docs"], exclude = new Set()
       if (id !== RESOLVED_ID) return null;
       const watch = [];
       const out = {};
-      for (const dir of dirs) {
-        const atRoot = dir === "." || dir === "";
-        const root = atRoot ? appDir : join(appDir, dir);
-        const base = atRoot ? "" : "/" + dir;
-        out[base || "/"] = existsSync(root)
-          ? await buildSection(root, base, watch, true, exclude)
-          : [];
+      for (const entry of readdirSync(appDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        if (entry.name.startsWith(".") || entry.name.startsWith("_") || exclude.has(entry.name)) {
+          continue;
+        }
+        const base = "/" + entry.name;
+        out[base] = await buildSection(join(appDir, entry.name), base, watch, true, exclude);
       }
       // Rebuild on changes to meta/page files during `otfw dev`.
       for (const f of watch) this.addWatchFile?.(f);

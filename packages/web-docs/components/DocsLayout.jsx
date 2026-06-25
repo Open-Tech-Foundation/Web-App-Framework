@@ -1,21 +1,22 @@
 // Top-level documentation frame: navbar + (sidebar · content · TOC) + footer.
 //
 //   import config from "../../otfw.config.js";
-//   import nav from "@opentf/web-docs/nav";
 //   export default function (props) {
-//     return <DocsLayout config={config.docs} nav={nav}>{props.children}</DocsLayout>;
+//     return <DocsLayout config={config.docs}>{props.children}</DocsLayout>;
 //   }
 //
-// `nav` is the section map (`{ [base]: tree }`) — every section (`/docs`, `/api`, …) is
-// a branch of this same layout, so they share all traits. The layout selects its own
-// branch by the current route, so the docs and api layout files are identical bar the
-// folder they live in. (A plain array is also accepted, for a single ad-hoc section.)
+// That's the whole thing — any folder becomes a documentation section just by giving it
+// a layout that renders `DocsLayout`. The sidebar/breadcrumbs/prev-next come from the
+// generated nav (`@opentf/web-docs/nav`, imported here), and the layout scopes them to
+// the current section by route. So every section shares the same traits, and the docs
+// and api layout files are identical. (Pass a `nav` prop only to override.)
 //
 // `frame` (default true) renders the full chrome (navbar + footer). Pass
 // `frame={false}` when nesting inside an existing site layout that already provides
 // the navbar/footer — only the sidebar · content · TOC grid is rendered.
 
 import { router } from "@opentf/web";
+import navMap from "@opentf/web-docs/nav";
 import updated, { editPaths } from "@opentf/web-docs/updated";
 
 import Navbar from "./Navbar.jsx";
@@ -32,7 +33,7 @@ import LastUpdated from "./LastUpdated.jsx";
 
 export default function DocsLayout(props) {
   const config = props.config || {};
-  const nav = props.nav || [];
+  const nav = props.nav || navMap;
   const frame = props.frame !== false;
 
   // The sidebar/breadcrumbs/prev-next operate on the *current section's* tree. `nav` is
