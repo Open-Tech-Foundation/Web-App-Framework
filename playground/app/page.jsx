@@ -12,6 +12,7 @@ export const metadata = {
 
 const demos = [
   { href: "/counter", title: "Counter", desc: "$state, $derived, $effect, lifecycle hooks", tag: "Reactivity" },
+  { href: "/forms-demo", title: "Forms", desc: "@opentf/web-form: reactive values, validation, dynamic arrays", tag: "Forms" },
   { href: "/products", title: "Perf Benchmark", desc: "Keyed list reconciliation over 5,000 rows", tag: "Reactivity" },
   { href: "/context-demo", title: "Context API", desc: "Scoped provider + $context with overrides", tag: "Reactivity" },
   { href: "/dnd-demo", title: "Drag & Drop", desc: "Native HTML5 drag events + keyed lists", tag: "Events" },
