@@ -4,12 +4,17 @@ description: A reactive, path-based form engine for OTF Web — signal-bound fie
 ---
 
 import { Callout } from "@opentf/web-docs";
+import LiveForm from "./LiveForm.jsx";
 
 # @opentf/web-form
 
 A high-performance form engine built on OTF Web's signals. Fields bind directly to
 state, updates are surgical (no re-render), and deeply nested values are addressed by
 path string.
+
+Try it — type, blur a field, watch the live state on the right:
+
+<LiveForm />
 
 ```bash
 bun add @opentf/web-form

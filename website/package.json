@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@opentf/web": "^0.5.0",
-    "@opentf/web-docs": "^0.1.0"
+    "@opentf/web-docs": "^0.1.0",
+    "@opentf/web-form": "workspace:*"
   },
   "devDependencies": {
     "@opentf/web-cli": "^1.0.0"
