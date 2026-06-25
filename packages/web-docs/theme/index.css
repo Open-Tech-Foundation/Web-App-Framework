@@ -146,7 +146,10 @@ body {
   height: 1.75rem;
 }
 .otfw-navbar-version {
-  padding: 0.1rem 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  padding: 0.22rem 0.45rem;
   border-radius: 0.4rem;
   border: 1px solid var(--otfw-border);
   background: var(--otfw-bg-surface);
@@ -232,6 +235,14 @@ body {
   color: var(--otfw-text-muted);
   cursor: pointer;
   font-family: inherit;
+  /* Icons compile to inline custom-element hosts with the inherited 1.5 line-height,
+   * which baseline-aligns the SVG and pushes it a few px above center. Zero the line
+   * box so the flex centering is exact. */
+  line-height: 0;
+}
+.otfw-navbar-icon > * {
+  display: inline-flex;
+  align-items: center;
 }
 .otfw-navbar-icon:hover {
   color: var(--otfw-text);
@@ -252,10 +263,13 @@ body {
 .otfw-theme-trigger-system {
   display: inline-flex;
   align-items: center;
-  gap: 0.1rem;
+  gap: 0.3rem;
 }
 .otfw-theme-trigger-badge {
   display: inline-flex;
+  align-items: center;
+  padding-left: 0.3rem;
+  border-left: 1px solid var(--otfw-border);
   opacity: 0.85;
 }
 .otfw-theme-menu {
@@ -274,7 +288,8 @@ body {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
 }
 .otfw-theme-item {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   align-items: center;
   gap: 0.55rem;
   padding: 0.45rem 0.6rem;
@@ -296,6 +311,41 @@ body {
   font-weight: 600;
 }
 
+/* Tooltip (hover/focus) — a small contrasting bubble. */
+.otfw-tooltip {
+  position: relative;
+  display: inline-flex;
+}
+.otfw-tooltip-bubble {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%) translateY(3px);
+  white-space: nowrap;
+  padding: 0.28rem 0.5rem;
+  border-radius: 0.4rem;
+  background: var(--otfw-text);
+  color: var(--otfw-bg);
+  font-size: 0.72rem;
+  font-weight: 500;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 70;
+}
+.otfw-tooltip-bottom .otfw-tooltip-bubble {
+  top: 100%;
+  margin-top: 0.45rem;
+}
+.otfw-tooltip-top .otfw-tooltip-bubble {
+  bottom: 100%;
+  margin-bottom: 0.45rem;
+}
+.otfw-tooltip:hover .otfw-tooltip-bubble,
+.otfw-tooltip:focus-within .otfw-tooltip-bubble {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 .otfw-search-trigger {
   display: inline-flex;
   align-items: center;
@@ -312,6 +362,24 @@ body {
 .otfw-search-trigger:hover {
   color: var(--otfw-accent);
   border-color: var(--otfw-accent);
+}
+.otfw-search-kbd {
+  display: none;
+  align-items: center;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--otfw-border);
+  border-radius: 0.3rem;
+  background: var(--otfw-bg);
+  color: var(--otfw-text-muted);
+  font-family: var(--otfw-mono);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+@media (min-width: 768px) {
+  .otfw-search-kbd {
+    display: inline-flex;
+  }
 }
 .otfw-search-label {
   display: none;
@@ -428,6 +496,20 @@ body {
   display: block;
   font-weight: 600;
   font-size: 0.9rem;
+}
+/* The matched section heading, under the page/post title. */
+.otfw-search-result-section {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--otfw-text-muted);
+  margin-top: 0.05rem;
+}
+.otfw-search-result-section::before {
+  content: "#";
+  color: var(--otfw-accent);
+  font-weight: 700;
 }
 .otfw-search-result-excerpt {
   display: block;

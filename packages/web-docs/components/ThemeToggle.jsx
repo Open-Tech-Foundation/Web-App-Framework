@@ -11,6 +11,8 @@
 
 import { onMount } from "@opentf/web";
 
+import Tooltip from "./Tooltip.jsx";
+
 const STORAGE_KEY = "theme";
 const prefersDark = () =>
   typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -73,31 +75,33 @@ export default function ThemeToggle() {
 
   return (
     <div class="otfw-theme" ref={rootRef}>
-      <button
-        class="otfw-navbar-icon otfw-theme-trigger"
-        onclick={(e) => {
-          e.stopPropagation();
-          openMenu = !openMenu;
-        }}
-        aria-label="Change theme"
-        aria-haspopup="menu"
-        aria-expanded={openMenu ? "true" : "false"}
-      >
-        {() =>
-          mode === "system" ? (
-            <span class="otfw-theme-trigger-system">
-              <MonitorIcon />
-              <span class="otfw-theme-trigger-badge">
-                {resolved === "dark" ? <MoonIcon small /> : <SunIcon small />}
+      <Tooltip text="Change theme">
+        <button
+          class="otfw-navbar-icon otfw-theme-trigger"
+          onclick={(e) => {
+            e.stopPropagation();
+            openMenu = !openMenu;
+          }}
+          aria-label="Change theme"
+          aria-haspopup="menu"
+          aria-expanded={openMenu ? "true" : "false"}
+        >
+          {() =>
+            mode === "system" ? (
+              <span class="otfw-theme-trigger-system">
+                <MonitorIcon />
+                <span class="otfw-theme-trigger-badge">
+                  {resolved === "dark" ? <MoonIcon small /> : <SunIcon small />}
+                </span>
               </span>
-            </span>
-          ) : mode === "dark" ? (
-            <MoonIcon />
-          ) : (
-            <SunIcon />
-          )
-        }
-      </button>
+            ) : mode === "dark" ? (
+              <MoonIcon />
+            ) : (
+              <SunIcon />
+            )
+          }
+        </button>
+      </Tooltip>
 
       {() =>
         openMenu ? (

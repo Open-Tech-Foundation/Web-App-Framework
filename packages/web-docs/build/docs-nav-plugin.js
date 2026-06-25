@@ -16,8 +16,6 @@ import { pathToFileURL } from "node:url";
 
 import { readFrontmatter } from "./frontmatter.js";
 
-const VIRTUAL_ID = "@opentf/web-docs/nav";
-const RESOLVED_ID = "\0otfw-docs-nav";
 const PAGE_RE = /^page\.(mdx|md|[jt]sx)$/;
 const MD_RE = /\.(mdx|md)$/;
 
@@ -26,21 +24,31 @@ const MD_RE = /\.(mdx|md)$/;
  * @param {string} opts.appDir      Absolute path to the project's `app/` directory.
  * @param {string} [opts.contentDir] Docs content folder under app/ (default "docs").
  * @param {Set<string>} [opts.exclude] Folder names to skip (mirrors route exclusions).
+ * @param {string} [opts.virtualId] The virtual specifier this instance resolves
+ *                            (default `@opentf/web-docs/nav`). A second instance can
+ *                            generate an independent nav tree (e.g. an `/api` section)
+ *                            under a different id like `@opentf/web-docs/nav-api`.
  */
-export function docsNavPlugin({ appDir, contentDir = "docs", exclude = new Set() } = {}) {
+export function docsNavPlugin({
+  appDir,
+  contentDir = "docs",
+  exclude = new Set(),
+  virtualId = "@opentf/web-docs/nav",
+} = {}) {
   // `"."`/`""` means the docs live at the app root (routes at "/"); otherwise they
   // live in app/<contentDir> (routes under "/<contentDir>").
   const atRoot = contentDir === "." || contentDir === "";
   const root = atRoot ? appDir : join(appDir, contentDir);
   const base = atRoot ? "" : "/" + contentDir;
+  const resolvedId = "\0otfw-docs-nav:" + virtualId;
   return {
-    name: "otfw-docs-nav",
+    name: "otfw-docs-nav:" + contentDir,
     resolveId(source) {
-      if (source === VIRTUAL_ID) return RESOLVED_ID;
+      if (source === virtualId) return resolvedId;
       return null;
     },
     async load(id) {
-      if (id !== RESOLVED_ID) return null;
+      if (id !== resolvedId) return null;
       const watch = [];
       const tree = existsSync(root) ? await buildSection(root, base, watch, true, exclude) : [];
       // Rebuild on changes to meta/page files during `otfw dev`.

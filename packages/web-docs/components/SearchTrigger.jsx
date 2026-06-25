@@ -1,7 +1,18 @@
 // Search box trigger in the navbar. Calls the global opener that the Pagefind-backed
-// <Search> modal installs on `window` (the ⌘K / Ctrl+K shortcut opens it too).
+// <Search> modal installs on `window` (the ⌘K / Ctrl+K shortcut opens it too). Shows
+// the shortcut as a hint; the modifier resolves to ⌘ on Apple platforms, Ctrl
+// elsewhere, on mount.
+
+import { onMount } from "@opentf/web";
 
 export default function SearchTrigger() {
+  let mod = $state("Ctrl");
+
+  onMount(() => {
+    const ua = navigator.platform || navigator.userAgent || "";
+    if (/Mac|iPhone|iPad|iPod/.test(ua)) mod = "⌘";
+  });
+
   const open = () => {
     if (typeof window !== "undefined" && typeof window.__otfwOpenSearch === "function") {
       window.__otfwOpenSearch();
@@ -15,6 +26,7 @@ export default function SearchTrigger() {
         <line x1="21" y1="21" x2="16.65" y2="16.65" stroke-linecap="round" />
       </svg>
       <span class="otfw-search-label">Search</span>
+      <kbd class="otfw-search-kbd">{() => `${mod} K`}</kbd>
     </button>
   );
 }

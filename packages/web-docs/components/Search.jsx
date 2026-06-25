@@ -53,14 +53,19 @@ export default function Search() {
       const flat = [];
       for (const d of data) {
         const crumb = d.meta && d.meta.breadcrumb ? d.meta.breadcrumb.replace(/\s*\/\s*/g, " › ") : "";
+        // The page/post title — always shown as the result heading so you can tell which
+        // page (or blog post) a hit belongs to, even across same-named sections.
+        const pageTitle = (d.meta && d.meta.title) || d.url;
         const subs =
           d.sub_results && d.sub_results.length
             ? d.sub_results
-            : [{ title: (d.meta && d.meta.title) || d.url, url: d.url, excerpt: d.excerpt }];
+            : [{ title: pageTitle, url: d.url, excerpt: d.excerpt }];
         for (const s of subs.slice(0, 4)) {
           flat.push({
             url: s.url,
-            title: s.title || (d.meta && d.meta.title) || d.url,
+            title: pageTitle,
+            // The matched section heading, when it differs from the page title.
+            section: s.title && s.title !== pageTitle ? s.title : "",
             crumb,
             excerpt: s.excerpt,
           });
@@ -173,6 +178,7 @@ export default function Search() {
               >
                 {r.crumb ? <span class="otfw-search-result-crumb">{r.crumb}</span> : null}
                 <span class="otfw-search-result-title">{r.title}</span>
+                {r.section ? <span class="otfw-search-result-section">{r.section}</span> : null}
                 <span class="otfw-search-result-excerpt">
                   <RawHtml html={r.excerpt} />
                 </span>

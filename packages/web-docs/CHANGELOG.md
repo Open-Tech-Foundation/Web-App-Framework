@@ -4,6 +4,13 @@
 
 ### Added
 
+- `Tooltip` component — a small hover/focus bubble; used on the theme switcher.
+- Standalone section support: `docsNavPlugin` accepts a `virtualId`, so a second
+  instance can generate an independent nav tree (e.g. an `/api` section with its **own**
+  sidebar) resolved via the new `@opentf/web-docs/nav-api` export. New `api` config block.
+- Search trigger shows the open shortcut (`⌘K` on Apple, `Ctrl K` elsewhere); search
+  results now lead with the page/post **title** and show the matched section heading
+  beneath it, so hits from different pages (or blog posts) are distinguishable.
 - Theme switcher is now a subtle dropdown (Light / Dark / System) instead of a 2-state
   toggle. The chosen mode persists; System follows the OS and live-updates. In System
   mode the trigger shows the monitor icon plus a small badge of the resolved icon
@@ -48,6 +55,12 @@
 
 ### Fixed
 
+- Navbar action icons are now vertically centered. Icons compile to inline custom-
+  element hosts that inherited the 1.5 line-height and baseline-aligned the SVG ~3.5px
+  high; the icon buttons now zero the line box so flex centering is exact. The version
+  badge and the theme menu rows are likewise corrected (badge uses inline-flex centering;
+  menu items are full-width so the whole row is clickable). The System-mode trigger gets
+  breathing room between the monitor and the resolved sun/moon icon.
 - A `null`-returning component is no longer instantiated by the layout — `LastUpdated`
   renders only when there's a date, so SSG never serializes the literal string "null"
   into an otherwise-empty page-meta slot.

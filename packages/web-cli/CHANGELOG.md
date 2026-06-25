@@ -4,6 +4,11 @@
 
 ### Added
 
+- An `api` config block registers a second `docsNavPlugin` (resolving
+  `@opentf/web-docs/nav-api`) so a project can have a standalone API section with its
+  own sidebar, and includes its pages in the last-updated/edit-link map.
+
+
 - `otfw build` / `otfw dev` register the `@opentf/web-docs` last-updated plugin when a
   section opts in (`docs.lastUpdated` / `blog.lastUpdated`), resolving
   `@opentf/web-docs/updated` to the per-page git/frontmatter timestamp map. During SSG,
