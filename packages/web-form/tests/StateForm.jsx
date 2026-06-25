@@ -7,8 +7,11 @@ export default function StateForm({ onSubmit }) {
     validate: (v) => v.username.length < 3 ? { username: "Too short" } : {}
   });
 
+  // Submit is driven via onclick rather than a native `type="submit"` (which, in
+  // happy-dom, mangles the form subtree on submission regardless of
+  // preventDefault — a test-env quirk, not a real-browser behaviour).
   return (
-    <form onsubmit={form.handleSubmit(onSubmit)}>
+    <div>
       <input {...form.register("username")} data-testid="username" />
 
       <div data-testid="status-valid">{form.isValid ? "Valid" : "Invalid"}</div>
@@ -18,9 +21,9 @@ export default function StateForm({ onSubmit }) {
       {form.errors.username && <span data-testid="error">{form.errors.username}</span>}
 
       <button type="button" onclick={() => form.reset()} data-testid="reset">Reset</button>
-      <button type="submit" data-testid="submit">Submit</button>
+      <button type="button" onclick={form.handleSubmit(onSubmit)} data-testid="submit">Submit</button>
 
       {form.isSubmitted && <div data-testid="success">Submitted!</div>}
-    </form>
+    </div>
   );
 }

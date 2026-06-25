@@ -1,223 +1,229 @@
-
 import {
   signal,
   computed,
-  batch,
   effect,
+  batch,
   untracked,
   getCurrentInstance,
+  reactive,
+  toRawValue,
+  snapshot,
 } from "@opentf/web";
 
-export { signal, computed, batch, effect, untracked, getCurrentInstance };
+export { signal, computed, batch, effect, untracked, reactive, getCurrentInstance };
 
-import { set, get, unset, clone, isEql } from "@opentf/std";
+import { clone, isEql } from "@opentf/std";
 
 /**
- * Enterprise Form Reactivity Engine
- * 
- * Features:
- * - Mount-Aware Stability Cache
- * - Setup-Phase Subscription Isolation
- * - Deep Reactive Proxy with Array Mutation Support
+ * Path-based reactive forms engine for OTF Web.
+ *
+ * The form's values/errors/touched/changed trees are `reactive()` stores
+ * (@opentf/web), so `form.values.user.name` and `form.errors.email` are read
+ * directly in JSX with fine-grained reactivity — no provider object, no bespoke
+ * proxy. The engine layers field registration, validation modes, and submit
+ * orchestration on top.
  */
 
 const INST_FORMS_REGISTRY = new WeakMap();
-let isSetup = false;
 
 export function createForm(options = {}) {
+  // Scope the form to the mounting component so re-entrant `createForm` calls
+  // (e.g. the component body running again) return the same instance. Outside a
+  // component (module scope, tests) there is no instance — just build one.
   const inst = getCurrentInstance();
   if (!inst) return _createForm(options);
 
-  if (!INST_FORMS_REGISTRY.has(inst)) {
-    INST_FORMS_REGISTRY.set(inst, new Map());
-  }
-  const forms = INST_FORMS_REGISTRY.get(inst);
+  let forms = INST_FORMS_REGISTRY.get(inst);
+  if (!forms) INST_FORMS_REGISTRY.set(inst, (forms = new Map()));
 
-  const key = options.key || JSON.stringify({
-    initialValues: options.initialValues
-  });
-  
+  const key = options.key || JSON.stringify({ initialValues: options.initialValues });
   if (forms.has(key)) {
     const form = forms.get(key);
-    if (form._updateConfig) {
-      form._updateConfig(options.mode, options.reValidateMode);
-    }
+    form._updateConfig?.(options.mode, options.reValidateMode);
     return form;
   }
-
-  isSetup = true;
-  try {
-    const form = _createForm(options);
-    forms.set(key, form);
-    return form;
-  } finally {
-    isSetup = false;
-  }
+  const form = _createForm(options);
+  forms.set(key, form);
+  return form;
 }
 
 function _createForm(options = {}) {
-  const initialValuesSig = signal(clone(options.initialValues || {}));
-  const valuesSig = signal(clone(initialValuesSig.value));
-  const errorsSig = signal({});
-  const touchedSig = signal({});
-  const changedSig = signal({});
+  let initialValues = clone(options.initialValues || {});
+
+  const valuesStore = reactive(clone(initialValues));
+  const errorsStore = reactive({});
+  // touched mirrors the value tree with `false` leaves, so a field reads `false`
+  // (not undefined) before it is ever blurred. `changed` is filled by the
+  // creation effect below (top-level booleans vs. initial values).
+  const touchedStore = reactive(mirrorLeaves(initialValues, false));
+  const changedStore = reactive({});
+
+  const modeSig = signal(options.mode);
+  const reValidateModeSig = signal(options.reValidateMode);
   const isSubmittingSig = signal(false);
   const isValidatingSig = signal(false);
   const isSubmittedSig = signal(false);
   const submitCountSig = signal(0);
-  const modeSig = signal(options.mode);
-  const reValidateModeSig = signal(options.reValidateMode);
 
-  const signalsCache = new Map();
+  const normMode = (m) =>
+    ((m && typeof m === "object" && "value" in m ? m.value : m) || "onBlur");
+  const normReValidate = (m) =>
+    ((m && typeof m === "object" && "value" in m ? m.value : m) || "onChange");
 
-  function getSignal(sigType, path, defaultValue) {
-    const key = `${sigType}:${path}`;
-    if (signalsCache.has(key)) return signalsCache.get(key);
-    const initialVal = get(
-      sigType === "v" ? valuesSig.peek() : sigType === "e" ? errorsSig.peek() : sigType === "t" ? touchedSig.peek() : changedSig.peek(),
-      path
-    );
-    const sig = signal(initialVal ?? defaultValue);
-    signalsCache.set(key, sig);
-    return sig;
-  }
-
-  function notifySignals(sigType) {
-    const prefix = `${sigType}:`;
-    const fullData = sigType === "v" ? valuesSig.peek() : sigType === "e" ? errorsSig.peek() : sigType === "t" ? touchedSig.peek() : changedSig.peek();
-    
-    for (const [cacheKey, sig] of signalsCache) {
-      if (!cacheKey.startsWith(prefix)) continue;
-      const path = cacheKey.slice(prefix.length);
-      const newVal = path === "" ? fullData : get(fullData, path);
-      sig.value = newVal;
-    }
-  }
-
-  const getMode = () => {
-    const m = modeSig.value;
-    return (m instanceof Object && 'value' in m ? m.value : m) || "onBlur";
-  };
-  const getReValidateMode = () => {
-    const rm = reValidateModeSig.value;
-    return (rm instanceof Object && 'value' in rm ? rm.value : rm) || "onChange";
-  };
   const activeValidator = options.validator || options.validate;
 
-  function hasErrors(obj) {
-    if (!obj || typeof obj !== "object") return false;
-    return Object.values(obj).some((v) => {
-      if (v === undefined || v === null) return false;
-      if (typeof v === "object") return hasErrors(v);
-      return true;
-    });
-  }
-
-  const isValidSig = computed(() => !hasErrors(errorsSig.value));
-  const isTouchedSig = computed(() => hasErrors(touchedSig.value));
-  const isDirtySig = computed(() => !isEql(valuesSig.value, initialValuesSig.value));
-
-  function updateErrors(results, fieldPath) {
-    const currentErrors = results && results.errors ? results.errors : results || {};
-    if (fieldPath) {
-      const fieldError = get(currentErrors, fieldPath);
-      const newErrors = clone(errorsSig.value || {});
-      if (fieldError) set(newErrors, fieldPath, fieldError);
-      else unset(newErrors, fieldPath);
-      errorsSig.value = newErrors;
-    } else {
-      errorsSig.value = currentErrors || {};
+  // --- path helpers: walk the reactive store so reads subscribe & writes notify
+  function readPath(store, path) {
+    if (!path) return store;
+    let node = store;
+    for (const p of path.split(".")) {
+      if (node == null) return undefined;
+      node = node[p];
     }
-    notifySignals("e");
+    return node;
   }
 
+  function writePath(store, path, value) {
+    const parts = path.split(".");
+    let node = store;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const p = parts[i];
+      let next = node[p];
+      if (next == null || typeof next !== "object") {
+        node[p] = {};
+        next = node[p];
+      }
+      node = next;
+    }
+    node[parts[parts.length - 1]] = value;
+  }
+
+  function deletePath(store, path) {
+    const parts = path.split(".");
+    let node = store;
+    for (let i = 0; i < parts.length - 1; i++) {
+      node = node[parts[i]];
+      if (node == null || typeof node !== "object") return;
+    }
+    delete node[parts[parts.length - 1]];
+  }
+
+  // Reconcile a reactive store in place to match a plain object, touching only
+  // the leaves that actually differ (fine-grained — no wholesale replace).
+  function syncStore(store, next) {
+    next = next || {};
+    const raw = toRawValue(store);
+    for (const k of Object.keys(raw)) {
+      if (!(k in next)) delete store[k];
+    }
+    for (const k of Object.keys(next)) {
+      const nv = next[k];
+      const cur = raw[k];
+      if (nv && typeof nv === "object" && cur && typeof cur === "object") {
+        syncStore(store[k], nv);
+      } else if (!isEql(cur, nv)) {
+        store[k] = nv;
+      }
+    }
+  }
+
+  // --- validation
+  const normalizeErrors = (r) => (r && r.errors !== undefined ? r.errors : r) || {};
+
+  function applyErrors(errorsObj, fieldPath) {
+    if (fieldPath) {
+      const fieldErr = readRaw(errorsObj, fieldPath);
+      if (fieldErr) writePath(errorsStore, fieldPath, fieldErr);
+      else deletePath(errorsStore, fieldPath);
+    } else {
+      syncStore(errorsStore, errorsObj);
+    }
+  }
+
+  let validationToken = 0;
   function runValidation(fieldPath) {
     if (!activeValidator) return;
+    const token = ++validationToken;
+    const result = activeValidator(snapshot(valuesStore));
+    if (result instanceof Promise) {
+      isValidatingSig.value = true;
+      return result
+        .then((r) => {
+          if (token === validationToken) applyErrors(normalizeErrors(r), fieldPath);
+        })
+        .finally(() => {
+          if (token === validationToken) isValidatingSig.value = false;
+        });
+    }
+    applyErrors(normalizeErrors(result), fieldPath);
+  }
 
+  // --- changed tracking: per top-level key, deep-compared to initial values.
+  function recomputeChanged() {
+    const v = toRawValue(valuesStore);
+    const keys = new Set([...Object.keys(v), ...Object.keys(initialValues)]);
+    for (const k of keys) {
+      const ch = !isEql(v[k], initialValues[k]);
+      if (toRawValue(changedStore)[k] !== ch) changedStore[k] = ch;
+    }
+  }
+
+  // One effect observes every value change and (a) recomputes `changed`, and
+  // (b) in onChange mode, revalidates — covering inputs, direct assignment, and
+  // array mutation alike. Writes are untracked so it never depends on its own
+  // output. Validates once on creation, satisfying onChange's "validate on init".
+  effect(() => {
+    deepTrack(valuesStore);
+    const mode = normMode(modeSig.value);
     untracked(() => {
-      const results = activeValidator(valuesSig.peek());
-      if (results instanceof Promise) {
-        isValidatingSig.value = true;
-        return results.then((res) => updateErrors(res, fieldPath)).finally(() => isValidatingSig.value = false);
-      }
-      updateErrors(results, fieldPath);
+      recomputeChanged();
+      if (mode === "onChange") runValidation();
     });
-  }
+  });
 
+  // --- field registration
   function updateValue(path, val) {
-    batch(() => {
-      const newState = clone(valuesSig.peek());
-      if (path === "") {
-        valuesSig.value = clone(val);
-      } else {
-        set(newState, path, val);
-        valuesSig.value = newState;
-      }
-      notifySignals("v");
-
-      const isFieldChanged = !isEql(val, path === "" ? initialValuesSig.peek() : get(initialValuesSig.peek(), path));
-      const newChanged = clone(changedSig.peek() || {});
-      if (path === "") {
-        // Root changed?
-      } else {
-        set(newChanged, path, isFieldChanged);
-        changedSig.value = newChanged;
-      }
-      notifySignals("c");
-
-      const mode = getMode();
-      const hasAnyErrors = hasErrors(errorsSig.peek());
-      const reValidateMode = getReValidateMode();
-
-      if (mode === "onChange") runValidation(path);
-      else if (hasAnyErrors && reValidateMode === "onChange") runValidation(path);
-    });
-  }
-  const register = (path) => {
-    const valSig = getSignal("v", path);
-    const errSig = getSignal("e", path);
-    const touchSig = getSignal("t", path, false);
-    
-    return {
-      name: path,
-      value: valSig,
-      checked: valSig,
-      error: errSig,
-      isTouched: touchSig,
-      oninput: (e) => {
-        const val = e.target.type === "checkbox" ? e.target.checked : e.target.value;
-        updateValue(path, val);
-      },
-      onblur: () => {
-        const newTouched = clone(touchedSig.value || {});
-        set(newTouched, path, true);
-        touchedSig.value = newTouched;
-        notifySignals("t", path, touchedSig.value);
-        const mode = getMode();
-        if (mode === "onBlur") runValidation(path);
-      },
-    };
-  };
-
-  function markAllTouched(obj) {
-    if (!obj || typeof obj !== "object") return true;
-    const res = Array.isArray(obj) ? [] : {};
-    Object.keys(obj).forEach((key) => {
-      res[key] = markAllTouched(obj[key]);
-    });
-    return res;
+    writePath(valuesStore, path, val);
+    const mode = normMode(modeSig.peek());
+    if (mode === "onChange") return; // the effect above revalidates
+    if (hasTruthy(toRawValue(errorsStore)) && normReValidate(reValidateModeSig.peek()) === "onChange") {
+      runValidation(path);
+    }
   }
 
+  const register = (path) => ({
+    name: path,
+    value: readPath(valuesStore, path),
+    checked: readPath(valuesStore, path),
+    error: computed(() => readPath(errorsStore, path)),
+    isTouched: computed(() => readPath(touchedStore, path) ?? false),
+    oninput: (e) => {
+      const t = e.target;
+      updateValue(path, t.type === "checkbox" ? t.checked : t.value);
+    },
+    onblur: () => {
+      writePath(touchedStore, path, true);
+      const mode = normMode(modeSig.peek());
+      if (mode === "onBlur") runValidation(path);
+      else if (
+        hasTruthy(toRawValue(errorsStore)) &&
+        normReValidate(reValidateModeSig.peek()) === "onBlur"
+      ) {
+        runValidation(path);
+      }
+    },
+  });
+
+  // --- submit / reset
   const handleSubmit = (fn) => async (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    touchedSig.value = markAllTouched(valuesSig.value);
-    notifySignals("t");
+    syncStore(touchedStore, mirrorLeaves(snapshot(valuesStore), true));
     isSubmittingSig.value = true;
     submitCountSig.value++;
     await runValidation();
-    if (isValidSig.value) {
+    if (!hasTruthy(toRawValue(errorsStore))) {
       try {
-        await fn(valuesSig.value);
+        await fn(snapshot(valuesStore));
         isSubmittedSig.value = true;
       } finally {
         isSubmittingSig.value = false;
@@ -229,108 +235,19 @@ function _createForm(options = {}) {
 
   const reset = (newValues) => {
     batch(() => {
-      if (newValues !== undefined) initialValuesSig.value = clone(newValues);
-      valuesSig.value = clone(initialValuesSig.value);
-      errorsSig.value = {};
-      touchedSig.value = {};
-      changedSig.value = {};
+      if (newValues !== undefined) initialValues = clone(newValues);
+      syncStore(valuesStore, clone(initialValues));
+      syncStore(errorsStore, {});
+      syncStore(touchedStore, mirrorLeaves(initialValues, false));
+      syncStore(changedStore, {});
       isSubmittedSig.value = false;
-      notifySignals("v");
-      notifySignals("e");
-      notifySignals("t");
-      notifySignals("c");
     });
   };
 
-  const proxyCache = new Map();
-
-  function createDeepProxy(sig, path = [], defaultValue = undefined) {
-
-    const pathStr = path.join(".");
-    // Use signal identity in cache key to avoid collisions between values/errors/etc.
-    const sigKey = sig === valuesSig ? "v" : sig === errorsSig ? "e" : sig === touchedSig ? "t" : "c";
-    const cacheKey = `${sigKey}:${pathStr}:${defaultValue}`;
-    if (proxyCache.has(cacheKey)) return proxyCache.get(cacheKey);
-
-    const val = untracked(() => (path.length === 0 ? sig.value : get(sig.value, pathStr)));
-
-    const proxy = new Proxy(val || {}, {
-      get(_, prop) {
-        const latestVal = untracked(() => (path.length === 0 ? sig.value : get(sig.value, pathStr)));
-
-        if (prop === Symbol.toStringTag) {
-          return Array.isArray(latestVal) ? "Array" : "Object";
-        }
-        if (prop === "toJSON") {
-          return () => (path.length === 0 ? sig.value : get(sig.value, pathStr));
-        }
-        if (prop === Symbol.iterator) {
-          return latestVal[Symbol.iterator].bind(latestVal);
-        }
-        if (typeof prop === "symbol") return undefined;
-        if (["__proto__", "constructor", "prototype"].includes(prop)) return undefined;
-
-        const currentPathStr = pathStr ? `${pathStr}.${prop}` : prop;
-        const value = latestVal ? latestVal[prop] : undefined;
-
-        if (Array.isArray(latestVal) && ["push", "pop", "shift", "unshift", "splice", "reverse", "sort"].includes(prop)) {
-          return (...args) => {
-            const nextArr = [...latestVal];
-            const result = nextArr[prop](...args);
-            updateValue(pathStr, nextArr);
-            return result;
-          };
-        }
-
-        if (typeof value === "function") {
-          return value.bind(latestVal);
-        }
-
-        // Subscribe to path-specific signal
-        const subSig = getSignal(sigKey, currentPathStr, value ?? defaultValue);
-        if (!isSetup) subSig.value;
-
-        if (value && typeof value === "object") {
-          return createDeepProxy(sig, [...path, prop], defaultValue);
-        }
-
-        return value ?? defaultValue;
-      },
-      set(_, prop, val) {
-
-        const currentPathStr = [...path, prop].join(".");
-        if (sig === valuesSig) updateValue(currentPathStr, val);
-        else {
-          const newState = clone(sig.value);
-          set(newState, currentPathStr, val);
-          sig.value = newState;
-        }
-        return true;
-      },
-      ownKeys() {
-        const val = untracked(() => (path.length === 0 ? sig.value : get(sig.value, pathStr)));
-        if (!isSetup) {
-          const subSig = getSignal(sigKey, pathStr, val);
-          subSig.value;
-        }
-        const keys = Object.keys(val || {});
-        if (Array.isArray(val) && !keys.includes("length")) {
-          keys.push("length");
-        }
-        return keys;
-      },
-      getOwnPropertyDescriptor(_, prop) {
-        const latestVal = untracked(() => (path.length === 0 ? sig.value : get(sig.value, pathStr)));
-        if (latestVal && typeof latestVal === "object" && prop in latestVal) {
-          return Object.getOwnPropertyDescriptor(latestVal, prop);
-        }
-        return undefined;
-      }
-    });
-
-    proxyCache.set(cacheKey, proxy);
-    return proxy;
-  }
+  // --- derived flags
+  const isValidSig = computed(() => !hasTruthy(errorsStore));
+  const isTouchedSig = computed(() => hasTruthy(touchedStore));
+  const isChangedSig = computed(() => hasTruthy(changedStore));
 
   const form = {
     register,
@@ -342,36 +259,92 @@ function _createForm(options = {}) {
         reValidateModeSig.value = newReValidateMode;
       });
     },
-    _notifySignals: notifySignals,
-    get values() { return createDeepProxy(valuesSig); },
-    get errors() { return createDeepProxy(errorsSig); },
-    get touched() { return createDeepProxy(touchedSig, [], false); },
-    get changed() { return createDeepProxy(changedSig, [], false); },
+    _notifySignals() {}, // legacy no-op: reactive stores notify on write
+    get values() { return valuesStore; },
+    get errors() { return errorsStore; },
+    get touched() { return touchedStore; },
+    get changed() { return changedStore; },
     _signals: {
-      values: valuesSig,
-      errors: errorsSig,
-      touched: touchedSig,
-      changed: changedSig,
-      initialValues: initialValuesSig,
-    }
+      values: storeSignal(valuesStore),
+      errors: storeSignal(errorsStore),
+      touched: storeSignal(touchedStore),
+      changed: storeSignal(changedStore),
+    },
   };
 
-  const getSafe = (sig) => (isSetup ? untracked(() => sig.value) : sig.value);
-
   Object.defineProperties(form, {
-    isValid: { get: () => getSafe(isValidSig), enumerable: true },
-    isChanged: { get: () => getSafe(isDirtySig), enumerable: true },
-    isTouched: { get: () => getSafe(isTouchedSig), enumerable: true },
-    isSubmitting: { get: () => getSafe(isSubmittingSig), enumerable: true },
-    isValidating: { get: () => getSafe(isValidatingSig), enumerable: true },
-    isSubmitted: { get: () => getSafe(isSubmittedSig), enumerable: true },
-    submitCount: { get: () => getSafe(submitCountSig), enumerable: true },
+    isValid: { get: () => isValidSig.value, enumerable: true },
+    isChanged: { get: () => isChangedSig.value, enumerable: true },
+    isTouched: { get: () => isTouchedSig.value, enumerable: true },
+    isSubmitting: { get: () => isSubmittingSig.value, enumerable: true },
+    isValidating: { get: () => isValidatingSig.value, enumerable: true },
+    isSubmitted: { get: () => isSubmittedSig.value, enumerable: true },
+    submitCount: { get: () => submitCountSig.value, enumerable: true },
   });
 
-  // Initial validation (only if onChange mode)
-  if (getMode() === "onChange") {
-    runValidation();
-  }
-
   return form;
+}
+
+// --- shared helpers (no per-form state)
+
+/** Raw (non-reactive) deep read by dot-path. */
+function readRaw(obj, path) {
+  let node = obj;
+  for (const p of path.split(".")) {
+    if (node == null) return undefined;
+    node = node[p];
+  }
+  return node;
+}
+
+/** Whether any leaf is truthy — the basis of isValid/isTouched/isChanged. */
+function hasTruthy(obj) {
+  if (obj == null || typeof obj !== "object") return !!obj;
+  return Object.values(obj).some(hasTruthy);
+}
+
+/** Mirror a tree's structure, replacing every leaf with `leaf`. */
+function mirrorLeaves(obj, leaf) {
+  if (obj == null || typeof obj !== "object") return leaf;
+  const res = Array.isArray(obj) ? [] : {};
+  for (const k of Object.keys(obj)) res[k] = mirrorLeaves(obj[k], leaf);
+  return res;
+}
+
+/** Subscribe the active consumer to every path in a store (deep). */
+function deepTrack(store) {
+  const raw = toRawValue(store);
+  if (raw == null || typeof raw !== "object") return;
+  for (const k of Object.keys(store)) {
+    const v = store[k];
+    if (v && typeof v === "object") deepTrack(v);
+  }
+}
+
+/**
+ * A preact-style signal facade over a reactive store for the advanced `_signals`
+ * API: `.value` snapshots/replaces the whole tree, `.subscribe(cb)` fires
+ * immediately then once per change.
+ */
+function storeSignal(store) {
+  return {
+    get value() {
+      return snapshot(store);
+    },
+    set value(v) {
+      const next = v || {};
+      const raw = toRawValue(store);
+      for (const k of Object.keys(raw)) if (!(k in next)) delete store[k];
+      for (const k of Object.keys(next)) store[k] = next[k];
+    },
+    peek() {
+      return toRawValue(store);
+    },
+    subscribe(cb) {
+      return effect(() => {
+        deepTrack(store);
+        cb(snapshot(store));
+      });
+    },
+  };
 }
