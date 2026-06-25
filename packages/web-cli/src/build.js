@@ -21,10 +21,12 @@ import {
   cssPlugin,
   discoverPages,
   entrySource,
+  injectBeforeBody,
   loadConfig,
   loadDocsPlugins,
   loadProject,
   otfwPlugin,
+  readHtmlShell,
   runBlogFeed,
   runDocsSearchIndex,
   runLastUpdated,
@@ -104,17 +106,7 @@ export async function runBuild() {
 
   // Compose dist/index.html from the project shell: strip module entry scripts,
   // compile + hash any local stylesheet links, and inject the bundle.
-  const indexPath = join(root, "index.html");
-  let html = existsSync(indexPath)
-    ? readFileSync(indexPath, "utf8")
-    : `<!doctype html><html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OTF Web</title></head><body><div id="app"></div></body></html>`;
-
-  html = html.replace(
-    /<script\s+type=["']module["'][^>]*src=[^>]*>\s*<\/script>\s*/gi,
-    "",
-  );
+  let html = readHtmlShell(root);
 
   // Compile each local <link rel="stylesheet" href="/..."> and rewrite the href.
   buildStep.update("styles");
@@ -132,9 +124,7 @@ export async function runBuild() {
   }
 
   const script = `<script type="module" src="${bundleHref}"></script>\n`;
-  html = html.includes("</body>")
-    ? html.replace("</body>", `${script}</body>`)
-    : html + script;
+  html = injectBeforeBody(html, script);
   writeFileSync(join(outDir, "index.html"), html);
 
   const chunks = result.output.filter((o) => o.type === "chunk").length;

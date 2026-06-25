@@ -24,6 +24,31 @@ export const MIME = {
   woff2: "font/woff2",
 };
 
+/** Fallback HTML shell used when a project has no `index.html`. */
+export const DEFAULT_HTML_SHELL =
+  `<!doctype html><html lang="en"><head>\n` +
+  `<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\n` +
+  `<title>OTF Web</title></head><body><div id="app"></div></body></html>`;
+
+// The project's own module entry <script> is stripped so the toolchain injects
+// its own bundle in its place.
+const MODULE_ENTRY_RE = /<script\s+type=["']module["'][^>]*src=[^>]*>\s*<\/script>\s*/gi;
+
+/**
+ * The project's `index.html` shell (or {@link DEFAULT_HTML_SHELL}) with the app's
+ * module entry script removed — the common starting point for `dev` and `build`.
+ */
+export function readHtmlShell(root) {
+  const indexPath = join(root, "index.html");
+  const html = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : DEFAULT_HTML_SHELL;
+  return html.replace(MODULE_ENTRY_RE, "");
+}
+
+/** Inject `snippet` just before `</body>` (or append when there is none). */
+export function injectBeforeBody(html, snippet) {
+  return html.includes("</body>") ? html.replace("</body>", `${snippet}</body>`) : html + snippet;
+}
+
 /** Nearest ancestor directory of `from` (inclusive) that contains `name`. */
 export function findUp(name, from) {
   let dir = from;

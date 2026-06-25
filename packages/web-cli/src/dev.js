@@ -28,11 +28,13 @@ import {
   cssPlugin,
   discoverPages,
   entrySource,
+  injectBeforeBody,
   loadConfig,
   loadDocsPlugins,
   loadProject,
   moduleGraph,
   otfwPlugin,
+  readHtmlShell,
 } from "./shared.js";
 
 // Resolve the start port. An explicit `--port <n>` / `-p <n>` / `--port=<n>` is
@@ -242,7 +244,6 @@ export async function runDev() {
     } catch {}
   });
 
-  const indexPath = join(root, "index.html");
   // Import map (so `@opentf/web` resolves to the shared runtime chunk) + entry + the
   // dev overlay / reload client. The import map must precede the module script.
   const injected =
@@ -250,22 +251,7 @@ export async function runDev() {
     `<script type="module" src="/bundle.js"></script>\n` +
     `<script>${overlayClient}</script>\n`;
 
-  function buildHtml() {
-    let html;
-    if (existsSync(indexPath)) {
-      html = readFileSync(indexPath, "utf8").replace(
-        /<script\s+type=["']module["'][^>]*src=[^>]*>\s*<\/script>\s*/gi,
-        "",
-      );
-    } else {
-      html = `<!doctype html><html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OTF Web</title></head><body><div id="app"></div></body></html>`;
-    }
-    return html.includes("</body>")
-      ? html.replace("</body>", `${injected}</body>`)
-      : html + injected;
-  }
+  const buildHtml = () => injectBeforeBody(readHtmlShell(root), injected);
 
   async function serveStatic(pathname) {
     // Only serve regular files — a request whose path is a directory (e.g. a route
