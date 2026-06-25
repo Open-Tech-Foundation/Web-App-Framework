@@ -94,7 +94,26 @@ export function signal(initial) {
       propagate(node);
       if (batchDepth === 0) flush();
     },
+    /** Read the current value without subscribing the active consumer. */
+    peek() {
+      return node.value;
+    },
   };
+}
+
+/**
+ * Run `fn` without subscribing the active consumer to any signals it reads.
+ * Use inside an effect/computed to read reactive state without depending on it
+ * (e.g. validation that reads many fields but should not re-run on each).
+ */
+export function untracked(fn) {
+  const prev = activeConsumer;
+  activeConsumer = null;
+  try {
+    return fn();
+  } finally {
+    activeConsumer = prev;
+  }
 }
 
 /**

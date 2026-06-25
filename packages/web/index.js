@@ -1,6 +1,7 @@
 // Public entry for the OTF Web runtime: reactivity + DOM operations.
 // CSR-generated modules import their helpers (signal/computed/bindText/…) from here.
 export * from "./core/signals.js";
+export * from "./core/reactive.js";
 export * from "./core/errors.js";
 export * from "./runtime/index.js";
 // `Link` is shipped as JSX source and compiled by the consuming app's pipeline
