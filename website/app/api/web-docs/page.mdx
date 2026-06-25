@@ -18,7 +18,7 @@ of themed components, build-time virtual modules, and Rolldown plugins. For guid
 | `@opentf/web-docs` | Components (default-exported from the barrel). |
 | `@opentf/web-docs/config` | `defineDocsConfig` — the typed config identity helper. |
 | `@opentf/web-docs/theme` | The default light/dark theme stylesheet. |
-| `@opentf/web-docs/nav` | Generated sidebar tree (resolved by `docsNavPlugin`). |
+| `@opentf/web-docs/nav` | Generated section map `{ "/<dir>": tree }` (resolved by `docsNavPlugin`); `DocsLayout` reads it. |
 | `@opentf/web-docs/posts` | Generated blog post list (resolved by `blogPostsPlugin`). |
 | `@opentf/web-docs/updated` | Generated `{ route: ISO }` map + `editPaths` (last-updated plugin). |
 | `@opentf/web-docs/build` | Build plugins and helpers (below). |
@@ -54,7 +54,7 @@ Rolldown plugins + helpers used by the toolchain (registered automatically by
 
 | Export | Purpose |
 | --- | --- |
-| `docsNavPlugin` | Resolves `@opentf/web-docs/nav` to the sidebar tree. |
+| `docsNavPlugin` | Resolves `@opentf/web-docs/nav` to the section map (one tree per top-level folder). |
 | `blogPostsPlugin` / `loadPosts` | Resolves `@opentf/web-docs/posts`; `loadPosts` is the callable scan. |
 | `lastUpdatedPlugin` / `loadLastUpdated` | Resolves `@opentf/web-docs/updated` (git/frontmatter dates + edit paths). |
 | `renderBlogFeed` | Renders the RSS 2.0 feed from the post list. |

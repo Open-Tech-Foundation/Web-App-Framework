@@ -45,25 +45,28 @@ automatically.
 
 ## The shell
 
-Wrap your docs routes in `DocsLayout`, fed by the generated nav tree:
+Wrap your docs routes in `DocsLayout`. That's the whole layout — it sources the
+generated sidebar itself:
 
 ```jsx
 // app/docs/layout.jsx
 import { DocsLayout } from "@opentf/web-docs";
-import nav from "@opentf/web-docs/nav";
 import config from "../../otfw.config.js";
 
 export default function Layout(props) {
   return (
-    <DocsLayout config={config.docs} nav={nav}>
+    <DocsLayout config={config.docs}>
       {props.children}
     </DocsLayout>
   );
 }
 ```
 
-`@opentf/web-docs/nav` is a virtual module: the build plugin scans your docs folder
-and resolves it to the ordered tree the sidebar renders.
+The build plugin scans every top-level folder under `app/` and resolves
+`@opentf/web-docs/nav` to a `{ "/<dir>": tree }` map; `DocsLayout` reads it and shows the
+branch for the current route. So **any** folder with a layout like this becomes its own
+documentation section — `app/api` → `/api`, with its own sidebar — and they all share the
+same traits ([last updated](/docs/packages/web-docs/configuration), search, prev/next).
 
 Continue with [Components](/docs/packages/web-docs/components) and
 [Configuration](/docs/packages/web-docs/configuration).
