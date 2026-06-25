@@ -23,13 +23,17 @@ const knobOff = "px-3 py-1.5 rounded-lg text-slate-400 text-[11px] font-bold hov
 // Read a dot-path off a reactive store (subscribes to that path).
 const at = (obj, path) => path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
 
-// A field's error, but only once the user has engaged the field — typed a value
-// or blurred it. This keeps onChange mode (which validates the whole form up
-// front) from reddening pristine inputs before the user touches them.
-const fieldErr = (form, path) =>
-  at(form.errors, path) && (at(form.values, path) || at(form.touched, path))
-    ? at(form.errors, path)
-    : null;
+// A field's error, surfaced only once the field has been engaged *the way the
+// current mode validates*: in onChange once the user has typed into it (dirty),
+// in onBlur/onSubmit once it has been blurred / submitted (touched). The engine
+// validates the whole form up front, so without this gate every pristine input
+// would show an error the moment onChange is selected.
+const fieldErr = (form, mode, path) => {
+  const err = at(form.errors, path);
+  if (!err) return null;
+  const engaged = mode === "onChange" ? !!at(form.values, path) : !!at(form.touched, path);
+  return engaged ? err : null;
+};
 
 // Live validation-mode switcher. `onpick(mode)` is a callback prop the form
 // passes down; clicking a mode re-configures the live form via _updateConfig.
@@ -88,14 +92,14 @@ function BasicForm() {
         <form onsubmit={form.handleSubmit(onSubmit)}>
           <div class="mb-5">
             <label class="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Username</label>
-            <input {...form.register("username")} placeholder="ada" class={fieldErr(form, "username") ? inputErr : inputOk} />
-            {fieldErr(form, "username") && <span class={errMsg}>{fieldErr(form, "username")}</span>}
+            <input {...form.register("username")} placeholder="ada" class={fieldErr(form, mode, "username") ? inputErr : inputOk} />
+            {fieldErr(form, mode, "username") && <span class={errMsg}>{fieldErr(form, mode, "username")}</span>}
           </div>
 
           <div class="mb-5">
             <label class="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Email</label>
-            <input {...form.register("email")} placeholder="ada@example.com" class={fieldErr(form, "email") ? inputErr : inputOk} />
-            {fieldErr(form, "email") && <span class={errMsg}>{fieldErr(form, "email")}</span>}
+            <input {...form.register("email")} placeholder="ada@example.com" class={fieldErr(form, mode, "email") ? inputErr : inputOk} />
+            {fieldErr(form, mode, "email") && <span class={errMsg}>{fieldErr(form, mode, "email")}</span>}
           </div>
 
           <div class="flex gap-4 mt-8">
@@ -171,13 +175,13 @@ function ComplexForm() {
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
               <label class="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">First name</label>
-              <input {...form.register("profile.firstName")} class={fieldErr(form, "profile.firstName") ? inputErr : inputOk} />
-              {fieldErr(form, "profile.firstName") && <span class={errMsg}>{fieldErr(form, "profile.firstName")}</span>}
+              <input {...form.register("profile.firstName")} class={fieldErr(form, mode, "profile.firstName") ? inputErr : inputOk} />
+              {fieldErr(form, mode, "profile.firstName") && <span class={errMsg}>{fieldErr(form, mode, "profile.firstName")}</span>}
             </div>
             <div>
               <label class="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Last name</label>
-              <input {...form.register("profile.lastName")} class={fieldErr(form, "profile.lastName") ? inputErr : inputOk} />
-              {fieldErr(form, "profile.lastName") && <span class={errMsg}>{fieldErr(form, "profile.lastName")}</span>}
+              <input {...form.register("profile.lastName")} class={fieldErr(form, mode, "profile.lastName") ? inputErr : inputOk} />
+              {fieldErr(form, mode, "profile.lastName") && <span class={errMsg}>{fieldErr(form, mode, "profile.lastName")}</span>}
             </div>
           </div>
 
@@ -190,8 +194,8 @@ function ComplexForm() {
               {form.values.skills.map((_, index) => (
                 <div class="flex gap-2 items-start">
                   <div class="flex-1">
-                    <input {...form.register(`skills.${index}`)} placeholder="Skill name…" class={fieldErr(form, `skills.${index}`) ? inputErr : inputOk} />
-                    {fieldErr(form, `skills.${index}`) && <span class={errMsg}>{fieldErr(form, `skills.${index}`)}</span>}
+                    <input {...form.register(`skills.${index}`)} placeholder="Skill name…" class={fieldErr(form, mode, `skills.${index}`) ? inputErr : inputOk} />
+                    {fieldErr(form, mode, `skills.${index}`) && <span class={errMsg}>{fieldErr(form, mode, `skills.${index}`)}</span>}
                   </div>
                   <button type="button" onclick={() => removeSkill(index)} class="px-4 py-3 rounded-xl border border-slate-700/50 text-slate-500 hover:text-red-400 hover:bg-red-400/5 transition-all">✕</button>
                 </div>
