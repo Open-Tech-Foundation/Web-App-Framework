@@ -20,6 +20,17 @@ const errMsg = "block text-[10px] text-red-400 font-bold mt-1 ml-1";
 const knobOn = "px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-bold transition-all";
 const knobOff = "px-3 py-1.5 rounded-lg text-slate-400 text-[11px] font-bold hover:text-white transition-all";
 
+// Read a dot-path off a reactive store (subscribes to that path).
+const at = (obj, path) => path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
+
+// A field's error, but only once the user has engaged the field — typed a value
+// or blurred it. This keeps onChange mode (which validates the whole form up
+// front) from reddening pristine inputs before the user touches them.
+const fieldErr = (form, path) =>
+  at(form.errors, path) && (at(form.values, path) || at(form.touched, path))
+    ? at(form.errors, path)
+    : null;
+
 // Live validation-mode switcher. `onpick(mode)` is a callback prop the form
 // passes down; clicking a mode re-configures the live form via _updateConfig.
 function ModeKnob({ value, onpick }) {
@@ -77,14 +88,14 @@ function BasicForm() {
         <form onsubmit={form.handleSubmit(onSubmit)}>
           <div class="mb-5">
             <label class="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Username</label>
-            <input {...form.register("username")} placeholder="ada" class={form.errors.username ? inputErr : inputOk} />
-            {form.errors.username && <span class="text-[10px] text-red-400 font-bold ml-1">{form.errors.username}</span>}
+            <input {...form.register("username")} placeholder="ada" class={fieldErr(form, "username") ? inputErr : inputOk} />
+            {fieldErr(form, "username") && <span class={errMsg}>{fieldErr(form, "username")}</span>}
           </div>
 
           <div class="mb-5">
             <label class="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Email</label>
-            <input {...form.register("email")} placeholder="ada@example.com" class={form.errors.email ? inputErr : inputOk} />
-            {form.errors.email && <span class="text-[10px] text-red-400 font-bold ml-1">{form.errors.email}</span>}
+            <input {...form.register("email")} placeholder="ada@example.com" class={fieldErr(form, "email") ? inputErr : inputOk} />
+            {fieldErr(form, "email") && <span class={errMsg}>{fieldErr(form, "email")}</span>}
           </div>
 
           <div class="flex gap-4 mt-8">
@@ -160,13 +171,13 @@ function ComplexForm() {
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
               <label class="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">First name</label>
-              <input {...form.register("profile.firstName")} class={form.errors.profile?.firstName ? inputErr : inputOk} />
-              {form.errors.profile?.firstName && <span class={errMsg}>{form.errors.profile.firstName}</span>}
+              <input {...form.register("profile.firstName")} class={fieldErr(form, "profile.firstName") ? inputErr : inputOk} />
+              {fieldErr(form, "profile.firstName") && <span class={errMsg}>{fieldErr(form, "profile.firstName")}</span>}
             </div>
             <div>
               <label class="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Last name</label>
-              <input {...form.register("profile.lastName")} class={form.errors.profile?.lastName ? inputErr : inputOk} />
-              {form.errors.profile?.lastName && <span class={errMsg}>{form.errors.profile.lastName}</span>}
+              <input {...form.register("profile.lastName")} class={fieldErr(form, "profile.lastName") ? inputErr : inputOk} />
+              {fieldErr(form, "profile.lastName") && <span class={errMsg}>{fieldErr(form, "profile.lastName")}</span>}
             </div>
           </div>
 
@@ -179,8 +190,8 @@ function ComplexForm() {
               {form.values.skills.map((_, index) => (
                 <div class="flex gap-2 items-start">
                   <div class="flex-1">
-                    <input {...form.register(`skills.${index}`)} placeholder="Skill name…" class={form.errors.skills?.[index] ? inputErr : inputOk} />
-                    {form.errors.skills?.[index] && <span class={errMsg}>{form.errors.skills[index]}</span>}
+                    <input {...form.register(`skills.${index}`)} placeholder="Skill name…" class={fieldErr(form, `skills.${index}`) ? inputErr : inputOk} />
+                    {fieldErr(form, `skills.${index}`) && <span class={errMsg}>{fieldErr(form, `skills.${index}`)}</span>}
                   </div>
                   <button type="button" onclick={() => removeSkill(index)} class="px-4 py-3 rounded-xl border border-slate-700/50 text-slate-500 hover:text-red-400 hover:bg-red-400/5 transition-all">✕</button>
                 </div>
