@@ -1,6 +1,6 @@
 {
   "name": "@opentf/web-compiler",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OTF Web IR compiler (otfwc) — prebuilt platform binaries + host resolver (ARCHITECTURE.md §8).",
   "private": true,
   "type": "module",
