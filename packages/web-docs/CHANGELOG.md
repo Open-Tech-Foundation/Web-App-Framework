@@ -5,9 +5,6 @@
 ### Added
 
 - `Tooltip` component — a small hover/focus bubble; used on the theme switcher.
-- Standalone section support: `docsNavPlugin` accepts a `virtualId`, so a second
-  instance can generate an independent nav tree (e.g. an `/api` section with its **own**
-  sidebar) resolved via the new `@opentf/web-docs/nav-api` export. New `api` config block.
 - Search trigger shows the open shortcut (`⌘K` on Apple, `Ctrl K` elsewhere); search
   results now lead with the page/post **title** and show the matched section heading
   beneath it, so hits from different pages (or blog posts) are distinguishable.

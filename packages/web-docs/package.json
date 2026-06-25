@@ -8,7 +8,6 @@
     "./theme": "./theme/index.css",
     "./config": "./config.js",
     "./nav": "./nav-virtual.js",
-    "./nav-api": "./nav-api-virtual.js",
     "./posts": "./posts-virtual.js",
     "./updated": "./updated-virtual.js",
     "./build": "./build/index.js"
@@ -17,7 +16,6 @@
     "index.js",
     "config.js",
     "nav-virtual.js",
-    "nav-api-virtual.js",
     "posts-virtual.js",
     "updated-virtual.js",
     "components",

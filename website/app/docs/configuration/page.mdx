@@ -18,7 +18,6 @@ import { defineDocsConfig } from "@opentf/web-docs/config";
 export default defineDocsConfig({
   site: { url: "https://example.com" },
   docs: { title: "My Project", dir: "docs" /* … */ },
-  api: { dir: "api" },
   blog: { dir: "blog" },
 });
 ```
@@ -38,7 +37,6 @@ your editor full type hints.
 | --- | --- |
 | `site` | Canonical origin — `{ url }`. Drives absolute canonicals, the sitemap, and the blog RSS feed. |
 | `docs` | The documentation section (sidebar, navbar, search). |
-| `api` | An optional **standalone** reference section with its own sidebar (e.g. `/api`). |
 | `blog` | An optional blog section (post list, banners, RSS). |
 
 ## `site`
@@ -70,17 +68,34 @@ The main documentation section. Common fields:
 See [Packages → web-docs → Configuration](/docs/packages/web-docs/configuration) for the
 exhaustive field reference and per-folder `_meta.js` ordering.
 
-## `api`
+## A second section with its own sidebar
 
-A second, independent docs-style section with its **own sidebar** — ideal for an API
-reference you don't want sharing the main docs tree. Pages live under `app/<dir>` and
-its sidebar resolves separately (`@opentf/web-docs/nav-api`).
+You don't need config for an independent section like an [API reference](/api). Because
+`DocsLayout` takes a `nav` prop, any folder can be its own section: add `app/<dir>/` with
+a `layout.jsx` that passes its **own** nav tree.
 
-```js
-api: { dir: "api", lastUpdated: true }
+```jsx app/api/layout.jsx
+import { DocsLayout } from "@opentf/web-docs";
+import config from "../../otfw.config.js";
+
+const nav = [
+  { title: "Overview", path: "/api" },
+  { title: "Core", path: "/api/core" },
+  // …one line per page
+];
+
+export default function (props) {
+  return (
+    <DocsLayout config={config.docs} nav={nav} frame={false}>
+      {props.children}
+    </DocsLayout>
+  );
+}
 ```
 
-This site uses it for the [API reference](/api).
+That's the whole feature — a normal folder, a layout, and a hand-written `nav` array. The
+main `docs` section uses the generated sidebar (from `_meta.js` + frontmatter) only
+because it's large; a short, stable section is clearer written by hand.
 
 ## `blog`
 

@@ -30,12 +30,6 @@ export default defineDocsConfig({
   // Blog generator: posts live under app/blog/<slug>/page.mdx. The toolchain resolves
   // `@opentf/web-docs/posts` to the post list (title/date/reading time from
   // frontmatter) for the index and the post banners.
-  // Standalone API reference at /api — its own sidebar (nav-api), separate from docs.
-  api: {
-    dir: "api",
-    lastUpdated: true,
-  },
-
   blog: {
     dir: "blog",
     // Show "Last updated" on a post when it was edited after its publish date.

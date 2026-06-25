@@ -47,17 +47,9 @@
  * @property {boolean} [lastUpdated] Show a "Last updated" line on a post when it was
  *                            edited after its publish date (from git / frontmatter).
  *
- * @typedef {Object} ApiConfig
- * @property {string} [dir]          Content folder under app/ (default "api") for a
- *                            second top-level section with its **own** sidebar — its
- *                            tree resolves to `@opentf/web-docs/nav-api`. Use for an API
- *                            reference that shouldn't share the main docs sidebar.
- * @property {boolean} [lastUpdated] Show a "Last updated" line per page (git/frontmatter).
- *
  * @typedef {Object} SiteConfig
  * @property {{ url?: string }} [site]   Canonical site origin (for SEO / sitemap).
  * @property {DocsConfig} [docs]         Documentation generator config.
- * @property {ApiConfig} [api]           Standalone API-reference section config.
  * @property {BlogConfig} [blog]         Blog generator config.
  */
 

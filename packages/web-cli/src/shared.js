@@ -135,8 +135,7 @@ export async function loadConfig(root) {
 export async function loadDocsPlugins(root, appDir, config, exclude = new Set()) {
   const docs = config?.docs;
   const blog = config?.blog;
-  const api = config?.api;
-  if (!docs && !blog && !api) return [];
+  if (!docs && !blog) return [];
   try {
     const entry = Bun.resolveSync("@opentf/web-docs/build", root);
     const { docsNavPlugin, blogPostsPlugin, lastUpdatedPlugin } = await import(
@@ -145,18 +144,6 @@ export async function loadDocsPlugins(root, appDir, config, exclude = new Set())
     const plugins = [];
     // Resolves `@opentf/web-docs/nav` to the generated sidebar tree.
     if (docs) plugins.push(docsNavPlugin({ appDir, contentDir: docs.dir ?? "docs", exclude }));
-    // A separate top-level section (e.g. /api) with its own sidebar — resolves
-    // `@opentf/web-docs/nav-api` to an independent nav tree.
-    if (api) {
-      plugins.push(
-        docsNavPlugin({
-          appDir,
-          contentDir: api.dir ?? "api",
-          exclude,
-          virtualId: "@opentf/web-docs/nav-api",
-        }),
-      );
-    }
     // Resolves `@opentf/web-docs/posts` to the generated post list.
     if (blog) plugins.push(blogPostsPlugin({ appDir, contentDir: blog.dir ?? "blog", exclude }));
     // Resolves `@opentf/web-docs/updated` to the per-page last-updated map, for the
@@ -179,7 +166,6 @@ export async function loadDocsPlugins(root, appDir, config, exclude = new Set())
 export function lastUpdatedSections(config) {
   const sections = [];
   if (config?.docs?.lastUpdated) sections.push({ dir: config.docs.dir ?? "docs" });
-  if (config?.api?.lastUpdated) sections.push({ dir: config.api.dir ?? "api" });
   if (config?.blog?.lastUpdated) sections.push({ dir: config.blog.dir ?? "blog" });
   return sections;
 }
