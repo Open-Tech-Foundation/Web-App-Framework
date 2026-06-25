@@ -1,0 +1,97 @@
+---
+title: Configuration
+description: Configure an OTF Web project with otfw.config.js — site URL, docs, API, and blog sections.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Configuration
+
+An OTF Web project is configured by a single **`otfw.config.js`** at the project root.
+It is read by the toolchain (`@opentf/web-cli`) at build and dev time, and by the
+themed UI (`@opentf/web-docs`) at runtime.
+
+```js
+// otfw.config.js
+import { defineDocsConfig } from "@opentf/web-docs/config";
+
+export default defineDocsConfig({
+  site: { url: "https://example.com" },
+  docs: { title: "My Project", dir: "docs" /* … */ },
+  api: { dir: "api" },
+  blog: { dir: "blog" },
+});
+```
+
+`defineDocsConfig` is an identity helper — it returns the object unchanged but gives
+your editor full type hints.
+
+<Callout type="info" title="One file, three consumers">
+  The CLI uses it to wire build plugins (nav, posts, search, RSS, last-updated); the
+  `Navbar`/`DocsLayout` components read `docs` at runtime; and the SSG step reads
+  `site.url` for canonical URLs and the sitemap.
+</Callout>
+
+## Top-level keys
+
+| Key | Purpose |
+| --- | --- |
+| `site` | Canonical origin — `{ url }`. Drives absolute canonicals, the sitemap, and the blog RSS feed. |
+| `docs` | The documentation section (sidebar, navbar, search). |
+| `api` | An optional **standalone** reference section with its own sidebar (e.g. `/api`). |
+| `blog` | An optional blog section (post list, banners, RSS). |
+
+## `site`
+
+```js
+site: { url: "https://example.com" }
+```
+
+Required for absolute URLs. Omit it (or pass `--base-url` at build) and canonicals stay
+relative and the sitemap/RSS are skipped.
+
+## `docs`
+
+The main documentation section. Common fields:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `title` | string | Product name in the navbar. |
+| `version` | string | Version badge (e.g. `"v0.4.0"`). |
+| `logo` | string | Navbar logo URL. |
+| `github` | string | GitHub URL (navbar icon). |
+| `repoUrl` | string | Source repo — enables per-page "Edit this page" links. |
+| `dir` | string | Content folder under `app/` (default `"docs"`). |
+| `nav` | array | Top navbar links: `{ label, href, icon?, external? }`. |
+| `footer` | object | `{ text, links }`. |
+| `search` | object | `{ provider: "pagefind" }` to enable static search. |
+| `lastUpdated` | boolean | Show a "Last updated" line per page (git/frontmatter). |
+
+See [Packages → web-docs → Configuration](/docs/packages/web-docs/configuration) for the
+exhaustive field reference and per-folder `_meta.js` ordering.
+
+## `api`
+
+A second, independent docs-style section with its **own sidebar** — ideal for an API
+reference you don't want sharing the main docs tree. Pages live under `app/<dir>` and
+its sidebar resolves separately (`@opentf/web-docs/nav-api`).
+
+```js
+api: { dir: "api", lastUpdated: true }
+```
+
+This site uses it for the [API reference](/api).
+
+## `blog`
+
+Turns on the blog generator (post list, banners, reading time, RSS). See
+[Packages → web-docs → Blog](/docs/packages/web-docs/blog).
+
+```js
+blog: { dir: "blog", title: "My Blog", lastUpdated: true }
+```
+
+<Callout type="info" title="Framework vs. theme config">
+  `otfw.config.js` is the project config. The `docs`/`api`/`blog` blocks are interpreted
+  by `@opentf/web-docs`; a non-docs app can use just `site` and the CLI still builds it.
+</Callout>

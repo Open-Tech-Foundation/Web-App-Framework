@@ -8,8 +8,12 @@ import { Callout } from "@opentf/web-docs";
 # Deployment
 
 An OTF Web app compiles to **static files** — a hashed JS bundle, CSS, and (optionally)
-pre-rendered HTML. There is no server runtime to operate: build once and serve `dist/`
-from any static host or CDN.
+pre-rendered HTML — so today you build once and serve `dist/` from any static host or
+CDN, with no runtime to operate.
+
+OTF Web is a fullstack framework; the server runtime (SSR, server functions, and
+request handling) is **in progress**. This page covers the static output that ships
+today — server deployment will be documented here as it lands.
 
 There are two output modes, both produced by `otfw build`:
 

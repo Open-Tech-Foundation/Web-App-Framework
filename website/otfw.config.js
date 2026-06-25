@@ -20,7 +20,7 @@ export default defineDocsConfig({
     nav: [
       { label: "Home", href: "/" },
       { label: "Docs", href: "/docs" },
-      { label: "API", href: "/docs/api" },
+      { label: "API", href: "/api" },
     ],
     // Static search: `otfw build --ssg` indexes the pre-rendered HTML with Pagefind
     // into dist/pagefind/; the navbar ⌘K trigger and modal query it at runtime.
@@ -30,6 +30,12 @@ export default defineDocsConfig({
   // Blog generator: posts live under app/blog/<slug>/page.mdx. The toolchain resolves
   // `@opentf/web-docs/posts` to the post list (title/date/reading time from
   // frontmatter) for the index and the post banners.
+  // Standalone API reference at /api — its own sidebar (nav-api), separate from docs.
+  api: {
+    dir: "api",
+    lastUpdated: true,
+  },
+
   blog: {
     dir: "blog",
     // Show "Last updated" on a post when it was edited after its publish date.
