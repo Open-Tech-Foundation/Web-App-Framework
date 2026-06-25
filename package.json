@@ -22,13 +22,9 @@
     "website:build": "bun run build:web && bun run --cwd website build",
     "test": "cargo test && bun test packages/web/",
     "deploy": "bun run website:build && wrangler deploy",
-    "build:web": "bun run --cwd packages/web build",
-    "changeset": "changeset",
-    "version-packages": "changeset version",
-    "release": "changeset publish"
+    "build:web": "bun run --cwd packages/web build"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.31.0",
     "@cloudflare/vite-plugin": "^1.33.1",
     "@opentf/std": "^0.13.0",
     "@rollup/plugin-babel": "^7.0.0",

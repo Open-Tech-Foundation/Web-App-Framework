@@ -1,15 +1,14 @@
 name: Release web-compiler
 
-# Publishes @opentf/web-compiler on its own, separately from the changesets
-# monorepo release. Run it manually (Actions -> "Release web-compiler" -> Run
-# workflow) after the JS packages have released. It cross-builds the otfwc binary
-# for every platform, brotli-compresses them into bin/, and publishes the single
-# package as PUBLIC. Self-skips if this version is already on npm, so it's safe to
-# re-run.
+# Publishes @opentf/web-compiler on its own, separately from the monorepo JS
+# release. Run it manually (Actions -> "Release web-compiler" -> Run workflow)
+# after the JS packages have released. It cross-builds the otfwc binary for every
+# platform, brotli-compresses them into bin/, and publishes the single package as
+# PUBLIC. Self-skips if this version is already on npm, so it's safe to re-run.
 #
-# The package is `private: true` in git ONLY as a guard so the monorepo
-# `changeset publish` (release.yml) doesn't ship it binary-less. This job flips it
-# off before publishing, so the package ON NPM is public.
+# The package is `private: true` in git ONLY as a guard so the monorepo JS release
+# doesn't ship it binary-less. This job flips it off before publishing, so the
+# package ON NPM is public.
 
 on:
   workflow_dispatch:
