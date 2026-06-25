@@ -4,6 +4,12 @@
 
 ### Added
 
+- Multiple doc sections. `@opentf/web-docs/nav` is now a **section map**
+  (`{ [base]: tree }`, e.g. `{ "/docs": …, "/api": … }`); set `docs.sections`
+  (e.g. `["docs", "api"]`) and each content folder becomes a peer `DocsLayout` branch
+  with its **own** generated sidebar. `DocsLayout` selects its branch by the current
+  route, so every section shares the same traits — generated sidebar, breadcrumbs,
+  prev/next, search, and `lastUpdated`/edit links — with no per-section plumbing.
 - `Tooltip` component — a small hover/focus bubble; used on the theme switcher.
 - Search trigger shows the open shortcut (`⌘K` on Apple, `Ctrl K` elsewhere); search
   results now lead with the page/post **title** and show the matched section heading

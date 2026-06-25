@@ -4,6 +4,9 @@
 
 ### Added
 
+- `docs.sections` (a list of content folders) registers the nav generator for every
+  section and includes them all in the last-updated/edit-link scan, so additional doc
+  sections (e.g. `/api`) get the same treatment as the main docs from one switch.
 - `otfw build` / `otfw dev` register the `@opentf/web-docs` last-updated plugin when a
   section opts in (`docs.lastUpdated` / `blog.lastUpdated`), resolving
   `@opentf/web-docs/updated` to the per-page git/frontmatter timestamp map. During SSG,

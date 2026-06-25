@@ -142,8 +142,9 @@ export async function loadDocsPlugins(root, appDir, config, exclude = new Set())
       pathToFileURL(entry).href
     );
     const plugins = [];
-    // Resolves `@opentf/web-docs/nav` to the generated sidebar tree.
-    if (docs) plugins.push(docsNavPlugin({ appDir, contentDir: docs.dir ?? "docs", exclude }));
+    // Resolves `@opentf/web-docs/nav` to the generated section map (one tree per
+    // section: docs, api, …). Each section is a DocsLayout branch with the same traits.
+    if (docs) plugins.push(docsNavPlugin({ appDir, sections: docsSections(config), exclude }));
     // Resolves `@opentf/web-docs/posts` to the generated post list.
     if (blog) plugins.push(blogPostsPlugin({ appDir, contentDir: blog.dir ?? "blog", exclude }));
     // Resolves `@opentf/web-docs/updated` to the per-page last-updated map, for the
@@ -163,9 +164,20 @@ export async function loadDocsPlugins(root, appDir, config, exclude = new Set())
  * Content sections that opt into "last updated" tracking — `{ dir }` for each of
  * `docs` / `blog` whose config sets `lastUpdated: true`. Empty when neither does.
  */
+/**
+ * The docs content sections — `docs.sections` (a list of folder names) if present,
+ * else the single `docs.dir` (default "docs"). Each is a DocsLayout branch.
+ */
+export function docsSections(config) {
+  const docs = config?.docs;
+  if (!docs) return [];
+  return docs.sections?.length ? docs.sections : [docs.dir ?? "docs"];
+}
+
 export function lastUpdatedSections(config) {
   const sections = [];
-  if (config?.docs?.lastUpdated) sections.push({ dir: config.docs.dir ?? "docs" });
+  // Every docs section shares the "last updated" trait (one `docs.lastUpdated` switch).
+  if (config?.docs?.lastUpdated) for (const dir of docsSections(config)) sections.push({ dir });
   if (config?.blog?.lastUpdated) sections.push({ dir: config.blog.dir ?? "blog" });
   return sections;
 }

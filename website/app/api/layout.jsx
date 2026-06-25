@@ -1,23 +1,11 @@
 // API section layout — a standalone reference with its own sidebar, separate from the
-// main docs. The marketing navbar/footer come from the root site layout
-// (app/layout.jsx), so this renders with `frame={false}`.
-//
-// The sidebar is just a plain nav tree handed to DocsLayout — no generator needed for a
-// short, stable list. Add a page → add a line here. (Shape: `{ title, path?, items? }`,
-// the same nodes the docs sidebar uses.)
+// main docs but built from the same parts. It's just another `DocsLayout` branch: it
+// imports the shared section map and the layout selects the `/api` tree by route. The
+// marketing navbar/footer come from the root site layout, so `frame={false}`.
 
 import { DocsLayout } from "@opentf/web-docs";
+import nav from "@opentf/web-docs/nav";
 import config from "../../otfw.config.js";
-
-const nav = [
-  { title: "Overview", path: "/api" },
-  { title: "Core", path: "/api/core" },
-  { title: "Reactive Macros", path: "/api/macros" },
-  { title: "CLI", path: "/api/cli" },
-  { title: "web-form", path: "/api/web-form" },
-  { title: "web-test", path: "/api/web-test" },
-  { title: "web-docs", path: "/api/web-docs" },
-];
 
 export default function ApiLayoutRoute(props) {
   return (

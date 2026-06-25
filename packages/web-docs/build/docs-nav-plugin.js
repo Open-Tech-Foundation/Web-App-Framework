@@ -22,17 +22,19 @@ const PAGE_RE = /^page\.(mdx|md|[jt]sx)$/;
 const MD_RE = /\.(mdx|md)$/;
 
 /**
+ * Generates `@opentf/web-docs/nav` as a **section map** — `{ [base]: tree }`, one entry
+ * per content section (e.g. `/docs`, `/api`). Each section is a `DocsLayout` branch; the
+ * layout picks its own subtree by the current route, so all sections share the same
+ * traits (generated sidebar, breadcrumbs, prev/next).
+ *
  * @param {Object} opts
- * @param {string} opts.appDir      Absolute path to the project's `app/` directory.
- * @param {string} [opts.contentDir] Docs content folder under app/ (default "docs").
+ * @param {string} opts.appDir       Absolute path to the project's `app/` directory.
+ * @param {string[]} [opts.sections]  Section content folders under app/ (default
+ *                            `["docs"]`). `"."`/`""` = the app root (routes at "/").
  * @param {Set<string>} [opts.exclude] Folder names to skip (mirrors route exclusions).
  */
-export function docsNavPlugin({ appDir, contentDir = "docs", exclude = new Set() } = {}) {
-  // `"."`/`""` means the docs live at the app root (routes at "/"); otherwise they
-  // live in app/<contentDir> (routes under "/<contentDir>").
-  const atRoot = contentDir === "." || contentDir === "";
-  const root = atRoot ? appDir : join(appDir, contentDir);
-  const base = atRoot ? "" : "/" + contentDir;
+export function docsNavPlugin({ appDir, sections = ["docs"], exclude = new Set() } = {}) {
+  const dirs = sections.length ? sections : ["docs"];
   return {
     name: "otfw-docs-nav",
     resolveId(source) {
@@ -42,10 +44,18 @@ export function docsNavPlugin({ appDir, contentDir = "docs", exclude = new Set()
     async load(id) {
       if (id !== RESOLVED_ID) return null;
       const watch = [];
-      const tree = existsSync(root) ? await buildSection(root, base, watch, true, exclude) : [];
+      const out = {};
+      for (const dir of dirs) {
+        const atRoot = dir === "." || dir === "";
+        const root = atRoot ? appDir : join(appDir, dir);
+        const base = atRoot ? "" : "/" + dir;
+        out[base || "/"] = existsSync(root)
+          ? await buildSection(root, base, watch, true, exclude)
+          : [];
+      }
       // Rebuild on changes to meta/page files during `otfw dev`.
       for (const f of watch) this.addWatchFile?.(f);
-      return `export default ${JSON.stringify(tree)};\n`;
+      return `export default ${JSON.stringify(out)};\n`;
     },
   };
 }

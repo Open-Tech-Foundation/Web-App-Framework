@@ -6,6 +6,11 @@
 //     return <DocsLayout config={config.docs} nav={nav}>{props.children}</DocsLayout>;
 //   }
 //
+// `nav` is the section map (`{ [base]: tree }`) — every section (`/docs`, `/api`, …) is
+// a branch of this same layout, so they share all traits. The layout selects its own
+// branch by the current route, so the docs and api layout files are identical bar the
+// folder they live in. (A plain array is also accepted, for a single ad-hoc section.)
+//
 // `frame` (default true) renders the full chrome (navbar + footer). Pass
 // `frame={false}` when nesting inside an existing site layout that already provides
 // the navbar/footer — only the sidebar · content · TOC grid is rendered.
@@ -30,6 +35,12 @@ export default function DocsLayout(props) {
   const nav = props.nav || [];
   const frame = props.frame !== false;
 
+  // The sidebar/breadcrumbs/prev-next operate on the *current section's* tree. `nav` is
+  // a section map keyed by base path; pick the branch whose base prefixes the route
+  // (longest match wins). A bare array means a single, unscoped section. Each section is
+  // its own layout instance, so resolving once at mount is correct.
+  const sectionNav = pickSection(nav, router.pathname);
+
   // Last-updated time for the current page, looked up in the build-time map keyed by
   // route (same exact-path match Pagination uses). `$derived` so it tracks navigation.
   const lastUpdated = $derived(updated[router.pathname]);
@@ -43,9 +54,9 @@ export default function DocsLayout(props) {
 
   const body = (
     <div class="otfw-docs">
-      <Sidebar nav={nav} config={config} />
+      <Sidebar nav={sectionNav} config={config} />
       <main id="otfw-content" class="otfw-content" data-pagefind-body>
-        <Breadcrumbs nav={nav} />
+        <Breadcrumbs nav={sectionNav} />
         <article class="otfw-prose">{props.children}</article>
         {lastUpdated || editUrl ? (
           <div class="otfw-page-meta">
@@ -60,7 +71,7 @@ export default function DocsLayout(props) {
             ) : null}
           </div>
         ) : null}
-        <Pagination nav={nav} />
+        <Pagination nav={sectionNav} />
       </main>
       <Toc />
     </div>
@@ -75,4 +86,20 @@ export default function DocsLayout(props) {
   ) : (
     body
   );
+}
+
+// Resolve the section tree for `pathname` from a `{ [base]: tree }` map. Longest base
+// prefix wins ("/" matches anything). Tolerates a bare array (single section).
+function pickSection(nav, pathname) {
+  if (Array.isArray(nav)) return nav;
+  let best = null;
+  let bestLen = -1;
+  for (const base in nav) {
+    const match = base === "/" ? true : pathname === base || pathname.startsWith(base + "/");
+    if (match && base.length > bestLen) {
+      best = nav[base];
+      bestLen = base.length;
+    }
+  }
+  return best || nav[Object.keys(nav)[0]] || [];
 }
