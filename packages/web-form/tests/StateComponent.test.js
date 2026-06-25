@@ -1,33 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import { render, userEvent } from "@opentf/web-test";
-import { createForm } from "../index.js";
 import { sleep } from "@opentf/std";
-
-const StateForm = ({ onSubmit }) => {
-  const form = createForm({
-    mode: "onChange", // Use onChange for easier testing of reactive text
-    initialValues: { username: "alice" },
-    validate: (v) => v.username.length < 3 ? { username: "Too short" } : {}
-  });
-
-  return (
-    <form onsubmit={form.handleSubmit(onSubmit)}>
-      <input {...form.register("username")} data-testid="username" />
-      
-      <div data-testid="status-valid">{form.isValid ? "Valid" : "Invalid"}</div>
-      <div data-testid="status-changed">{form.isChanged ? "Changed" : "Unchanged"}</div>
-      <div data-testid="status-touched">{form.isTouched ? "Touched" : "Untouched"}</div>
-      
-      {form.errors.username && <span data-testid="error">{form.errors.username}</span>}
-      
-      <button type="button" onclick={() => form.reset()} data-testid="reset">Reset</button>
-      <button type="submit" data-testid="submit">Submit</button>
-      
-      {form.isSubmitted && <div data-testid="success">Submitted!</div>}
-    </form>
-  );
-
-};
+import StateForm from "./StateForm.jsx";
 
 const waitFor = async (fn, timeout = 1000) => {
   const start = Date.now();
@@ -71,7 +45,7 @@ describe("Form State UI Reactivity", () => {
     await user.clear(input);
     await user.type(input, "bob");
     await user.click(submitBtn);
-    
+
     await waitFor(() => expect(submitted).toBe(true));
     await waitFor(() => expect(getByTestId("success")).toBeTruthy());
 
