@@ -86,11 +86,19 @@ const handler = {
     const value = target[key];
 
     if (typeof value === "function") {
-      // Mutators re-enter the `set` trap via `receiver`; batch their internal
-      // writes so an effect re-runs once. Other methods (map/filter/find…) also
-      // run against `receiver`, so the reads they perform subscribe too.
-      if (Array.isArray(target) && ARRAY_MUTATORS.has(key)) {
-        return (...args) => batch(() => value.apply(receiver, args));
+      if (Array.isArray(target)) {
+        // Mutators re-enter the `set` trap via `receiver`; batch their internal
+        // writes so an effect re-runs once.
+        if (ARRAY_MUTATORS.has(key)) {
+          return (...args) => batch(() => value.apply(receiver, args));
+        }
+        // Read methods (map/filter/forEach/…) subscribe to *structure* only and
+        // run over the raw array, so they re-run when the list grows/shrinks but
+        // not when an individual element's value changes. This is what keeps a
+        // `list.map(i => <input/>)` from re-rendering (and dropping focus) on
+        // every keystroke — the element's own binding handles its value.
+        getStructSig(target).value;
+        return value.bind(target);
       }
       return value.bind(receiver);
     }

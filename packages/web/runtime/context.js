@@ -33,6 +33,16 @@ export function exitHost() {
 }
 
 /**
+ * The component host element currently executing its body, or `null` outside a
+ * component (e.g. a form created in module scope or a test). Libraries use this
+ * as a per-instance identity to scope state to the mounting component — the
+ * compiler emits `enterHost(this)` around every component body (csr.rs).
+ */
+export function getCurrentInstance() {
+  return hostStack[hostStack.length - 1] ?? null;
+}
+
+/**
  * Create a context with a default value. The returned token is passed to
  * `<ContextProvider context={…}>` and `$context(…)`.
  */
