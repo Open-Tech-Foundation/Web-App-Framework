@@ -79,10 +79,10 @@ export function loadProject() {
     }
   }
 
-  // forms-demo depends on @opentf/web-form, which is not yet ported to the new
-  // runtime (it lands with the Project Graph). Override with EXCLUDE_ROUTES.
+  // Route directories to skip during discovery — comma-separated names in
+  // EXCLUDE_ROUTES. None are excluded by default.
   const exclude = new Set(
-    (process.env.EXCLUDE_ROUTES ?? "forms-demo").split(",").filter(Boolean),
+    (process.env.EXCLUDE_ROUTES ?? "").split(",").filter(Boolean),
   );
 
   return { root, appDir, webEntry, otfwc, workspace, exclude };
