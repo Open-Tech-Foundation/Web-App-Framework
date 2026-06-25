@@ -24,6 +24,9 @@
  * @property {string} [logo]         URL of the navbar logo image.
  * @property {string} [homeUrl]      Where the navbar brand links to (default "/").
  * @property {string} [github]       GitHub URL (shown in the navbar).
+ * @property {string} [repoUrl]      Source repository URL. When set (with `lastUpdated`),
+ *                            each docs page gets an "Edit this page" link to its file on
+ *                            GitHub (`<repoUrl>/edit/main/<path>`).
  * @property {string} [dir]          Docs content folder under app/ (default "docs").
  * @property {DocsNavLink[]} [nav]   Top-level navbar links.
  * @property {DocsFooter} [footer]   Footer content.

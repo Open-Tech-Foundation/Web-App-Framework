@@ -216,8 +216,9 @@ body {
   align-items: center;
   gap: 0.5rem;
 }
-/* GitHub link and theme toggle are uniform square icon buttons, so the whole right
- * cluster (links + icons) reads as one centered row. */
+/* GitHub link and theme toggle are uniform ghost icon buttons (no border/fill, subtle
+ * hover background), so the whole right cluster (links + icons) reads as one aligned
+ * row. */
 .otfw-navbar-icon {
   display: inline-flex;
   align-items: center;
@@ -225,15 +226,76 @@ body {
   width: 2rem;
   height: 2rem;
   padding: 0;
+  border: none;
+  background: none;
   border-radius: 0.5rem;
   color: var(--otfw-text-muted);
+  cursor: pointer;
+  font-family: inherit;
 }
 .otfw-navbar-icon:hover {
   color: var(--otfw-text);
   background: var(--otfw-bg-surface);
 }
 
-.otfw-theme-toggle,
+/* Theme switcher: trigger reuses `.otfw-navbar-icon` so it matches the GitHub button;
+ * it just grows a little to fit the System-mode pair of icons, and anchors the menu. */
+.otfw-theme {
+  position: relative;
+  display: inline-flex;
+}
+.otfw-theme-trigger {
+  width: auto;
+  min-width: 2rem;
+  padding: 0 0.3rem;
+}
+.otfw-theme-trigger-system {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+.otfw-theme-trigger-badge {
+  display: inline-flex;
+  opacity: 0.85;
+}
+.otfw-theme-menu {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 60;
+  min-width: 9rem;
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  background: var(--otfw-bg-elevated);
+  border: 1px solid var(--otfw-border);
+  border-radius: 0.6rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+}
+.otfw-theme-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  background: none;
+  border-radius: 0.4rem;
+  color: var(--otfw-text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.otfw-theme-item:hover {
+  background: var(--otfw-bg-surface);
+  color: var(--otfw-text);
+}
+.otfw-theme-item.is-active {
+  color: var(--otfw-accent);
+  font-weight: 600;
+}
+
 .otfw-search-trigger {
   display: inline-flex;
   align-items: center;
@@ -244,21 +306,12 @@ body {
   border-radius: 0.5rem;
   cursor: pointer;
   font-family: inherit;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.82rem;
 }
-.otfw-theme-toggle {
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  justify-content: center;
-}
-.otfw-theme-toggle:hover,
 .otfw-search-trigger:hover {
   color: var(--otfw-accent);
   border-color: var(--otfw-accent);
-}
-.otfw-search-trigger {
-  padding: 0.4rem 0.65rem;
-  font-size: 0.82rem;
 }
 .otfw-search-label {
   display: none;
@@ -317,12 +370,36 @@ body {
   font-size: 1rem;
   color: var(--otfw-text);
 }
-.otfw-search-esc {
+/* Keyboard hint row beneath the input / results. */
+.otfw-search-hint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--otfw-border);
+  color: var(--otfw-text-muted);
+  font-size: 0.72rem;
+}
+.otfw-search-hint-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.otfw-search-hint kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.3rem;
+  height: 1.3rem;
+  padding: 0 0.35rem;
   border: 1px solid var(--otfw-border);
+  border-bottom-width: 2px;
   border-radius: 0.3rem;
-  padding: 0.1rem 0.4rem;
-  font-size: 0.7rem;
+  background: var(--otfw-bg-surface);
+  color: var(--otfw-text);
   font-family: var(--otfw-mono);
+  font-size: 0.7rem;
+  line-height: 1;
 }
 .otfw-search-results {
   list-style: none;
@@ -852,9 +929,20 @@ body {
   color: var(--otfw-accent);
 }
 
-/* ── Last updated ──────────────────────────────────────────────────────────── */
-.otfw-last-updated {
+/* ── Page meta (last updated · edit link) ──────────────────────────────────── */
+.otfw-page-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
   margin-top: 2.5rem;
+}
+/* Empty when a page has neither bit of meta — collapse the top margin then. */
+.otfw-page-meta:empty {
+  margin-top: 0;
+}
+.otfw-last-updated {
   font-size: 0.8rem;
   color: var(--otfw-text-muted);
 }
@@ -862,8 +950,19 @@ body {
   font-weight: 600;
   color: var(--otfw-text);
 }
-/* When followed by pagination, let the pagination's own top margin carry the gap. */
-.otfw-last-updated + .otfw-pagination {
+.otfw-edit-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--otfw-text-muted);
+  text-decoration: none;
+}
+.otfw-edit-page:hover {
+  color: var(--otfw-accent);
+}
+.otfw-page-meta + .otfw-pagination {
   margin-top: 1.5rem;
 }
 
@@ -1101,6 +1200,38 @@ body {
 .otfw-table th {
   background: var(--otfw-bg-surface);
   font-weight: 600;
+}
+
+/* ── Cards (index grids, e.g. the API overview) ────────────────────────────── */
+.otfw-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+.otfw-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--otfw-border);
+  border-radius: 0.75rem;
+  background: var(--otfw-bg-surface);
+  text-decoration: none;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.otfw-card:hover {
+  border-color: var(--otfw-accent);
+  transform: translateY(-2px);
+}
+.otfw-card-title {
+  font-weight: 700;
+  color: var(--otfw-text);
+}
+.otfw-card-desc {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--otfw-text-muted);
 }
 
 /* ── Blog ──────────────────────────────────────────────────────────────────── */

@@ -4,6 +4,18 @@
 
 ### Added
 
+- Theme switcher is now a subtle dropdown (Light / Dark / System) instead of a 2-state
+  toggle. The chosen mode persists; System follows the OS and live-updates. In System
+  mode the trigger shows the monitor icon plus a small badge of the resolved icon
+  (sun/moon). The trigger is a ghost icon button matching the GitHub action, so the
+  navbar's right cluster reads as one aligned row.
+- `Cards` / `Card` components — a responsive grid of link tiles for index pages.
+- "Edit this page" link on docs pages. When `docs.repoUrl` is set, `lastUpdatedPlugin`
+  also emits an `editPaths` map (route → repo-relative file), and `DocsLayout` renders a
+  GitHub edit link beside the "Last updated" line.
+- Search modal shows a keyboard-shortcut hint (↑↓ navigate · ↵ select · esc close)
+  under the input, and blog posts now carry a `breadcrumb` search-meta so a blog result
+  reads the same as a docs result.
 - "Last updated" per-page timestamps. A new `lastUpdatedPlugin` resolves
   `@opentf/web-docs/updated` to a build-time `{ [routePath]: ISO }` map, sourced from
   each file's **last git commit** (or a `lastUpdated` frontmatter override; `false`
@@ -36,6 +48,9 @@
 
 ### Fixed
 
+- A `null`-returning component is no longer instantiated by the layout — `LastUpdated`
+  renders only when there's a date, so SSG never serializes the literal string "null"
+  into an otherwise-empty page-meta slot.
 - Blog post TOC now stays pinned while scrolling. The TOC column is a `<web-toc>`
   custom-element host, and the blog post grid set `align-items: start`, so the host
   shrank to its content height and its inner `position: sticky` nav had no travel room

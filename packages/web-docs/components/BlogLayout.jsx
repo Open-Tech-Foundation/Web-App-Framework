@@ -46,12 +46,16 @@ export default function BlogLayout(props) {
     <div class="otfw-blog otfw-blog-post">
       {/* `otfw-content` so the shared Toc can read this article's headings. */}
       <main id="otfw-content" class="otfw-blog-main" data-pagefind-body>
-        <Link href={indexPath} class="otfw-blog-back">
+        {/* Give blog posts a search breadcrumb too (docs get theirs from <Breadcrumbs>),
+            so a result looks the same whether it's a doc or a post. Inline `key:value`
+            syntax sets the meta literally, independent of visible text. */}
+        <span data-pagefind-meta="breadcrumb:Blog" hidden></span>
+        <Link href={indexPath} class="otfw-blog-back" data-pagefind-ignore>
           ← {config.title ? `${config.title} Blog` : "Blog"}
         </Link>
         <PostBanner post={post} />
         <article class="otfw-prose">{props.children}</article>
-        <LastUpdated date={editedIso} />
+        {editedIso ? <LastUpdated date={editedIso} /> : null}
       </main>
       <Toc />
     </div>

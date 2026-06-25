@@ -158,7 +158,6 @@ export default function Search() {
             value={query}
             oninput={(e) => (query = e.target.value)}
           />
-          <kbd class="otfw-search-esc">Esc</kbd>
         </div>
         <ul class="otfw-search-results">
           {results.map((r, i) => (
@@ -184,6 +183,21 @@ export default function Search() {
         {query.trim() && !loading && results.length === 0 ? (
           <div class="otfw-search-empty">No results for “{query}”.</div>
         ) : null}
+        <div class="otfw-search-hint">
+          <span class="otfw-search-hint-item">
+            <kbd>↑</kbd>
+            <kbd>↓</kbd>
+            navigate
+          </span>
+          <span class="otfw-search-hint-item">
+            <kbd>↵</kbd>
+            select
+          </span>
+          <span class="otfw-search-hint-item">
+            <kbd>esc</kbd>
+            close
+          </span>
+        </div>
       </div>
     </div>
     </Portal>

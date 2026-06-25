@@ -7,8 +7,9 @@
 // The same map is needed by the SSG step for the `article:modified_time` SEO tag, so
 // the scan is exposed as a callable (`loadLastUpdated`) too.
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 import { readFrontmatter } from "./frontmatter.js";
 import { resolveLastUpdated } from "./last-updated.js";
@@ -34,9 +35,14 @@ export function lastUpdatedPlugin({ appDir, sections = [], exclude = new Set() }
     load(id) {
       if (id !== RESOLVED_ID) return null;
       const watch = [];
-      const map = collect(appDir, sections, exclude, watch);
+      const { updated, editPaths } = collect(appDir, sections, exclude, watch);
       for (const f of watch) this.addWatchFile?.(f);
-      return `export default ${JSON.stringify(map)};\n`;
+      // Default export: the `{ route: ISO }` last-updated map. Named `editPaths`:
+      // `{ route: repo-relative-file }`, for building "Edit this page" links.
+      return (
+        `export default ${JSON.stringify(updated)};\n` +
+        `export const editPaths = ${JSON.stringify(editPaths)};\n`
+      );
     },
   };
 }
@@ -46,11 +52,26 @@ export function lastUpdatedPlugin({ appDir, sections = [], exclude = new Set() }
  * step). Mirrors what the virtual module exposes.
  */
 export function loadLastUpdated({ appDir, sections = [], exclude = new Set() } = {}) {
-  return collect(appDir, sections, exclude, []);
+  return collect(appDir, sections, exclude, []).updated;
+}
+
+/** Git repo root containing `dir`, or null (so edit links degrade gracefully). */
+function gitRoot(dir) {
+  try {
+    return execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: dir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 function collect(appDir, sections, exclude, watch) {
-  const map = {};
+  const updated = {};
+  const editPaths = {};
+  const root0 = gitRoot(appDir);
   for (const { dir } of sections) {
     const atRoot = dir === "." || dir === "";
     const root = atRoot ? appDir : join(appDir, dir);
@@ -60,10 +81,12 @@ function collect(appDir, sections, exclude, watch) {
       watch.push(file);
       const fm = MD_RE.test(file) ? readFrontmatter(file) : {};
       const iso = resolveLastUpdated(file, fm.lastUpdated);
-      if (iso) map[route] = iso;
+      if (iso) updated[route] = iso;
+      // Repo-relative path (POSIX separators) for the "Edit this page" link.
+      if (root0) editPaths[route] = relative(root0, file).split(/[\\/]/).join("/");
     });
   }
-  return map;
+  return { updated, editPaths };
 }
 
 /** Recursively find every `page.*` under `root`, mapping it to its route path. */
