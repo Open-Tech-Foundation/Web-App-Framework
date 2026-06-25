@@ -26,7 +26,7 @@ function BasicForm() {
   const form = createForm({
     initialValues: { username: "", email: "" },
     validator: zodResolver(schema),
-    mode: "onChange",
+    mode: "onBlur",
   });
 
   const onSubmit = async (values) => {
@@ -39,7 +39,7 @@ function BasicForm() {
       <section class="bg-slate-800/20 backdrop-blur-2xl p-8 rounded-3xl border border-slate-700/50 shadow-2xl">
         <div class="mb-6">
           <h2 class="text-2xl font-black text-white tracking-tight">Basic account</h2>
-          <p class="text-slate-500 text-xs font-medium">Live Zod validation · onChange mode</p>
+          <p class="text-slate-500 text-xs font-medium">Zod validation · validates on blur</p>
         </div>
 
         <div class="grid grid-cols-3 gap-3 mb-8">
@@ -97,7 +97,7 @@ function ComplexForm() {
       preferences: { newsletter: true },
     },
     validator: zodResolver(schema),
-    mode: "onChange",
+    mode: "onBlur",
   });
 
   const addSkill = () => form.values.skills.push("");
