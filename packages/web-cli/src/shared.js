@@ -138,18 +138,54 @@ export async function loadDocsPlugins(root, appDir, config, exclude = new Set())
   if (!docs && !blog) return [];
   try {
     const entry = Bun.resolveSync("@opentf/web-docs/build", root);
-    const { docsNavPlugin, blogPostsPlugin } = await import(pathToFileURL(entry).href);
+    const { docsNavPlugin, blogPostsPlugin, lastUpdatedPlugin } = await import(
+      pathToFileURL(entry).href
+    );
     const plugins = [];
     // Resolves `@opentf/web-docs/nav` to the generated sidebar tree.
     if (docs) plugins.push(docsNavPlugin({ appDir, contentDir: docs.dir ?? "docs", exclude }));
     // Resolves `@opentf/web-docs/posts` to the generated post list.
     if (blog) plugins.push(blogPostsPlugin({ appDir, contentDir: blog.dir ?? "blog", exclude }));
+    // Resolves `@opentf/web-docs/updated` to the per-page last-updated map, for the
+    // sections that opt in (`docs.lastUpdated` / `blog.lastUpdated`).
+    const sections = lastUpdatedSections(config);
+    if (sections.length) plugins.push(lastUpdatedPlugin({ appDir, sections, exclude }));
     return plugins;
   } catch (e) {
     console.warn(
       `⚠ docs/blog config present but @opentf/web-docs could not be loaded: ${e?.message ?? e}`,
     );
     return [];
+  }
+}
+
+/**
+ * Content sections that opt into "last updated" tracking — `{ dir }` for each of
+ * `docs` / `blog` whose config sets `lastUpdated: true`. Empty when neither does.
+ */
+export function lastUpdatedSections(config) {
+  const sections = [];
+  if (config?.docs?.lastUpdated) sections.push({ dir: config.docs.dir ?? "docs" });
+  if (config?.blog?.lastUpdated) sections.push({ dir: config.blog.dir ?? "blog" });
+  return sections;
+}
+
+/**
+ * Build the `{ [routePath]: ISO }` last-updated map for the opted-in sections (the
+ * same map the `@opentf/web-docs/updated` virtual module exposes). Used by the SSG step
+ * to emit `article:modified_time`. Returns `{}` when nothing opts in or the package
+ * can't be loaded.
+ */
+export async function runLastUpdated(root, appDir, config, exclude = new Set()) {
+  const sections = lastUpdatedSections(config);
+  if (!sections.length) return {};
+  try {
+    const entry = Bun.resolveSync("@opentf/web-docs/build", root);
+    const { loadLastUpdated } = await import(pathToFileURL(entry).href);
+    return loadLastUpdated({ appDir, sections, exclude });
+  } catch (e) {
+    console.warn(`⚠ last-updated map skipped: ${e?.message ?? e}`);
+    return {};
   }
 }
 

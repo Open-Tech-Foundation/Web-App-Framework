@@ -9,6 +9,7 @@
     "./config": "./config.js",
     "./nav": "./nav-virtual.js",
     "./posts": "./posts-virtual.js",
+    "./updated": "./updated-virtual.js",
     "./build": "./build/index.js"
   },
   "files": [
@@ -16,6 +17,7 @@
     "config.js",
     "nav-virtual.js",
     "posts-virtual.js",
+    "updated-virtual.js",
     "components",
     "theme",
     "build",

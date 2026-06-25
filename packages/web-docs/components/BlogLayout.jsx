@@ -17,11 +17,21 @@
 // The layout factory re-runs on every navigation (the router rebuilds the route +
 // layout chain), so reading `router.pathname` resolves to the page being shown.
 import { Link, router } from "@opentf/web";
+import updated from "@opentf/web-docs/updated";
 
 import Navbar from "./Navbar.jsx";
 import Footer from "./Footer.jsx";
 import Toc from "./Toc.jsx";
 import PostBanner from "./PostBanner.jsx";
+import LastUpdated from "./LastUpdated.jsx";
+
+// True when the post was edited after it was published (different calendar day), so a
+// "Last updated" line adds information rather than echoing the publish date.
+function editedAfterPublish(iso, published) {
+  if (!iso) return false;
+  if (!published) return true;
+  return new Date(iso).toDateString() !== new Date(published).toDateString();
+}
 
 export default function BlogLayout(props) {
   const config = props.config || {};
@@ -30,6 +40,7 @@ export default function BlogLayout(props) {
   const indexPath = props.indexPath || "/blog";
 
   const post = posts.find((p) => p.path === router.pathname);
+  const editedIso = post && editedAfterPublish(updated[post.path], post.date) ? updated[post.path] : null;
 
   const body = post ? (
     <div class="otfw-blog otfw-blog-post">
@@ -40,6 +51,7 @@ export default function BlogLayout(props) {
         </Link>
         <PostBanner post={post} />
         <article class="otfw-prose">{props.children}</article>
+        <LastUpdated date={editedIso} />
       </main>
       <Toc />
     </div>

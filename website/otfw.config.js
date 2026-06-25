@@ -11,6 +11,9 @@ export default defineDocsConfig({
     version: "v0.4.0",
     logo: "/logo.png",
     dir: "docs",
+    // Show a "Last updated" line per page, sourced from each file's last git commit
+    // (or a `lastUpdated` frontmatter override).
+    lastUpdated: true,
     github: "https://github.com/Open-Tech-Foundation/Web-App-Framework",
     nav: [
       { label: "Home", href: "/" },
@@ -27,5 +30,7 @@ export default defineDocsConfig({
   // frontmatter) for the index and the post banners.
   blog: {
     dir: "blog",
+    // Show "Last updated" on a post when it was edited after its publish date.
+    lastUpdated: true,
   },
 });

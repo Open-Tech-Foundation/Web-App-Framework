@@ -10,12 +10,16 @@
 // `frame={false}` when nesting inside an existing site layout that already provides
 // the navbar/footer — only the sidebar · content · TOC grid is rendered.
 
+import { router } from "@opentf/web";
+import updated from "@opentf/web-docs/updated";
+
 import Navbar from "./Navbar.jsx";
 import Sidebar from "./Sidebar.jsx";
 import Toc from "./Toc.jsx";
 import Footer from "./Footer.jsx";
 import Breadcrumbs from "./Breadcrumbs.jsx";
 import Pagination from "./Pagination.jsx";
+import LastUpdated from "./LastUpdated.jsx";
 
 // Code blocks own their copy behavior now: MDX fences compile to the
 // `web-internal-code-block` built-in and `<CodeBlock>` wires `onclick` directly, so a
@@ -26,12 +30,17 @@ export default function DocsLayout(props) {
   const nav = props.nav || [];
   const frame = props.frame !== false;
 
+  // Last-updated time for the current page, looked up in the build-time map keyed by
+  // route (same exact-path match Pagination uses). `$derived` so it tracks navigation.
+  const lastUpdated = $derived(updated[router.pathname]);
+
   const body = (
     <div class="otfw-docs">
       <Sidebar nav={nav} config={config} />
       <main id="otfw-content" class="otfw-content" data-pagefind-body>
         <Breadcrumbs nav={nav} />
         <article class="otfw-prose">{props.children}</article>
+        <LastUpdated date={lastUpdated} />
         <Pagination nav={nav} />
       </main>
       <Toc />

@@ -4,6 +4,15 @@
 
 ### Added
 
+- "Last updated" per-page timestamps. A new `lastUpdatedPlugin` resolves
+  `@opentf/web-docs/updated` to a build-time `{ [routePath]: ISO }` map, sourced from
+  each file's **last git commit** (or a `lastUpdated` frontmatter override; `false`
+  hides a page) — no file-mtime fallback, so the time always reflects a real content
+  change. Opt in with `docs.lastUpdated` / `blog.lastUpdated`. New `<LastUpdated>`
+  component; `DocsLayout` renders it under the article, and a blog post shows it only
+  when edited after its publish date. `loadLastUpdated` (the callable scan) is exported
+  from `@opentf/web-docs/build` for the SSG `article:modified_time` tag. The shared
+  `formatDate` helper moved to `components/format.js`.
 - Blog RSS feed. `loadPosts({ appDir, contentDir })` (the `blogPostsPlugin`'s scan,
   exposed as a callable) and `renderBlogFeed({ posts, baseUrl, channel })` (a pure RSS
   2.0 renderer) are exported from `@opentf/web-docs/build`. `otfw build` writes

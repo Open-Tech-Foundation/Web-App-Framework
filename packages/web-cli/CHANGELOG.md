@@ -4,6 +4,11 @@
 
 ### Added
 
+- `otfw build` / `otfw dev` register the `@opentf/web-docs` last-updated plugin when a
+  section opts in (`docs.lastUpdated` / `blog.lastUpdated`), resolving
+  `@opentf/web-docs/updated` to the per-page git/frontmatter timestamp map. During SSG,
+  `runLastUpdated` builds the same map and `runPrerender` injects an
+  `article:modified_time` meta tag into each page that has one.
 - `otfw build` generates the blog RSS feed. When a project has a `blog` block and a
   base URL (`--base-url` or `site.url`), `runBlogFeed` scans the posts via
   `@opentf/web-docs/build` and writes `dist/<blogDir>/rss.xml` after the `public/` copy

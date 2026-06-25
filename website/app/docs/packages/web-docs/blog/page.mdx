@@ -107,6 +107,7 @@ export default function BlogIndex() {
 | `cover` | string | Cover image (banner + card). |
 | `tags` | string | Comma-separated; rendered as chips. |
 | `order` | number | Overrides date ordering when present. |
+| `lastUpdated` | string \| false | Override the updated date, or `false` to never show it. |
 
 <Callout type="info" title="Frontmatter is flat">
   Values are scalars (string/number/boolean). `tags` is a comma-separated string that
@@ -140,6 +141,14 @@ Posts are indexed automatically. `BlogLayout` marks the post article with
 `data-pagefind-body`, so `otfw build --ssg` picks blog posts up in the same Pagefind
 index as your docs — no extra configuration. The index page is intentionally not
 indexed (it's just a list of links).
+
+## Last updated
+
+Set `blog.lastUpdated: true` to show a "Last updated" line on a post — but only when it
+was edited *after* its publish `date`, so a freshly published post stays clean. The date
+comes from the file's last git commit (or a `lastUpdated` frontmatter override). See
+[Configuration → Last updated](/docs/packages/web-docs/configuration) for the details
+this shares with docs pages.
 
 ## RSS feed
 

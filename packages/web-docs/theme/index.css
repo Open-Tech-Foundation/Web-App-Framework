@@ -852,6 +852,21 @@ body {
   color: var(--otfw-accent);
 }
 
+/* ── Last updated ──────────────────────────────────────────────────────────── */
+.otfw-last-updated {
+  margin-top: 2.5rem;
+  font-size: 0.8rem;
+  color: var(--otfw-text-muted);
+}
+.otfw-last-updated-time {
+  font-weight: 600;
+  color: var(--otfw-text);
+}
+/* When followed by pagination, let the pagination's own top margin carry the gap. */
+.otfw-last-updated + .otfw-pagination {
+  margin-top: 1.5rem;
+}
+
 /* ── Pagination ────────────────────────────────────────────────────────────── */
 .otfw-pagination {
   display: flex;

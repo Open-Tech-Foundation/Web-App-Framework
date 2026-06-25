@@ -64,3 +64,32 @@ Per-page frontmatter controls how a page shows up:
 | `description` | Meta description for SEO. |
 | `sidebar_label` | Overrides the sidebar text when it should differ from `title`. |
 | `order` | Tie-breaks ordering among siblings. |
+| `lastUpdated` | Override the "Last updated" date, or `false` to hide it on this page. |
+
+## Last updated
+
+Set `docs.lastUpdated: true` to show a "Last updated on …" line at the foot of each
+page. The date comes from the file's **last git commit** — no manual bookkeeping, and
+it reflects when the content actually changed:
+
+```js
+export default defineDocsConfig({
+  docs: {
+    // …
+    lastUpdated: true,
+  },
+});
+```
+
+The same SSG build also emits an Open Graph `article:modified_time` meta tag per page,
+so crawlers see the modification date.
+
+<Callout type="info" title="Overrides and git history">
+  A `lastUpdated:` value in a page's frontmatter pins the date (any `YYYY-MM-DD` works);
+  `lastUpdated: false` hides the line for that page. If the file isn't in git history
+  (e.g. a shallow CI clone — use `fetch-depth: 0`), the line is simply omitted; there is
+  no file-mtime fallback, since mtime doesn't track content changes.
+</Callout>
+
+The blog supports the same option: `blog.lastUpdated: true` adds the line to a post
+only when it was edited *after* its publish date, so a fresh post stays clean.

@@ -27,6 +27,7 @@ import {
   otfwPlugin,
   runBlogFeed,
   runDocsSearchIndex,
+  runLastUpdated,
 } from "./shared.js";
 import { fmtMs, step } from "./reporter.js";
 
@@ -145,6 +146,8 @@ export async function runBuild() {
   if (process.argv.includes("--ssg")) {
     const baseUrl = resolveBaseUrl(config);
     const { runPrerender } = await import("./prerender.js");
+    // Per-page last-updated map (git/frontmatter) for the article:modified_time tag.
+    const lastUpdated = await runLastUpdated(root, appDir, config, exclude);
     const ssgStep = step("Pre-rendering pages");
     let ssgCompiled = 0;
     ssg = await runPrerender({
@@ -156,6 +159,7 @@ export async function runBuild() {
       outDir,
       baseUrl,
       docsPlugins,
+      lastUpdated,
       onCompile: (id) => ssgStep.update(`compiling ${basename(id)}  (${++ssgCompiled})`),
       onRender: (done, total) => ssgStep.update(`rendering ${done}/${total}`),
     });

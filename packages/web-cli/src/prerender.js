@@ -85,7 +85,7 @@ function escapeXml(s) {
  * Pre-render the app to static HTML files under `outDir`. Returns
  * `{ count, skipped, failed }`.
  */
-export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", docsPlugins = [], onCompile, onRender }) {
+export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", docsPlugins = [], lastUpdated = {}, onCompile, onRender }) {
   const tmp = join(root, ".otfw-ssg");
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "ssg-entry.js");
@@ -122,7 +122,11 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
     onRender?.(++renderedCount, paths.length);
     try {
       const { html, metadata } = (await mod.renderRoute(path, params)) ?? { html: "", metadata: {} };
-      const head = mod.renderHead(metadata, { path, baseUrl });
+      let head = mod.renderHead(metadata, { path, baseUrl });
+      // SEO: expose the page's last-updated time (git/frontmatter) as Open Graph's
+      // article:modified_time so crawlers see when the content actually changed.
+      const iso = lastUpdated[path];
+      if (iso) head += `\n<meta property="article:modified_time" content="${escapeXml(iso)}">`;
       const file = htmlPathFor(outDir, path);
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, injectMarkup(injectHead(shellHtml, head), html));

@@ -2,15 +2,7 @@
 // `@opentf/web-docs/posts`) as `post`, or the fields directly. Missing fields are
 // omitted. Used in both the post banner and the index cards.
 import ReadingTime from "./ReadingTime.jsx";
-
-// `2026-06-24` → `June 24, 2026`. Falls back to the raw string for anything the
-// Date constructor can't parse, so a non-ISO `date` still renders.
-function formatDate(value) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-}
+import { formatDate } from "./format.js";
 
 export default function PostMeta(props) {
   const post = props.post || props;
