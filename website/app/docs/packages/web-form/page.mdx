@@ -40,8 +40,8 @@ export function LoginForm() {
 }
 ```
 
-`register(path)` spreads the four bindings a field needs — `name`, `value`,
-`oninput`, and `onblur` — so a controlled input is one line.
+`register(path)` spreads everything a field needs — `name`, `value`, `checked`,
+`error`, `isTouched`, `oninput`, and `onblur` — so a controlled input is one line.
 
 <Callout type="tip" title="Works with any input">
   `register` follows the standard `value` / `oninput` contract, so it binds native

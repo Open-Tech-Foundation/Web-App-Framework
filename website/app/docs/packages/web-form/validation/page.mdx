@@ -69,9 +69,12 @@ The `mode` option controls the trigger:
 
 | `mode` | Validates… |
 | --- | --- |
-| `onSubmit` | only on submit (default). |
-| `onBlur` | when a field loses focus, and on submit. |
+| `onBlur` | when a field loses focus, and on submit (**default**). |
 | `onChange` | on every keystroke, and immediately on mount. |
+| `onSubmit` | only on submit. |
+
+Once a field has an error, `reValidateMode` (`"onChange"` default, or `"onBlur"`)
+controls when it is re-checked as the user fixes it.
 
 ```jsx
 const form = createForm({

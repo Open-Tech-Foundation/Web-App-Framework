@@ -10,9 +10,10 @@ description: createForm options, the returned form object, and the register bind
 | Option | Type | Description |
 | --- | --- | --- |
 | `initialValues` | `object` | The starting form state. Defines the shape for `register` paths. |
-| `validator` | `(values) => { errors }` | Returns path-keyed errors (may be async). |
-| `mode` | `"onSubmit" \| "onBlur" \| "onChange"` | When to validate. Default `onSubmit`. |
-| `reValidateMode` | `"onSubmit" \| "onBlur" \| "onChange"` | When to re-validate after the first error. |
+| `validate` | `(values) => errors` | Returns the path-keyed errors object directly (may be async). |
+| `validator` | `(values) => { errors }` | Returns `{ errors }` — convenient for schema resolvers (may be async). |
+| `mode` | `"onChange" \| "onBlur" \| "onSubmit"` | When to validate. Default `"onBlur"`. |
+| `reValidateMode` | `"onChange" \| "onBlur"` | When to re-validate after the first error. Default `"onChange"`. |
 
 Returns a stable `form` object.
 
@@ -52,7 +53,7 @@ Returns a stable `form` object.
 | Prop | Purpose |
 | --- | --- |
 | `name` | The field path. |
-| `value` | Current value (bound to the field's signal). |
+| `value` | Current value, read reactively from the values store. |
 | `checked` | Same signal, for checkbox/radio inputs. |
 | `error` | Current error for this path, if any. |
 | `isTouched` | Whether this field has been blurred. |
