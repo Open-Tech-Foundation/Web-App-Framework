@@ -4,7 +4,7 @@ description: A reactive, path-based form engine for OTF Web — signal-bound fie
 ---
 
 import { Callout } from "@opentf/web-docs";
-import LiveForm from "./LiveForm.jsx";
+import FlightDemo from "./FlightDemo.jsx";
 
 # @opentf/web-form
 
@@ -12,9 +12,10 @@ A high-performance form engine built on OTF Web's signals. Fields bind directly 
 state, updates are surgical (no re-render), and deeply nested values are addressed by
 path string.
 
-Try it — type, blur a field, watch the live state on the right:
+A full multi-step booking flow on one shared form — tap through it and watch the live
+state on the right:
 
-<LiveForm />
+<FlightDemo />
 
 ```bash
 bun add @opentf/web-form
