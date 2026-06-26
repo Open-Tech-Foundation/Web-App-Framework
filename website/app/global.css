@@ -23,6 +23,13 @@ html {
   display: block;
 }
 
+/* Flight-booking demo: make native date inputs adopt the active theme so the
+ * calendar picker indicator stays visible in dark mode (it's near-black on the
+ * dark surface by default). */
+[data-theme='dark'] .web-flight-demo input[type='date'] {
+  color-scheme: dark;
+}
+
 /* "Output" frame for a live, running snippet result (docs intro). */
 .demo-output {
   position: relative;

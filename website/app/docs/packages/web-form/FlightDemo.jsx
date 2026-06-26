@@ -41,6 +41,7 @@ export default function FlightDemo() {
   let step = $state(0);
   let devTab = $state("values");
   let promoState = $state("");
+  let triedNext = $state(false);
 
   const form = createForm({
     mode: "onBlur",
@@ -62,8 +63,8 @@ export default function FlightDemo() {
       const e = {};
       const t = v.travelers.map((p) => {
         const o = {};
-        if (!p.firstName.trim()) o.firstName = "Required";
-        if (!p.lastName.trim()) o.lastName = "Required";
+        if (!p.firstName.trim()) o.firstName = "*Required";
+        if (!p.lastName.trim()) o.lastName = "*Required";
         return o;
       });
       if (t.some((o) => o.firstName || o.lastName)) e.travelers = t;
@@ -108,8 +109,18 @@ export default function FlightDemo() {
     return true;
   };
 
-  const next = () => (step = Math.min(STEPS.length - 1, step + 1));
-  const back = () => (step = Math.max(0, step - 1));
+  const next = () => {
+    if (!stepOk(step)) {
+      triedNext = true; // reveal the missing-field messages instead of blocking
+      return;
+    }
+    triedNext = false;
+    step = Math.min(STEPS.length - 1, step + 1);
+  };
+  const back = () => {
+    triedNext = false;
+    step = Math.max(0, step - 1);
+  };
 
   const onSubmit = async (values) => {
     await new Promise((r) => setTimeout(r, 1400));
@@ -120,13 +131,13 @@ export default function FlightDemo() {
     <div class="not-prose my-6 rounded-3xl border border-[var(--border)] bg-[var(--bg-main)] p-5 sm:p-6 text-[var(--text-main)]">
       <div class="flex items-center justify-center gap-3 mb-6 pb-5 border-b border-[var(--border)]">
         <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500/25 to-sky-500/10 border border-indigo-500/30 grid place-items-center text-indigo-500 shrink-0">
-          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="w-6 h-6 block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />
           </svg>
         </div>
-        <h3 class="text-[var(--text-main)] font-black text-xl leading-tight flex items-center gap-2">
+        <h3 class="my-0 text-[var(--text-main)] font-black text-xl leading-none flex items-center gap-2">
           Flight Booking Form
-          <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-500 font-bold uppercase tracking-widest">Demo</span>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-500 font-bold uppercase tracking-widest leading-none">Demo</span>
         </h3>
       </div>
 
@@ -137,7 +148,11 @@ export default function FlightDemo() {
               {i < step ? "✓" : i + 1}
             </span>
             <span class={i <= step ? "text-xs font-bold uppercase tracking-wider text-indigo-600 hidden sm:inline" : "text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] hidden sm:inline"}>{label}</span>
-            {i < STEPS.length - 1 && <span class="w-5 h-px bg-[var(--border)]"></span>}
+            {i < STEPS.length - 1 && (
+              <span class="relative w-6 sm:w-8 h-0.5 rounded-full bg-[var(--border)] overflow-hidden shrink-0">
+                <span class={"absolute inset-y-0 left-0 rounded-full bg-indigo-500 transition-[width] duration-500 ease-out " + (i < step ? "w-full" : "w-0")}></span>
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -165,11 +180,13 @@ export default function FlightDemo() {
                 <div>
                   <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Departure</label>
                   <input type="date" {...form.register("depart")} class={field} />
+                  {triedNext && !form.values.depart && <span class="text-[10px] text-red-500 font-bold">*Required</span>}
                 </div>
                 {form.values.tripType === "round" && (
                   <div>
                     <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Return</label>
                     <input type="date" {...form.register("ret")} class={field} />
+                    {triedNext && !form.values.ret && <span class="text-[10px] text-red-500 font-bold">*Required</span>}
                   </div>
                 )}
               </div>
@@ -195,6 +212,7 @@ export default function FlightDemo() {
 
           {step === 1 && (
             <div class="space-y-3">
+              {triedNext && !form.values.flightId && <p class="text-[11px] text-red-500 font-bold">*Please select a flight to continue.</p>}
               {FLIGHTS.map((f) => (
                 <button type="button" onclick={() => (form.values.flightId = f.id)} class={form.values.flightId === f.id ? cardOn + " w-full" : cardOff + " w-full"}>
                   <div class="flex items-center justify-between">
@@ -220,11 +238,11 @@ export default function FlightDemo() {
                   <div class="grid grid-cols-2 gap-3">
                     <div>
                       <input {...form.register(`travelers.${i}.firstName`)} placeholder="First name" class={field} />
-                      {form.errors.travelers?.[i]?.firstName && <span class="text-[10px] text-red-500 font-bold">{form.errors.travelers[i].firstName}</span>}
+                      {((triedNext && !form.values.travelers[i].firstName) || form.errors.travelers?.[i]?.firstName) && <span class="text-[10px] text-red-500 font-bold">*Required</span>}
                     </div>
                     <div>
                       <input {...form.register(`travelers.${i}.lastName`)} placeholder="Last name" class={field} />
-                      {form.errors.travelers?.[i]?.lastName && <span class="text-[10px] text-red-500 font-bold">{form.errors.travelers[i].lastName}</span>}
+                      {((triedNext && !form.values.travelers[i].lastName) || form.errors.travelers?.[i]?.lastName) && <span class="text-[10px] text-red-500 font-bold">*Required</span>}
                     </div>
                   </div>
                 </div>
@@ -254,6 +272,7 @@ export default function FlightDemo() {
                   </button>
                 ))}
               </div>
+              {triedNext && !form.values.cardId && <p class="text-[11px] text-red-500 font-bold">*Please choose a card to pay with.</p>}
               <div>
                 <div class="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2">Promo code</div>
                 <div class="flex gap-2">
@@ -263,10 +282,13 @@ export default function FlightDemo() {
                 {promoState === "ok" && <p class="text-[11px] text-emerald-600 font-bold mt-1">FLY10 applied — 10% off.</p>}
                 {promoState === "bad" && <p class="text-[11px] text-red-500 font-bold mt-1">Invalid promo code.</p>}
               </div>
-              <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" {...form.register("agree")} />
-                <span class="text-sm text-[var(--text-muted)]">I agree to the fare rules and terms.</span>
-              </label>
+              <div>
+                <label class="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" {...form.register("agree")} />
+                  <span class="text-sm text-[var(--text-muted)]">I agree to the fare rules and terms.</span>
+                </label>
+                {triedNext && !form.values.agree && <span class="text-[10px] text-red-500 font-bold">*Please accept to continue.</span>}
+              </div>
             </div>
           )}
 
@@ -291,7 +313,7 @@ export default function FlightDemo() {
             <div class="flex items-center gap-4">
               {flight() && <span class="text-[var(--text-main)] font-black">{usd(fare())}</span>}
               {step < STEPS.length - 1 ? (
-                <button type="button" onclick={next} disabled={!stepOk(step)} class="px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed">Continue</button>
+                <button type="button" onclick={next} class="px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500">Continue</button>
               ) : (
                 <button type="button" onclick={form.handleSubmit(onSubmit)} disabled={form.isSubmitting} class="px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-500 disabled:opacity-50">{form.isSubmitting ? "Booking…" : "Confirm booking"}</button>
               )}
