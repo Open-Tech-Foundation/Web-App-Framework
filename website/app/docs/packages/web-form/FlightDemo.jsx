@@ -150,10 +150,12 @@ export default function FlightDemo() {
             <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />
           </svg>
         </div>
-        <h3 class="my-0 text-[var(--text-main)] font-black text-xl leading-none flex items-center gap-2">
+        {/* A <div>, not an <h3>: the docs prose theme injects heading margins
+            that would offset this title from the icon's vertical center. */}
+        <div class="text-[var(--text-main)] font-black text-xl leading-none flex items-center gap-2">
           Flight Booking Form
-          <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-500 font-bold uppercase tracking-widest leading-none">Demo</span>
-        </h3>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-accent/15 text-accent font-bold uppercase tracking-widest leading-none">Demo</span>
+        </div>
       </div>
 
       <div class="flex items-center gap-2 mb-6 overflow-x-auto">
