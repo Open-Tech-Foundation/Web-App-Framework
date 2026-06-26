@@ -31,9 +31,15 @@ const STEPS = ["Search", "Flight", "Travelers", "Payment", "Review"];
 const card = "rounded-2xl border p-4 cursor-pointer transition-all text-left";
 const cardOn = card + " border-indigo-500 bg-indigo-500/10 ring-1 ring-indigo-500/40";
 const cardOff = card + " border-[var(--border)] bg-[var(--bg-surface)] hover:border-indigo-400/60";
+// Toggle chips read as a *segmented / tonal* control (soft indigo fill, indigo
+// outline) so they stay visually distinct from the solid filled primary CTA.
 const chip = "px-4 py-2 rounded-xl text-sm font-bold border transition-all";
-const chipOn = chip + " bg-indigo-600 text-white border-indigo-500";
+const chipOn = chip + " bg-indigo-500/15 text-indigo-500 border-indigo-500 ring-1 ring-indigo-500/30";
 const chipOff = chip + " text-[var(--text-muted)] border-[var(--border)] hover:border-indigo-400/60";
+// Button variants: solid = primary action, ghost = secondary, soft = tertiary.
+const btnPrimary = "px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 shadow-lg shadow-indigo-600/25 transition-all";
+const btnConfirm = "px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-500 shadow-lg shadow-emerald-600/25 transition-all disabled:opacity-50 disabled:shadow-none";
+const btnGhost = "px-5 py-2.5 rounded-xl border border-[var(--border)] text-[var(--text-main)] font-bold text-sm hover:border-indigo-400 hover:text-indigo-500 transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-[var(--border)] disabled:hover:text-[var(--text-main)]";
 const field = "w-full px-3 py-2.5 rounded-xl border bg-[var(--bg-main)] text-[var(--text-main)] text-sm outline-none border-[var(--border)] focus:border-indigo-500/60 transition-all";
 const usd = (n) => "$" + n.toLocaleString("en-US");
 
@@ -57,6 +63,7 @@ export default function FlightDemo() {
       travelers: [{ firstName: "", lastName: "" }],
       extras: { baggage: false, meal: false, insurance: false },
       cardId: "",
+      promo: "",
       agree: false,
     },
     validate: (v) => {
@@ -127,8 +134,16 @@ export default function FlightDemo() {
     console.log("Booking confirmed:", values);
   };
 
+  // Start over: clears the form (and isSubmitted) and returns to step one.
+  const resetBooking = () => {
+    form.reset();
+    step = 0;
+    promoState = "";
+    triedNext = false;
+  };
+
   return (
-    <div class="not-prose my-6 rounded-3xl border border-[var(--border)] bg-[var(--bg-main)] p-5 sm:p-6 text-[var(--text-main)]">
+    <div class="not-prose mt-6 mb-12 rounded-3xl border border-[var(--border)] bg-[var(--bg-main)] p-5 sm:p-6 text-[var(--text-main)]">
       <div class="flex items-center justify-center gap-3 mb-6 pb-5 border-b border-[var(--border)]">
         <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500/25 to-sky-500/10 border border-indigo-500/30 grid place-items-center text-indigo-500 shrink-0">
           <svg class="w-6 h-6 block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -212,7 +227,7 @@ export default function FlightDemo() {
 
           {step === 1 && (
             <div class="space-y-3">
-              {triedNext && !form.values.flightId && <p class="text-[11px] text-red-500 font-bold">*Please select a flight to continue.</p>}
+              {triedNext && !form.values.flightId && <p class="text-xs text-red-500 font-bold flex items-center gap-1.5"><span class="inline-block w-1.5 h-1.5 rounded-full bg-red-500 shrink-0"></span>Please select a flight to continue.</p>}
               {FLIGHTS.map((f) => (
                 <button type="button" onclick={() => (form.values.flightId = f.id)} class={form.values.flightId === f.id ? cardOn + " w-full" : cardOff + " w-full"}>
                   <div class="flex items-center justify-between">
@@ -272,7 +287,7 @@ export default function FlightDemo() {
                   </button>
                 ))}
               </div>
-              {triedNext && !form.values.cardId && <p class="text-[11px] text-red-500 font-bold">*Please choose a card to pay with.</p>}
+              {triedNext && !form.values.cardId && <p class="text-xs text-red-500 font-bold flex items-center gap-1.5"><span class="inline-block w-1.5 h-1.5 rounded-full bg-red-500 shrink-0"></span>Please choose a card to pay with.</p>}
               <div>
                 <div class="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2">Promo code</div>
                 <div class="flex gap-2">
@@ -287,7 +302,7 @@ export default function FlightDemo() {
                   <input type="checkbox" {...form.register("agree")} />
                   <span class="text-sm text-[var(--text-muted)]">I agree to the fare rules and terms.</span>
                 </label>
-                {triedNext && !form.values.agree && <span class="text-[10px] text-red-500 font-bold">*Please accept to continue.</span>}
+                {triedNext && !form.values.agree && <p class="mt-1 text-xs text-red-500 font-bold flex items-center gap-1.5"><span class="inline-block w-1.5 h-1.5 rounded-full bg-red-500 shrink-0"></span>Please accept the terms to continue.</p>}
               </div>
             </div>
           )}
@@ -309,13 +324,15 @@ export default function FlightDemo() {
           )}
 
           <div class="flex items-center justify-between mt-8 pt-6 border-t border-[var(--border)]">
-            <button type="button" onclick={back} disabled={step === 0} class="px-5 py-2.5 rounded-xl border border-[var(--border)] text-[var(--text-main)] font-bold text-sm disabled:opacity-30 disabled:cursor-not-allowed">Back</button>
+            <button type="button" onclick={back} disabled={step === 0} class={btnGhost}>Back</button>
             <div class="flex items-center gap-4">
               {flight() && <span class="text-[var(--text-main)] font-black">{usd(fare())}</span>}
               {step < STEPS.length - 1 ? (
-                <button type="button" onclick={next} class="px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500">Continue</button>
+                <button type="button" onclick={next} class={btnPrimary}>Continue</button>
+              ) : form.isSubmitted ? (
+                <button type="button" onclick={resetBooking} class={btnPrimary}>＋ New booking</button>
               ) : (
-                <button type="button" onclick={form.handleSubmit(onSubmit)} disabled={form.isSubmitting} class="px-6 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-500 disabled:opacity-50">{form.isSubmitting ? "Booking…" : "Confirm booking"}</button>
+                <button type="button" onclick={form.handleSubmit(onSubmit)} disabled={form.isSubmitting} class={btnConfirm}>{form.isSubmitting ? "Booking…" : "Confirm booking"}</button>
               )}
             </div>
           </div>
