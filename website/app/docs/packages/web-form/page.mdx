@@ -5,6 +5,9 @@ description: A reactive, path-based form engine for OTF Web — signal-bound fie
 
 import { Callout } from "@opentf/web-docs";
 import FlightDemo from "./FlightDemo.jsx";
+import LoginMini from "./LoginMini.jsx";
+import ReactiveMini from "./ReactiveMini.jsx";
+import StatusMini from "./StatusMini.jsx";
 
 # @opentf/web-form
 
@@ -50,6 +53,10 @@ export function LoginForm() {
 }
 ```
 
+The same form, running live:
+
+<LoginMini />
+
 `register(path)` spreads everything a field needs — `name`, `value`, `checked`,
 `error`, `isTouched`, `oninput`, and `onblur` — so a controlled input is one line.
 
@@ -68,6 +75,8 @@ they are reactive proxies, so only the nodes that read a changed path update.
 <p>Hello, {form.values.email || "stranger"}</p>
 {form.errors.email ? <span class="error">{form.errors.email}</span> : null}
 ```
+
+<ReactiveMini />
 
 ## Status flags
 
@@ -88,6 +97,8 @@ The form exposes derived flags for submit buttons and UI state:
   {form.isSubmitting ? "Saving…" : "Save"}
 </button>
 ```
+
+<StatusMini />
 
 Next: [Validation](/docs/packages/web-form/validation) ·
 [Nested State](/docs/packages/web-form/nested-state) ·

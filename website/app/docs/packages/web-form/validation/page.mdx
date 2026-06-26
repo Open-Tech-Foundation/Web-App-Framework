@@ -4,11 +4,16 @@ description: Validate with a plain function or a schema library like Zod, and co
 ---
 
 import { Callout } from "@opentf/web-docs";
+import ValidationMini from "./ValidationMini.jsx";
 
 # Validation
 
 A validator is any function that receives the current values and returns an `errors`
 object keyed by field path. Return an empty object when everything is valid.
+
+Try it — flip the `mode` knob and watch when errors appear:
+
+<ValidationMini />
 
 ```jsx
 const form = createForm({

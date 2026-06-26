@@ -4,11 +4,16 @@ description: Address deeply nested objects and arrays with path strings for fine
 ---
 
 import { Callout } from "@opentf/web-docs";
+import NestedMini from "./NestedMini.jsx";
 
 # Nested State
 
 web-form addresses state by **path string**, so objects and arrays nest to any depth
 without special wiring. A write touches only the signals along that path.
+
+Edit the nested object and the dynamic array below — the live JSON tracks every path:
+
+<NestedMini />
 
 ```jsx
 const form = createForm({
