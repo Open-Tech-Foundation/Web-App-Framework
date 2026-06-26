@@ -2,7 +2,8 @@ import { createForm } from "@opentf/web-form";
 
 // The Flight Booking wizard, embedded in the docs as the hero demo. One shared
 // form across every step; mostly tap-to-pick UI; a live Dev Panel mirrors the
-// form's reactive state. Self-styled (dark demo frame) via Tailwind utilities.
+// form's reactive state. Surfaces use the docs theme variables, so it follows
+// the site's light/dark mode; the Dev Panel stays terminal-dark on purpose.
 
 const AIRPORTS = [
   { code: "BLR", city: "Bengaluru" },
@@ -12,29 +13,29 @@ const AIRPORTS = [
   { code: "JFK", city: "New York" },
 ];
 const FLIGHTS = [
-  { id: "6E1407", airline: "IndiGo", dep: "08:15", arr: "11:40", dur: "3h 25m", stops: "Non-stop", price: 18200 },
-  { id: "EK565", airline: "Emirates", dep: "13:50", arr: "17:05", dur: "3h 15m", stops: "Non-stop", price: 24500 },
-  { id: "AI934", airline: "Air India", dep: "21:30", arr: "01:20", dur: "3h 50m", stops: "1 stop", price: 15800 },
+  { id: "6E1407", airline: "IndiGo", dep: "08:15", arr: "11:40", dur: "3h 25m", stops: "Non-stop", price: 218 },
+  { id: "EK565", airline: "Emirates", dep: "13:50", arr: "17:05", dur: "3h 15m", stops: "Non-stop", price: 295 },
+  { id: "AI934", airline: "Air India", dep: "21:30", arr: "01:20", dur: "3h 50m", stops: "1 stop", price: 189 },
 ];
 const CARDS = [
   { id: "visa", brand: "Visa", last4: "4242", exp: "08/27" },
   { id: "mc", brand: "Mastercard", last4: "5588", exp: "02/26" },
 ];
 const EXTRAS = [
-  { key: "baggage", label: "Extra baggage", price: 1500 },
-  { key: "meal", label: "Hot meal", price: 700 },
-  { key: "insurance", label: "Travel insurance", price: 1100 },
+  { key: "baggage", label: "Extra baggage", price: 18 },
+  { key: "meal", label: "Hot meal", price: 9 },
+  { key: "insurance", label: "Travel insurance", price: 13 },
 ];
 const STEPS = ["Search", "Flight", "Travelers", "Payment", "Review"];
 
 const card = "rounded-2xl border p-4 cursor-pointer transition-all text-left";
 const cardOn = card + " border-indigo-500 bg-indigo-500/10 ring-1 ring-indigo-500/40";
-const cardOff = card + " border-slate-700/60 bg-slate-900/40 hover:border-slate-600";
+const cardOff = card + " border-[var(--border)] bg-[var(--bg-surface)] hover:border-indigo-400/60";
 const chip = "px-4 py-2 rounded-xl text-sm font-bold border transition-all";
 const chipOn = chip + " bg-indigo-600 text-white border-indigo-500";
-const chipOff = chip + " text-slate-300 border-slate-700/60 hover:border-slate-500";
-const field = "w-full px-3 py-2.5 rounded-xl border bg-slate-900/50 text-white text-sm outline-none border-slate-700/60 focus:border-indigo-500/60 transition-all";
-const inr = (n) => "₹" + n.toLocaleString("en-IN");
+const chipOff = chip + " text-[var(--text-muted)] border-[var(--border)] hover:border-indigo-400/60";
+const field = "w-full px-3 py-2.5 rounded-xl border bg-[var(--bg-main)] text-[var(--text-main)] text-sm outline-none border-[var(--border)] focus:border-indigo-500/60 transition-all";
+const usd = (n) => "$" + n.toLocaleString("en-US");
 
 export default function FlightDemo() {
   let step = $state(0);
@@ -83,7 +84,7 @@ export default function FlightDemo() {
   const fare = () => {
     const f = flight();
     if (!f) return 0;
-    const cabinUp = form.values.cabin === "business" ? 12000 : 0;
+    const cabinUp = form.values.cabin === "business" ? 140 : 0;
     let total = (f.price + cabinUp) * form.values.passengers;
     for (const x of EXTRAS) if (form.values.extras[x.key]) total += x.price * form.values.passengers;
     return Math.round(total * (1 - discount()));
@@ -116,36 +117,33 @@ export default function FlightDemo() {
   };
 
   return (
-    <div class="not-prose my-6 rounded-3xl border border-slate-800 bg-slate-950 p-5 sm:p-6 text-slate-200">
-      <div class="flex items-center gap-3 mb-6 pb-5 border-b border-slate-800">
-        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500/25 to-sky-500/10 border border-indigo-500/30 grid place-items-center text-indigo-300 shrink-0">
+    <div class="not-prose my-6 rounded-3xl border border-[var(--border)] bg-[var(--bg-main)] p-5 sm:p-6 text-[var(--text-main)]">
+      <div class="flex items-center justify-center gap-3 mb-6 pb-5 border-b border-[var(--border)]">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500/25 to-sky-500/10 border border-indigo-500/30 grid place-items-center text-indigo-500 shrink-0">
           <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />
           </svg>
         </div>
-        <div>
-          <h3 class="text-white font-black text-xl leading-tight flex items-center gap-2">
-            Flight Booking Form
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold uppercase tracking-widest">Demo</span>
-          </h3>
-          <p class="text-slate-500 text-xs font-medium mt-0.5">Built with <span class="text-indigo-400 font-mono">@opentf/web-form</span></p>
-        </div>
+        <h3 class="text-[var(--text-main)] font-black text-xl leading-tight flex items-center gap-2">
+          Flight Booking Form
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-500 font-bold uppercase tracking-widest">Demo</span>
+        </h3>
       </div>
 
       <div class="flex items-center gap-2 mb-6 overflow-x-auto">
         {STEPS.map((label, i) => (
           <div class="flex items-center gap-2 shrink-0">
-            <span class={i < step ? "w-7 h-7 rounded-full grid place-items-center text-xs font-black bg-indigo-600 text-white" : i === step ? "w-7 h-7 rounded-full grid place-items-center text-xs font-black border-2 border-indigo-500 text-indigo-400" : "w-7 h-7 rounded-full grid place-items-center text-xs font-black border border-slate-700 text-slate-600"}>
+            <span class={i < step ? "w-7 h-7 rounded-full grid place-items-center text-xs font-black bg-indigo-600 text-white" : i === step ? "w-7 h-7 rounded-full grid place-items-center text-xs font-black border-2 border-indigo-500 text-indigo-600" : "w-7 h-7 rounded-full grid place-items-center text-xs font-black border border-[var(--border)] text-[var(--text-muted)]"}>
               {i < step ? "✓" : i + 1}
             </span>
-            <span class={i <= step ? "text-xs font-bold uppercase tracking-wider text-indigo-400 hidden sm:inline" : "text-xs font-bold uppercase tracking-wider text-slate-600 hidden sm:inline"}>{label}</span>
-            {i < STEPS.length - 1 && <span class="w-5 h-px bg-slate-700"></span>}
+            <span class={i <= step ? "text-xs font-bold uppercase tracking-wider text-indigo-600 hidden sm:inline" : "text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] hidden sm:inline"}>{label}</span>
+            {i < STEPS.length - 1 && <span class="w-5 h-px bg-[var(--border)]"></span>}
           </div>
         ))}
       </div>
 
       <div class="grid xl:grid-cols-[1fr_300px] gap-6 items-start">
-        <section class="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 min-h-[380px]">
+        <section class="bg-[var(--bg-surface)] border border-[var(--border)] rounded-2xl p-5 min-h-[380px]">
           {step === 0 && (
             <div class="space-y-5">
               <div class="flex gap-2">
@@ -154,38 +152,38 @@ export default function FlightDemo() {
               </div>
               <div class="grid grid-cols-2 gap-4">
                 <div>
-                  <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">From</label>
+                  <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">From</label>
                   <select {...form.register("from")} class={field}>{AIRPORTS.map((a) => <option value={a.code}>{a.code} · {a.city}</option>)}</select>
                 </div>
                 <div>
-                  <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">To</label>
+                  <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">To</label>
                   <select {...form.register("to")} class={field}>{AIRPORTS.map((a) => <option value={a.code}>{a.code} · {a.city}</option>)}</select>
                 </div>
               </div>
-              {form.values.from === form.values.to && <p class="text-[11px] text-red-400 font-bold">Origin and destination can't match.</p>}
+              {form.values.from === form.values.to && <p class="text-[11px] text-red-500 font-bold">Origin and destination can't match.</p>}
               <div class="grid grid-cols-2 gap-4">
                 <div>
-                  <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Departure</label>
+                  <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Departure</label>
                   <input type="date" {...form.register("depart")} class={field} />
                 </div>
                 {form.values.tripType === "round" && (
                   <div>
-                    <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Return</label>
+                    <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Return</label>
                     <input type="date" {...form.register("ret")} class={field} />
                   </div>
                 )}
               </div>
               <div class="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Passengers</label>
+                  <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1">Passengers</label>
                   <div class="flex items-center gap-3">
-                    <button type="button" onclick={() => setPax(form.values.passengers - 1)} class="w-9 h-9 rounded-xl border border-slate-700 text-slate-300 text-lg">−</button>
-                    <span class="w-8 text-center text-white font-bold text-lg">{form.values.passengers}</span>
-                    <button type="button" onclick={() => setPax(form.values.passengers + 1)} class="w-9 h-9 rounded-xl border border-slate-700 text-slate-300 text-lg">+</button>
+                    <button type="button" onclick={() => setPax(form.values.passengers - 1)} class="w-9 h-9 rounded-xl border border-[var(--border)] text-[var(--text-main)] text-lg">−</button>
+                    <span class="w-8 text-center text-[var(--text-main)] font-bold text-lg">{form.values.passengers}</span>
+                    <button type="button" onclick={() => setPax(form.values.passengers + 1)} class="w-9 h-9 rounded-xl border border-[var(--border)] text-[var(--text-main)] text-lg">+</button>
                   </div>
                 </div>
                 <div>
-                  <label class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Cabin</label>
+                  <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1">Cabin</label>
                   <div class="flex gap-2">
                     <button type="button" onclick={() => (form.values.cabin = "economy")} class={form.values.cabin === "economy" ? chipOn : chipOff}>Economy</button>
                     <button type="button" onclick={() => (form.values.cabin = "business")} class={form.values.cabin === "business" ? chipOn : chipOff}>Business</button>
@@ -201,12 +199,12 @@ export default function FlightDemo() {
                 <button type="button" onclick={() => (form.values.flightId = f.id)} class={form.values.flightId === f.id ? cardOn + " w-full" : cardOff + " w-full"}>
                   <div class="flex items-center justify-between">
                     <div>
-                      <div class="text-white font-bold">{f.airline} <span class="text-slate-500 text-xs font-medium">{f.id}</span></div>
-                      <div class="text-slate-400 text-sm mt-1">{f.dep} → {f.arr} · {f.dur} · {f.stops}</div>
+                      <div class="text-[var(--text-main)] font-bold">{f.airline} <span class="text-[var(--text-muted)] text-xs font-medium">{f.id}</span></div>
+                      <div class="text-[var(--text-muted)] text-sm mt-1">{f.dep} → {f.arr} · {f.dur} · {f.stops}</div>
                     </div>
                     <div class="text-right">
-                      <div class="text-white font-black text-lg">{inr(form.values.cabin === "business" ? f.price + 12000 : f.price)}</div>
-                      <div class="text-[10px] text-slate-500 uppercase tracking-wider">per traveler</div>
+                      <div class="text-[var(--text-main)] font-black text-lg">{usd(form.values.cabin === "business" ? f.price + 140 : f.price)}</div>
+                      <div class="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">per traveler</div>
                     </div>
                   </div>
                 </button>
@@ -217,25 +215,25 @@ export default function FlightDemo() {
           {step === 2 && (
             <div class="space-y-5">
               {form.values.travelers.map((_, i) => (
-                <div class="rounded-2xl border border-slate-700/50 p-4">
-                  <div class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3">Traveler {i + 1}</div>
+                <div class="rounded-2xl border border-[var(--border)] p-4">
+                  <div class="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-3">Traveler {i + 1}</div>
                   <div class="grid grid-cols-2 gap-3">
                     <div>
                       <input {...form.register(`travelers.${i}.firstName`)} placeholder="First name" class={field} />
-                      {form.errors.travelers?.[i]?.firstName && <span class="text-[10px] text-red-400 font-bold">{form.errors.travelers[i].firstName}</span>}
+                      {form.errors.travelers?.[i]?.firstName && <span class="text-[10px] text-red-500 font-bold">{form.errors.travelers[i].firstName}</span>}
                     </div>
                     <div>
                       <input {...form.register(`travelers.${i}.lastName`)} placeholder="Last name" class={field} />
-                      {form.errors.travelers?.[i]?.lastName && <span class="text-[10px] text-red-400 font-bold">{form.errors.travelers[i].lastName}</span>}
+                      {form.errors.travelers?.[i]?.lastName && <span class="text-[10px] text-red-500 font-bold">{form.errors.travelers[i].lastName}</span>}
                     </div>
                   </div>
                 </div>
               ))}
               <div>
-                <div class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2">Add-ons</div>
+                <div class="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2">Add-ons</div>
                 <div class="flex flex-wrap gap-2">
                   {EXTRAS.map((x) => (
-                    <button type="button" onclick={() => (form.values.extras[x.key] = !form.values.extras[x.key])} class={form.values.extras[x.key] ? chipOn : chipOff}>{x.label} · {inr(x.price)}</button>
+                    <button type="button" onclick={() => (form.values.extras[x.key] = !form.values.extras[x.key])} class={form.values.extras[x.key] ? chipOn : chipOff}>{x.label} · {usd(x.price)}</button>
                   ))}
                 </div>
               </div>
@@ -244,30 +242,30 @@ export default function FlightDemo() {
 
           {step === 3 && (
             <div class="space-y-5">
-              <div class="text-[11px] font-black text-slate-500 uppercase tracking-widest">Saved cards</div>
+              <div class="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-widest">Saved cards</div>
               <div class="grid sm:grid-cols-2 gap-3">
                 {CARDS.map((c) => (
                   <button type="button" onclick={() => (form.values.cardId = c.id)} class={form.values.cardId === c.id ? cardOn : cardOff}>
                     <div class="flex items-center justify-between">
-                      <span class="text-white font-bold">{c.brand}</span>
-                      <span class="text-[10px] text-slate-500 uppercase">{c.exp}</span>
+                      <span class="text-[var(--text-main)] font-bold">{c.brand}</span>
+                      <span class="text-[10px] text-[var(--text-muted)] uppercase">{c.exp}</span>
                     </div>
-                    <div class="text-slate-300 font-mono mt-3 tracking-widest">•••• {c.last4}</div>
+                    <div class="text-[var(--text-muted)] font-mono mt-3 tracking-widest">•••• {c.last4}</div>
                   </button>
                 ))}
               </div>
               <div>
-                <div class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2">Promo code</div>
+                <div class="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2">Promo code</div>
                 <div class="flex gap-2">
                   <input {...form.register("promo")} placeholder="Try FLY10" class={field + " flex-1"} />
-                  <button type="button" onclick={applyPromo} class="px-4 rounded-xl bg-slate-700 text-white text-sm font-bold hover:bg-slate-600">{promoState === "checking" ? "…" : "Apply"}</button>
+                  <button type="button" onclick={applyPromo} class="px-4 rounded-xl border border-[var(--border)] bg-[var(--bg-main)] text-[var(--text-main)] text-sm font-bold hover:border-indigo-400">{promoState === "checking" ? "…" : "Apply"}</button>
                 </div>
-                {promoState === "ok" && <p class="text-[11px] text-emerald-400 font-bold mt-1">FLY10 applied — 10% off.</p>}
-                {promoState === "bad" && <p class="text-[11px] text-red-400 font-bold mt-1">Invalid promo code.</p>}
+                {promoState === "ok" && <p class="text-[11px] text-emerald-600 font-bold mt-1">FLY10 applied — 10% off.</p>}
+                {promoState === "bad" && <p class="text-[11px] text-red-500 font-bold mt-1">Invalid promo code.</p>}
               </div>
               <label class="flex items-center gap-3 cursor-pointer">
                 <input type="checkbox" {...form.register("agree")} />
-                <span class="text-sm text-slate-300">I agree to the fare rules and terms.</span>
+                <span class="text-sm text-[var(--text-muted)]">I agree to the fare rules and terms.</span>
               </label>
             </div>
           )}
@@ -280,18 +278,18 @@ export default function FlightDemo() {
               <Row k="Cabin" v={`${form.values.cabin} · ${form.values.passengers} traveler(s)`} />
               <Row k="Travelers" v={form.values.travelers.map((t) => `${t.firstName} ${t.lastName}`).join(", ")} />
               <Row k="Payment" v={`•••• ${(CARDS.find((c) => c.id === form.values.cardId) || {}).last4 || "—"}`} />
-              <div class="flex items-center justify-between pt-4 border-t border-slate-700/50">
-                <span class="text-slate-400 font-bold">Total fare</span>
-                <span class="text-2xl font-black text-white">{inr(fare())}</span>
+              <div class="flex items-center justify-between pt-4 border-t border-[var(--border)]">
+                <span class="text-[var(--text-muted)] font-bold">Total fare</span>
+                <span class="text-2xl font-black text-[var(--text-main)]">{usd(fare())}</span>
               </div>
-              {form.isSubmitted && <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center text-sm font-bold text-emerald-400">🎉 Booking confirmed!</div>}
+              {form.isSubmitted && <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center text-sm font-bold text-emerald-600">🎉 Booking confirmed!</div>}
             </div>
           )}
 
-          <div class="flex items-center justify-between mt-8 pt-6 border-t border-slate-800">
-            <button type="button" onclick={back} disabled={step === 0} class="px-5 py-2.5 rounded-xl border border-slate-700 text-slate-300 font-bold text-sm disabled:opacity-30 disabled:cursor-not-allowed">Back</button>
+          <div class="flex items-center justify-between mt-8 pt-6 border-t border-[var(--border)]">
+            <button type="button" onclick={back} disabled={step === 0} class="px-5 py-2.5 rounded-xl border border-[var(--border)] text-[var(--text-main)] font-bold text-sm disabled:opacity-30 disabled:cursor-not-allowed">Back</button>
             <div class="flex items-center gap-4">
-              {flight() && <span class="text-white font-black">{inr(fare())}</span>}
+              {flight() && <span class="text-[var(--text-main)] font-black">{usd(fare())}</span>}
               {step < STEPS.length - 1 ? (
                 <button type="button" onclick={next} disabled={!stepOk(step)} class="px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed">Continue</button>
               ) : (
@@ -301,17 +299,18 @@ export default function FlightDemo() {
           </div>
         </section>
 
-        <aside class="bg-black/40 border border-slate-800 rounded-2xl overflow-hidden">
+        <aside class="bg-[var(--code-bg)] border border-[var(--border)] rounded-2xl overflow-hidden">
           <div class="flex border-b border-slate-800 text-[11px] font-bold">
             {["values", "errors", "touched", "payload"].map((t) => (
               <button type="button" onclick={() => (devTab = t)} class={devTab === t ? "flex-1 py-2.5 text-indigo-400 bg-indigo-500/10 uppercase tracking-wider" : "flex-1 py-2.5 text-slate-500 hover:text-slate-300 uppercase tracking-wider"}>{t}</button>
             ))}
           </div>
+          {devTab === "payload" && <div class="px-4 pt-3 text-[10px] text-slate-500 leading-snug">The object you'd POST on submit — live <span class="text-slate-300">values</span> plus computed <span class="text-slate-300">total</span> / <span class="text-slate-300">valid</span> / <span class="text-slate-300">dirty</span>.</div>}
           <pre class="text-[11px] font-mono p-4 text-slate-300 overflow-auto max-h-[420px] leading-relaxed">
             {devTab === "values" && JSON.stringify(form.values, null, 2)}
             {devTab === "errors" && JSON.stringify(form.errors, null, 2)}
             {devTab === "touched" && JSON.stringify(form.touched, null, 2)}
-            {devTab === "payload" && JSON.stringify({ fare: fare(), valid: form.isValid, dirty: form.isChanged, ...form.values }, null, 2)}
+            {devTab === "payload" && JSON.stringify({ total: fare(), valid: form.isValid, dirty: form.isChanged, ...form.values }, null, 2)}
           </pre>
         </aside>
       </div>
@@ -322,8 +321,8 @@ export default function FlightDemo() {
 function Row({ k, v }) {
   return (
     <div class="flex items-start justify-between gap-4">
-      <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{k}</span>
-      <span class="text-sm text-slate-200 text-right">{v}</span>
+      <span class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">{k}</span>
+      <span class="text-sm text-[var(--text-main)] text-right">{v}</span>
     </div>
   );
 }
