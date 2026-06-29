@@ -1,0 +1,6 @@
+[test]
+env = "happy-dom"
+preload = ["../web-test/setup.js"]
+
+[jsx]
+runtime = "classic"

@@ -7,6 +7,7 @@
 import ThemeToggle from "./ThemeToggle.jsx";
 import SearchTrigger from "./SearchTrigger.jsx";
 import Search from "./Search.jsx";
+import SidebarToggle from "./SidebarToggle.jsx";
 import NavbarLink from "./NavbarLink.jsx";
 import NavIcon from "./NavIcon.jsx";
 import { Link } from "@opentf/web";
@@ -18,11 +19,14 @@ export default function Navbar(props) {
   return (
     <header class="otfw-navbar">
       <div class="otfw-navbar-inner">
-        <Link href={config.homeUrl || "/"} class="otfw-navbar-brand">
-          {config.logo ? <img src={config.logo} alt="" class="otfw-navbar-logo" /> : null}
-          <span class="otfw-navbar-title">{config.title || "Docs"}</span>
-          {config.version ? <span class="otfw-navbar-version">{config.version}</span> : null}
-        </Link>
+        <div class="otfw-navbar-lead">
+          <SidebarToggle />
+          <Link href={config.homeUrl || "/"} class="otfw-navbar-brand">
+            {config.logo ? <img src={config.logo} alt="" class="otfw-navbar-logo" /> : null}
+            <span class="otfw-navbar-title">{config.title || "Docs"}</span>
+            {config.version ? <span class="otfw-navbar-version">{config.version}</span> : null}
+          </Link>
+        </div>
 
         <div class="otfw-navbar-search">
           {config.search ? <SearchTrigger /> : null}

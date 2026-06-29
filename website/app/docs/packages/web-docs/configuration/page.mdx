@@ -54,6 +54,27 @@ export default {
   from `_meta.js` and it still appears — just alphabetically, using a humanized name.
 </Callout>
 
+## Mobile navigation
+
+On screens narrower than **768px** the sidebar doesn't fit beside the content, so it
+becomes an **off-canvas drawer**. A hamburger button appears at the start of the navbar
+and slides the sidebar in over a dimmed backdrop:
+
+- It shows **only** on small screens, and **only** on pages that have a sidebar (docs
+  and other `DocsLayout` sections) — never on a plain marketing page.
+- The drawer **locks page scroll** while open and closes on navigation, <kbd>Esc</kbd>,
+  a tap on the backdrop, or a resize back up to desktop width.
+- `prefers-reduced-motion` disables the slide animation.
+
+This is automatic — there's nothing to configure. On desktop the sidebar is the sticky
+column as usual.
+
+<Callout type="note" title="Works across layouts">
+  The burger lives in the navbar and the drawer in the docs grid, which may be separate
+  layouts. They stay in sync through a small global toggle and an `otfw:sidebar` event,
+  so the button's open/closed state is always correct.
+</Callout>
+
 ## Page frontmatter
 
 Per-page frontmatter controls how a page shows up:

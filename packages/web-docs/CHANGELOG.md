@@ -4,6 +4,15 @@
 
 ### Added
 
+- **Mobile navigation drawer.** Below 768px the sidebar is now reachable: it becomes an
+  off-canvas drawer opened by a hamburger button in the navbar (shown only on small
+  screens, and only on pages that actually have a sidebar). The drawer slides in over a
+  backdrop, locks body scroll while open, and closes on navigation, Escape, a backdrop
+  tap, or a resize up to the desktop breakpoint; `prefers-reduced-motion` disables the
+  slide. On desktop the same element is the sticky column as before. The new
+  `SidebarToggle` (the burger) is decoupled from `Sidebar` the way `SearchTrigger` is
+  from `Search` — a global toggle plus an `otfw:sidebar` event keep `aria-expanded` in
+  sync — so it works even when the navbar and sidebar live in different layouts.
 - Multiple doc sections with **zero config**. Any top-level folder under `app/` that has
   a layout rendering `DocsLayout` is its own section (e.g. `app/api` → `/api`) with its
   own generated sidebar, breadcrumbs, prev/next, search, and `lastUpdated`/edit links —

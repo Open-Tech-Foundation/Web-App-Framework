@@ -38,6 +38,7 @@ import "./components/ReadingTime.jsx";
 export { default as DocsLayout } from "./components/DocsLayout.jsx";
 export { default as Navbar } from "./components/Navbar.jsx";
 export { default as NavbarLink } from "./components/NavbarLink.jsx";
+export { default as SidebarToggle } from "./components/SidebarToggle.jsx";
 export { default as NavIcon } from "./components/NavIcon.jsx";
 export { default as Sidebar } from "./components/Sidebar.jsx";
 export { default as Toc } from "./components/Toc.jsx";

@@ -69,7 +69,6 @@ body {
  * the compiler stamps on every component (the element tag itself is module-hashed
  * to stay collision-free, so it is not a reliable selector). */
 .web-docs-layout,
-.web-sidebar,
 .web-toc,
 .web-footer,
 .web-breadcrumbs,
@@ -82,11 +81,17 @@ body {
 }
 /* The navbar host must be transparent so its sticky <header> sticks to the page
  * scroll container, not to its own wrapper. Link hosts are transparent so the inner
- * <a> participates directly in the navbar/list flex layout. */
+ * <a> participates directly in the navbar/list flex layout. The sidebar host (and its
+ * shell wrapper) are transparent so the inner <aside> is the docs-grid column on
+ * desktop and a fixed off-canvas drawer on mobile; the burger host so the button sits
+ * directly in the navbar lead flow. */
 .web-navbar,
 .web-navbar-link,
 .web-link,
-.web-sidebar-node {
+.web-sidebar-node,
+.web-sidebar,
+.web-sidebar-toggle,
+.otfw-sidebar-shell {
   display: contents;
 }
 
@@ -247,6 +252,26 @@ body {
 .otfw-navbar-icon:hover {
   color: var(--otfw-text);
   background: var(--otfw-bg-surface);
+}
+
+/* Left zone of the navbar: an optional mobile drawer burger followed by the brand. */
+.otfw-navbar-lead {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+/* The burger reuses `.otfw-navbar-icon` styling; this rule (after it, so it wins the
+ * display cascade) hides it except on small screens that actually have a sidebar
+ * mounted — the <Sidebar> sets `data-otfw-has-sidebar` on the root while present. */
+.otfw-navbar-burger {
+  display: none;
+}
+@media (max-width: 767px) {
+  :root[data-otfw-has-sidebar] .otfw-navbar-burger {
+    display: inline-flex;
+  }
 }
 
 /* Theme switcher: trigger reuses `.otfw-navbar-icon` so it matches the GitHub button;
@@ -552,18 +577,69 @@ body {
 }
 
 /* ── Sidebar ───────────────────────────────────────────────────────────────── */
+/* Mobile-first: the sidebar is an off-canvas drawer below the navbar, slid in over a
+ * backdrop. It sits *under* the navbar (z < navbar's 50) so the burger stays tappable
+ * to toggle it. The desktop block below turns it back into the sticky grid column. */
 .otfw-sidebar {
-  display: none;
+  position: fixed;
+  top: var(--otfw-navbar-height);
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  width: min(19rem, 80vw);
+  padding: 1.25rem 1.1rem 2rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--otfw-bg);
+  border-right: 1px solid var(--otfw-border);
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition: transform 0.25s ease, visibility 0.25s ease;
+}
+.otfw-sidebar.is-open {
+  transform: translateX(0);
+  visibility: visible;
+}
+.otfw-sidebar-backdrop {
+  position: fixed;
+  top: var(--otfw-navbar-height);
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 39;
+  background: color-mix(in srgb, var(--otfw-text) 45%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.otfw-sidebar-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
 }
 @media (min-width: 768px) {
   .otfw-sidebar {
-    display: block;
     position: sticky;
     top: var(--otfw-navbar-height);
+    bottom: auto;
+    left: auto;
+    z-index: auto;
+    width: auto;
     align-self: start;
     max-height: calc(100vh - var(--otfw-navbar-height));
     overflow-y: auto;
     padding: 2rem 0.5rem 2rem 0;
+    background: none;
+    border-right: none;
+    transform: none;
+    visibility: visible;
+  }
+  .otfw-sidebar-backdrop {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .otfw-sidebar,
+  .otfw-sidebar-backdrop {
+    transition: none;
   }
 }
 .otfw-sidebar-list,
