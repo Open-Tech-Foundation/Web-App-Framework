@@ -152,7 +152,7 @@ export function matchRoute(pathname) {
  * Navigate to `path`. Runs an optional route guard, swaps the rendered page
  * (tearing down the previous one's lifecycle), and updates window.history.
  */
-export async function navigate(path, replace = false, isPop = false) {
+export async function navigate(path, replace = false, isPop = false, hydrate = false) {
   if (!path || !rootEl) return;
   const url = new URL(path, window.location.origin);
 
@@ -193,6 +193,28 @@ export async function navigate(path, replace = false, isPop = false) {
   if (!isPop) {
     if (replace) window.history.replaceState({}, "", path);
     else window.history.pushState({}, "", path);
+  }
+
+  // First paint over server-rendered DOM: *adopt* it (hydrate) instead of rebuilding,
+  // when the route module exposes a `hydrate` adopt factory (compiled with the hydrate
+  // target). Only leaf routes (no layout chain) hydrate so far — `{children}`-slot
+  // adoption is a later phase — so anything else falls through to a clean CSR build. A
+  // hydration mismatch is reported (never silent) and also falls through to a rebuild.
+  if (hydrate && match) {
+    try {
+      const mod = typeof match.entry === "function" ? await match.entry() : match.entry;
+      if (mod && typeof mod.hydrate === "function" && layoutChain(match.route).length === 0) {
+        const query = Object.fromEntries(url.searchParams);
+        const node = mod.hydrate(rootEl, { params: match.params, query });
+        currentNodes = [node];
+        runMount(node);
+        clearError({ phase: "route" });
+        return;
+      }
+    } catch (e) {
+      reportError(e, { phase: "hydrate", path: url.pathname });
+      // fall through to a clean CSR build below
+    }
   }
 
   // Resolve (and lazily load) the page + its layout chain before tearing down the
@@ -254,7 +276,21 @@ export function mountApp({ pages, target, guard: g } = {}) {
       ),
     );
   }
-  navigate(window.location.pathname + window.location.search + window.location.hash, true, true);
+  // Hydrate the first paint when the server stamped `data-otfw-hydrate` on the root and
+  // left rendered markup in it; otherwise this is a plain CSR mount (build into #app).
+  const hydrate = !!(
+    isBrowser &&
+    rootEl &&
+    rootEl.firstChild &&
+    typeof rootEl.hasAttribute === "function" &&
+    rootEl.hasAttribute("data-otfw-hydrate")
+  );
+  return navigate(
+    window.location.pathname + window.location.search + window.location.hash,
+    true,
+    true,
+    hydrate,
+  );
 }
 
 // `<Link>` is a pure JSX component (packages/web/components/Link.jsx), compiled by

@@ -38,16 +38,22 @@ function compile(source, target) {
   return proc.stdout.toString();
 }
 
-// Load a module's `export default` factory, injecting the runtime helpers it imports
-// (the emitted code uses bare `@opentf/web` specifiers; we supply the real bindings).
-function loadDefault(code, bindings) {
+// Evaluate an emitted module, injecting the runtime helpers it imports (the code uses
+// bare `@opentf/web` specifiers; we supply the real bindings), and return its exports.
+// The hydrate target is a dual module — `default` (CSR build) + `hydrate` (adopt).
+function loadModule(code, bindings) {
   const body = code
     .split("\n")
     .filter((l) => !l.startsWith("import "))
     .join("\n")
-    .replace("export default function", "return function");
+    .replace(/export default function\s*\(/g, "function __default(")
+    .replace(/export function /g, "function ");
   const names = Object.keys(bindings);
-  return new Function(...names, body)(...names.map((n) => bindings[n]));
+  const ret =
+    "\n; return {" +
+    " default: typeof __default !== 'undefined' ? __default : undefined," +
+    " hydrate: typeof hydrate !== 'undefined' ? hydrate : undefined };";
+  return new Function(...names, body + ret)(...names.map((n) => bindings[n]));
 }
 
 describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
@@ -57,7 +63,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
 
   test("the Hydrate factory adopts the SSG-rendered DOM and wires reactivity onto it", () => {
     // 1. Server render (SSG) → HTML string with text-hole markers.
-    const ssgFactory = loadDefault(compile(source, "ssg"), { signal, ssgText });
+    const ssgFactory = loadModule(compile(source, "ssg"), { signal, ssgText }).default;
     const html = ssgFactory();
     expect(html).toContain("<!--$-->3<!--/-->"); // value bracketed by hydration markers
     expect(html).not.toContain("onclick"); // event handler is client-only, never serialized
@@ -70,8 +76,9 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     const serverText = serverButton.childNodes[2]; // "Count ", <!--$-->, "3", <!--/-->
     expect(serverText.data).toBe("3");
 
-    // 3. Hydrate over the existing container.
-    const hydrate = loadDefault(compile(source, "hydrate"), {
+    // 3. Hydrate over the existing container, using the dual module's `hydrate` export
+    //    (its `default` is the CSR build factory used for client-side navigation).
+    const mod = loadModule(compile(source, "hydrate"), {
       signal,
       bindText,
       cursor,
@@ -79,7 +86,8 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
       claimText,
       skipNode,
     });
-    const root = hydrate(container);
+    expect(typeof mod.default).toBe("function"); // CSR build factory is present too
+    const root = mod.hydrate(container);
 
     // 4. Adoption — the same server nodes were claimed; nothing was re-created.
     expect(root).toBe(serverDiv);

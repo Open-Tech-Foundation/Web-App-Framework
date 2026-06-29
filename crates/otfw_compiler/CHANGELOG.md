@@ -13,10 +13,13 @@ The `[Unreleased]` section is renamed to the new version number at release time.
   the existing nodes with a cursor and `claim`s them by position; the reactivity wiring
   (`bindText`/`bindAttr`/events/`effect`) is the same runtime as CSR, so the backend
   reuses `csr.rs`'s leaf emitters and only node acquisition is new. Reachable via
-  `otfwc build --target=hydrate`. Scope so far: pages/layouts with element/static-text/
-  dynamic-text structure, static & dynamic attributes, `ref`, and events; child
-  components, lists, conditionals, `{children}` slots, and JSX-as-value are reported as
-  diagnostics (Phase 2.1).
+  `otfwc build --target=hydrate`, which emits a **dual module**: the full CSR output
+  (`export default` build factory + Custom Elements, for client navigation) plus a named
+  `export function hydrate(__root, props)` adopt factory per page (for first paint). A
+  page the adopt walk can't handle yet (child components, lists, conditionals,
+  `{children}`, JSX-as-value) gets CSR-only with a warning — it still works, just without
+  hydration. Scope so far: pages/layouts with element/static-text/dynamic-text structure,
+  static & dynamic attributes, `ref`, and events.
 - SSG dynamic text holes now carry hydration markers: a `{value}` is emitted as
   `<!--$-->value<!--/-->` so the client can claim the text node even when the value is
   empty or adjacent to static text. Inert for plain SSG output (an HTML comment).

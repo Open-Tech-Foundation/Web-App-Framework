@@ -4,6 +4,13 @@
 
 ### Added
 
+- Router first-paint hydration boot switch (Phase 2.0 — see `docs/HYDRATION.md` §3.4):
+  `mountApp` detects the server sentinel `data-otfw-hydrate` on the root and, when the
+  route module exposes a `hydrate` adopt factory, the router calls it to *adopt* the
+  server-rendered DOM instead of `replaceChildren()` + rebuild. Only leaf routes (no
+  layout chain) hydrate so far; a missing `hydrate` export, a layout chain, or a thrown
+  mismatch (reported via `reportError`, never silent) falls through to a clean CSR build.
+  `mountApp` now returns the initial navigation promise.
 - Hydration primitives (`runtime/hydrate.js`, Phase 2 foundation — see
   `docs/HYDRATION.md`): a cursor walk that adopts the server DOM instead of rebuilding
   it — `cursor`, `claimElement`, `claimText` (the `<!--$-->…<!--/-->` text-hole scheme),

@@ -114,11 +114,15 @@ the adopt-walk is its own small pass (it must be — claiming is structurally di
 from creating). The shared surface is the runtime contract, which is what actually
 guarantees server/client agreement.
 
-Output shapes:
+Output shapes (the hydrate target is a **dual module** — it emits the full CSR output
+*and* the adopt path, so one client bundle both hydrates first paint and CSR-renders
+client navigations):
 
-- **Page / layout** _(implemented)_ → `export default function (__root, props)`: the
-  router passes the container, the factory adopts its children with a cursor and returns
-  the claimed root.
+- **Page / layout** _(implemented)_ → the CSR `export default` build factory **plus** a
+  named `export function hydrate(__root, props)`: the router calls `hydrate(container,
+  props)` on first paint (adopt) and the default factory on client navigation (build). A
+  page the adopt walk can't handle yet gets CSR-only (no `hydrate` export); it still
+  works, just without hydration.
 - **Component** _(Phase 2.1)_ → a `connectedCallback` that adopts `this.childNodes`
   when `isHydrating()` instead of building a fresh subtree.
 
@@ -131,24 +135,24 @@ There is no separate hydrate *binding* API — the Hydrate backend wires reactiv
 calling the existing `bindText`/`bindAttr` on the **claimed** nodes, since those
 helpers already operate on existing nodes. Only acquisition (the claims) is new.
 
-### 3.4 Client boot switch + custom-element adoption _(the subtle part)_
+### 3.4 Client boot switch + custom-element adoption
 
-When the client bundle runs `customElements.define`, every server-rendered `<web-*>`
-already in the DOM **upgrades and fires `connectedCallback` synchronously** — so
-components self-hydrate as islands. The coordination:
-
-- **`connectedCallback` branches:** _initial hydration **and** has server children_
-  → adopt; otherwise → build. (Today it unconditionally builds, which over a
-  server-rendered host would double the DOM.)
-- **First render hydrates `#app`:** the router's initial render adopts existing
-  children instead of `replaceChildren()` (`runtime/router.js`). Subsequent client
-  navigations keep the CSR build path — there is no server HTML to adopt for a
-  client-navigated route.
-- **A server sentinel** (`<div id="app" data-otfw-ssr>`, stamped by the SSG/SSR
-  shell injection) tells the client to hydrate vs mount.
-- **Flag lifecycle:** `__OTFW_HYDRATING` is set before the defines that trigger
-  upgrades and cleared after the initial pass. This ordering is where hydration bugs
-  live — it gets dedicated tests (§5).
+- **First render hydrates `#app`** _(implemented, leaf routes)_ — `mountApp` detects the
+  server sentinel `data-otfw-hydrate` on the root and, when the route module exposes a
+  `hydrate` factory, the router calls it to adopt the existing children instead of
+  `replaceChildren()` + build (`runtime/router.js`). Subsequent client navigations keep
+  the CSR build path. Only leaf routes (no layout chain) hydrate so far; everything else
+  (and a thrown mismatch) falls through to a clean build. **Pending:** `{children}`-slot
+  adoption so layout chains hydrate.
+- **A server sentinel** — `<div id="app" data-otfw-hydrate>`, to be stamped by the
+  SSG/SSR shell injection when the client bundle was built for the hydrate target
+  (toolchain wiring is the remaining 2.0 step; until then no sentinel ⇒ plain CSR mount,
+  unchanged).
+- **`connectedCallback` branches** _(Phase 2.1)_ — when the client bundle runs
+  `customElements.define`, every server-rendered `<web-*>` upgrades synchronously; its
+  `connectedCallback` will adopt `this.childNodes` when `isHydrating()` (and has server
+  children) instead of building, so components self-hydrate as islands. The
+  `isHydrating` flag primitive exists; the define-time ordering lands with this step.
 
 ### 3.5 Mismatch detection & recovery — per-component _(decided)_
 
@@ -173,7 +177,7 @@ shell for Phase 3 loader-data hydration (TanStack-style), but do not implement i
 
 | Step | Scope |
 |---|---|
-| **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + `hydrate.rs` backend for pages/layouts (element/text/attrs/events) ✓ + `otfwc --target=hydrate` ✓ + ssg→hydrate e2e ✓. **Remaining:** client-boot switch + component (custom-element) adoption + mismatch logging |
+| **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + dual-emit `hydrate.rs` (CSR build + `hydrate` adopt factory for pages) ✓ + `otfwc --target=hydrate` ✓ + router boot switch for leaf routes ✓ + ssg→hydrate & router-boot tests ✓. **Remaining:** toolchain wiring (build a hydrate client bundle + stamp the sentinel, so it's observable in `otfw serve`) + component (custom-element) adoption + `{children}`/layout-chain adoption |
 | **2.1** | variable structure: lists + conditionals hydration |
 | **2.2** | per-component island recovery wired into the dev overlay |
 | **2.3** _(deferred)_ | lazy/partial island directives (`client:idle` / `visible` / `media`) — leveraging the custom-element lifecycle. **Not in Phase 2**; revisited once core hydration is solid. |
