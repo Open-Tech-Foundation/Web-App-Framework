@@ -4,6 +4,14 @@
 
 ### Added
 
+- `otfw serve` — the per-request SSR server (Phase 1). Builds the client `dist/` (via
+  `otfw build`), then builds the server render bundle once and serves it: asset requests
+  come from `dist/`, every navigation is server-rendered per request through the same
+  `renderRoute` the SSG pre-render uses (ARCHITECTURE.md §6, "SSR shares the SSG path").
+  Returns the matched route's markup + `<head>` injected into the shell, with the correct
+  HTTP status (200, or 404 when a path falls back to the registered 404 page). `--port`
+  overrides the default (3000, scanning upward for a free port). The page becomes
+  interactive via the client bundle (CSR mount); hydration of the server markup is Phase 2.
 - The nav and last-updated generators now scan every top-level folder under `app/`, so
   additional doc sections (e.g. `/api`) need no config — any folder with a `DocsLayout`
   gets a generated sidebar and (with `lastUpdated`) the same last-updated/edit links as
@@ -27,6 +35,11 @@
   through to the SPA shell, and real files under that directory still serve.
 
 ### Changed
+
+- Factored `serverEntrySource`, `buildServerBundle`, `injectMarkup`, and `injectHead`
+  into `shared.js` so the SSG pre-render (`runPrerender`) and the new SSR server
+  (`runServe`) build and render through a single shared path instead of duplicating the
+  server bundle build.
 
 - Register the blog posts plugin alongside the docs nav plugin. `loadDocsNavPlugin`
   becomes `loadDocsPlugins`, returning every active `@opentf/web-docs` build plugin —

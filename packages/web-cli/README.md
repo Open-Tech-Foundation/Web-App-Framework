@@ -24,6 +24,7 @@ file-based `app/` route tree (`page.jsx`, `layout.jsx`, `404.jsx`).
 otfw dev            # start the dev server (watch + live reload)
 otfw build          # production bundle in dist/ (hashed, code-split, minified)
 otfw build --ssg    # build, then pre-render each static route to HTML
+otfw serve          # build, then server-render each route per request (SSR)
 ```
 
 - **`dev`** — bundles the route graph through Rolldown with the compiler as a
@@ -33,6 +34,10 @@ otfw build --ssg    # build, then pre-render each static route to HTML
   stylesheets (TailwindCSS v4 supported out of the box).
 - **`build --ssg`** — additionally pre-renders each route with `getStaticPaths`
   into static HTML.
+- **`serve`** — builds `dist/`, then runs a per-request SSR server: assets are served
+  from `dist/` and every navigation is server-rendered through the same path SSG uses.
+  Picks port 3000 (scanning upward), or `--port` for an explicit one. Phase 1: the page
+  becomes interactive via the client bundle (CSR mount); hydration is a later phase.
 
 `OTFWC_BIN` overrides the compiler binary location (used for compiler development).
 

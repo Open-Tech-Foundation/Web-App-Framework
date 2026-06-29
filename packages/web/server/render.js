@@ -17,15 +17,17 @@ import {
 import { resolveMetadata } from "./head.js";
 
 /**
- * Render `pathname` to `{ html, metadata }`: the markup for inside `#app` plus the
- * resolved SEO metadata (for the `<head>`). `params` (from `getStaticPaths`) override
- * the matched route's params for dynamic routes. Falls back to the registered `404`
- * page for an unmatched path; returns `null` if there's no match and no 404.
+ * Render `pathname` to `{ html, metadata, status }`: the markup for inside `#app`,
+ * the resolved SEO metadata (for the `<head>`), and an HTTP `status` (200 when the
+ * path matched a real route, 404 when it fell back to the registered 404 page — the
+ * SSR server uses it; SSG ignores it). `params` (from `getStaticPaths`) override the
+ * matched route's params for dynamic routes. Returns `null` if there's no match and
+ * no 404 page.
  */
 export async function renderRoute(pathname, params = null, search = "") {
+  const real = matchRoute(pathname);
   const match =
-    matchRoute(pathname) ||
-    (routes.notFound ? { entry: routes.notFound, params: {}, route: null } : null);
+    real || (routes.notFound ? { entry: routes.notFound, params: {}, route: null } : null);
   if (!match) return null;
   if (params) match.params = params;
 
@@ -49,7 +51,7 @@ export async function renderRoute(pathname, params = null, search = "") {
     params: match.params,
     query,
   });
-  return { html, metadata };
+  return { html, metadata, status: real ? 200 : 404 };
 }
 
 /** Back-compat / convenience: render just the `#app` markup for `pathname`. */

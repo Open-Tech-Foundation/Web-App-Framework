@@ -5,9 +5,11 @@
 // `otfwc` IR compiler as a Rolldown `transform` plugin, and let Rolldown link the
 // module graph. This module holds everything they have in common.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { build } from "rolldown";
 
 import { otfwcPath } from "@opentf/web-compiler";
 
@@ -47,6 +49,23 @@ export function readHtmlShell(root) {
 /** Inject `snippet` just before `</body>` (or append when there is none). */
 export function injectBeforeBody(html, snippet) {
   return html.includes("</body>") ? html.replace("</body>", `${snippet}</body>`) : html + snippet;
+}
+
+/** Inject pre-rendered markup into the shell's empty `#app` container. */
+export function injectMarkup(shellHtml, markup) {
+  return shellHtml.replace(/(<div id="app"[^>]*>)\s*(<\/div>)/, `$1${markup}$2`);
+}
+
+/**
+ * Inject per-route `<head>` tags before `</head>`, dropping the shell's default
+ * `<title>` when the route supplies its own (so each page gets a unique,
+ * non-duplicated title). Shared by SSG pre-render and the SSR server.
+ */
+export function injectHead(shellHtml, headHtml) {
+  if (!headHtml) return shellHtml;
+  let out = shellHtml;
+  if (/<title[\s>]/i.test(headHtml)) out = out.replace(/<title>[\s\S]*?<\/title>\s*/i, "");
+  return out.replace(/<\/head>/i, `${headHtml}\n</head>`);
 }
 
 /** Nearest ancestor directory of `from` (inclusive) that contains `name`. */
@@ -526,6 +545,67 @@ export function cssPlugin() {
       return { code: out, moduleSideEffects: true };
     },
   };
+}
+
+// Generated server entry: eager-import every page module (so `registerRoutes`
+// sees real namespaces, enabling `getStaticPaths`) and re-export the render API.
+// Shared by the SSG pre-render and the SSR server — both render through the same
+// SSG-compiled bundle (ARCHITECTURE.md §6: "SSR … shares the SSG path").
+export function serverEntrySource(pages) {
+  const imports = pages.map((p, i) => `import * as p${i} from ${JSON.stringify(p)};`).join("\n");
+  const map = pages.map((p, i) => `  [${JSON.stringify(p)}]: p${i},`).join("\n");
+  return (
+    `${imports}\n` +
+    `import { registerRoutes } from "@opentf/web";\n` +
+    `export { renderRoute, renderHead, collectRoutePaths } from "@opentf/web/server";\n` +
+    `registerRoutes({\n${map}\n});\n`
+  );
+}
+
+/**
+ * Build the server render bundle (the compiler's SSG backend — HTML-string
+ * renderers) and import it. Returns `{ mod, cleanup }`, where `mod` exposes
+ * `renderRoute` / `renderHead` / `collectRoutePaths` and `cleanup()` removes the
+ * temp build dir. The SSG pre-render calls `cleanup()` immediately after rendering
+ * every route; the SSR server keeps the module live and cleans up on shutdown.
+ */
+export async function buildServerBundle({
+  root,
+  pages,
+  webEntry,
+  otfwc,
+  docsPlugins = [],
+  onCompile,
+  tmpName = ".otfw-ssg",
+}) {
+  const tmp = join(root, tmpName);
+  mkdirSync(tmp, { recursive: true });
+  const entry = join(tmp, "ssg-entry.js");
+  writeFileSync(entry, serverEntrySource(pages));
+
+  const serverApi = join(dirname(webEntry), "server", "index.js");
+  await build({
+    input: entry,
+    resolve: {
+      alias: { "@opentf/web/server": serverApi, "@opentf/web": webEntry },
+      extensions: EXTENSIONS,
+    },
+    plugins: [
+      ...docsPlugins,
+      otfwPlugin(otfwc, { failOnError: true, target: "ssg", onResult: (id) => onCompile?.(id) }),
+      cssPlugin(),
+    ],
+    output: { dir: join(tmp, "out"), format: "esm", entryFileNames: "server.js" },
+    checks: { pluginTimings: false },
+  });
+
+  // The runtime defines `class … extends HTMLElement` at load (for CSR custom
+  // elements). Server render never instantiates them, but the base class must
+  // exist so the class definitions evaluate. A bare stub suffices — no DOM
+  // (customElements stays undefined, so elements self-register only in the browser).
+  globalThis.HTMLElement ??= class {};
+  const mod = await import(pathToFileURL(join(tmp, "out", "server.js")).href);
+  return { mod, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
 }
 
 function fail(msg) {

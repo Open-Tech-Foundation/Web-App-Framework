@@ -20,7 +20,7 @@
     "preview": "bun run website:build && wrangler dev",
     "website:dev": "bun run --cwd website dev",
     "website:build": "bun run build:web && bun run --cwd website build",
-    "test": "cargo test && bun test packages/web/",
+    "test": "cargo test && bun test packages/web/ packages/web-cli/tests/",
     "deploy": "bun run website:build && wrangler deploy",
     "build:web": "bun run --cwd packages/web build"
   },

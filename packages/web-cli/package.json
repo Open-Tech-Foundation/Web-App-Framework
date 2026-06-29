@@ -9,6 +9,10 @@
   "exports": {
     ".": "./src/cli.js"
   },
+  "scripts": {
+    "test": "bun test tests/",
+    "test:e2e": "bun tests/e2e/serve.mjs"
+  },
   "files": [
     "src"
   ],

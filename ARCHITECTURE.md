@@ -359,7 +359,12 @@ Each backend is a **pure function of the IRs / Project Graph**. Adding a target
   in Bun at build time to read initial `.value`s; no DOM, no effects, no lifecycle).
   Driven by `otfw build --ssg`. Hydration markers (emit only where structure is
   variable — lists/conditionals) land with the Hydrate backend.
-- **SSR** — per-request HTML from the IR; streaming-capable. Shares the SSG path.
+- **SSR** _(Phase 1 implemented — `otfw serve`)_ — per-request HTML, rendered through
+  the **same** SSG render path (`buildServerBundle` → `renderRoute`) rather than a
+  separate backend; the server is JS at request time (Bun/Node), the compiler/toolchain
+  stays build-time-only. Phase 1 ships the server markup + client bundle, so the page is
+  interactive via a CSR mount. Hydration (adopt the server DOM, no re-render) and
+  streaming are later phases, gated on the Hydrate backend.
 - **API** — server endpoints / server functions compiled in the same graph,
   sharing types and the module graph with the UI.
 

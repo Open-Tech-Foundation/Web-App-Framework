@@ -51,6 +51,27 @@ describe("server render (SSG, string-based)", () => {
     expect(result.metadata.title).toBe("Post 7");
   });
 
+  test("renderRoute reports status 200 for a matched route", async () => {
+    registerRoutes({ "/app/about/page.jsx": page("<h1>About</h1>") });
+    const result = await renderRoute("/about");
+    expect(result.status).toBe(200);
+    expect(result.html).toBe("<h1>About</h1>");
+  });
+
+  test("renderRoute reports status 404 when a path falls back to the 404 page", async () => {
+    registerRoutes({ "/app/404.jsx": page("<p>Not found</p>") });
+    const result = await renderRoute("/missing");
+    // The 404 page still renders (so the server can return a real page) but the
+    // status flags the miss so the SSR server sends HTTP 404.
+    expect(result.status).toBe(404);
+    expect(result.html).toBe("<p>Not found</p>");
+  });
+
+  test("renderRoute returns null when there is no match and no 404 page", async () => {
+    registerRoutes({ "/app/page.jsx": page("<h1>Home</h1>") });
+    expect(await renderRoute("/missing")).toBe(null);
+  });
+
   test("collectRoutePaths returns {path, params}; skips param routes without getStaticPaths", async () => {
     registerRoutes({
       "/app/page.jsx": page("<i>h</i>"),

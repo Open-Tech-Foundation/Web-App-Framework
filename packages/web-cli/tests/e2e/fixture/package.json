@@ -1,0 +1,5 @@
+{
+  "name": "otfw-cli-e2e-fixture",
+  "private": true,
+  "type": "module"
+}
