@@ -298,7 +298,11 @@ impl<'a> Emitter<'a> {
             ViewNode::Element { tag, props, children } => self.element(tag, props, children),
             ViewNode::Dynamic { expr } => {
                 self.server.insert("ssgText");
-                format!("ssgText({})", self.code(*expr))
+                // Hydration text-hole markers (docs/HYDRATION.md §3.1): bracket the value
+                // with `<!--$-->…<!--/-->` so the client can claim the text node even when
+                // it is empty or adjacent to static text (the HTML parser would otherwise
+                // merge them). Inert for plain SSG output (just an HTML comment).
+                format!("\"<!--$-->\" + ssgText({}) + \"<!--/-->\"", self.code(*expr))
             }
             ViewNode::Component { name, props, children } => self.component_use(name, props, children),
             ViewNode::DynamicNode { expr, branches } => {
@@ -551,6 +555,19 @@ mod tests {
         assert!(!m.code.contains("document."), "no DOM:\n{}", m.code);
         assert!(!m.code.contains("effect("), "no effects:\n{}", m.code);
         assert!(!m.code.contains("addEventListener"), "no events:\n{}", m.code);
+    }
+
+    #[test]
+    fn dynamic_text_hole_carries_hydration_markers() {
+        // The value is bracketed by <!--$-->…<!--/--> so the client Hydrate backend can
+        // claim the text node even when empty/adjacent to static text (docs/HYDRATION.md).
+        let m = emit("export default function P(){ let n=$state(1); return <p>x {n}</p>; }", true);
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(
+            m.code.contains("\"<!--$-->\" + ssgText(n.value) + \"<!--/-->\""),
+            "markers:\n{}",
+            m.code
+        );
     }
 
     #[test]

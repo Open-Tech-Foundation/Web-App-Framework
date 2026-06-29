@@ -7,6 +7,19 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Added
 
+- **Hydrate backend** (`codegen/hydrate.rs`, Phase 2.0 — see `docs/HYDRATION.md`): a
+  new target that emits client code which *adopts* the server-rendered DOM instead of
+  rebuilding it. Where CSR does `document.createElement` + `appendChild`, Hydrate walks
+  the existing nodes with a cursor and `claim`s them by position; the reactivity wiring
+  (`bindText`/`bindAttr`/events/`effect`) is the same runtime as CSR, so the backend
+  reuses `csr.rs`'s leaf emitters and only node acquisition is new. Reachable via
+  `otfwc build --target=hydrate`. Scope so far: pages/layouts with element/static-text/
+  dynamic-text structure, static & dynamic attributes, `ref`, and events; child
+  components, lists, conditionals, `{children}` slots, and JSX-as-value are reported as
+  diagnostics (Phase 2.1).
+- SSG dynamic text holes now carry hydration markers: a `{value}` is emitted as
+  `<!--$-->value<!--/-->` so the client can claim the text node even when the value is
+  empty or adjacent to static text. Inert for plain SSG output (an HTML comment).
 - MDX code fences emit a titled code block: a `<div class="otfw-code">` wrapping a
   header (language label, an optional filename taken from the fence info string —
   e.g. ` ```json package.json ` — and a copy button) above the highlighted `<pre>`.

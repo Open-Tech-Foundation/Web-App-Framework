@@ -5,5 +5,6 @@
 //! reactivity; SSG emits HTML strings at build time (no DOM, no effects).
 
 pub mod csr;
+pub mod hydrate;
 pub mod ssg;
 pub mod tags;

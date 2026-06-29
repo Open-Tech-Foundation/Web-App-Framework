@@ -98,30 +98,38 @@ static text. List/conditional region markers (`<!--[-->`/`<!--]-->`) follow in 2
 > concatenates server output with no inter-element padding, the re-parsed DOM carries
 > text nodes only where the template does — so a cursor walk stays aligned 1:1.
 
-### 3.2 `hydrate.rs` codegen backend — adopt, don't create
+### 3.2 `hydrate.rs` codegen backend — adopt, don't create _(implemented for pages)_
 
 Sibling to `csr.rs`. The crucial observation: **CSR and Hydrate differ only in node
 acquisition.** CSR does `createElement` + `appendChild`; Hydrate adopts the existing
-node from a DOM cursor. The **reactivity wiring is identical** — `bindText`,
-`bindAttr`, event listeners, `effect`, signal declarations are emitted the same way.
+node from a DOM cursor (`claimElement`/`claimText`/`skipNode`). The **reactivity wiring
+is identical** — it calls the same runtime helpers (`bindText`, `bindAttr`, event
+listeners, `effect`) on the claimed nodes.
 
-**Decision:** factor the CSR view-walker so node acquisition is a strategy
-(`Create` vs `Adopt`); `hydrate.rs` is the second strategy, **not a copy** of
-`csr.rs`. This keeps server/client agreement structural, not duplicated.
+**What "not a copy" means in practice:** the CSR `Emitter` was *not* refactored into a
+Create/Adopt-parameterized walker (that touches CSR's hot path and risks regressions).
+Instead `hydrate.rs` is a focused backend that **reuses** `csr.rs`'s leaf emitters
+(`js_string`, event-name/options handling) and the shared **runtime** binding helpers;
+the adopt-walk is its own small pass (it must be — claiming is structurally different
+from creating). The shared surface is the runtime contract, which is what actually
+guarantees server/client agreement.
 
-Output shapes mirror CSR:
+Output shapes:
 
-- **Page / layout** → a `hydrate(root)` factory that adopts `root`'s children.
-- **Component** → a `connectedCallback` that adopts `this.childNodes` instead of
-  building a fresh subtree.
+- **Page / layout** _(implemented)_ → `export default function (__root, props)`: the
+  router passes the container, the factory adopts its children with a cursor and returns
+  the claimed root.
+- **Component** _(Phase 2.1)_ → a `connectedCallback` that adopts `this.childNodes`
+  when `isHydrating()` instead of building a fresh subtree.
 
 ### 3.3 Runtime hydration context
 
-A small runtime module (`runtime/hydrate.js`): a DOM **cursor/walker**, a global
-`__OTFW_HYDRATING` flag with a stack for nesting, and adoption primitives —
-`hydrateText(anchor, signal)`, `hydrateAttr` (= `bindAttr` on an adopted node),
-`claimNext()` / `claimByPath()`. These are the helpers the Hydrate backend emits
-calls to.
+A small runtime module (`runtime/hydrate.js`, _implemented_): a DOM **cursor**
+(`cursor(parent)`), claim primitives (`claimElement(cur, tag)`, `claimText(cur)`,
+`skipNode(cur)`), the `isHydrating` / `runHydration` flag, and `HydrationMismatch`.
+There is no separate hydrate *binding* API — the Hydrate backend wires reactivity by
+calling the existing `bindText`/`bindAttr` on the **claimed** nodes, since those
+helpers already operate on existing nodes. Only acquisition (the claims) is new.
 
 ### 3.4 Client boot switch + custom-element adoption _(the subtle part)_
 
@@ -165,7 +173,7 @@ shell for Phase 3 loader-data hydration (TanStack-style), but do not implement i
 
 | Step | Scope |
 |---|---|
-| **2.0** | marker scheme + `hydrate.rs` (static structure, text holes, attrs, events) + page/layout & single-component adoption + boot switch + mismatch logging |
+| **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + `hydrate.rs` backend for pages/layouts (element/text/attrs/events) ✓ + `otfwc --target=hydrate` ✓ + ssg→hydrate e2e ✓. **Remaining:** client-boot switch + component (custom-element) adoption + mismatch logging |
 | **2.1** | variable structure: lists + conditionals hydration |
 | **2.2** | per-component island recovery wired into the dev overlay |
 | **2.3** _(deferred)_ | lazy/partial island directives (`client:idle` / `visible` / `media`) — leveraging the custom-element lifecycle. **Not in Phase 2**; revisited once core hydration is solid. |

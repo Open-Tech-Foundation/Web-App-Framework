@@ -11,11 +11,20 @@ use std::io::{self, BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use otfw_compiler::codegen::{csr, ssg};
+use otfw_compiler::codegen::{csr, hydrate, ssg};
 use otfw_compiler::graph::{DiskVfs, ModuleGraph, Resolver};
 use otfw_compiler::lower::lower_module;
 use otfw_compiler::mdx::mdx_to_jsx;
 use otfw_compiler::parse::ParseSession;
+
+/// Which codegen backend to run (ARCHITECTURE.md §6). CSR builds the live DOM; SSG
+/// emits HTML strings at build/request time; Hydrate adopts the server DOM.
+#[derive(Clone, Copy)]
+enum Target {
+    Csr,
+    Ssg,
+    Hydrate,
+}
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
@@ -24,11 +33,17 @@ fn main() -> ExitCode {
             let rest = &args[2..];
             let as_component = rest.iter().any(|a| a == "--component");
             let from_stdin = rest.iter().any(|a| a == "--stdin");
-            let ssg = rest.iter().any(|a| a == "--target=ssg" || a == "--ssg");
+            let target = if rest.iter().any(|a| a == "--target=hydrate") {
+                Target::Hydrate
+            } else if rest.iter().any(|a| a == "--target=ssg" || a == "--ssg") {
+                Target::Ssg
+            } else {
+                Target::Csr
+            };
             match rest.iter().find(|a| !a.starts_with("--")) {
-                Some(file) => build(file, as_component, from_stdin, ssg),
+                Some(file) => build(file, as_component, from_stdin, target),
                 None => {
-                    eprintln!("usage: otfwc build [--component] [--stdin] [--target=ssg] <file.tsx>");
+                    eprintln!("usage: otfwc build [--component] [--stdin] [--target=ssg|hydrate] <file.tsx>");
                     ExitCode::FAILURE
                 }
             }
@@ -139,7 +154,7 @@ fn compile_module(
     file: &str,
     source: String,
     as_component: bool,
-    ssg: bool,
+    target: Target,
 ) -> Result<(String, Vec<String>), String> {
     // MDX front-end: `.mdx`/`.md` lower to JSX source first, then run the normal
     // parse → lower → codegen pipeline (the module id keeps the original extension).
@@ -165,19 +180,27 @@ fn compile_module(
         return Err(format!("no component (function returning JSX) found in {file}"));
     };
 
-    let (code, warnings) = if ssg {
-        let m = ssg::emit_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
-        (m.code, m.errors)
-    } else {
-        let m = csr::emit_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
-        (m.code, m.errors)
+    let (code, warnings) = match target {
+        Target::Ssg => {
+            let m = ssg::emit_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
+            (m.code, m.errors)
+        }
+        Target::Hydrate => {
+            let m =
+                hydrate::emit_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
+            (m.code, m.errors)
+        }
+        Target::Csr => {
+            let m = csr::emit_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
+            (m.code, m.errors)
+        }
     };
     Ok((code, warnings))
 }
 
 /// Compile one module and print it. Source comes from `file` or, with `from_stdin`,
 /// from stdin (then `file` is only the module id). Diagnostics go to stderr.
-fn build(file: &str, as_component: bool, from_stdin: bool, ssg: bool) -> ExitCode {
+fn build(file: &str, as_component: bool, from_stdin: bool, target: Target) -> ExitCode {
     let source = if from_stdin {
         let mut buf = String::new();
         if let Err(e) = io::stdin().read_to_string(&mut buf) {
@@ -195,7 +218,7 @@ fn build(file: &str, as_component: bool, from_stdin: bool, ssg: bool) -> ExitCod
         }
     };
 
-    match compile_module(file, source, as_component, ssg) {
+    match compile_module(file, source, as_component, target) {
         Ok((code, warnings)) => {
             print!("{code}");
             for w in &warnings {
@@ -262,7 +285,10 @@ fn serve() -> ExitCode {
         let id = String::from_utf8_lossy(&id_buf).into_owned();
         let source = String::from_utf8_lossy(&src_buf).into_owned();
 
-        match compile_module(&id, source, as_component, ssg) {
+        // The serve protocol's 4th field selects SSG vs CSR; the Hydrate target is
+        // reachable only via one-shot `build --target=hydrate` for now.
+        let target = if ssg { Target::Ssg } else { Target::Csr };
+        match compile_module(&id, source, as_component, target) {
             // Warnings are non-fatal and not consumed by the toolchain; drop them.
             Ok((code, _warnings)) => write_frame(&mut writer, true, code.as_bytes()),
             Err(msg) => write_frame(&mut writer, false, msg.as_bytes()),

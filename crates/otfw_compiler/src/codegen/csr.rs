@@ -1070,22 +1070,22 @@ fn substitute_branches(template: &str, calls: &[String]) -> String {
 }
 
 /// True for an `on*` event-handler prop name (`onClick`, `onclick`,
-/// `onScroll:passive`, …).
-fn is_event(prop: &str) -> bool {
+/// `onScroll:passive`, …). Shared with the Hydrate backend.
+pub(crate) fn is_event(prop: &str) -> bool {
     prop.len() > 2 && prop.starts_with("on")
 }
 
 /// True when an `on*` name carries listener modifiers (`onScroll:passive`) — the
 /// `:` switches from the callback/property fast path to `addEventListener`.
-fn is_listener(prop: &str) -> bool {
+pub(crate) fn is_listener(prop: &str) -> bool {
     prop.contains(':')
 }
 
 /// Parse `onScroll:once-passive` into the DOM event name and an `addEventListener`
 /// options argument: `("scroll", ", { once: true, passive: true }")`. Modifiers
 /// combine with `-`; `listen` forces the listener path with no options. An empty
-/// options string means the third argument is omitted.
-fn event_options(prop: &str) -> (String, String) {
+/// options string means the third argument is omitted. Shared with the Hydrate backend.
+pub(crate) fn event_options(prop: &str) -> (String, String) {
     let (base, mods) = prop.split_once(':').unwrap_or((prop, ""));
     let event = base.strip_prefix("on").unwrap_or(base).to_ascii_lowercase();
     let opts: Vec<&str> = mods
@@ -1101,8 +1101,9 @@ fn event_options(prop: &str) -> (String, String) {
     (event, arg)
 }
 
-/// Render a Rust string as a double-quoted JavaScript string literal.
-fn js_string(s: &str) -> String {
+/// Render a Rust string as a double-quoted JavaScript string literal. Shared with
+/// the Hydrate backend.
+pub(crate) fn js_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for ch in s.chars() {
