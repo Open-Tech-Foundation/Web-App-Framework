@@ -133,6 +133,8 @@ const PROBE = `(() => {
   const aside = document.querySelector('#otfw-sidebar');
   const backdrop = document.querySelector('.otfw-sidebar-backdrop');
   const burger = document.querySelector('.otfw-navbar-burger');
+  const navNav = document.querySelector('.otfw-navbar-nav');
+  const drawerLinks = document.querySelector('.otfw-drawer-links');
   const cs = (el) => el ? getComputedStyle(el) : null;
   const r = (el) => { const b = el.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, width: b.width }; };
   return {
@@ -147,6 +149,9 @@ const PROBE = `(() => {
     bodyOverflow: getComputedStyle(document.body).overflow,
     hasSidebar: document.documentElement.hasAttribute('data-otfw-has-sidebar'),
     linkCount: aside ? aside.querySelectorAll('.otfw-sidebar-link').length : 0,
+    navNavDisplay: navNav ? cs(navNav).display : null,
+    drawerLinksDisplay: drawerLinks ? cs(drawerLinks).display : null,
+    drawerLinkCount: drawerLinks ? drawerLinks.querySelectorAll('.otfw-navbar-link').length : 0,
   };
 })()`;
 
@@ -176,6 +181,9 @@ async function run() {
   assert(s.hasSidebar, "sidebar mounted (root flagged)");
   assert(s.linkCount >= 2, "drawer rendered its nav tree");
   assert(s.burgerDisplay && s.burgerDisplay !== "none", "burger is visible on mobile");
+  assert(s.navNavDisplay === "none", "navbar top-level links are hidden on mobile");
+  assert(s.drawerLinksDisplay !== "none", "drawer surfaces the top-level links on mobile");
+  assert(s.drawerLinkCount === 3, "drawer shows all three top-level links");
   assert(s.asideOpen === false, "drawer starts closed");
   assert(s.asideRect.right <= 1, "drawer is off-canvas to the left");
   assert(s.asideVisibility === "hidden", "drawer is visibility:hidden while closed");
@@ -220,6 +228,8 @@ async function run() {
   assert(s.asidePosition === "sticky", "sidebar is a sticky column on desktop");
   assert(s.asideRect.left >= 0, "sidebar sits in the page flow (not off-canvas)");
   assert(s.backdropDisplay === "none", "backdrop is removed on desktop");
+  assert(s.navNavDisplay !== "none", "navbar top-level links are shown on desktop");
+  assert(s.drawerLinksDisplay === "none", "drawer's top-level links are hidden on desktop");
 
   client.close();
 }

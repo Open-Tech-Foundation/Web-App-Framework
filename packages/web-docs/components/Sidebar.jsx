@@ -19,22 +19,36 @@
 import { onMount, router } from "@opentf/web";
 
 import SidebarNode from "./SidebarNode.jsx";
+import NavbarLink from "./NavbarLink.jsx";
 
 const DESKTOP_QUERY = "(min-width: 768px)";
 
+// How many Sidebars are mounted right now. On SPA navigation a new section's Sidebar can
+// mount *before* the old one unmounts, so the burger's `data-otfw-has-sidebar` flag must
+// be reference-counted — otherwise the departing instance's cleanup would clear the flag
+// the arriving instance just set, and the burger would vanish after navigating.
+let liveSidebars = 0;
+
 export default function Sidebar(props) {
   const nav = props.nav || [];
+  // Top-level site links (config.nav). On desktop they live in the navbar; on mobile the
+  // navbar hides them and the drawer surfaces them above the section tree, so the whole
+  // nav is reachable from one place.
+  const navLinks = (props.config && props.config.nav) || [];
   let open = $state(false);
 
   const close = () => (open = false);
+  // Stable per-instance toggle so cleanup can tell whether the global still points at us.
+  const toggle = () => (open = !open);
 
   onMount(() => {
     const root = document.documentElement;
+    liveSidebars += 1;
     root.setAttribute("data-otfw-has-sidebar", "");
 
     // The burger (navbar) drives the drawer through these globals — same decoupling as
-    // the Search modal's `__otfwOpenSearch`.
-    window.__otfwToggleSidebar = () => (open = !open);
+    // the Search modal's `__otfwOpenSearch`. The latest-mounted Sidebar owns them.
+    window.__otfwToggleSidebar = toggle;
     window.__otfwCloseSidebar = close;
 
     const onKey = (e) => e.key === "Escape" && close();
@@ -50,11 +64,17 @@ export default function Sidebar(props) {
     return () => {
       window.removeEventListener("keydown", onKey);
       mql.removeEventListener?.("change", onDesktop);
-      root.removeAttribute("data-otfw-has-sidebar");
-      root.removeAttribute("data-otfw-sidebar-open");
       document.body.style.removeProperty("overflow");
+      root.removeAttribute("data-otfw-sidebar-open");
+      // Only drop the flag/globals if we're the last Sidebar and still the owner — an
+      // arriving instance may already have taken over during navigation.
+      liveSidebars -= 1;
+      if (liveSidebars <= 0) {
+        liveSidebars = 0;
+        root.removeAttribute("data-otfw-has-sidebar");
+      }
+      if (window.__otfwToggleSidebar === toggle) delete window.__otfwToggleSidebar;
       if (window.__otfwCloseSidebar === close) delete window.__otfwCloseSidebar;
-      delete window.__otfwToggleSidebar;
     };
   });
 
@@ -83,6 +103,13 @@ export default function Sidebar(props) {
         aria-hidden="true"
       ></div>
       <aside id="otfw-sidebar" class={open ? "otfw-sidebar is-open" : "otfw-sidebar"}>
+        {navLinks.length ? (
+          <nav class="otfw-drawer-links" aria-label="Site">
+            {navLinks.map((link) => (
+              <NavbarLink link={link} />
+            ))}
+          </nav>
+        ) : null}
         <nav class="otfw-sidebar-nav" aria-label="Documentation">
           <ul class="otfw-sidebar-list">
             {nav.map((item) => (

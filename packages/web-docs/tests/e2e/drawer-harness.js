@@ -13,6 +13,11 @@ const NAV = [
   { title: "Introduction", path: "/docs" },
   { title: "Guide", items: [{ title: "Routing", path: "/docs/routing" }] },
 ];
+const NAV_LINKS = [
+  { label: "Home", href: "/" },
+  { label: "Docs", href: "/docs" },
+  { label: "API", href: "/api" },
+];
 
 const el = (tag, cls) => {
   const n = document.createElement(tag);
@@ -28,13 +33,24 @@ const brand = el("a", "otfw-navbar-brand");
 brand.href = "/";
 brand.textContent = "Docs";
 lead.append(document.createElement(SidebarToggle.tag), brand);
-inner.append(lead, el("div", "otfw-navbar-search"), el("div", "otfw-navbar-right"));
+// Right cluster with the top-level links (hidden on mobile, surfaced in the drawer).
+const right = el("div", "otfw-navbar-right");
+const navNav = el("nav", "otfw-navbar-nav");
+for (const l of NAV_LINKS) {
+  const a = el("a", "otfw-navbar-link");
+  a.href = l.href;
+  a.textContent = l.label;
+  navNav.append(a);
+}
+right.append(navNav);
+inner.append(lead, el("div", "otfw-navbar-search"), right);
 navbar.append(inner);
 
 // Docs grid: the drawer is the first column on desktop, the off-canvas drawer on mobile.
 const docs = el("div", "otfw-docs");
 const drawer = document.createElement(Sidebar.tag);
-drawer.nav = NAV; // object prop set before connect so it's read at mount
+drawer.nav = NAV; // object props set before connect so they're read at mount
+drawer.config = { nav: NAV_LINKS };
 const main = el("main", "otfw-docs-main");
 main.innerHTML = "<h1>Harness</h1><p>Long content.</p>".repeat(20);
 docs.append(drawer, main);

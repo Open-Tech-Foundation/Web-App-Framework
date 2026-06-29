@@ -19,6 +19,11 @@ const NAV = [
   { title: "Introduction", path: "/docs" },
   { title: "Guide", items: [{ title: "Routing", path: "/docs/routing" }] },
 ];
+const NAV_LINKS = [
+  { label: "Home", href: "/" },
+  { label: "Docs", href: "/docs" },
+  { label: "API", href: "/api" },
+];
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const root = () => document.documentElement;
@@ -33,7 +38,8 @@ function mount() {
   const container = document.createElement("div");
   const toggle = document.createElement(SidebarToggle.tag);
   const drawer = document.createElement(Sidebar.tag);
-  drawer.nav = NAV; // object prop → set before connect so it is read at mount
+  drawer.nav = NAV; // object props → set before connect so they're read at mount
+  drawer.config = { nav: NAV_LINKS };
   container.append(toggle, drawer);
   document.body.appendChild(container);
   mounted.add(container);
@@ -84,6 +90,16 @@ describe("mobile sidebar drawer", () => {
     const labels = Array.from(links, (a) => a.textContent.trim());
     expect(labels).toContain("Introduction");
     expect(labels).toContain("Routing");
+  });
+
+  test("the drawer surfaces the top-level site links from `config.nav`", async () => {
+    mount();
+    await tick();
+
+    const drawerLinks = aside().querySelector(".otfw-drawer-links");
+    expect(drawerLinks).not.toBeNull();
+    const labels = Array.from(drawerLinks.querySelectorAll("a"), (a) => a.textContent.trim());
+    expect(labels).toEqual(["Home", "Docs", "API"]);
   });
 
   test("burger opens the drawer, locks scroll, and syncs aria-expanded", async () => {
@@ -173,5 +189,33 @@ describe("mobile sidebar drawer", () => {
     expect(root().hasAttribute("data-otfw-has-sidebar")).toBe(false);
     expect(window.__otfwToggleSidebar).toBeUndefined();
     expect(document.body.style.overflow).toBe("");
+  });
+
+  test("the burger survives an overlapping remount (SPA navigation)", async () => {
+    // Simulate navigating to another section: the new Sidebar mounts *before* the old
+    // one unmounts. The flag and the toggle must remain available throughout (regression
+    // for the burger vanishing after navigation).
+    const first = mount();
+    await tick();
+    const firstToggle = window.__otfwToggleSidebar;
+
+    const second = mount(); // arrives before `first` leaves
+    await tick();
+    expect(root().hasAttribute("data-otfw-has-sidebar")).toBe(true);
+    // The newest Sidebar takes ownership of the global toggle.
+    expect(window.__otfwToggleSidebar).not.toBe(firstToggle);
+
+    first.unmount(); // the old section's cleanup runs last
+    await tick();
+
+    // Still one Sidebar mounted → the burger remains visible and wired.
+    expect(root().hasAttribute("data-otfw-has-sidebar")).toBe(true);
+    expect(typeof window.__otfwToggleSidebar).toBe("function");
+
+    // And it still drives the surviving drawer.
+    const surviving = second.container.querySelector("#otfw-sidebar");
+    window.__otfwToggleSidebar();
+    await tick();
+    expect(surviving.classList.contains("is-open")).toBe(true);
   });
 });

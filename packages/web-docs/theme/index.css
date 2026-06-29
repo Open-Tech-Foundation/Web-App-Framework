@@ -274,6 +274,35 @@ body {
   }
 }
 
+/* ── Navbar: mobile layout ─────────────────────────────────────────────────── */
+/* Below the sidebar breakpoint the centered three-column grid gets cramped, so the bar
+ * becomes a simple flex row: brand (with burger) at the start, a compact action cluster
+ * (search · GitHub · theme) at the end. On pages that have a sidebar the top-level links
+ * move into the drawer (see `.otfw-drawer-links`), so they're dropped from the bar here. */
+@media (max-width: 767px) {
+  .otfw-navbar-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 1rem;
+  }
+  .otfw-navbar-lead {
+    margin-right: auto; /* push the action cluster to the far end */
+  }
+  .otfw-navbar-search {
+    justify-self: auto;
+  }
+  .otfw-navbar-right {
+    gap: 0.5rem;
+  }
+  .otfw-navbar-version {
+    display: none; /* reclaim brand width on small screens */
+  }
+  :root[data-otfw-has-sidebar] .otfw-navbar-nav {
+    display: none; /* surfaced in the drawer instead */
+  }
+}
+
 /* Theme switcher: trigger reuses `.otfw-navbar-icon` so it matches the GitHub button;
  * it just grows a little to fit the System-mode pair of icons, and anchors the menu. */
 .otfw-theme {
@@ -642,6 +671,27 @@ body {
     transition: none;
   }
 }
+
+/* Top-level site links shown at the top of the mobile drawer (the navbar hides its own
+ * copy there). Hidden on desktop, where those links stay in the navbar and the sidebar
+ * shows only the section tree. The links are NavbarLink elements, stacked into a column
+ * and separated from the tree by a divider. */
+.otfw-drawer-links {
+  display: none;
+}
+@media (max-width: 767px) {
+  .otfw-drawer-links {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.9rem;
+    margin-bottom: 1.25rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--otfw-border);
+    font-size: 0.95rem;
+  }
+}
+
 .otfw-sidebar-list,
 .otfw-sidebar-sublist {
   list-style: none;
