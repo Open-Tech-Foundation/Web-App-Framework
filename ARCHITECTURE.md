@@ -351,9 +351,14 @@ Each backend is a **pure function of the IRs / Project Graph**. Adding a target
 
 - **CSR** _(implemented — `codegen/csr.rs`)_ — build skeleton + resolve slots by
   path + wire effects.
-- **Hydrate** _(open)_ — adopt existing skeleton by path (no node creation) + wire
-  effects. Mismatches are detected at a specific slot path and reported, never
-  silent.
+- **Hydrate** _(Phase 2 — designed in [`docs/HYDRATION.md`](docs/HYDRATION.md))_ —
+  adopt the existing server skeleton by path (no node creation) + wire effects.
+  Differs from CSR **only in node acquisition** (adopt vs create); the reactivity
+  wiring is shared. Fine-grained (Solid/Svelte-class, no VDOM diff) with each
+  Custom Element a self-hydrating island. Variable regions (text holes, lists,
+  conditionals) carry comment-anchor markers; static structure adopts marker-free.
+  Mismatches are detected at a specific slot path and recovered per-component
+  (rebuild that component via CSR), never silent.
 - **SSG** _(implemented — `codegen/ssg.rs`)_ — IR → HTML at build time. A pure
   consumer of the View IR that emits JS which **concatenates an HTML string** (runs
   in Bun at build time to read initial `.value`s; no DOM, no effects, no lifecycle).
