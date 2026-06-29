@@ -87,9 +87,16 @@ Markers are part of the **shared server output** (`ssg.rs`) because SSG and SSR 
 render through it (`ARCHITECTURE.md §6` — "SSR shares the SSG path"). The byte cost is
 small (comments around dynamic regions only) and is the price of zero-flash adoption.
 
-> **Hazard to handle in 2.0:** the HTML parser collapses/merges adjacent and empty
-> text nodes and trims whitespace. Markers must survive that — i.e. a dynamic text
-> hole must be delimited so an empty value still leaves a findable anchor.
+**Concrete scheme _(decided, implemented in `runtime/hydrate.js`)_:** a dynamic text
+hole is emitted as `<!--$-->value<!--/-->`. The `$`/`/` comment pair survives the HTML
+parser's text-node merging, so the hole is findable even when `value` is empty
+(`<!--$--><!--/-->` → the client synthesizes an empty text anchor) or adjacent to
+static text. List/conditional region markers (`<!--[-->`/`<!--]-->`) follow in 2.1.
+
+> **Hazard handled:** the HTML parser collapses/merges adjacent and empty text nodes
+> and trims whitespace. The `$`/`/` markers survive that; and because `ssg.rs`
+> concatenates server output with no inter-element padding, the re-parsed DOM carries
+> text nodes only where the template does — so a cursor walk stays aligned 1:1.
 
 ### 3.2 `hydrate.rs` codegen backend — adopt, don't create
 
@@ -180,9 +187,17 @@ whitespace nodes, double mounts). The bar:
 
 ---
 
-## 6. Open sub-designs
+## 6. Sub-design decisions & open items
 
-- Exact marker byte scheme and the empty-text-node/whitespace strategy (§3.1).
-- Cursor-walk vs absolute structural-path indexing inside a component (§3.3) — both
-  honor §4.8; the choice is an implementation trade-off (Solid uses a cursor).
-- `__OTFW_HYDRATING` flag lifecycle across nested component upgrades (§3.4).
+**Decided:**
+
+- **Marker byte scheme** (§3.1) — `<!--$-->value<!--/-->` for text holes; empty value
+  synthesizes an anchor; static structure marker-free. Implemented in `runtime/hydrate.js`.
+- **Node acquisition** (§3.3) — **cursor walk**, not absolute path indexing (both honor
+  §4.8; cursor matches Solid and aligns 1:1 with the marker-free server output).
+
+**Open:**
+
+- List/conditional region markers and their reconcile-from-N adoption (2.1).
+- `__OTFW_HYDRATING` flag lifecycle across nested component upgrades (§3.4) — the flag
+  primitive exists; the define-time ordering lands with the boot switch.

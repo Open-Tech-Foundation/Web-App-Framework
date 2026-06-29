@@ -4,6 +4,12 @@
 
 ### Added
 
+- Hydration primitives (`runtime/hydrate.js`, Phase 2 foundation — see
+  `docs/HYDRATION.md`): a cursor walk that adopts the server DOM instead of rebuilding
+  it — `cursor`, `claimElement`, `claimText` (the `<!--$-->…<!--/-->` text-hole scheme),
+  `skipNode`, the `isHydrating` / `runHydration` flag, and `HydrationMismatch`. Reactivity
+  still wires through the existing `bindText`/`bindAttr`; only node acquisition is new.
+  Inert until the Hydrate codegen and client-boot switch consume it.
 - `renderRoute` now returns an HTTP `status` alongside `{ html, metadata }`: `200` when
   the path matched a real route, `404` when it fell back to the registered 404 page. The
   new `otfw serve` SSR server uses it to set the response status; SSG ignores it (the
