@@ -4,6 +4,16 @@
 
 ### Fixed
 
+- Multiple components in one file no longer crash on first paint of a pre-rendered
+  (SSR/SSG) page. Each component's `customElements.define` was emitted inline, right
+  after its class, in source order — so a component declared before a sibling it renders
+  (e.g. a `ThemeToggle` that composes a local `MonitorIcon` defined lower in the file)
+  registered first. Defining a tag synchronously upgrades any matching server-rendered
+  element and runs its `connectedCallback`, which reaches the sibling by `Sibling.tag`
+  while that sibling's class is still in its temporal dead zone — a runtime `Cannot read
+  properties of undefined (reading 'tag')`. A module now emits **every** component class
+  first and **all** the `customElements.define` calls last, so any class is fully
+  declared before a registration can upgrade an element that references it.
 - `cond ? items.map((i) => <X/>) : <y/>` — a `.map` nested inside a conditional now
   lowers to a keyed `bindList` (like a top-level `.map`) instead of hoisting the item
   JSX out of the callback, which dropped the map parameter and produced a runtime

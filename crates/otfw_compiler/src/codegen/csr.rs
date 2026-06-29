@@ -181,10 +181,10 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     CsrModule { code, errors: e.errors }
 }
 
-/// Build a Custom Element class body (everything after the import header).
-/// `default_export` adds `export default <Class>;` (so the module can be imported
-/// by default), used for standalone component modules.
-fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, String) {
+/// Build a Custom Element class body (everything after the import header). Returns the
+/// class declaration (`default_export` adds `export default <Class>;`) and, separately,
+/// its `customElements.define` statement so the caller controls registration order.
+fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, String, String) {
     // Tag/class come from the function name (not the export), so `export default
     // function Counter` registers `web-counter` to match a page's `<Counter/>`.
     let export = lowered.name.clone();
@@ -337,11 +337,6 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
     code.push_str("    else Promise.resolve().then(__teardown);\n");
     code.push_str("  }\n");
     code.push_str("}\n");
-    // Idempotent registration: a tag is reused when the same module is evaluated in
-    // more than one chunk, and built-ins (`web-link`) may already be defined.
-    code.push_str(&format!(
-        "if (typeof customElements !== \"undefined\" && !customElements.get({class}.tag)) customElements.define({class}.tag, {class});\n"
-    ));
     if default_export {
         // Default-export the class so a consumer's `import Counter from "./Counter"`
         // resolves (the binding is unused — the component is referenced by tag — but
@@ -349,12 +344,28 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
         code.push_str(&format!("export default {class};\n"));
     }
 
-    (e, code)
+    // Idempotent registration: a tag is reused when the same module is evaluated in
+    // more than one chunk, and built-ins (`web-link`) may already be defined. Returned
+    // *separately* from the class body so a multi-component module can emit every class
+    // declaration before any `define` (see `emit_module`): `customElements.define`
+    // synchronously upgrades any matching pre-rendered (SSR/SSG) element, and that
+    // element's `connectedCallback` may compose a sibling component by `Sibling.tag`. If
+    // the define ran inline, a component declared before a sibling it renders would touch
+    // that sibling's class while it is still in its temporal dead zone — a runtime
+    // `Cannot read properties of undefined (reading 'tag')` on first paint.
+    let define = format!(
+        "if (typeof customElements !== \"undefined\" && !customElements.get({class}.tag)) customElements.define({class}.tag, {class});\n"
+    );
+
+    (e, code, define)
 }
 
-/// Single-component module: a Custom Element class with a default export.
+/// Single-component module: a Custom Element class with a default export. The lone
+/// component's registration can follow its own class directly (no siblings to outrun).
 fn component_body(lowered: &Lowered) -> (Emitter<'_>, String) {
-    component_body_ex(lowered, true)
+    let (e, mut code, define) = component_body_ex(lowered, true);
+    code.push_str(&define);
+    (e, code)
 }
 
 /// Emit a whole module: any preserved top-level statements (helper data,
@@ -369,17 +380,26 @@ pub fn emit_module(
     let mut combined = Uses::default();
     let mut errors = Vec::new();
     let mut bodies = Vec::new();
+    let mut defines = Vec::new();
     for c in components {
-        let (e, body) = if c.is_page {
-            page_body(c)
+        if c.is_page {
+            let (e, body) = page_body(c);
+            combined.merge(&e.uses);
+            errors.extend(e.errors);
+            bodies.push(body);
         } else {
             // The source's `export default` component re-exports its class as the
-            // module default, so `import Counter from "./Counter"` resolves.
-            component_body_ex(c, c.is_default_export)
-        };
-        combined.merge(&e.uses);
-        errors.extend(e.errors);
-        bodies.push(body);
+            // module default, so `import Counter from "./Counter"` resolves. The `define`
+            // is collected separately and emitted after every class in the module is
+            // declared, so a component that composes a sibling never registers (and
+            // upgrades a pre-rendered host) while that sibling's class is still in its
+            // temporal dead zone.
+            let (e, body, define) = component_body_ex(c, c.is_default_export);
+            combined.merge(&e.uses);
+            errors.extend(e.errors);
+            bodies.push(body);
+            defines.push(define);
+        }
     }
 
     // Emit the preserved module-level statements through a module-scope context so
@@ -412,6 +432,12 @@ pub fn emit_module(
     }
     for body in bodies {
         code.push_str(&body);
+    }
+    // All registrations last: every component class (and any module-level builder) is now
+    // declared, so defining a tag — which synchronously upgrades a matching SSR element
+    // and runs its `connectedCallback` — can safely reach any sibling component by `.tag`.
+    for define in defines {
+        code.push_str(&define);
     }
     CsrModule { code, errors }
 }
@@ -1200,8 +1226,8 @@ mod tests {
              else Promise.resolve().then(__teardown);\n  \
              }\n\
              }\n\
-             if (typeof customElements !== \"undefined\" && !customElements.get(CounterElement.tag)) customElements.define(CounterElement.tag, CounterElement);\n\
-             export default CounterElement;\n"
+             export default CounterElement;\n\
+             if (typeof customElements !== \"undefined\" && !customElements.get(CounterElement.tag)) customElements.define(CounterElement.tag, CounterElement);\n"
         );
     }
 
@@ -1594,6 +1620,43 @@ mod tests {
         );
         assert!(out.code.contains("export default CounterElement;"), "default is the main class:\n{}", out.code);
         assert!(out.code.contains("customElements.define(BadgeElement.tag, BadgeElement);"), "badge registered:\n{}", out.code);
+    }
+
+    #[test]
+    fn registers_every_component_after_all_classes_are_declared() {
+        // Regression: a file with several components where the *first* (a parent) composes
+        // a *later*-declared sibling by tag. `customElements.define` synchronously upgrades
+        // any matching pre-rendered element and runs its `connectedCallback`, which reads
+        // `Icon.tag`. If the parent's define were emitted inline (before `IconElement` is
+        // declared), that upgrade would hit `IconElement` in its temporal dead zone and
+        // throw on first paint. So every class must be declared before any define runs.
+        let source = "export default function Toggle() { return <button><Icon /></button>; }\n\
+             function Icon() { return <svg></svg>; }";
+        let sess = ParseSession::new();
+        let parsed = sess.parse(Path::new("Toggle.tsx"), source);
+        assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
+        let m = crate::lower::lower_module("/app/Toggle.tsx", &parsed.program, source, false)
+            .expect("a module");
+        let out = emit_module(&m.components, &m.module_stmts, &m.module_exprs);
+        assert!(out.is_complete(), "errors: {:?}", out.errors);
+
+        // Both components register, exactly once each.
+        assert_eq!(
+            out.code.matches("customElements.define(").count(),
+            2,
+            "two registrations:\n{}",
+            out.code
+        );
+
+        // Every class declaration precedes the first registration.
+        let first_define = out.code.find("customElements.define(").expect("a define");
+        let toggle_class = out.code.find("class ToggleElement extends").expect("Toggle class");
+        let icon_class = out.code.find("class IconElement extends").expect("Icon class");
+        assert!(
+            toggle_class < first_define && icon_class < first_define,
+            "all classes must be declared before any define:\nToggle@{toggle_class} Icon@{icon_class} firstDefine@{first_define}\n{}",
+            out.code
+        );
     }
 
     #[test]
