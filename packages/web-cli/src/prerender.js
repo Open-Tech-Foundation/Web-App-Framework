@@ -6,11 +6,30 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { buildServerBundle, injectHead, injectMarkup } from "./shared.js";
+import { buildServerBundle, injectHead, injectMarkup, withHtmlLang } from "./shared.js";
 
-// "/" → dist/index.html, "/post/1" → dist/post/1/index.html.
+// "/" → dist/index.html, "/post/1" → dist/post/1/index.html, "/fr/about" → dist/fr/about/index.html.
 function htmlPathFor(outDir, route) {
   return route === "/" ? join(outDir, "index.html") : join(outDir, route, "index.html");
+}
+
+// Prefix a locale-agnostic route with `locale` (bare for the default) — the URL form
+// that both selects the output file and, passed to renderRoute, pins router.locale.
+function localizeFor(path, locale, defaultLocale) {
+  if (!locale || locale === defaultLocale) return path;
+  return path === "/" ? `/${locale}` : `/${locale}${path}`;
+}
+
+// `rel="alternate" hreflang` descriptors for a route across all locales (+ x-default),
+// merged into metadata.links so renderHead emits them (docs/I18N.md §6).
+function alternatesFor(path, locales, defaultLocale) {
+  const links = locales.map((l) => ({
+    rel: "alternate",
+    hreflang: l,
+    href: localizeFor(path, l, defaultLocale),
+  }));
+  links.push({ rel: "alternate", hreflang: "x-default", href: localizeFor(path, defaultLocale, defaultLocale) });
+  return links;
 }
 
 // Absolute URL for sitemap/robots; "" if no base URL configured.
@@ -56,8 +75,16 @@ function escapeXml(s) {
  * Pre-render the app to static HTML files under `outDir`. Returns
  * `{ count, skipped, failed }`.
  */
-export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", docsPlugins = [], lastUpdated = {}, onCompile, onRender }) {
-  const { mod, cleanup } = await buildServerBundle({ root, pages, webEntry, otfwc, docsPlugins, onCompile });
+export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", docsPlugins = [], lastUpdated = {}, i18n = null, onCompile, onRender }) {
+  const { mod, cleanup } = await buildServerBundle({ root, pages, webEntry, otfwc, docsPlugins, i18n, onCompile });
+
+  // i18n (docs/I18N.md §6): pre-render each route once per locale. The default
+  // locale is emitted bare (dist/<route>/index.html), others under their prefix
+  // (dist/<locale>/<route>/index.html). A single `[null]` means i18n is off — the
+  // loop collapses to the original one-render-per-route behavior.
+  const i18nOn = !!(i18n && Array.isArray(i18n.locales) && i18n.locales.length);
+  const locales = i18nOn ? i18n.locales : [null];
+  const defaultLocale = i18nOn ? i18n.defaultLocale : null;
 
   const { paths, skipped } = await mod.collectRoutePaths();
   const failed = [];
@@ -65,20 +92,28 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
   let renderedCount = 0;
   for (const { path, params } of paths) {
     onRender?.(++renderedCount, paths.length);
-    try {
-      const { html, metadata } = (await mod.renderRoute(path, params)) ?? { html: "", metadata: {} };
-      let head = mod.renderHead(metadata, { path, baseUrl });
-      // SEO: expose the page's last-updated time (git/frontmatter) as Open Graph's
-      // article:modified_time so crawlers see when the content actually changed.
-      const iso = lastUpdated[path];
-      if (iso) head += `\n<meta property="article:modified_time" content="${escapeXml(iso)}">`;
-      const file = htmlPathFor(outDir, path);
-      mkdirSync(dirname(file), { recursive: true });
-      writeFileSync(file, injectMarkup(injectHead(shellHtml, head), html));
-      rendered.push(path);
-    } catch (e) {
-      failed.push(path);
-      console.error(`✗ pre-render failed for ${path}: ${e?.message ?? e}`);
+    for (const locale of locales) {
+      const urlPath = localizeFor(path, locale, defaultLocale);
+      try {
+        // Passing the localized URL pins router.locale (resolveLocale) and still
+        // matches the locale-agnostic route table, so `t()` renders in `locale`.
+        const { html, metadata } = (await mod.renderRoute(urlPath, params)) ?? { html: "", metadata: {} };
+        const meta = i18nOn
+          ? { ...metadata, links: [...(metadata.links || []), ...alternatesFor(path, locales, defaultLocale)] }
+          : metadata;
+        let head = mod.renderHead(meta, { path: urlPath, baseUrl });
+        // SEO: expose the page's last-updated time (git/frontmatter) as Open Graph's
+        // article:modified_time so crawlers see when the content actually changed.
+        const iso = lastUpdated[path];
+        if (iso) head += `\n<meta property="article:modified_time" content="${escapeXml(iso)}">`;
+        const file = htmlPathFor(outDir, urlPath);
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, injectMarkup(injectHead(withHtmlLang(shellHtml, locale), head), html));
+        rendered.push(urlPath);
+      } catch (e) {
+        failed.push(urlPath);
+        console.error(`✗ pre-render failed for ${urlPath}: ${e?.message ?? e}`);
+      }
     }
   }
 

@@ -74,7 +74,7 @@ export async function runBuild(options = {}) {
   const tmp = join(root, ".otfw");
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "entry.js");
-  writeFileSync(entry, entrySource(pages, appDir));
+  writeFileSync(entry, entrySource(pages, appDir, undefined, config?.i18n));
 
   console.log("\n  OTF Web — production build\n");
 
@@ -161,6 +161,7 @@ export async function runBuild(options = {}) {
       baseUrl,
       docsPlugins,
       lastUpdated,
+      i18n: config?.i18n,
       onCompile: (id) => ssgStep.update(`compiling ${basename(id)}  (${++ssgCompiled})`),
       onRender: (done, total) => ssgStep.update(`rendering ${done}/${total}`),
     });

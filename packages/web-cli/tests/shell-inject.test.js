@@ -5,10 +5,12 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  entrySource,
   injectHead,
   injectMarkup,
   serverEntrySource,
   stampHydrateSentinel,
+  withHtmlLang,
 } from "../src/shared.js";
 
 const SHELL =
@@ -29,6 +31,14 @@ describe("injectMarkup", () => {
   test("leaves the shell untouched when there is no #app", () => {
     const shell = `<body><main></main></body>`;
     expect(injectMarkup(shell, "<p>x</p>")).toBe(shell);
+  });
+
+  test("keeps `$` sequences literal (e.g. a formatted price, not a back-reference)", () => {
+    // "$189.00" contains "$1" — a string replacement would expand it to capture group 1.
+    const out = injectMarkup(SHELL, `<p class="price">$189.00</p>`);
+    expect(out).toContain(`<div id="app"><p class="price">$189.00</p></div>`);
+    // And the i18n French form with a trailing "$US".
+    expect(injectMarkup(SHELL, `<p>189,00 $US</p>`)).toContain(`<p>189,00 $US</p>`);
   });
 });
 
@@ -52,6 +62,26 @@ describe("injectHead", () => {
 
   test("returns the shell unchanged for empty head", () => {
     expect(injectHead(SHELL, "")).toBe(SHELL);
+  });
+
+  test("keeps `$` literal in head content (e.g. a price in a meta description)", () => {
+    const out = injectHead(SHELL, `<meta name="description" content="from $189.00">`);
+    expect(out).toContain(`content="from $189.00">`);
+  });
+});
+
+describe("withHtmlLang (i18n)", () => {
+  test("replaces an existing <html lang>", () => {
+    expect(withHtmlLang(`<html lang="en"><body></body></html>`, "fr")).toContain(`<html lang="fr">`);
+  });
+
+  test("adds lang when the shell has none", () => {
+    expect(withHtmlLang(`<html><body></body></html>`, "ja")).toContain(`<html lang="ja">`);
+  });
+
+  test("is a no-op without a locale", () => {
+    const shell = `<html lang="en"></html>`;
+    expect(withHtmlLang(shell, null)).toBe(shell);
   });
 });
 
@@ -92,5 +122,30 @@ describe("serverEntrySource", () => {
     expect(src).toContain(`["/app/about/page.jsx"]: p1,`);
     expect(src).toContain(`import { registerRoutes } from "@opentf/web";`);
     expect(src).toContain(`renderRoute, renderHead, collectRoutePaths`);
+  });
+
+  test("configures the server-side router with i18n so prefixes match", () => {
+    const src = serverEntrySource(["/app/page.jsx"], { locales: ["en", "fr"], defaultLocale: "en" });
+    expect(src).toContain(`import { registerRoutes, configureI18n } from "@opentf/web";`);
+    expect(src).toContain(`configureI18n({"locales":["en","fr"],"defaultLocale":"en"});`);
+  });
+
+  test("omits configureI18n when i18n is absent", () => {
+    const src = serverEntrySource(["/app/page.jsx"]);
+    expect(src).not.toContain("configureI18n");
+  });
+});
+
+describe("entrySource (i18n)", () => {
+  test("threads the i18n config into mountApp", () => {
+    const src = entrySource(["/app/page.jsx"], "/app", undefined, {
+      locales: ["en", "fr"],
+      defaultLocale: "en",
+    });
+    expect(src).toContain(`i18n: {"locales":["en","fr"],"defaultLocale":"en"}`);
+  });
+
+  test("omits the i18n option when not configured", () => {
+    expect(entrySource(["/app/page.jsx"], "/app")).not.toContain("i18n:");
   });
 });

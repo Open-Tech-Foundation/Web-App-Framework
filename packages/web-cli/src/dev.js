@@ -98,13 +98,13 @@ export async function runDev() {
     process.exit(1);
   }
 
+  const config = await loadConfig(root);
+  const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
+
   const devDir = join(root, ".dev");
   mkdirSync(devDir, { recursive: true });
   const entryFile = join(devDir, "entry.js");
-  writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl));
-
-  const config = await loadConfig(root);
-  const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
+  writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl, config?.i18n));
 
   let server;
   const publish = (msg) => server?.publish("hmr", JSON.stringify(msg));
@@ -222,7 +222,7 @@ export async function runDev() {
         const fresh = discoverPages(appDir, exclude);
         pages.length = 0;
         pages.push(...fresh);
-        writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl));
+        writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl, config?.i18n));
       }
       onChange(file);
     }

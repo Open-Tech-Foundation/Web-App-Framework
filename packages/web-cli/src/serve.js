@@ -37,6 +37,7 @@ import {
   loadConfig,
   loadDocsPlugins,
   loadProject,
+  withHtmlLang,
 } from "./shared.js";
 
 // Resolve the start port from `--port <n>` / `-p <n>` / `--port=<n>` (args after
@@ -111,7 +112,42 @@ export async function runServe() {
   const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
   const baseUrl = resolveBaseUrl(config);
 
-  const { mod, cleanup } = await buildServerBundle({ root, pages, webEntry, otfwc, docsPlugins });
+  // i18n (docs/I18N.md §6): URL path-prefix locale routing. The server pins the
+  // locale from the prefix (renderRoute does this via resolveLocale), emits per-locale
+  // <html lang> + hreflang, and detect-redirects bare paths for non-default visitors.
+  const i18n = config?.i18n;
+  const i18nOn = !!(i18n && Array.isArray(i18n.locales) && i18n.locales.length);
+  const nonDefault = i18nOn ? new Set(i18n.locales.filter((l) => l !== i18n.defaultLocale)) : null;
+
+  const localeOf = (pathname) =>
+    i18nOn && nonDefault.has(pathname.split("/")[1]) ? pathname.split("/")[1] : i18n?.defaultLocale ?? null;
+  const stripLocale = (pathname) => {
+    if (!i18nOn || !nonDefault.has(pathname.split("/")[1])) return pathname;
+    const rest = "/" + pathname.split("/").slice(2).join("/");
+    return rest === "/" ? "/" : rest.replace(/\/$/, "");
+  };
+  const localizeFor = (path, locale) =>
+    !locale || locale === i18n.defaultLocale ? path : path === "/" ? `/${locale}` : `/${locale}${path}`;
+  const alternatesFor = (path) => [
+    ...i18n.locales.map((l) => ({ rel: "alternate", hreflang: l, href: localizeFor(path, l) })),
+    { rel: "alternate", hreflang: "x-default", href: localizeFor(path, i18n.defaultLocale) },
+  ];
+  // Pick a preferred locale from a Cookie override or Accept-Language, else null.
+  const detectLocale = (req) => {
+    if (!i18nOn) return null;
+    const cookie = /(?:^|;\s*)otfw_locale=([^;]+)/.exec(req.headers.get("cookie") || "")?.[1];
+    if (cookie && i18n.locales.includes(cookie)) return cookie;
+    const accept = req.headers.get("accept-language");
+    if (!accept) return null;
+    for (const part of accept.split(",")) {
+      const tag = part.split(";")[0].trim().toLowerCase();
+      const hit = i18n.locales.find((l) => l.toLowerCase() === tag || l.toLowerCase() === tag.split("-")[0]);
+      if (hit) return hit;
+    }
+    return null;
+  };
+
+  const { mod, cleanup } = await buildServerBundle({ root, pages, webEntry, otfwc, docsPlugins, i18n });
 
   const shutdown = () => {
     try {
@@ -148,8 +184,12 @@ export async function runServe() {
       const body = existsSync(notFound) ? readFileSync(notFound) : "<h1>404 — Not Found</h1>";
       return new Response(body, { status: 404, headers: { "content-type": "text/html" } });
     }
-    const head = mod.renderHead(result.metadata, { path: url.pathname, baseUrl });
-    const html = injectMarkup(injectHead(shell, head), result.html);
+    const meta = i18nOn
+      ? { ...result.metadata, links: [...(result.metadata.links || []), ...alternatesFor(stripLocale(url.pathname))] }
+      : result.metadata;
+    const head = mod.renderHead(meta, { path: url.pathname, baseUrl });
+    const localizedShell = i18nOn ? withHtmlLang(shell, localeOf(url.pathname)) : shell;
+    const html = injectMarkup(injectHead(localizedShell, head), result.html);
     // 200 for a real route; 404 when the path fell back to the registered 404 page.
     return new Response(html, {
       status: result.status ?? 200,
@@ -165,6 +205,16 @@ export async function runServe() {
       if (/\.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== "/") {
         const asset = serveStatic(url.pathname);
         return asset ?? new Response("not found", { status: 404 });
+      }
+      // Locale detection: a bare path (no locale prefix) whose visitor prefers a
+      // non-default locale is redirected to the prefixed URL. The default locale
+      // serves bare, so an `en` visitor is never redirected (no loop).
+      if (i18nOn && localeOf(url.pathname) === i18n.defaultLocale) {
+        const pref = detectLocale(req);
+        if (pref && pref !== i18n.defaultLocale) {
+          const target = localizeFor(stripLocale(url.pathname), pref) + url.search;
+          return new Response(null, { status: 302, headers: { location: target } });
+        }
       }
       try {
         return await render(url);

@@ -48,12 +48,15 @@ export function readHtmlShell(root) {
 
 /** Inject `snippet` just before `</body>` (or append when there is none). */
 export function injectBeforeBody(html, snippet) {
-  return html.includes("</body>") ? html.replace("</body>", `${snippet}</body>`) : html + snippet;
+  // Function replacer so `$` in `snippet` is literal (String.replace treats `$1`,
+  // `$&`, … in a string replacement as back-references — e.g. a "$189.00" price).
+  return html.includes("</body>") ? html.replace("</body>", () => `${snippet}</body>`) : html + snippet;
 }
 
 /** Inject pre-rendered markup into the shell's empty `#app` container. */
 export function injectMarkup(shellHtml, markup) {
-  return shellHtml.replace(/(<div id="app"[^>]*>)\s*(<\/div>)/, `$1${markup}$2`);
+  // Function replacer: `markup` may contain `$` (currency, etc.) — keep it literal.
+  return shellHtml.replace(/(<div id="app"[^>]*>)\s*(<\/div>)/, (_m, open, close) => `${open}${markup}${close}`);
 }
 
 /**
@@ -78,7 +81,17 @@ export function injectHead(shellHtml, headHtml) {
   if (!headHtml) return shellHtml;
   let out = shellHtml;
   if (/<title[\s>]/i.test(headHtml)) out = out.replace(/<title>[\s\S]*?<\/title>\s*/i, "");
-  return out.replace(/<\/head>/i, `${headHtml}\n</head>`);
+  // Function replacer so `$` in `headHtml` (e.g. a price in a meta description) is literal.
+  return out.replace(/<\/head>/i, () => `${headHtml}\n</head>`);
+}
+
+/** Set/replace the shell's `<html lang>` for a localized page (i18n; docs/I18N.md §6). */
+export function withHtmlLang(shellHtml, locale) {
+  if (!locale) return shellHtml;
+  if (/<html[^>]*\slang=/i.test(shellHtml)) {
+    return shellHtml.replace(/(<html[^>]*\slang=)(["'])[^"']*\2/i, `$1$2${locale}$2`);
+  }
+  return shellHtml.replace(/<html\b/i, `<html lang="${locale}"`);
 }
 
 /** Nearest ancestor directory of `from` (inclusive) that contains `name`. */
@@ -326,16 +339,22 @@ export function findGuard(appDir) {
  * The production build imports the file directly (Rolldown code-splits it); the dev
  * server passes a `/__route/…` URL so the route compiles on first navigation.
  */
-export function entrySource(pages, appDir, loaderUrl = (p) => p) {
+export function entrySource(pages, appDir, loaderUrl = (p) => p, i18n = null) {
   const map = pages
     .map((p) => `    [${JSON.stringify(p)}]: () => import(${JSON.stringify(loaderUrl(p))}),`)
     .join("\n");
   const guard = findGuard(appDir);
+  // Thread the i18n config (otfw.config) into `mountApp` so the client router knows
+  // the locales and `router.locale` resolves from the URL prefix (docs/I18N.md §6).
+  const i18nOpt =
+    i18n && Array.isArray(i18n.locales) && i18n.locales.length
+      ? `\n  i18n: ${JSON.stringify({ locales: i18n.locales, defaultLocale: i18n.defaultLocale })},`
+      : "";
   return (
     `import { mountApp } from "@opentf/web";\n` +
     (guard ? `import guard from ${JSON.stringify(guard)};\n` : "") +
     `mountApp({\n  pages: {\n${map}\n  },\n` +
-    `  target: document.getElementById("app"),${guard ? "\n  guard," : ""}\n});\n`
+    `  target: document.getElementById("app"),${guard ? "\n  guard," : ""}${i18nOpt}\n});\n`
   );
 }
 
@@ -567,13 +586,23 @@ export function cssPlugin() {
 // sees real namespaces, enabling `getStaticPaths`) and re-export the render API.
 // Shared by the SSG pre-render and the SSR server — both render through the same
 // SSG-compiled bundle (ARCHITECTURE.md §6: "SSR … shares the SSG path").
-export function serverEntrySource(pages) {
+export function serverEntrySource(pages, i18n = null) {
   const imports = pages.map((p, i) => `import * as p${i} from ${JSON.stringify(p)};`).join("\n");
   const map = pages.map((p, i) => `  [${JSON.stringify(p)}]: p${i},`).join("\n");
+  // i18n: the server-side router needs the locales too — so renderRoute can strip
+  // a `/fr/...` prefix to match the route table and set router.locale for `t()`
+  // (docs/I18N.md §6). Without this the prefix wouldn't match and pages would
+  // render in the default locale (or 404).
+  const i18nOn = i18n && Array.isArray(i18n.locales) && i18n.locales.length;
+  const named = i18nOn ? "registerRoutes, configureI18n" : "registerRoutes";
+  const i18nCall = i18nOn
+    ? `configureI18n(${JSON.stringify({ locales: i18n.locales, defaultLocale: i18n.defaultLocale })});\n`
+    : "";
   return (
     `${imports}\n` +
-    `import { registerRoutes } from "@opentf/web";\n` +
+    `import { ${named} } from "@opentf/web";\n` +
     `export { renderRoute, renderHead, collectRoutePaths } from "@opentf/web/server";\n` +
+    i18nCall +
     `registerRoutes({\n${map}\n});\n`
   );
 }
@@ -591,13 +620,14 @@ export async function buildServerBundle({
   webEntry,
   otfwc,
   docsPlugins = [],
+  i18n = null,
   onCompile,
   tmpName = ".otfw-ssg",
 }) {
   const tmp = join(root, tmpName);
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "ssg-entry.js");
-  writeFileSync(entry, serverEntrySource(pages));
+  writeFileSync(entry, serverEntrySource(pages, i18n));
 
   const serverApi = join(dirname(webEntry), "server", "index.js");
   await build({
