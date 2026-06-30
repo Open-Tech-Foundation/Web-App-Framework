@@ -41,6 +41,12 @@ irreducible price of client-side route building, accepted in exchange for instan
 pure, untouched CSR backend. See §7 for the `nav` config that lets an app choose MPA, in
 which case components only ever adopt (the build arm is dead and can later be dropped).
 
+> **Implemented so far (2.0):** leaf pages, standalone components, and components *used*
+> in a page (the page claims the host; the component self-adopts) all hydrate. **Not yet
+> (2.1):** components that take a `{children}` slot, and **layout-chain** routes — both
+> need the variable-region (`{children}`/list/conditional) markers. Until then a
+> layout-wrapped route, or a component with children, falls back to a clean CSR build.
+
 | Mode | Nav | First paint | Subsequent nav | Components |
 |---|---|---|---|---|
 | CSR | SPA | client build (empty `#app`) | client build | pure build (`csr.rs`) |
@@ -187,9 +193,9 @@ helpers already operate on existing nodes. Only acquisition (the claims) is new.
   sentinel `data-otfw-hydrate` on the root and, when the route module exposes a `hydrate`
   factory, the router calls it to adopt the existing children instead of
   `replaceChildren()` + build (`runtime/router.js`). Subsequent client navigations keep
-  the CSR build path. The page hydrate factory adopts the **layout chain** too: it claims
-  each layout host and threads the adopted child into the next layout's `{children}` slot
-  (§3.4-layouts). A thrown mismatch falls through to a clean build.
+  the CSR build path. Only **leaf routes** (no layout chain) hydrate so far; a
+  layout-wrapped route, or a thrown mismatch, falls through to a clean build.
+  **Pending (2.1):** `{children}`-region markers so the layout chain hydrates.
 - **A server sentinel** _(implemented)_ — `<div id="app" data-otfw-hydrate>`, stamped by
   the shell injection (`stampHydrateSentinel`) whenever the client bundle was built for
   the hydrate target. The toolchain wires this for `otfw serve` (always) and `otfw build
@@ -228,8 +234,8 @@ shell for Phase 3 loader-data hydration (TanStack-style), but do not implement i
 
 | Step | Scope |
 |---|---|
-| **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + dual-emit `hydrate.rs` (CSR build + `hydrate` adopt factory for pages) ✓ + `otfwc --target=hydrate` ✓ + router boot switch ✓ + toolchain wiring (serve-protocol target token + hydrate client bundle + `data-otfw-hydrate` sentinel in `otfw serve`/`--ssg`) ✓ + **dual component (build/adopt via `this.firstChild`, csr stays pure)** ✓ + **layout-chain / `{children}` adoption** ✓ + **`nav` config (spa/mpa) + `<Link reload>`** ✓ + ssg→hydrate, router-boot, serve-e2e & real-browser (CDP) hydration e2e (page + component + layout) tests ✓ |
-| **2.1** | variable structure: lists + conditionals hydration |
+| **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + dual-emit `hydrate.rs` (CSR build + `hydrate` adopt factory for pages) ✓ + `otfwc --target=hydrate` ✓ + router boot switch (leaf routes) ✓ + toolchain wiring (serve-protocol target token + hydrate client bundle + `data-otfw-hydrate` sentinel in `otfw serve`/`--ssg`) ✓ + **dual component (build/adopt via `this.firstChild`, csr stays pure)** ✓ + **`nav` config (spa/mpa) + `<Link reload>`** ✓ + ssg→hydrate, router-boot, serve-e2e & real-browser (CDP) hydration e2e (leaf page + component island) tests ✓ |
+| **2.1** | variable-region markers (`{children}`, lists, conditionals) → **layout-chain / `{children}`-slot adoption** + list/conditional hydration |
 | **2.2** | per-component island recovery wired into the dev overlay |
 | **2.3** _(deferred)_ | lazy/partial island directives (`client:idle` / `visible` / `media`) — leveraging the custom-element lifecycle. **Not in Phase 2**; revisited once core hydration is solid. |
 

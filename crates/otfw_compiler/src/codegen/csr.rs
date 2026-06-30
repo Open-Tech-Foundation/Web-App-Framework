@@ -181,10 +181,30 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
     CsrModule { code, errors: e.errors }
 }
 
+/// How a component's `connectedCallback` constructs its view. CSR always *builds*; the
+/// hydrate backend hands in an alternate body for the server-rendered case. This type
+/// is **hydration-agnostic** — csr only splices the provided body into an
+/// `if (this.firstChild)` switch; it never generates or interprets adopt logic.
+#[derive(Clone, Copy)]
+pub(crate) enum ComponentView<'a> {
+    /// Pure CSR: build the subtree and append it. No server DOM is ever present.
+    Build,
+    /// Hydrate target, adoptable: `if (this.firstChild) { <body> } else { <build> }` —
+    /// adopt the server-rendered children, or build fresh when client-created on nav.
+    Adopt(&'a str),
+    /// Hydrate target, not adoptable yet: discard any server children and rebuild
+    /// (a flash, but correct) so a server-rendered host doesn't double-render.
+    RebuildIfServerChildren,
+}
+
 /// Build a Custom Element class body (everything after the import header). Returns the
 /// class declaration (`default_export` adds `export default <Class>;`) and, separately,
 /// its `customElements.define` statement so the caller controls registration order.
-fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, String, String) {
+fn component_body_ex<'a>(
+    lowered: &'a Lowered,
+    default_export: bool,
+    view: ComponentView<'_>,
+) -> (Emitter<'a>, String, String) {
     // Tag/class come from the function name (not the export), so `export default
     // function Counter` registers `web-counter` to match a page's `<Counter/>`.
     let export = lowered.name.clone();
@@ -287,8 +307,27 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
         code.push_str("    enterHost(this);\n");
     }
     code.push_str("    try {\n");
-    code.push_str(&body);
-    code.push_str(&format!("    this.appendChild({root});\n"));
+    match view {
+        ComponentView::Build => {
+            code.push_str(&body);
+            code.push_str(&format!("    this.appendChild({root});\n"));
+        }
+        ComponentView::RebuildIfServerChildren => {
+            code.push_str("    if (this.firstChild) this.replaceChildren();\n");
+            code.push_str(&body);
+            code.push_str(&format!("    this.appendChild({root});\n"));
+        }
+        ComponentView::Adopt(adopt_body) => {
+            // Server-rendered (has children) → adopt them; client-`createElement`'d on
+            // navigation (empty) → build. The discriminator is local and per-instance.
+            code.push_str("    if (this.firstChild) {\n");
+            code.push_str(adopt_body);
+            code.push_str("    } else {\n");
+            code.push_str(&body);
+            code.push_str(&format!("    this.appendChild({root});\n"));
+            code.push_str("    }\n");
+        }
+    }
     code.push_str(&mounts);
     code.push_str("    } catch (e) {\n");
     code.push_str(&format!(
@@ -363,7 +402,7 @@ fn component_body_ex(lowered: &Lowered, default_export: bool) -> (Emitter<'_>, S
 /// Single-component module: a Custom Element class with a default export. The lone
 /// component's registration can follow its own class directly (no siblings to outrun).
 fn component_body(lowered: &Lowered) -> (Emitter<'_>, String) {
-    let (e, mut code, define) = component_body_ex(lowered, true);
+    let (e, mut code, define) = component_body_ex(lowered, true, ComponentView::Build);
     code.push_str(&define);
     (e, code)
 }
@@ -377,11 +416,33 @@ pub fn emit_module(
     module_stmts: &[BodyItem],
     module_exprs: &ExprTable,
 ) -> CsrModule {
+    emit_module_inner(components, module_stmts, module_exprs, &[])
+}
+
+/// Like `emit_module`, but each component may carry a [`ComponentView`] (aligned with
+/// `components` by index) so the hydrate backend can splice an adopt body into the
+/// `connectedCallback`. Pages ignore their slot; a missing/empty slot is `Build` (CSR).
+/// csr stays hydration-agnostic — it only places the caller's body behind the switch.
+pub(crate) fn emit_module_with_adopt(
+    components: &[Lowered],
+    module_stmts: &[BodyItem],
+    module_exprs: &ExprTable,
+    views: &[ComponentView],
+) -> CsrModule {
+    emit_module_inner(components, module_stmts, module_exprs, views)
+}
+
+fn emit_module_inner(
+    components: &[Lowered],
+    module_stmts: &[BodyItem],
+    module_exprs: &ExprTable,
+    views: &[ComponentView],
+) -> CsrModule {
     let mut combined = Uses::default();
     let mut errors = Vec::new();
     let mut bodies = Vec::new();
     let mut defines = Vec::new();
-    for c in components {
+    for (i, c) in components.iter().enumerate() {
         if c.is_page {
             let (e, body) = page_body(c);
             combined.merge(&e.uses);
@@ -394,7 +455,8 @@ pub fn emit_module(
             // declared, so a component that composes a sibling never registers (and
             // upgrades a pre-rendered host) while that sibling's class is still in its
             // temporal dead zone.
-            let (e, body, define) = component_body_ex(c, c.is_default_export);
+            let view = views.get(i).copied().unwrap_or(ComponentView::Build);
+            let (e, body, define) = component_body_ex(c, c.is_default_export, view);
             combined.merge(&e.uses);
             errors.extend(e.errors);
             bodies.push(body);

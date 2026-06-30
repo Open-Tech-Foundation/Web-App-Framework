@@ -7,6 +7,19 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Added
 
+- **Component (Custom Element) hydration** (`codegen/hydrate.rs` + `csr.rs`, Phase 2.0 —
+  see `docs/HYDRATION.md` §0/§3.2): the hydrate target now emits a **dual component**.
+  csr gained a hydration-agnostic `ComponentView` hook — it splices a caller-provided
+  body behind an `if (this.firstChild)` switch in `connectedCallback` (or, for a view
+  that can't be adopted, a `replaceChildren()` rebuild guard) — and `hydrate.rs` supplies
+  the adopt body (claim walk over `this`, prop aliases/snapshots/rest, effects/`$expose`/
+  `onCleanup` into the cleanup sink). So a server-rendered `<web-*>` **adopts** its
+  children on upgrade, while a client-`createElement`'d one (SPA navigation) still builds
+  — the discriminator is the per-instance `this.firstChild`, not a global flag, and
+  `csr.rs` stays a pure build-only backend. The page adopt walk also claims a child
+  component's host (by its `.tag`) without recursing, so the component self-adopts.
+  Components with a `{children}` slot, lists, or conditionals fall back to the rebuild
+  guard (2.1). `csr::emit_module_with_adopt` threads the per-component `ComponentView`.
 - **Hydrate backend** (`codegen/hydrate.rs`, Phase 2.0 — see `docs/HYDRATION.md`): a
   new target that emits client code which *adopts* the server-rendered DOM instead of
   rebuilding it. Where CSR does `document.createElement` + `appendChild`, Hydrate walks

@@ -140,18 +140,27 @@ const OBSERVER = `
   if (document.documentElement) tag(document.documentElement);
 `;
 
-// Read after hydration: identity of the live nodes + the rendered count.
+// Read after hydration: identity of the live nodes + the rendered counts. The page
+// has an inline counter (a page-factory hydration) AND a <Stepper> component island (a
+// custom-element self-adoption) — both must adopt, not rebuild.
 const PROBE = `(() => {
   const main = document.querySelector('#app main');
-  const button = document.querySelector('#app button');
+  const incBtn = document.querySelector('#app main > button');     // the page's own counter
   const p = document.querySelector('#app p');
+  const stepperHost = document.querySelector('#app .web-stepper');  // the component host
+  const stepperBtn = document.querySelector('#app .stepper');       // its inner button
+  const norm = (el) => el ? el.textContent.replace(/\\s+/g, ' ').trim() : null;
   return {
     hasSentinel: document.querySelector('#app')?.hasAttribute('data-otfw-hydrate') ?? false,
     mainIsServer: !!(main && main.__server),
-    buttonIsServer: !!(button && button.__server),
+    incIsServer: !!(incBtn && incBtn.__server),
     removedServer: window.__removedServer,
-    countText: p ? p.textContent.replace(/\\s+/g, ' ').trim() : null,
+    countText: norm(p),
     buttonCount: document.querySelectorAll('#app button').length,
+    // component island
+    stepperHostIsServer: !!(stepperHost && stepperHost.__server),
+    stepperBtnIsServer: !!(stepperBtn && stepperBtn.__server),
+    stepperText: norm(stepperBtn),
   };
 })()`;
 
@@ -176,18 +185,26 @@ async function run(port) {
     // ── 1. Adoption — the server DOM was claimed, not rebuilt ───────────────────
     const s = await evalJS(client, PROBE);
     assert(s.hasSentinel, "#app carries the data-otfw-hydrate sentinel (SSR shell)");
-    assert(s.buttonCount === 1, "exactly one <button> — server markup was not duplicated");
+    assert(s.buttonCount === 2, "two <button>s (page counter + component) — nothing duplicated");
     assert(s.removedServer === 0, "no server-rendered node was removed (no CSR rebuild)");
     assert(s.mainIsServer, "the live <main> is the server-rendered node (adopted)");
-    assert(s.buttonIsServer, "the live <button> is the server-rendered node (adopted)");
+    assert(s.incIsServer, "the page's counter <button> is the server-rendered node (adopted)");
     assert(s.countText === "count 0", "the server-rendered count is preserved through hydrate");
 
-    // ── 2. Interactivity is live on the adopted DOM ─────────────────────────────
-    await evalJS(client, `document.querySelector('#app button').click()`);
+    // ── 1b. The component island self-adopted (custom element) ──────────────────
+    assert(s.stepperHostIsServer, "the <web-stepper> host is the server-rendered node (adopted)");
+    assert(s.stepperBtnIsServer, "the component's inner <button> is server-rendered (adopted)");
+    assert(s.stepperText === "n=7", "the component's server state (7) is preserved through hydrate");
+
+    // ── 2. Interactivity is live on both adopted islands ────────────────────────
+    await evalJS(client, `document.querySelector('#app main > button').click()`);
+    await evalJS(client, `document.querySelector('#app .stepper').click()`);
     await sleep(50);
     const after = await evalJS(client, PROBE);
-    assert(after.countText === "count 1", "clicking the adopted button increments the signal");
-    assert(after.buttonIsServer, "the button is still the same adopted node after the update");
+    assert(after.countText === "count 1", "clicking the page button increments its signal");
+    assert(after.incIsServer, "the page button is still the same adopted node after the update");
+    assert(after.stepperText === "n=8", "clicking the component button increments its own signal");
+    assert(after.stepperBtnIsServer, "the component button is still the same adopted node");
     assert(after.removedServer === 0, "reactivity updated in place — still no server node removed");
 
     client.close();

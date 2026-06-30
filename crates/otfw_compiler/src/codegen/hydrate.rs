@@ -4,21 +4,29 @@
 //! *adopts* the server-rendered DOM: the emitted code walks the existing nodes with a
 //! cursor and `claim`s them by position, never creating structure. The **reactivity
 //! wiring is the same runtime** as CSR — `bindText`, `bindAttr`, event listeners,
-//! `effect` — so this backend reuses `csr.rs`'s leaf emitters (`js_string`, event
-//! handling) and only the node-acquisition walk is new (the design's "differ only in
-//! node acquisition"). Markers (`<!--$-->…<!--/-->`) delimit dynamic text holes; static
-//! structure is claimed by position (no markers).
+//! `effect`, `setProp` — so this backend reuses `csr.rs`'s leaf emitters and only the
+//! node-acquisition walk is new. Markers (`<!--$-->…<!--/-->`) delimit dynamic text
+//! holes; static structure is claimed by position (no markers).
 //!
-//! Scope (Phase 2.0): **pages / layouts** with element / static-text / dynamic-text
-//! structure, static & dynamic attributes, `ref`, and event handlers. Child components,
-//! lists, conditionals (`DynamicNode`), `{children}` slots, fragment/non-element roots,
-//! and JSX-as-value are reported as diagnostics and land in 2.1+.
+//! Output shape (`docs/HYDRATION.md` §0): the hydrate target is a **single client
+//! bundle that both adopts (first paint) and builds (SPA navigation)**. Pages get the
+//! CSR `export default` build factory **plus** a named `hydrate` adopt factory.
+//! Components get a **dual class**: csr emits the class, but its `connectedCallback`
+//! branches on `this.firstChild` (server-rendered ⇒ adopt; client-`createElement`'d ⇒
+//! build). csr stays a pure build-only backend — it only splices the adopt body this
+//! module hands it (`ComponentView::Adopt`) behind the switch; the adopt body itself is
+//! emitted here. A view this backend can't adopt yet (lists, conditionals, `{children}`,
+//! fragments) falls back: pages get no `hydrate` export (the router rebuilds via CSR);
+//! components get `ComponentView::RebuildIfServerChildren` (discard server DOM + build).
 
 use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
 use otfw_ir::ExpressionId;
 
-use crate::codegen::csr::{self, event_options, is_event, is_listener, js_string};
+use crate::codegen::csr::{
+    self, event_options, is_event, is_listener, js_string, ComponentView,
+};
+use crate::codegen::tags;
 use crate::lower::{BodyItem, ExprTable, Lowered, SignalDecl};
 
 /// The Hydrate output for a module.
@@ -34,67 +42,16 @@ impl HydrateModule {
     }
 }
 
-/// Which hydrate-exclusive claim helpers the generated factory references (drives the
-/// appended import; the reactive helpers come from the CSR part's import — see
-/// `claim_import`).
+/// Which hydrate-exclusive claim helpers the generated code references (drives the
+/// appended import). The reactive helpers (`signal`/`effect`/`bindText`/`setProp`/…)
+/// come from the CSR part's import — the adopt code is the *same view* as the build
+/// code, so its reactive-helper needs are a subset already imported.
 #[derive(Default)]
 struct Uses {
     cursor: bool,
     claim_element: bool,
     claim_text: bool,
     skip_node: bool,
-}
-
-/// Emit a whole module for the **hydrate target**: the full CSR module (build
-/// factories + Custom Elements + registrations — used for client-side navigation,
-/// where there is no server DOM to adopt) **plus** a `hydrate` adopt factory per page
-/// (used on first paint to adopt the server-rendered DOM).
-///
-/// The two share a module scope, so the appended hydrate factory references the same
-/// signal/decl helpers the CSR part already imported; only the hydrate-exclusive claim
-/// helpers (`cursor`/`claimElement`/`claimText`/`skipNode`) need a fresh import (no
-/// identifier overlap). A page the adopt walk can't handle yet (child components,
-/// lists, conditionals, `{children}`) simply gets **no** `hydrate` export — it still
-/// works via CSR (the router falls back to a build), so the diagnostics are warnings.
-pub fn emit_module(
-    components: &[Lowered],
-    module_stmts: &[BodyItem],
-    module_exprs: &ExprTable,
-) -> HydrateModule {
-    // 1. The complete CSR module — build factories + components + `customElements.define`.
-    let base = csr::emit_module(components, module_stmts, module_exprs);
-    let mut code = base.code;
-    let mut errors = base.errors;
-
-    // 2. Append an adopt (`hydrate`) factory for every page we can adopt.
-    let mut uses = Uses::default();
-    let mut bodies = Vec::new();
-    for c in components {
-        if !c.is_page {
-            continue; // component (custom-element) adoption is Phase 2.1
-        }
-        let mut e = Emitter::new(&c.exprs);
-        let body = e.page(c);
-        if e.errors.is_empty() {
-            merge_uses(&mut uses, &e.uses);
-            bodies.push(body);
-        } else {
-            // Can't adopt this page yet — emit CSR-only (no `hydrate` export) and report
-            // the reason as a (non-fatal) warning. The page still renders + works.
-            errors.extend(e.errors);
-        }
-    }
-
-    if !bodies.is_empty() {
-        if !code.ends_with('\n') {
-            code.push('\n');
-        }
-        code.push_str(&claim_import(&uses));
-        for body in bodies {
-            code.push_str(&body);
-        }
-    }
-    HydrateModule { code, errors }
 }
 
 fn merge_uses(into: &mut Uses, from: &Uses) {
@@ -104,10 +61,87 @@ fn merge_uses(into: &mut Uses, from: &Uses) {
     into.skip_node |= from.skip_node;
 }
 
-/// Import only the hydrate-exclusive claim helpers. The reactive helpers the adopt
-/// factory uses (`signal`/`computed`/`effect`/`bindText`/`bindAttr`/`readContext`) are
-/// a subset of what the CSR part already imported for the same view, so re-importing
-/// them would clash; the claim helpers never appear in CSR output, so they are safe.
+/// Emit a whole module for the **hydrate target**. Calls `csr` to emit the build
+/// factories + Custom Elements + registrations, threading a [`ComponentView`] per
+/// component so each class's `connectedCallback` adopts when server-rendered; then
+/// appends the page `hydrate` adopt factories and the claim-helper import.
+pub fn emit_module(
+    components: &[Lowered],
+    module_stmts: &[BodyItem],
+    module_exprs: &ExprTable,
+) -> HydrateModule {
+    let mut uses = Uses::default();
+    let mut errors = Vec::new();
+
+    // 1. Per-component adopt bodies (spliced into the csr class by `ComponentView`).
+    //    Each entry aligns with `components` by index; pages get `Build` (ignored —
+    //    they use a separate `hydrate` factory, below). Owned strings live here so the
+    //    `ComponentView::Adopt(&str)` borrows stay valid through the csr call.
+    let mut adopt_bodies: Vec<Option<String>> = Vec::with_capacity(components.len());
+    for c in components {
+        if c.is_page {
+            adopt_bodies.push(None);
+            continue;
+        }
+        let mut e = Emitter::new(c, Some("this._cleanups"));
+        let body = e.component_adopt(c);
+        if e.errors.is_empty() {
+            merge_uses(&mut uses, &e.uses);
+            adopt_bodies.push(Some(body));
+        } else {
+            // Can't adopt this component's view yet → build-only with a clear guard so a
+            // server-rendered host doesn't double-render. Report the reason (non-fatal).
+            errors.extend(e.errors);
+            adopt_bodies.push(None);
+        }
+    }
+    let views: Vec<ComponentView> = components
+        .iter()
+        .zip(&adopt_bodies)
+        .map(|(c, body)| {
+            if c.is_page {
+                ComponentView::Build
+            } else if let Some(b) = body {
+                ComponentView::Adopt(b)
+            } else {
+                ComponentView::RebuildIfServerChildren
+            }
+        })
+        .collect();
+
+    let base = csr::emit_module_with_adopt(components, module_stmts, module_exprs, &views);
+    let mut code = base.code;
+    errors.extend(base.errors);
+
+    // 2. Append a `hydrate` adopt factory for every page we can adopt.
+    let mut page_bodies = Vec::new();
+    for c in components {
+        if !c.is_page {
+            continue;
+        }
+        let mut e = Emitter::new(c, None);
+        let body = e.page(c);
+        if e.errors.is_empty() {
+            merge_uses(&mut uses, &e.uses);
+            page_bodies.push(body);
+        } else {
+            errors.extend(e.errors);
+        }
+    }
+
+    if !code.ends_with('\n') {
+        code.push('\n');
+    }
+    code.push_str(&claim_import(&uses));
+    for body in page_bodies {
+        code.push_str(&body);
+    }
+    HydrateModule { code, errors }
+}
+
+/// Import only the hydrate-exclusive claim helpers (the reactive helpers are already
+/// imported by the CSR part). Safe to append after all code — ES imports hoist, so the
+/// bindings are live when `customElements.define` upgrades a server element mid-module.
 fn claim_import(uses: &Uses) -> String {
     let mut names = Vec::new();
     if uses.cursor {
@@ -129,21 +163,26 @@ fn claim_import(uses: &Uses) -> String {
 }
 
 struct Emitter<'a> {
-    exprs: &'a ExprTable,
+    lowered: &'a Lowered,
     lines: Vec<String>,
     errors: Vec<String>,
     counter: u32,
     uses: Uses,
+    /// Disposal sink for effects/listeners/cleanups: `Some("this._cleanups")` in a
+    /// component (collected, removed on disconnect); `None` in a page (its node is
+    /// discarded on navigation, so listeners need no teardown).
+    sink: Option<&'static str>,
 }
 
 impl<'a> Emitter<'a> {
-    fn new(exprs: &'a ExprTable) -> Self {
+    fn new(lowered: &'a Lowered, sink: Option<&'static str>) -> Self {
         Self {
-            exprs,
+            lowered,
             lines: Vec::new(),
             errors: Vec::new(),
             counter: 0,
             uses: Uses::default(),
+            sink,
         }
     }
 
@@ -157,8 +196,16 @@ impl<'a> Emitter<'a> {
         self.lines.push(stmt);
     }
 
+    /// Push an effect-returning call, collecting its disposer in a component.
+    fn bind(&mut self, call: String) {
+        match self.sink {
+            Some(sink) => self.line(format!("{sink}.push({call});")),
+            None => self.line(format!("{call};")),
+        }
+    }
+
     fn code(&self, id: ExpressionId) -> String {
-        self.exprs.code(id).unwrap_or("undefined").to_string()
+        self.lowered.exprs.code(id).unwrap_or("undefined").to_string()
     }
 
     fn render(&self, indent: &str) -> String {
@@ -171,7 +218,7 @@ impl<'a> Emitter<'a> {
         out
     }
 
-    // ── the page shell ────────────────────────────────────────────────────────
+    // ── the page shell ──────────────────────────────────────────────────────────
 
     /// Emit a page/layout as a hydrate factory: `function (__root, props) { … }`. The
     /// router passes the container whose existing children are the server-rendered
@@ -192,7 +239,7 @@ impl<'a> Emitter<'a> {
 
         // Top-level $effect callbacks run for the page's lifetime (page disposal: none).
         for cb in lowered.effects.clone() {
-            self.line(format!("effect({cb});"));
+            self.bind(format!("effect({cb})"));
         }
 
         // Lifecycle: attach an `__lifecycle` record to the root so the router runs
@@ -214,9 +261,6 @@ impl<'a> Emitter<'a> {
         } else {
             format!("__root, {param}")
         };
-        // A named `hydrate` export living alongside the CSR `export default` build
-        // factory. The router calls `hydrate(container, props)` on first paint and the
-        // default factory on client navigation. A non-default page namespaces the name.
         let export = &lowered.ir.id.export;
         let name = if export == "default" {
             "hydrate".to_string()
@@ -227,6 +271,85 @@ impl<'a> Emitter<'a> {
             "export function {name}({params}) {{\n{}  return {root};\n}}\n",
             self.render("  ")
         )
+    }
+
+    // ── the component adopt body ──────────────────────────────────────────────────
+
+    /// Emit the adopt branch of a component's `connectedCallback` (the inside of
+    /// `if (this.firstChild) { … }`, which csr splices in). The host's existing
+    /// children *are* the server-rendered view, so this claims them off `cursor(this)`,
+    /// wiring reactivity onto the adopted nodes. Mirrors csr's component plumbing —
+    /// prop aliases/snapshots/rest, signal decls, effects, `$expose`, `onCleanup` — but
+    /// with claims instead of `createElement`, and no `{children}` capture (the slotted
+    /// children are already in place). `onMount` is shared (csr emits it after the
+    /// switch). A view it can't walk pushes an error → caller falls back to rebuild.
+    fn component_adopt(&mut self, lowered: &Lowered) -> String {
+        // A component that takes `{children}` renders its slot inline on the server; the
+        // children-region adoption (markers) is Phase 2.1. The `ViewNode::Children` in
+        // its view would already error, but bail early with a clearer reason.
+        if lowered.children_local.is_some() {
+            self.errors
+                .push("hydrate: components with a `{children}` slot are not adoptable yet (Phase 2.1)".into());
+            return String::new();
+        }
+        self.emit_prop_aliases();
+        self.emit_prop_snapshots();
+        self.emit_rest();
+        for item in lowered.body.clone() {
+            self.emit_decl_item(&item);
+        }
+
+        let cur = self.fresh("__c");
+        self.uses.cursor = true;
+        self.line(format!("const {cur} = cursor(this);"));
+        self.emit_node(&cur, &lowered.ir.view);
+
+        // Effects + `$expose` + `onCleanup` (onMount is emitted by csr after the switch,
+        // so it runs for both the build and adopt paths — don't duplicate it here).
+        for cb in lowered.effects.clone() {
+            self.bind(format!("effect({cb})"));
+        }
+        for obj in &lowered.exposes {
+            self.line(format!("Object.assign(this, ({obj}));"));
+        }
+        if let Some(sink) = self.sink {
+            for cb in &lowered.on_cleanups {
+                self.line(format!("{sink}.push({cb});"));
+            }
+        }
+        self.render("      ")
+    }
+
+    /// Alias prop signals so view references resolve (mirrors `csr::emit_prop_aliases`).
+    fn emit_prop_aliases(&mut self) {
+        if let Some(props_local) = self.lowered.props_object.clone() {
+            if !self.lowered.props.is_empty() {
+                self.line(format!("const {props_local} = this._props;"));
+            }
+            return;
+        }
+        for p in &self.lowered.props {
+            self.line(format!("const {} = this._props[{}];", p.local, js_string(&p.attr)));
+        }
+    }
+
+    /// One-time destructuring snapshots (mirrors `csr::emit_prop_snapshots`).
+    fn emit_prop_snapshots(&mut self) {
+        for s in &self.lowered.prop_snapshots {
+            self.line(format!("const {} = ({}.value ?? {});", s.pattern, s.source, s.empty));
+        }
+    }
+
+    /// `...rest` snapshot from the element's attributes (mirrors `csr::emit_rest`).
+    fn emit_rest(&mut self) {
+        if let Some(rest) = &self.lowered.rest {
+            let excl = rest.exclude.iter().map(|k| js_string(k)).collect::<Vec<_>>().join(", ");
+            self.line(format!("const {} = {{}};", rest.name));
+            self.line(format!(
+                "for (const __a of Array.from(this.attributes)) if (![{excl}].includes(__a.name)) {}[__a.name] = __a.value;",
+                rest.name
+            ));
+        }
     }
 
     fn emit_decl_item(&mut self, item: &BodyItem) {
@@ -264,7 +387,7 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    // ── the adopt walk ────────────────────────────────────────────────────────
+    // ── the adopt walk ────────────────────────────────────────────────────────────
 
     /// Claim `node` from cursor `cur` (advancing it) and return the variable holding
     /// the claimed node. Recurses into element children with a fresh child cursor.
@@ -287,8 +410,28 @@ impl<'a> Emitter<'a> {
                 }
                 var
             }
-            // Static text: a real text node in the server HTML — step the cursor over
-            // it (no binding). The `_` keeps the walk aligned for following siblings.
+            // A child component: claim its host element and wire any dynamic props onto
+            // it, but do NOT recurse — the component self-adopts its own children when it
+            // upgrades (its `connectedCallback` runs at `define`, before this walk), so
+            // claiming the host advances the cursor past its whole subtree.
+            ViewNode::Component { name, props, .. } => {
+                if name.contains('.') {
+                    self.errors.push(format!(
+                        "hydrate: member-expression component <{name}> is not supported (SPEC §4.0.1)"
+                    ));
+                    return String::new();
+                }
+                let var = self.fresh("c");
+                let tag_expr =
+                    tags::use_tag_expr(name, &self.lowered.module_components, &format!("{name}Element"));
+                self.uses.claim_element = true;
+                self.line(format!("const {var} = claimElement({cur}, {tag_expr});"));
+                for prop in props {
+                    self.emit_component_prop(&var, prop);
+                }
+                var
+            }
+            // Static text: a real text node in the server HTML — step the cursor over it.
             ViewNode::Text(_) => {
                 self.uses.skip_node = true;
                 self.line(format!("skipNode({cur});"));
@@ -312,9 +455,9 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    /// Wire a prop onto an already-claimed element. Static attributes are already in
-    /// the server HTML, so they are **skipped**; only dynamic attributes, events, and
-    /// `ref` produce code.
+    /// Wire a prop onto an already-claimed **host element**. Static attributes are in
+    /// the server HTML, so they are skipped; only dynamic attributes, events, and `ref`
+    /// produce code.
     fn emit_prop(&mut self, el: &str, prop: &Prop) {
         if prop.name == "ref" {
             if let PropValue::Dynamic(expr) = &prop.value {
@@ -327,25 +470,15 @@ impl<'a> Emitter<'a> {
             return;
         }
         match &prop.value {
-            // Already serialized into the server HTML — nothing to do on the client.
-            PropValue::Static(_) => {}
+            PropValue::Static(_) => {} // already serialized into the server HTML
             PropValue::Dynamic(expr) => {
                 let code = self.code(*expr);
                 if is_listener(&prop.name) {
-                    let (event, opts) = event_options(&prop.name);
-                    // A page's node lives for the app's lifetime, so the listener needs
-                    // no teardown (mirrors CSR's page path).
-                    self.line(format!(
-                        "{el}.addEventListener({}, {code}{opts});",
-                        js_string(&event)
-                    ));
+                    self.emit_listener(el, &prop.name, &code);
                 } else if is_event(&prop.name) {
                     self.line(format!("{el}.{} = {code};", prop.name.to_ascii_lowercase()));
                 } else {
-                    self.line(format!(
-                        "bindAttr({el}, {}, () => ({code}));",
-                        js_string(&prop.name)
-                    ));
+                    self.line(format!("bindAttr({el}, {}, () => ({code}));", js_string(&prop.name)));
                 }
             }
             PropValue::DynamicNode { .. } => {
@@ -354,11 +487,61 @@ impl<'a> Emitter<'a> {
             }
         }
     }
+
+    /// Wire a prop onto an already-claimed **child-component host**. Static props are in
+    /// the server attributes (skipped); dynamic data goes through `setProp` (reactive),
+    /// `on*` is a callback property, `on*:mod` an event listener (mirrors
+    /// `csr::emit_component_prop`, dynamic-only).
+    fn emit_component_prop(&mut self, el: &str, prop: &Prop) {
+        if prop.name == "ref" {
+            if let PropValue::Dynamic(expr) = &prop.value {
+                self.line(format!("{}.value = {el};", self.code(*expr)));
+            }
+            return;
+        }
+        if prop.name.is_empty() {
+            self.errors.push("hydrate: spread props are not supported yet (Phase 2.1)".into());
+            return;
+        }
+        match &prop.value {
+            PropValue::Static(_) => {} // already serialized as a server attribute
+            PropValue::Dynamic(expr) => {
+                let code = self.code(*expr);
+                if is_listener(&prop.name) {
+                    self.emit_listener(el, &prop.name, &code);
+                } else if is_event(&prop.name) {
+                    self.line(format!("{el}[{}] = {code};", js_string(&prop.name)));
+                } else {
+                    self.bind(format!("effect(() => {{ setProp({el}, {}, ({code})); }})", js_string(&prop.name)));
+                }
+            }
+            PropValue::DynamicNode { .. } => {
+                self.errors
+                    .push("hydrate: JSX-valued props are not supported yet (Phase 2.1)".into());
+            }
+        }
+    }
+
+    /// `on*:mod={fn}` → `addEventListener`, collecting a remove-disposer in a component
+    /// (mirrors `csr::emit_event_listener`). In a page the node is discarded on nav, so
+    /// the listener is inlined with no teardown.
+    fn emit_listener(&mut self, el: &str, prop_name: &str, code: &str) {
+        let (event, opts) = event_options(prop_name);
+        let name = js_string(&event);
+        match self.sink {
+            None => self.line(format!("{el}.addEventListener({name}, {code}{opts});")),
+            Some(sink) => {
+                let h = self.fresh("__ev");
+                self.line(format!("const {h} = {code};"));
+                self.line(format!("{el}.addEventListener({name}, {h}{opts});"));
+                self.line(format!("{sink}.push(() => {el}.removeEventListener({name}, {h}{opts}));"));
+            }
+        }
+    }
 }
 
 fn node_kind(node: &ViewNode) -> &'static str {
     match node {
-        ViewNode::Component { .. } => "child component",
         ViewNode::List { .. } => "list (`array.map`)",
         ViewNode::DynamicNode { .. } => "conditional / dynamic node region",
         ViewNode::Children => "`{children}` slot",
@@ -383,6 +566,16 @@ mod tests {
         emit_module(&m.components, &m.module_stmts, &m.module_exprs)
     }
 
+    /// Lower in **component** mode (the default export becomes a Custom Element class,
+    /// not a page factory) — for exercising component adoption.
+    fn emit_component(source: &str) -> HydrateModule {
+        let session = ParseSession::new();
+        let parsed = session.parse(Path::new("/app/Counter.tsx"), source);
+        assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
+        let m = lower_module("/app/Counter.tsx", &parsed.program, source, false).expect("lowered");
+        emit_module(&m.components, &m.module_stmts, &m.module_exprs)
+    }
+
     /// The appended `export function hydrate(...) { … }` factory (or "" if none).
     fn hydrate_fn(code: &str) -> String {
         match code.find("export function hydrate") {
@@ -397,17 +590,14 @@ mod tests {
             "export default function P(){ let n=$state(3); return <div class=\"box\"><h1>Count {n}</h1></div>; }",
         );
         assert!(m.is_complete(), "errors: {:?}", m.errors);
-        // CSR part — the build factory used for client-side navigation.
         assert!(m.code.contains("export default function ()"), "csr factory:\n{}", m.code);
         assert!(m.code.contains("document.createElement(\"div\")"), "csr builds:\n{}", m.code);
-        // The hydrate-exclusive claim helpers get their own (non-overlapping) import.
         assert!(
             m.code.contains("import { cursor, claimElement, claimText, skipNode } from \"@opentf/web\";"),
             "claim import:\n{}",
             m.code
         );
 
-        // Adopt part — the hydrate factory never creates structure.
         let hyd = hydrate_fn(&m.code);
         assert!(hyd.contains("export function hydrate(__root)"), "hydrate shape:\n{}", hyd);
         assert!(hyd.contains("const __c0 = cursor(__root);"), "root cursor:\n{}", hyd);
@@ -418,7 +608,6 @@ mod tests {
         assert!(hyd.contains("bindText(t5, () => (n.value));"), "wire text:\n{}", hyd);
         assert!(!hyd.contains("createElement"), "adopt creates no nodes:\n{}", hyd);
         assert!(!hyd.contains("appendChild"), "adopt appends nothing:\n{}", hyd);
-        assert!(!hyd.contains("setAttribute"), "static attr skipped on adopt:\n{}", hyd);
     }
 
     #[test]
@@ -436,9 +625,7 @@ mod tests {
 
     #[test]
     fn listener_modifier_uses_add_event_listener() {
-        let m = emit(
-            "export default function P(){ return <div onscroll:passive={() => {}}>x</div>; }",
-        );
+        let m = emit("export default function P(){ return <div onscroll:passive={() => {}}>x</div>; }");
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         let hyd = hydrate_fn(&m.code);
         assert!(
@@ -449,22 +636,52 @@ mod tests {
     }
 
     #[test]
-    fn unadoptable_page_emits_csr_only_with_a_warning() {
-        // A page composing a child component can't be adopted yet: emit the CSR build
-        // factory (so it still works) but *no* `hydrate` export, and warn.
+    fn component_emits_a_dual_class_that_adopts_when_server_rendered() {
+        // A standalone interactive component (the canonical island): the csr class is
+        // emitted, but its connectedCallback branches on `this.firstChild`.
+        let m = emit_component(
+            "export default function Counter(){ let n=$state(0); return <button onclick={() => n++}>Count {n}</button>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // The dual switch: adopt when server-rendered, build otherwise.
+        assert!(m.code.contains("if (this.firstChild) {"), "dual switch:\n{}", m.code);
+        assert!(m.code.contains("const __c0 = cursor(this);"), "adopt over this:\n{}", m.code);
+        assert!(m.code.contains("claimElement(__c0, \"button\");"), "claim host child:\n{}", m.code);
+        assert!(m.code.contains("} else {"), "build arm present:\n{}", m.code);
+        assert!(m.code.contains("document.createElement(\"button\")"), "build arm builds:\n{}", m.code);
+        // No standalone `hydrate` export — a component hydrates via its class, not a factory.
+        assert!(!m.code.contains("export function hydrate"), "no page factory:\n{}", m.code);
+    }
+
+    #[test]
+    fn page_using_a_component_claims_the_host_without_recursing() {
+        // The page adopt walk claims the <web-counter> host by its `.tag` and moves on —
+        // the component self-adopts its own subtree.
         let m = emit(
             "import Counter from \"./Counter\"; export default function P(){ return <div><Counter/></div>; }",
         );
-        assert!(m.code.contains("export default function ()"), "csr factory present:\n{}", m.code);
-        assert!(!m.code.contains("export function hydrate"), "no hydrate export:\n{}", m.code);
-        assert!(m.errors.iter().any(|e| e.contains("child component")), "warning: {:?}", m.errors);
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        assert!(hyd.contains("export function hydrate(__root)"), "page hydrate factory:\n{}", hyd);
+        assert!(hyd.contains("claimElement(__c0, \"div\");"), "claim wrapper:\n{}", hyd);
+        assert!(hyd.contains("claimElement(__c2, Counter.tag);"), "claim component host by tag:\n{}", hyd);
+    }
+
+    #[test]
+    fn component_with_children_slot_falls_back_to_rebuild() {
+        // A component that takes `{children}` can't adopt yet → csr emits a build-only
+        // class guarded to discard server children, and a warning is recorded.
+        let m = emit_component(
+            "export default function Card({ children }){ return <div class=\"card\">{children}</div>; }",
+        );
+        assert!(m.code.contains("if (this.firstChild) this.replaceChildren();"), "rebuild guard:\n{}", m.code);
+        assert!(!m.code.contains("const __c0 = cursor(this);"), "no adopt walk:\n{}", m.code);
+        assert!(m.errors.iter().any(|e| e.contains("children")), "warning: {:?}", m.errors);
     }
 
     #[test]
     fn list_page_emits_csr_only_with_a_warning() {
-        let m = emit(
-            "export default function P(){ return <ul>{[1,2,3].map(x => <li>{x}</li>)}</ul>; }",
-        );
+        let m = emit("export default function P(){ return <ul>{[1,2,3].map(x => <li>{x}</li>)}</ul>; }");
         assert!(!m.code.contains("export function hydrate"), "no hydrate export:\n{}", m.code);
         assert!(m.errors.iter().any(|e| e.contains("list")), "warning: {:?}", m.errors);
     }
