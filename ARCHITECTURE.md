@@ -373,6 +373,16 @@ Each backend is a **pure function of the IRs / Project Graph**. Adding a target
 - **API** — server endpoints / server functions compiled in the same graph,
   sharing types and the module graph with the UI.
 
+### Cross-cutting: Internationalization _(Phase 1 implemented — designed in [`docs/I18N.md`](docs/I18N.md))_
+
+i18n is not a backend but cuts across several: URL path-prefix **locale routing**
+lives in the core router; **messages** (`t()`, ICU, formatters) ship in the opt-in
+`@opentf/web-i18n` package. A translated string is just an expression that slots
+into the View IR's static-structure-vs-Dynamic-hole seam (§4.2–4.3): the compiler
+(Phase 2) inlines static messages into per-locale HTML and leaves signal-dependent
+ones as reactive holes. Because locale is fixed per URL, every backend agrees and
+hydration cannot mismatch on locale.
+
 ---
 
 ## 7. Open questions

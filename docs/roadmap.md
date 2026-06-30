@@ -19,3 +19,7 @@
 * [ ] List rendering helper (keyed reconcile).
 * [ ] Shadow DOM support for style isolation.
 * [ ] Server-Side Rendering (SSR) / Static Site Generation (SSG).
+
+## Internationalization (i18n) — see [docs/I18N.md](I18N.md)
+* [x] Phase 1 (runtime): locale path-prefix routing, ICU messages (`t()`), `Intl` formatters, per-locale SSG/SSR. `@opentf/web-i18n`.
+* [ ] Phase 2 (compiler): `otfwc` message extraction, key validation, tree-shaking, per-locale inlining.
