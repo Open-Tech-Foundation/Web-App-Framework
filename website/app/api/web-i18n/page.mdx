@@ -1,0 +1,80 @@
+---
+title: web-i18n API
+description: createI18n, the reactive t() translator, the fmt formatters, the <T> component, and the locale helpers.
+---
+
+# web-i18n API Reference
+
+Imported from `@opentf/web-i18n`. Pairs with the locale-routing exports in
+[`@opentf/web`](/api/core#routing).
+
+## `createI18n(options)`
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `locales` | `string[]` | Supported locales. Defaults to the keys of `messages`. |
+| `defaultLocale` | `string` | Fallback locale. Defaults to the first locale. |
+| `messages` | `Record<string, Catalog>` | Eager per-locale catalogs — message id → ICU string (nested objects allowed; keys may be dotted). |
+| `load` | `(locale) => Promise<Catalog>` | Lazy loader for code-split catalogs; populate with `loadLocale`. |
+
+Registers the app's catalogs (call once, near the entry). Returns the store.
+
+## `t(key, values?)`
+
+Translate `key` for the active locale, formatting `values` with **ICU MessageFormat**
+(interpolation, `plural`, `select`, number/date skeletons). Reactive — used in markup it
+re-renders on a locale change. Fallback chain: active locale → default locale → the raw key.
+
+```jsx
+t("greeting", { name: "Ada" });   // "Hello, Ada" / "Bonjour, Ada"
+t("cart.items", { count });        // ICU plural
+```
+
+| Param | Type | Description |
+| --- | --- | --- |
+| `key` | `string` | Message id (flat or dotted-nested). |
+| `values` | `object` | ICU arguments (interpolation, `plural` counts, `select` branches). |
+
+## `<T id values />`
+
+Component sugar over `t()` — renders the translation into a `<span>`. For messages that
+interpolate a **signal**, prefer the bare `{t("key", { count })}` form so the compiler
+tracks the signal directly.
+
+| Prop | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Message key. |
+| `values` | `object` | ICU arguments. |
+
+## `fmt`
+
+Locale-aware formatters over the native `Intl` APIs. Each reads the active locale (so it's
+reactive) and memoizes the underlying `Intl.*` instance per `(locale, options)`. No catalog
+required.
+
+| Method | Backed by | Example (`en-US`) |
+| --- | --- | --- |
+| `fmt.number(value, options?)` | `Intl.NumberFormat` | `1,234.5` |
+| `fmt.currency(value, currency, options?)` | `Intl.NumberFormat` | `$42.00` |
+| `fmt.percent(value, options?)` | `Intl.NumberFormat` | `42%` |
+| `fmt.date(value, options?)` | `Intl.DateTimeFormat` | `January 9, 2026` |
+| `fmt.relativeTime(value, unit, options?)` | `Intl.RelativeTimeFormat` | `3 days ago` |
+| `fmt.plural(value, options?)` | `Intl.PluralRules` | `"other"` |
+| `fmt.list(values, options?)` | `Intl.ListFormat` | `a, b, and c` |
+
+`options` is passed straight to the underlying `Intl` constructor.
+
+## Locale helpers
+
+| Export | Signature | Description |
+| --- | --- | --- |
+| `getLocale()` | `() => string` | The active locale: `router.locale` → default → `"en"`. Store-independent (works without `createI18n`). |
+| `locales()` | `() => { locales, defaultLocale } \| null` | The configured locales, or `null` before `createI18n`. |
+| `loadLocale(locale)` | `(string) => Promise<void>` | Load + cache a locale's catalog via the registered `load` (SSR preload / code-split). No-op if already loaded. |
+| `setCatalog(locale, catalog)` | `(string, Catalog) => void` | Set a locale's catalog directly (SSR preload / tests). |
+
+## Locale routing
+
+URL path-prefix routing lives in the core router, not this package — see
+[`router.locale`, `localizePath`, `setLocale`, `configureI18n`](/api/core#routing) and the
+[Locale Routing guide](/docs/packages/web-i18n/routing).

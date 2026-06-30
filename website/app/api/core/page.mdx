@@ -21,8 +21,23 @@ compile to — prefer the macros in components.)
 
 | Export | Description |
 | --- | --- |
-| `Link` | Client-side navigation anchor (`<Link href="…">`). |
-| `router` | Reactive route facade: `pathname`, `params`, `query`, `push`, `replace`. |
+| `mountApp(options)` | Boot the app: `{ pages, target, guard?, i18n? }`. |
+| `Link` | Client-side navigation anchor (`<Link href="…">`). Localized automatically when i18n is enabled. |
+| `router` | Reactive route facade: `pathname`, `params`, `query`, `locale`, `push`, `replace`. |
+
+### Internationalization
+
+URL path-prefix locale routing. Enable via `mountApp({ i18n: { locales, defaultLocale } })`
+or the [`otfw.config` `i18n` block](/docs/configuration#i18n). Messages and formatters live
+in [`@opentf/web-i18n`](/api/web-i18n).
+
+| Export | Signature | Description |
+| --- | --- | --- |
+| `router.locale` | `string \| null` | Active locale (reactive); `null` when i18n is off. |
+| `localizePath(path, locale?)` | `(string, string?) => string` | Prefix `path` for `locale` — default locale stays bare, any existing prefix is replaced. Defaults to the active locale. |
+| `setLocale(locale)` | `(string) => void` | Set `router.locale` without navigating (previews/tests; routed apps derive it from the URL). |
+| `configureI18n(config)` | `({ locales, defaultLocale }) => void` | Register the locales (what `mountApp({ i18n })` calls). |
+| `resolveLocale(pathname)` | `(string) => { locale, path }` | Split a path into its locale and the locale-agnostic route (strips a non-default prefix). |
 
 ## Components & utilities
 

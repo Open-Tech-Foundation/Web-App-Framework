@@ -44,21 +44,18 @@ import { router } from "@opentf/web";
 
 ## Localized navigation
 
-When i18n is enabled, the locale lives in the URL path. `<Link>` automatically keeps
-navigation in the active locale, and these helpers (also from `@opentf/web`) round out
-the routing API:
-
-| Export | Description |
-| --- | --- |
-| `localizePath(path, locale?)` | Prefix `path` for `locale` (default locale stays bare; any existing prefix is replaced). Defaults to the active locale. |
-| `setLocale(locale)` | Set `router.locale` without navigating — for previews and tests. In a routed app the locale comes from the URL. |
+When i18n is enabled, the locale lives in the URL path and `<Link>` automatically keeps
+navigation in the active locale. Build a localized URL yourself with `localizePath` — handy
+for a language switcher:
 
 ```jsx
 import { Link, localizePath, router } from "@opentf/web";
 
-// A language switcher: the current page under each locale.
+// The current page under another locale:
 <Link href={localizePath(router.pathname, "fr")}>Français</Link>
 ```
 
-See [Packages → web-i18n → Locale Routing](/docs/packages/web-i18n/routing) for the full
-model (`prefix_except_default`, per-locale SSG/SSR, detection).
+See the [Locale Routing guide](/docs/packages/web-i18n/routing) for the full model
+(`prefix_except_default`, per-locale SSG/SSR, detection), and the
+[`@opentf/web` API reference](/api/core#routing) for `localizePath`, `setLocale`, and the
+other locale exports.
