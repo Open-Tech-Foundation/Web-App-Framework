@@ -1,0 +1,42 @@
+{
+  "name": "@opentf/web-i18n",
+  "version": "1.0.0",
+  "description": "Internationalization for OTF Web — ICU messages, Intl formatters, and a reactive t() that pairs with the core's URL-prefix locale routing.",
+  "main": "index.js",
+  "module": "index.js",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "i18n.js",
+    "format.js",
+    "T.jsx",
+    "!**/*.test.js"
+  ],
+  "keywords": [
+    "opentf",
+    "i18n",
+    "internationalization",
+    "icu",
+    "intl",
+    "localization"
+  ],
+  "dependencies": {
+    "intl-messageformat": "^10.7.0"
+  },
+  "peerDependencies": {
+    "@opentf/web": "*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "bun test --env=happy-dom"
+  },
+  "devDependencies": {
+    "@opentf/web": "workspace:*",
+    "@opentf/web-test": "workspace:*"
+  }
+}
