@@ -180,7 +180,7 @@ shell for Phase 3 loader-data hydration (TanStack-style), but do not implement i
 
 | Step | Scope |
 |---|---|
-| **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + dual-emit `hydrate.rs` (CSR build + `hydrate` adopt factory for pages) ✓ + `otfwc --target=hydrate` ✓ + router boot switch for leaf routes ✓ + toolchain wiring (serve-protocol target token + hydrate client bundle + `data-otfw-hydrate` sentinel in `otfw serve`/`--ssg`) ✓ + ssg→hydrate, router-boot & serve-e2e tests ✓. **Remaining:** component (custom-element) adoption + `{children}`/layout-chain adoption |
+| **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + dual-emit `hydrate.rs` (CSR build + `hydrate` adopt factory for pages) ✓ + `otfwc --target=hydrate` ✓ + router boot switch for leaf routes ✓ + toolchain wiring (serve-protocol target token + hydrate client bundle + `data-otfw-hydrate` sentinel in `otfw serve`/`--ssg`) ✓ + ssg→hydrate, router-boot, serve-e2e & **real-browser (CDP) hydration e2e** tests ✓. **Remaining:** component (custom-element) adoption + `{children}`/layout-chain adoption |
 | **2.1** | variable structure: lists + conditionals hydration |
 | **2.2** | per-component island recovery wired into the dev overlay |
 | **2.3** _(deferred)_ | lazy/partial island directives (`client:idle` / `visible` / `media`) — leveraging the custom-element lifecycle. **Not in Phase 2**; revisited once core hydration is solid. |
@@ -192,13 +192,19 @@ shell for Phase 3 loader-data hydration (TanStack-style), but do not implement i
 Hydration is notoriously bug-prone in ways unit tests miss (timing of upgrades,
 whitespace nodes, double mounts). The bar:
 
-- **Unit tests** for the runtime primitives and marker parsing (happy-dom).
-- **A CDP-driven browser e2e** (like `packages/web-docs/tests/e2e/`) that asserts the
-  two properties that actually define correct hydration:
-  1. **No DOM mutation on hydrate** — record the server DOM, hydrate, assert the node
-     identities are unchanged (adoption, not re-creation).
-  2. **Server state preserved + interactivity works** — a counter rendered at `5` on
-     the server is still `5` after hydrate and increments on click without a reset/flash.
+- **Unit tests** for the runtime primitives and marker parsing (happy-dom). _(done)_
+- **A CDP-driven browser e2e** _(implemented for leaf routes —
+  `packages/web-cli/tests/e2e/hydrate-browser.mjs`)_ that drives the real `otfw serve`
+  in headless Chromium and asserts the two properties that actually define correct
+  hydration:
+  1. **No DOM mutation on hydrate** — a document-start MutationObserver tags every
+     server node as the parser inserts it; after hydrate the live `<main>`/`<button>`
+     still carry the tag and zero tagged nodes were removed (adoption, not re-creation).
+  2. **Server state preserved + interactivity works** — the counter shows its server
+     value after hydrate and increments on click, on the same adopted text node, with no
+     reset/flash.
+
+  The harness extends naturally to component/layout hydration once those land (2.1).
 
 ---
 
