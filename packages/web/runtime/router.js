@@ -93,6 +93,16 @@ export function localizePath(path, locale = state.locale.value) {
   if (!locale || locale === i18nConfig.defaultLocale) return bare;
   return bare === "/" ? `/${locale}` : `/${locale}${bare}`;
 }
+
+/**
+ * Set the active locale directly, without navigating. The reactive `router.locale`
+ * updates and any `t()`/formatter bindings re-render fine-grained. Intended for
+ * previews, tests, and programmatic control — in a routed app the locale is derived
+ * from the URL prefix (docs/I18N.md §2), so navigation is the normal path.
+ */
+export function setLocale(locale) {
+  state.locale.value = locale;
+}
 let currentNodes = [];
 
 /** Reactive router facade — getters read signal values (tracked in effects). */

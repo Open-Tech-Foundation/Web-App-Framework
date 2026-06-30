@@ -8,6 +8,7 @@ import {
   navigate,
   resolveLocale,
   router,
+  setLocale,
 } from "./router.js";
 
 // A page factory returning a labelled node. `__lifecycle` is exercised via mount.
@@ -161,6 +162,15 @@ describe("i18n locale routing (prefix_except_default)", () => {
     expect(router.locale).toBe("en");
     expect(app.textContent).toContain("about");
 
+    configureI18n(null);
+  });
+
+  test("setLocale sets the active locale without navigating", () => {
+    configureI18n({ locales: ["en", "fr"], defaultLocale: "en" });
+    setLocale("fr");
+    expect(router.locale).toBe("fr");
+    setLocale("en");
+    expect(router.locale).toBe("en");
     configureI18n(null);
   });
 });
