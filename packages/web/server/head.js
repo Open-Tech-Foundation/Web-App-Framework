@@ -171,3 +171,21 @@ export function renderHead(meta = {}, { path = "/", baseUrl = "" } = {}) {
 
   return tags.join("\n");
 }
+
+/**
+ * Build `rel="alternate" hreflang` link descriptors for a locale-agnostic
+ * `routePath` (e.g. `/about`) across all configured locales — for the toolchain to
+ * pass through `metadata.links` so `renderHead` emits them (docs/I18N.md §6). The
+ * default locale also gets `x-default`. `localize(path, locale)` is the router's
+ * `localizePath` (kept as a param so this stays free of a router import here).
+ */
+export function localeAlternateLinks(routePath, { locales, defaultLocale } = {}, localize) {
+  if (!Array.isArray(locales) || locales.length === 0 || typeof localize !== "function") return [];
+  const links = locales.map((locale) => ({
+    rel: "alternate",
+    hreflang: locale,
+    href: localize(routePath, locale),
+  }));
+  links.push({ rel: "alternate", hreflang: "x-default", href: localize(routePath, defaultLocale) });
+  return links;
+}

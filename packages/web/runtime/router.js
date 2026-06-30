@@ -32,11 +32,67 @@ const state = {
   pathname: signal(isBrowser ? normalizePath(window.location.pathname) : "/"),
   searchParams: signal(new URLSearchParams(isBrowser ? window.location.search : "")),
   params: signal({}),
+  locale: signal(null),
 };
 
 export const routes = { pages: {}, layouts: {}, notFound: null };
 let guard = null;
 let rootEl = null;
+
+// i18n: path-prefix locale routing (docs/I18N.md). The route table stays
+// locale-agnostic; a leading non-default locale segment is stripped before
+// matching and recorded as `router.locale`. `prefix_except_default`: the default
+// locale is served at the bare path, others are prefixed (`/fr/about`).
+let i18nConfig = null;
+
+/** Register the app's locales (called by `mountApp({ i18n })`). */
+export function configureI18n(cfg) {
+  if (!cfg || !Array.isArray(cfg.locales) || cfg.locales.length === 0) {
+    i18nConfig = null;
+    return;
+  }
+  const defaultLocale = cfg.defaultLocale ?? cfg.locales[0];
+  i18nConfig = {
+    locales: cfg.locales,
+    defaultLocale,
+    nonDefault: new Set(cfg.locales.filter((l) => l !== defaultLocale)),
+  };
+  state.locale.value = defaultLocale;
+}
+
+/** The configured locales + default, or null when i18n isn't enabled. */
+export function i18nLocales() {
+  return i18nConfig && { locales: i18nConfig.locales, defaultLocale: i18nConfig.defaultLocale };
+}
+
+/**
+ * Split a leading non-default locale segment off `pathname`, returning the active
+ * `locale` and the locale-agnostic `path` to match against the route table. When
+ * i18n is off, or the first segment isn't a configured non-default locale, the
+ * path passes through unchanged with the default (or null) locale.
+ */
+export function resolveLocale(pathname) {
+  const def = i18nConfig ? i18nConfig.defaultLocale : null;
+  if (!i18nConfig) return { locale: def, path: pathname };
+  const m = (pathname || "/").match(/^\/([^/]+)(\/.*|)$/);
+  if (m && i18nConfig.nonDefault.has(m[1])) return { locale: m[1], path: m[2] || "/" };
+  return { locale: def, path: pathname };
+}
+
+/**
+ * Prefix `path` with `locale` (bare for the default locale). Any locale already on
+ * `path` is replaced. Used by `<Link>` and programmatic navigation to keep links
+ * in the active locale. Pass-through when i18n is off.
+ */
+export function localizePath(path, locale = state.locale.value) {
+  if (!i18nConfig) return path;
+  // Strip ANY existing locale prefix (default included, unlike `resolveLocale`
+  // which keeps the canonical default bare) so a link can be re-pointed cleanly.
+  const m = (path || "/").match(/^\/([^/]+)(\/.*|)$/);
+  const bare = m && i18nConfig.locales.includes(m[1]) ? m[2] || "/" : path;
+  if (!locale || locale === i18nConfig.defaultLocale) return bare;
+  return bare === "/" ? `/${locale}` : `/${locale}${bare}`;
+}
 let currentNodes = [];
 
 /** Reactive router facade — getters read signal values (tracked in effects). */
@@ -52,6 +108,9 @@ export const router = {
   },
   get params() {
     return state.params.value;
+  },
+  get locale() {
+    return state.locale.value;
   },
   push: (path) => navigate(path),
   replace: (path) => navigate(path, true),
@@ -124,14 +183,20 @@ export async function buildRouteNode(match, query = {}) {
  * so a page reading `router.pathname`/`params`/`query` resolves to the route being
  * pre-rendered. The client uses `navigate` instead.
  */
-export function setRouteState({ pathname = "/", search = "", params = {} } = {}) {
+export function setRouteState({ pathname = "/", search = "", params = {}, locale } = {}) {
   state.pathname.value = normalizePath(pathname);
   state.searchParams.value = new URLSearchParams(search);
   state.params.value = params;
+  state.locale.value = locale !== undefined ? locale : resolveLocale(pathname).locale;
 }
 
-/** Match `pathname` against the registered routes, resolving `[param]` segments. */
+/**
+ * Match `pathname` against the registered routes, resolving `[param]` segments. A
+ * leading non-default locale segment is stripped first (the route table is
+ * locale-agnostic; see `resolveLocale`).
+ */
 export function matchRoute(pathname) {
+  pathname = resolveLocale(pathname).path;
   for (const route in routes.pages) {
     const pattern = route
       .replace(/\[\.\.\.([^\]]+)\]/g, "(?<$1>.+)")
@@ -189,6 +254,7 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
   state.pathname.value = normalizePath(url.pathname);
   state.searchParams.value = url.searchParams;
   state.params.value = match ? match.params : {};
+  state.locale.value = resolveLocale(url.pathname).locale;
 
   if (!isPop) {
     if (replace) window.history.replaceState({}, "", path);
@@ -263,8 +329,9 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
  * @param {Element} [opts.target]  the app root (defaults to `#app`).
  * @param {Function} [opts.guard]  optional `(to, tools) => …` route guard.
  */
-export function mountApp({ pages, target, guard: g } = {}) {
+export function mountApp({ pages, target, guard: g, i18n } = {}) {
   rootEl = target || (isBrowser ? document.getElementById("app") : null);
+  if (i18n) configureI18n(i18n);
   if (pages) registerRoutes(pages);
   guard = g || null;
   if (isBrowser) {
