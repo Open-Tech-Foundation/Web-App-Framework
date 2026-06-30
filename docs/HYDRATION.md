@@ -9,6 +9,46 @@
 
 ---
 
+## 0. The decided architecture (read this first)
+
+Two render axes, settled:
+
+- **Render mode** — *when* the HTML is produced: **CSR** (client, at runtime), **SSG**
+  (build time), **SSR** (server, per request).
+- **Navigation mode** — *how* the next route loads: **SPA** (a client router swaps the
+  view without a full reload) or **MPA** (the browser does a full navigation).
+
+**MPA is the substrate, not a mode you opt out of.** Every SSG/SSR route is independently
+server-rendered and hydrates its own first paint, so direct entry, refresh, open-in-new-tab,
+crawlers, and no-JS all get a complete page **regardless of the client router**. SPA is a
+progressive enhancement layered on top; remove it and the app degrades cleanly to full MPA.
+
+**Default: SSG/SSR apps take over as SPA for smooth navigation.** First paint *adopts* the
+server DOM; a subsequent `<Link>` click *builds* the next route on the client. A component
+therefore needs **both** behaviors — and that dual requirement comes from **SPA navigation,
+not from the CSR backend.**
+
+**Where build-vs-adopt lives:** in **`hydrate.rs`**, which owns the *dual component* (build
++ adopt). The discriminator is a local, per-instance structural test — **`this.firstChild`**
+(server-rendered ⇒ has children ⇒ adopt; client-`createElement`'d during nav ⇒ empty ⇒
+build) — **not** a global hydration-mode flag. `csr.rs` stays a **pure build-only backend**
+for CSR apps and **never learns about hydration**; `hydrate.rs` reuses csr's leaf emitters
+and a hydration-agnostic class-scaffold helper, then adds the adopt walk and the switch.
+
+This is the SolidStart shape (fine-grained adopt, one artifact branches per instance),
+expressed on Custom Elements. The cost is one `this.firstChild` branch per component — the
+irreducible price of client-side route building, accepted in exchange for instant nav and a
+pure, untouched CSR backend. See §7 for the `nav` config that lets an app choose MPA, in
+which case components only ever adopt (the build arm is dead and can later be dropped).
+
+| Mode | Nav | First paint | Subsequent nav | Components |
+|---|---|---|---|---|
+| CSR | SPA | client build (empty `#app`) | client build | pure build (`csr.rs`) |
+| SSG | SPA *(default)* / MPA | static HTML + adopt | SPA: build · MPA: full load | dual (`hydrate.rs`) |
+| SSR | SPA *(default)* / MPA | per-request HTML + adopt | SPA: build · MPA: full load | dual (`hydrate.rs`) |
+
+---
+
 ## 1. What hydration is, and why it's the keystone
 
 OTF Web can produce a route's HTML at build time (SSG) or per request (SSR). But
@@ -123,8 +163,14 @@ client navigations):
   props)` on first paint (adopt) and the default factory on client navigation (build). A
   page the adopt walk can't handle yet gets CSR-only (no `hydrate` export); it still
   works, just without hydration.
-- **Component** _(Phase 2.1)_ → a `connectedCallback` that adopts `this.childNodes`
-  when `isHydrating()` instead of building a fresh subtree.
+- **Component** _(implemented)_ → `hydrate.rs` emits the **dual component**: one
+  `connectedCallback` that branches on **`this.firstChild`** — server-rendered (has
+  children) ⇒ *adopt* `this.childNodes`; client-`createElement`'d during SPA nav (empty)
+  ⇒ *build* a fresh subtree. The branch is local and per-instance — **no global flag**.
+  All the class scaffolding (prop signals, host-class hook, error guard, effect teardown,
+  `attributeChangedCallback`) is shared, hydration-agnostic, and emitted by a `csr.rs`
+  helper that knows nothing about adoption; `hydrate.rs` reuses csr's build-view walk for
+  the build arm and contributes only the adopt walk. So `csr.rs` stays pure build-only.
 
 ### 3.3 Runtime hydration context
 
@@ -137,13 +183,13 @@ helpers already operate on existing nodes. Only acquisition (the claims) is new.
 
 ### 3.4 Client boot switch + custom-element adoption
 
-- **First render hydrates `#app`** _(implemented, leaf routes)_ — `mountApp` detects the
-  server sentinel `data-otfw-hydrate` on the root and, when the route module exposes a
-  `hydrate` factory, the router calls it to adopt the existing children instead of
+- **First render hydrates `#app`** _(implemented)_ — `mountApp` detects the server
+  sentinel `data-otfw-hydrate` on the root and, when the route module exposes a `hydrate`
+  factory, the router calls it to adopt the existing children instead of
   `replaceChildren()` + build (`runtime/router.js`). Subsequent client navigations keep
-  the CSR build path. Only leaf routes (no layout chain) hydrate so far; everything else
-  (and a thrown mismatch) falls through to a clean build. **Pending:** `{children}`-slot
-  adoption so layout chains hydrate.
+  the CSR build path. The page hydrate factory adopts the **layout chain** too: it claims
+  each layout host and threads the adopted child into the next layout's `{children}` slot
+  (§3.4-layouts). A thrown mismatch falls through to a clean build.
 - **A server sentinel** _(implemented)_ — `<div id="app" data-otfw-hydrate>`, stamped by
   the shell injection (`stampHydrateSentinel`) whenever the client bundle was built for
   the hydrate target. The toolchain wires this for `otfw serve` (always) and `otfw build
@@ -151,11 +197,13 @@ helpers already operate on existing nodes. Only acquisition (the claims) is new.
   an empty `#app`, so it keeps the leaner CSR bundle and stamps no sentinel. The compiler
   serve protocol carries the target as a token (`csr`/`ssg`/`hydrate`), so the client
   build requests `--target=hydrate` and gets the dual module per route.
-- **`connectedCallback` branches** _(Phase 2.1)_ — when the client bundle runs
-  `customElements.define`, every server-rendered `<web-*>` upgrades synchronously; its
-  `connectedCallback` will adopt `this.childNodes` when `isHydrating()` (and has server
-  children) instead of building, so components self-hydrate as islands. The
-  `isHydrating` flag primitive exists; the define-time ordering lands with this step.
+- **`connectedCallback` branches on `this.firstChild`** _(implemented)_ — when the client
+  bundle runs `customElements.define`, every server-rendered `<web-*>` upgrades
+  synchronously; its `connectedCallback` adopts `this.childNodes` when it already has
+  children (server-rendered) and builds otherwise (client-`createElement`'d during nav).
+  No global flag — the per-instance structural test is self-sufficient, and it fires
+  before the page hydrate factory claims the host, so components self-hydrate as islands
+  bottom-up.
 
 ### 3.5 Mismatch detection & recovery — per-component _(decided)_
 
@@ -180,7 +228,7 @@ shell for Phase 3 loader-data hydration (TanStack-style), but do not implement i
 
 | Step | Scope |
 |---|---|
-| **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + dual-emit `hydrate.rs` (CSR build + `hydrate` adopt factory for pages) ✓ + `otfwc --target=hydrate` ✓ + router boot switch for leaf routes ✓ + toolchain wiring (serve-protocol target token + hydrate client bundle + `data-otfw-hydrate` sentinel in `otfw serve`/`--ssg`) ✓ + ssg→hydrate, router-boot, serve-e2e & **real-browser (CDP) hydration e2e** tests ✓. **Remaining:** component (custom-element) adoption + `{children}`/layout-chain adoption |
+| **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + dual-emit `hydrate.rs` (CSR build + `hydrate` adopt factory for pages) ✓ + `otfwc --target=hydrate` ✓ + router boot switch ✓ + toolchain wiring (serve-protocol target token + hydrate client bundle + `data-otfw-hydrate` sentinel in `otfw serve`/`--ssg`) ✓ + **dual component (build/adopt via `this.firstChild`, csr stays pure)** ✓ + **layout-chain / `{children}` adoption** ✓ + **`nav` config (spa/mpa) + `<Link reload>`** ✓ + ssg→hydrate, router-boot, serve-e2e & real-browser (CDP) hydration e2e (page + component + layout) tests ✓ |
 | **2.1** | variable structure: lists + conditionals hydration |
 | **2.2** | per-component island recovery wired into the dev overlay |
 | **2.3** _(deferred)_ | lazy/partial island directives (`client:idle` / `visible` / `media`) — leveraging the custom-element lifecycle. **Not in Phase 2**; revisited once core hydration is solid. |
@@ -217,8 +265,33 @@ whitespace nodes, double mounts). The bar:
 - **Node acquisition** (§3.3) — **cursor walk**, not absolute path indexing (both honor
   §4.8; cursor matches Solid and aligns 1:1 with the marker-free server output).
 
+- **Component build-vs-adopt discriminator** (§0, §3.2) — the per-instance
+  `this.firstChild` structural test, **not** a global hydration-mode flag. Resolves the
+  former "`__OTFW_HYDRATING` lifecycle across nested upgrades" open item: there is no
+  global flag to sequence; each upgrading element decides locally, bottom-up.
+- **Navigation model** (§0, §7) — SSG/SSR default to SPA (client router); MPA is the
+  always-available substrate, selectable via `nav` config.
+
 **Open:**
 
 - List/conditional region markers and their reconcile-from-N adoption (2.1).
-- `__OTFW_HYDRATING` flag lifecycle across nested component upgrades (§3.4) — the flag
-  primitive exists; the define-time ordering lands with the boot switch.
+- MPA-only build optimization: when `nav: "mpa"`, components never client-build, so the
+  build arm is dead and `hydrate.rs` could emit pure-adopt components (smaller bundle).
+
+---
+
+## 7. Navigation model & config _(decided)_
+
+MPA always works (it's the substrate — §0). The `nav` config chooses whether the client
+router *enhances* it into an SPA:
+
+| `otfw.config` | Behavior | Components |
+|---|---|---|
+| `nav: "spa"` _(default)_ | client router intercepts same-origin `<Link>` clicks; no full reload | dual (build on nav, adopt on first paint) |
+| `nav: "mpa"` | no interception; every nav is a full page load; each page hydrates its islands | only ever adopt (build arm dead) |
+
+- **Per-link override:** `<Link reload>` forces a full navigation even in SPA mode (for
+  crossing app boundaries or busting client state). External / cross-origin links and
+  modified clicks (cmd/ctrl/middle) always do a full navigation regardless.
+- The config flows from `otfw.config` → the generated app entry → `mountApp({ nav })`,
+  which decides whether to wire client-side link interception.
