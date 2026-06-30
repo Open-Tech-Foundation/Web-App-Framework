@@ -1,0 +1,72 @@
+---
+title: Formatting
+description: Locale-aware number, currency, percent, date, relative-time, and list formatting over the native Intl APIs.
+---
+
+import { Callout } from "@opentf/web-docs";
+import FormatMini from "./FormatMini.jsx";
+
+# Formatting
+
+`fmt.*` formats values for the **active locale** using the browser-native `Intl`
+APIs. No catalog is required — formatters read `router.locale` directly, so they work
+anywhere and update reactively when the locale changes.
+
+Switch the locale and watch grouping, currency, date order, and relative time adapt:
+
+<FormatMini />
+
+## The `fmt` API
+
+```jsx
+import { fmt } from "@opentf/web-i18n";
+```
+
+| Call | Backed by | Example (`en-US`) |
+| --- | --- | --- |
+| `fmt.number(1234.5)` | `Intl.NumberFormat` | `1,234.5` |
+| `fmt.currency(42, "USD")` | `Intl.NumberFormat` | `$42.00` |
+| `fmt.percent(0.42)` | `Intl.NumberFormat` | `42%` |
+| `fmt.date(date, opts)` | `Intl.DateTimeFormat` | `January 9, 2026` |
+| `fmt.relativeTime(-3, "hour")` | `Intl.RelativeTimeFormat` | `3 hours ago` |
+| `fmt.plural(2)` | `Intl.PluralRules` | `"other"` |
+| `fmt.list(["a", "b", "c"])` | `Intl.ListFormat` | `a, b, and c` |
+
+Every formatter takes the same options object as its underlying `Intl` constructor,
+so the full API is available:
+
+```jsx
+fmt.number(1234.5, { minimumFractionDigits: 2 });        // "1,234.50"
+fmt.currency(42, "EUR", { currencyDisplay: "code" });    // "EUR 42.00"
+fmt.date(date, { dateStyle: "full", timeStyle: "short" });
+fmt.relativeTime(2, "week");                             // "in 2 weeks"
+```
+
+## Reactivity
+
+Because `fmt.*` reads the reactive locale, formatted values in markup re-render on a
+locale change just like `t()`:
+
+```jsx
+<span class="price">{fmt.currency(item.price, item.currency)}</span>
+```
+
+<Callout type="tip" title="Formatters are memoized">
+  `Intl.*` instances are comparatively expensive to construct, so `fmt` caches them
+  per `(kind, locale, options)`. Call `fmt.currency(...)` in a hot loop freely — the
+  underlying formatter is built once per unique configuration.
+</Callout>
+
+## Pairing with messages
+
+For prose that mixes text and formatted values, compose `t()` and `fmt.*` — pass the
+formatted string in as an ICU argument, or use ICU number/date skeletons directly:
+
+```jsx
+// Compose:
+t("checkout.total", { amount: fmt.currency(total, "USD") });
+
+// Or let ICU format inline (skeleton):
+// "Due {amount, number, ::currency/USD}"
+t("checkout.total", { amount: total });
+```

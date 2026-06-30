@@ -1,0 +1,148 @@
+---
+title: web-i18n
+description: Internationalization for OTF Web — URL-prefix locale routing, ICU messages, and locale-aware Intl formatters, all reactive.
+---
+
+import { Callout } from "@opentf/web-docs";
+import LocaleDemo from "./LocaleDemo.jsx";
+
+# @opentf/web-i18n
+
+Internationalization for OTF Web. It pairs **URL path-prefix locale routing** (built
+into the core router) with a small message layer: a reactive `t()` backed by full
+**ICU MessageFormat**, and locale-aware **`Intl` formatters**. Translations bind like
+any signal — switching locale re-renders only the affected text, fine-grained.
+
+Tap a language — greeting, item list, plurals, currency, dates, and relative time all
+follow the active locale (Arabic flips the card to right-to-left):
+
+<LocaleDemo />
+
+## Installation
+
+```bash
+bun add @opentf/web-i18n
+```
+
+`@opentf/web-i18n` is an opt-in companion to `@opentf/web` (a peer dependency) — apps
+that don't need i18n ship none of it.
+
+## Setup — `createI18n`
+
+Register your locales and message catalogs once, near your app entry. Catalogs can be
+**eager** (inline) or **lazy** (code-split per locale and loaded on demand).
+
+```js
+import { createI18n } from "@opentf/web-i18n";
+
+createI18n({
+  locales: ["en", "fr", "ja"],
+  defaultLocale: "en",
+  messages: {
+    en: { greeting: "Hello, {name}" },
+    fr: { greeting: "Bonjour, {name}" },
+    ja: { greeting: "こんにちは、{name}さん" },
+  },
+});
+```
+
+```js
+// Lazy: each locale becomes its own chunk, fetched when first needed.
+createI18n({
+  locales: ["en", "fr", "ja"],
+  defaultLocale: "en",
+  load: (locale) => import(`./messages/${locale}.json`),
+});
+```
+
+The active locale comes from the router (`router.locale`, derived from the URL —
+see [Locale Routing](./routing)). Lookups fall back **active → default → the raw
+key**, so a missing translation is visible, never a crash.
+
+## Translating with `t()`
+
+`t(key, values?)` returns the translated, ICU-formatted string. Because it reads the
+reactive locale, using it in markup makes the text update automatically when the
+locale changes.
+
+```jsx
+import { t } from "@opentf/web-i18n";
+
+<h1>{t("greeting", { name: "Ada" })}</h1>
+```
+
+### ICU MessageFormat
+
+Messages are full ICU — interpolation, **plurals**, **select**, and number/date
+skeletons — so real-world grammar works across languages with different plural rules.
+
+```js
+{
+  // {count} chooses the right plural form for the active locale
+  "cart.items": "{count, plural, =0 {Your cart is empty} one {# item} other {# items}}",
+  // {gender} selects a branch
+  "invited": "{gender, select, female {She} male {He} other {They}} invited you",
+  // number skeleton
+  "progress": "{done, number, percent} complete",
+}
+```
+
+```jsx
+<p>{t("cart.items", { count })}</p>      // "1 item" / "5 items" / "Vous avez 5 articles"
+<p>{t("invited", { gender: "female" })}</p>
+```
+
+<Callout type="tip" title="Languages have more than two plural forms">
+  English has two (one/other); Polish has three, Arabic has six. ICU's `plural`
+  handles all of them — author every form your locale needs and the right one is
+  chosen at runtime.
+</Callout>
+
+## The `<T>` component
+
+For inline use, `<T>` is sugar over `t()` — it renders the translation into a span:
+
+```jsx
+import { T } from "@opentf/web-i18n";
+
+<p>Status: <T id="status.active" /></p>
+<T id="greeting" values={{ name }} />
+```
+
+For messages that interpolate a **signal** (e.g. a live `{count}`), prefer the bare
+`{t("key", { count })}` form in markup so the compiler tracks the signal directly.
+
+## Formatting
+
+Numbers, currency, dates, and relative time format per the active locale via
+`fmt.*` (thin, memoized wrappers over the browser-native `Intl` APIs):
+
+```jsx
+import { fmt } from "@opentf/web-i18n";
+
+fmt.currency(42, "USD");                 // "$42.00" / "42,00 $US" / "￥42"
+fmt.date(order.date, { dateStyle: "long" });
+fmt.relativeTime(-2, "day");             // "2 days ago" / "il y a 2 jours"
+```
+
+See [Formatting](./formatting) for the full set, with a live demo.
+
+## Locale routing
+
+The locale lives in the **URL path** (`/fr/about`), and switching locale is a
+navigation. The core router strips the prefix, exposes `router.locale`, and `<Link>`
+keeps links in the active locale automatically. SSG emits a static page per locale;
+SSR detects and redirects.
+
+<Callout type="note" title="Switching is a navigation">
+  Under URL-prefix routing the locale is fixed per page, so there's no in-place
+  toggle — to change language you navigate to the localized URL. This is what makes
+  every locale independently cacheable and SEO-friendly. See
+  [Locale Routing](./routing).
+</Callout>
+
+```jsx
+import { router } from "@opentf/web";
+
+router.locale;   // "en" | "fr" | … (reactive)
+```

@@ -1,0 +1,115 @@
+---
+title: Locale Routing
+description: URL path-prefix locale routing — prefix_except_default, localized links, per-locale SSG/SSR, and locale detection.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Locale Routing
+
+The active locale lives in the **URL path**. Routing is built into the core
+`@opentf/web` router, so a single locale-agnostic route table serves every language.
+
+## `prefix_except_default`
+
+The default locale is served at the bare path; every other locale is prefixed:
+
+| Route | `en` (default) | `fr` | `ja` |
+| --- | --- | --- | --- |
+| `/` | `/` | `/fr` | `/ja` |
+| `/pricing` | `/pricing` | `/fr/pricing` | `/ja/pricing` |
+| `/blog/hello` | `/blog/hello` | `/fr/blog/hello` | `/ja/blog/hello` |
+
+Configure it once in `otfw.config.json`:
+
+```json
+{
+  "i18n": {
+    "locales": ["en", "fr", "ja"],
+    "defaultLocale": "en"
+  }
+}
+```
+
+The toolchain threads this into `mountApp`, so the client router knows the locales and
+resolves `router.locale` from the URL. (You can also pass it directly:
+`mountApp({ pages, i18n: { locales, defaultLocale } })`.)
+
+<Callout type="note" title="Switching locale is a navigation">
+  There is no in-place locale toggle — to change language you navigate to the
+  localized URL. Because each URL is exactly one locale, every page is independently
+  cacheable, SEO-friendly, and free of hydration locale mismatches.
+</Callout>
+
+## Reading the locale
+
+`router.locale` is reactive — read it in any binding and it updates on navigation:
+
+```jsx
+import { router } from "@opentf/web";
+
+<span class="badge">{router.locale}</span>
+```
+
+## Localized links
+
+`<Link>` automatically keeps navigation in the active locale — no per-link work:
+
+```jsx
+import { Link } from "@opentf/web";
+
+// On /fr/… this renders href="/fr/pricing"; on the default locale, "/pricing".
+<Link href="/pricing">Pricing</Link>
+```
+
+Need to build a localized path yourself (e.g. a language switcher)? Use
+`localizePath` — the default locale stays bare, others get a prefix, and any existing
+prefix is replaced:
+
+```js
+import { localizePath } from "@opentf/web";
+
+localizePath("/pricing", "fr");   // "/fr/pricing"
+localizePath("/pricing", "en");   // "/pricing"   (default → bare)
+localizePath("/fr/pricing", "ja"); // "/ja/pricing" (re-pointed)
+```
+
+A language switcher, then, is just links to the current path under each locale:
+
+```jsx
+<Link href={localizePath(router.pathname, "fr")}>Français</Link>
+<Link href={localizePath(router.pathname, "ja")}>日本語</Link>
+```
+
+## Static generation (SSG)
+
+`otfw build --ssg` pre-renders **every route once per locale** — the default bare,
+others under their prefix — each with the right `<html lang>` and `hreflang`
+alternates for SEO:
+
+```
+dist/
+├── index.html            → en
+├── pricing/index.html    → en
+├── fr/index.html         → fr
+├── fr/pricing/index.html → fr
+└── ja/…                  → ja
+```
+
+## Server rendering (SSR) + detection
+
+`otfw serve` renders the locale from the URL prefix. A bare path whose visitor prefers
+a **non-default** locale (via `Accept-Language`, or an `otfw_locale` cookie) is
+`302`-redirected to the prefixed URL; the default locale serves bare, so default-locale
+visitors are never redirected.
+
+## Programmatic control
+
+In a routed app the locale comes from the URL. For previews, tests, or a custom flow,
+`setLocale` sets `router.locale` directly without navigating:
+
+```js
+import { setLocale } from "@opentf/web";
+
+setLocale("fr"); // router.locale → "fr"; t()/fmt re-render
+```
