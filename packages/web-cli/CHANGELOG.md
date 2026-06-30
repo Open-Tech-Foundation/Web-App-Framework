@@ -4,6 +4,9 @@
 
 ### Added
 
+- `nav` config threading (`docs/HYDRATION.md` §7): `entrySource` reads `otfw.config`'s
+  `nav` and passes `nav: "mpa"` to `mountApp` when set, so an app can opt into full-page
+  (MPA) navigation; the default stays SPA. Wired through both `otfw build` and `otfw dev`.
 - Hydration toolchain wiring (Phase 2.0 — see `docs/HYDRATION.md` §3.4): the client
   bundle can now be built for the **hydrate** target so the server-rendered DOM is
   *adopted* on first paint instead of rebuilt. `runBuild({ hydrate })` requests

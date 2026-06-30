@@ -39,6 +39,18 @@ export const routes = { pages: {}, layouts: {}, notFound: null };
 let guard = null;
 let rootEl = null;
 
+// Navigation mode (docs/HYDRATION.md §7): "spa" (default) lets the client router
+// intercept same-origin `<Link>` clicks for reload-free nav; "mpa" leaves every
+// navigation to the browser (full page load), with each page hydrating its own first
+// paint. MPA is always the substrate — this only toggles the SPA enhancement on top.
+let navMode = "spa";
+
+/** Whether the client router should intercept link clicks (SPA) vs. let the browser
+ *  do a full navigation (MPA). Read by `<Link>`. */
+export function shouldInterceptNav() {
+  return navMode === "spa";
+}
+
 // i18n: path-prefix locale routing (docs/I18N.md). The route table stays
 // locale-agnostic; a leading non-default locale segment is stripped before
 // matching and recorded as `router.locale`. `prefix_except_default`: the default
@@ -338,13 +350,18 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
  * @param {Object} opts.pages  `{ path: module }` route map (from the dev server).
  * @param {Element} [opts.target]  the app root (defaults to `#app`).
  * @param {Function} [opts.guard]  optional `(to, tools) => …` route guard.
+ * @param {"spa"|"mpa"} [opts.nav]  navigation mode (default "spa"); "mpa" disables
+ *   client-side link interception so every navigation is a full page load.
  */
-export function mountApp({ pages, target, guard: g, i18n } = {}) {
+export function mountApp({ pages, target, guard: g, i18n, nav } = {}) {
   rootEl = target || (isBrowser ? document.getElementById("app") : null);
+  navMode = nav === "mpa" ? "mpa" : "spa";
   if (i18n) configureI18n(i18n);
   if (pages) registerRoutes(pages);
   guard = g || null;
-  if (isBrowser) {
+  // In MPA mode the browser owns navigation (full loads push real history entries),
+  // so there is no client-side history to react to — only wire popstate for SPA.
+  if (isBrowser && navMode === "spa") {
     window.addEventListener("popstate", () =>
       navigate(
         window.location.pathname + window.location.search + window.location.hash,

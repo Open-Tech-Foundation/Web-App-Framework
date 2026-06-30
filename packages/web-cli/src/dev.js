@@ -104,7 +104,7 @@ export async function runDev() {
   const devDir = join(root, ".dev");
   mkdirSync(devDir, { recursive: true });
   const entryFile = join(devDir, "entry.js");
-  writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl, config?.i18n));
+  writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl, config?.i18n, config?.nav));
 
   let server;
   const publish = (msg) => server?.publish("hmr", JSON.stringify(msg));
@@ -222,7 +222,7 @@ export async function runDev() {
         const fresh = discoverPages(appDir, exclude);
         pages.length = 0;
         pages.push(...fresh);
-        writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl, config?.i18n));
+        writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl, config?.i18n, config?.nav));
       }
       onChange(file);
     }

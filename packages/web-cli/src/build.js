@@ -74,7 +74,7 @@ export async function runBuild(options = {}) {
   const tmp = join(root, ".otfw");
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "entry.js");
-  writeFileSync(entry, entrySource(pages, appDir, undefined, config?.i18n));
+  writeFileSync(entry, entrySource(pages, appDir, undefined, config?.i18n, config?.nav));
 
   console.log("\n  OTF Web — production build\n");
 

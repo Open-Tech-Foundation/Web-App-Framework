@@ -4,6 +4,13 @@
 
 ### Added
 
+- Navigation mode (`docs/HYDRATION.md` §7): `mountApp({ nav })` selects `"spa"` (default —
+  the client router intercepts same-origin `<Link>` clicks for reload-free navigation) or
+  `"mpa"` (every navigation is a full page load; each page hydrates its own first paint).
+  MPA is the always-available substrate — `nav` only toggles the SPA enhancement, and in
+  MPA mode the router skips the `popstate` listener. `<Link reload>` is a per-link escape
+  hatch that forces a full navigation even in SPA mode. `shouldInterceptNav()` exposes the
+  current mode to `<Link>`.
 - Router first-paint hydration boot switch (Phase 2.0 — see `docs/HYDRATION.md` §3.4):
   `mountApp` detects the server sentinel `data-otfw-hydrate` on the root and, when the
   route module exposes a `hydrate` adopt factory, the router calls it to *adopt* the

@@ -339,7 +339,7 @@ export function findGuard(appDir) {
  * The production build imports the file directly (Rolldown code-splits it); the dev
  * server passes a `/__route/…` URL so the route compiles on first navigation.
  */
-export function entrySource(pages, appDir, loaderUrl = (p) => p, i18n = null) {
+export function entrySource(pages, appDir, loaderUrl = (p) => p, i18n = null, nav = null) {
   const map = pages
     .map((p) => `    [${JSON.stringify(p)}]: () => import(${JSON.stringify(loaderUrl(p))}),`)
     .join("\n");
@@ -350,11 +350,14 @@ export function entrySource(pages, appDir, loaderUrl = (p) => p, i18n = null) {
     i18n && Array.isArray(i18n.locales) && i18n.locales.length
       ? `\n  i18n: ${JSON.stringify({ locales: i18n.locales, defaultLocale: i18n.defaultLocale })},`
       : "";
+  // Navigation mode (otfw.config `nav`): "mpa" disables client-side link interception
+  // (docs/HYDRATION.md §7). Only emitted when explicitly "mpa"; "spa" is the default.
+  const navOpt = nav === "mpa" ? `\n  nav: "mpa",` : "";
   return (
     `import { mountApp } from "@opentf/web";\n` +
     (guard ? `import guard from ${JSON.stringify(guard)};\n` : "") +
     `mountApp({\n  pages: {\n${map}\n  },\n` +
-    `  target: document.getElementById("app"),${guard ? "\n  guard," : ""}${i18nOpt}\n});\n`
+    `  target: document.getElementById("app"),${guard ? "\n  guard," : ""}${i18nOpt}${navOpt}\n});\n`
   );
 }
 
