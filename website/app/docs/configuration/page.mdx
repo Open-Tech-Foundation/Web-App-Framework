@@ -38,6 +38,7 @@ your editor full type hints.
 | `site` | Canonical origin — `{ url }`. Drives absolute canonicals, the sitemap, and the blog RSS feed. |
 | `docs` | The documentation section (sidebar, navbar, search). |
 | `blog` | An optional blog section (post list, banners, RSS). |
+| `i18n` | Internationalization — locales for URL-prefix routing (`@opentf/web-i18n`). |
 
 ## `site`
 
@@ -102,6 +103,27 @@ Turns on the blog generator (post list, banners, reading time, RSS). See
 ```js
 blog: { dir: "blog", title: "My Blog", lastUpdated: true }
 ```
+
+## `i18n`
+
+Enables URL path-prefix locale routing for `@opentf/web-i18n`. The toolchain threads it
+into the client `mountApp`, pre-renders one static page per locale (`otfw build --ssg`),
+and serves per-locale SSR with locale detection (`otfw serve`).
+
+```js
+i18n: {
+  locales: ["en", "fr", "ja"],
+  defaultLocale: "en",
+}
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `locales` | string[] | All supported locales. |
+| `defaultLocale` | string | Served at the bare path; others are prefixed (`/fr/…`). |
+
+See [Packages → web-i18n → Locale Routing](/docs/packages/web-i18n/routing) for the full
+routing model and the message/formatting API.
 
 <Callout type="info" title="Framework vs. theme config">
   `otfw.config.js` is the project config. The `docs`/`api`/`blog` blocks are interpreted
