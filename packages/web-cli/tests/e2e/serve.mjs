@@ -67,13 +67,20 @@ async function main() {
     const homeHtml = await home.text();
     assert(home.status === 200, "GET / → 200");
     assert(
-      /<div id="app">[\s\S]*E2E_HOME[\s\S]*<\/div>/.test(homeHtml),
+      /<div id="app"[^>]*>[\s\S]*E2E_HOME[\s\S]*<\/div>/.test(homeHtml),
       "/ markup is server-rendered inside #app (no client round-trip)",
     );
 
     // ── 2. The client bundle is injected, so the page becomes interactive ──────
     const scriptMatch = homeHtml.match(/<script type="module" src="(\/assets\/[^"]+\.js)">/);
-    assert(!!scriptMatch, "/ injects the client bundle <script> (Phase 1 CSR mount)");
+    assert(!!scriptMatch, "/ injects the client bundle <script>");
+
+    // ── 2b. The shell stamps the hydration sentinel on #app (the client adopts the
+    //        server markup on first paint instead of rebuilding it) ──────────────
+    assert(
+      /<div id="app"[^>]*\bdata-otfw-hydrate\b[^>]*>/.test(homeHtml),
+      "/ stamps data-otfw-hydrate on #app (hydration boot)",
+    );
 
     // ── 3. That bundle is actually served as JS from dist/ ─────────────────────
     const asset = await fetch(`${base}${scriptMatch[1]}`);

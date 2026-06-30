@@ -30,6 +30,7 @@ import {
   runBlogFeed,
   runDocsSearchIndex,
   runLastUpdated,
+  stampHydrateSentinel,
 } from "./shared.js";
 import { fmtMs, step } from "./reporter.js";
 
@@ -45,7 +46,7 @@ function resolveBaseUrl(config) {
   return "";
 }
 
-export async function runBuild() {
+export async function runBuild(options = {}) {
   const { root, appDir, webEntry, otfwc, exclude } = loadProject();
   const t0 = performance.now();
 
@@ -54,6 +55,11 @@ export async function runBuild() {
     console.error(`✗ no page.jsx files found under ${appDir}`);
     process.exit(1);
   }
+
+  // Build the client for hydration when there will be server markup to adopt — the
+  // SSR server (`runBuild({ hydrate: true })`) and `--ssg` pre-rendered pages. A
+  // plain CSR build mounts into an empty `#app`, so it keeps the leaner CSR bundle.
+  const hydrate = options.hydrate ?? process.argv.includes("--ssg");
 
   // Docs generator: resolve `@opentf/web-docs/nav` to the build-time nav tree when
   // the project has a `docs` config block.
@@ -84,6 +90,7 @@ export async function runBuild() {
       ...docsPlugins,
       otfwPlugin(otfwc, {
         failOnError: true,
+        target: hydrate ? "hydrate" : "csr",
         onResult: (id) => buildStep.update(`${basename(id)}  (${++compiled})`),
       }),
       cssPlugin(),
@@ -105,8 +112,12 @@ export async function runBuild() {
   const bundleHref = `/assets/${entryChunk.fileName}`;
 
   // Compose dist/index.html from the project shell: strip module entry scripts,
-  // compile + hash any local stylesheet links, and inject the bundle.
+  // compile + hash any local stylesheet links, and inject the bundle. When the
+  // client was built for hydration, stamp the `#app` sentinel so the client adopts
+  // the server markup (this shell is also the SSG pre-render template, so each
+  // pre-rendered page inherits the sentinel).
   let html = readHtmlShell(root);
+  if (hydrate) html = stampHydrateSentinel(html);
 
   // Compile each local <link rel="stylesheet" href="/..."> and rewrite the href.
   buildStep.update("styles");

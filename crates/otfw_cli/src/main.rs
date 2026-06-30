@@ -234,11 +234,12 @@ fn build(file: &str, as_component: bool, from_stdin: bool, target: Target) -> Ex
 }
 
 /// Long-lived compiler loop. Each request is a header line
-/// `<id_len> <source_len> <component> <ssg>\n` (byte counts; flags `0`/`1`),
-/// immediately followed by `id_len` bytes of module id and `source_len` bytes of
-/// source. Each reply is `OK <len>\n<code>` on success or `ERR <len>\n<message>` on
-/// a compile error — the server stays up either way. Lengths are byte counts so the
-/// payloads may contain newlines (source, multi-line diagnostics). EOF ends the loop.
+/// `<id_len> <source_len> <component> <target>\n` (byte counts; `component` is the
+/// flag `0`/`1`; `target` is the token `csr`/`ssg`/`hydrate`), immediately followed
+/// by `id_len` bytes of module id and `source_len` bytes of source. Each reply is
+/// `OK <len>\n<code>` on success or `ERR <len>\n<message>` on a compile error — the
+/// server stays up either way. Lengths are byte counts so the payloads may contain
+/// newlines (source, multi-line diagnostics). EOF ends the loop.
 fn serve() -> ExitCode {
     let stdin = io::stdin();
     let mut reader = stdin.lock();
@@ -268,11 +269,11 @@ fn serve() -> ExitCode {
                     parts[0].parse::<usize>().ok()?,
                     parts[1].parse::<usize>().ok()?,
                     parts[2] == "1",
-                    parts[3] == "1",
+                    parts[3].to_string(),
                 ))
             })
             .flatten();
-        let Some((id_len, src_len, as_component, ssg)) = parsed else {
+        let Some((id_len, src_len, as_component, target_tok)) = parsed else {
             write_frame(&mut writer, false, format!("protocol error: bad header {line:?}").as_bytes());
             continue;
         };
@@ -285,9 +286,13 @@ fn serve() -> ExitCode {
         let id = String::from_utf8_lossy(&id_buf).into_owned();
         let source = String::from_utf8_lossy(&src_buf).into_owned();
 
-        // The serve protocol's 4th field selects SSG vs CSR; the Hydrate target is
-        // reachable only via one-shot `build --target=hydrate` for now.
-        let target = if ssg { Target::Ssg } else { Target::Csr };
+        // The serve protocol's 4th field selects the codegen backend by token; an
+        // unknown token falls back to CSR (the safe default).
+        let target = match target_tok.as_str() {
+            "ssg" => Target::Ssg,
+            "hydrate" => Target::Hydrate,
+            _ => Target::Csr,
+        };
         match compile_module(&id, source, as_component, target) {
             // Warnings are non-fatal and not consumed by the toolchain; drop them.
             Ok((code, _warnings)) => write_frame(&mut writer, true, code.as_bytes()),

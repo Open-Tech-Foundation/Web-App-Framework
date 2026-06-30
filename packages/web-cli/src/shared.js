@@ -57,6 +57,19 @@ export function injectMarkup(shellHtml, markup) {
 }
 
 /**
+ * Stamp the `data-otfw-hydrate` sentinel onto the shell's `#app` container, telling
+ * the client to *adopt* the server-rendered DOM on first paint instead of rebuilding
+ * it (`runtime/router.js` `mountApp`). Used when the client bundle was built for the
+ * hydrate target and there is server markup to adopt (SSR, and SSG pre-render).
+ * Idempotent — a no-op if the sentinel is already present.
+ */
+export function stampHydrateSentinel(shellHtml) {
+  return shellHtml.replace(/<div id="app"([^>]*)>/, (m, attrs) =>
+    /\bdata-otfw-hydrate\b/.test(attrs) ? m : `<div id="app"${attrs} data-otfw-hydrate>`,
+  );
+}
+
+/**
  * Inject per-route `<head>` tags before `</head>`, dropping the shell's default
  * `<title>` when the route supplies its own (so each page gets a unique,
  * non-duplicated title). Shared by SSG pre-render and the SSR server.
@@ -383,8 +396,9 @@ export async function moduleGraph(otfwc, webEntry, roots) {
  * compiles every module, so the toolchain pays the binary-startup cost once
  * instead of spawning a subprocess per file — the dominant dev-server cost.
  *
- * `compile(id, source, component, ssg)` resolves to the emitted JS or rejects with
- * the compiler diagnostic. Requests are serialized through a FIFO queue: the server
+ * `compile(id, source, component, target)` resolves to the emitted JS or rejects
+ * with the compiler diagnostic (`target` is `"csr"` | `"ssg"` | `"hydrate"`).
+ * Requests are serialized through a FIFO queue: the server
  * is single-threaded, replies arrive in request order, so the head of the queue
  * always pairs with the next frame. The child is killed when this process exits.
  */
@@ -450,13 +464,13 @@ export function startCompilerServer(otfwc) {
     }
   }
 
-  function compile(id, source, component, ssg) {
+  function compile(id, source, component, target = "csr") {
     if (dead) return Promise.reject(new Error("otfwc serve is not running"));
     return new Promise((resolve, reject) => {
       queue.push({ resolve, reject });
       const idB = enc.encode(id);
       const srcB = enc.encode(source);
-      proc.stdin.write(enc.encode(`${idB.length} ${srcB.length} ${component ? 1 : 0} ${ssg ? 1 : 0}\n`));
+      proc.stdin.write(enc.encode(`${idB.length} ${srcB.length} ${component ? 1 : 0} ${target}\n`));
       proc.stdin.write(idB);
       proc.stdin.write(srcB);
       proc.stdin.flush();
@@ -493,7 +507,9 @@ export function startCompilerServer(otfwc) {
  * push compile diagnostics to the error overlay and clear them once fixed.
  *
  * Compilation runs through one persistent `otfwc serve` process per plugin instance
- * (see `startCompilerServer`).
+ * (see `startCompilerServer`). `target` picks the codegen backend: `"csr"` (the live
+ * DOM build), `"ssg"` (HTML-string renderers), or `"hydrate"` (the dual module — a
+ * CSR build factory plus an adopt factory for first-paint hydration).
  */
 export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr" } = {}) {
   const server = startCompilerServer(otfwc);
@@ -504,7 +520,7 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr
       const base = id.split("/").pop().replace(/\.(mdx|md|[jt]sx)$/, "");
       const isPage = base === "page" || base === "layout" || base === "404";
       try {
-        const out = await server.compile(id, code, !isPage, target === "ssg");
+        const out = await server.compile(id, code, !isPage, target);
         onResult?.(id, null);
         // Side effects (e.g. customElements.define) must survive bundling.
         return { code: out, moduleSideEffects: true };

@@ -16,10 +16,13 @@
 //   • anything else → SSR: render the route's markup + <head>, inject into the
 //     shell, return text/html.
 //
-// Phase 1 limitation: the client still mounts via CSR (it rebuilds `#app` on the
-// first paint rather than hydrating the server markup). The per-request HTML is
-// real — good for first paint, dynamic content, and SEO — but interactivity is
-// wired by a client re-render. Hydration (no re-render) is Phase 2.
+// Hydration (Phase 2.0): the client build is the hydrate target and the shell's
+// `#app` carries the `data-otfw-hydrate` sentinel, so the client *adopts* the
+// server-rendered DOM on first paint (no rebuild/flash) for leaf routes that the
+// hydrate backend can emit an adopt factory for; anything it can't (layout chains,
+// child components, lists/conditionals — see docs/HYDRATION.md §4) falls back to a
+// clean CSR mount. The per-request HTML is real either way (first paint, dynamic
+// content, SEO).
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -88,8 +91,10 @@ export async function runServe() {
 
   // 1. Client build → dist/ (interactive bundle + composed HTML shell). Reusing the
   //    production build keeps the client assets, CSS hashing, and shell identical to
-  //    `otfw build`; the SSR server fills the shell's `#app` per request.
-  await runBuild();
+  //    `otfw build`; the SSR server fills the shell's `#app` per request. `hydrate`
+  //    builds the dual-module client bundle and stamps the `#app` sentinel, so the
+  //    server markup is adopted on first paint instead of rebuilt.
+  await runBuild({ hydrate: true });
 
   // 2. Server render bundle (held live for the process lifetime).
   const { root, appDir, webEntry, otfwc, exclude } = loadProject();

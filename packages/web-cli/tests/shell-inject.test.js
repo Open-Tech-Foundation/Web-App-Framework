@@ -4,7 +4,12 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { injectHead, injectMarkup, serverEntrySource } from "../src/shared.js";
+import {
+  injectHead,
+  injectMarkup,
+  serverEntrySource,
+  stampHydrateSentinel,
+} from "../src/shared.js";
 
 const SHELL =
   `<!doctype html><html><head>\n<title>Default</title>\n</head>` +
@@ -47,6 +52,34 @@ describe("injectHead", () => {
 
   test("returns the shell unchanged for empty head", () => {
     expect(injectHead(SHELL, "")).toBe(SHELL);
+  });
+});
+
+describe("stampHydrateSentinel", () => {
+  test("adds the data-otfw-hydrate sentinel to #app", () => {
+    expect(stampHydrateSentinel(SHELL)).toContain(`<div id="app" data-otfw-hydrate>`);
+  });
+
+  test("preserves existing #app attributes", () => {
+    const shell = `<body><div id="app" class="root"></div></body>`;
+    expect(stampHydrateSentinel(shell)).toContain(`<div id="app" class="root" data-otfw-hydrate>`);
+  });
+
+  test("is idempotent — never double-stamps", () => {
+    const once = stampHydrateSentinel(SHELL);
+    expect(stampHydrateSentinel(once)).toBe(once);
+  });
+
+  test("leaves a shell without #app untouched", () => {
+    const shell = `<body><main></main></body>`;
+    expect(stampHydrateSentinel(shell)).toBe(shell);
+  });
+
+  test("the stamped #app still accepts injected markup", () => {
+    const stamped = stampHydrateSentinel(SHELL);
+    expect(injectMarkup(stamped, "<h1>Hi</h1>")).toContain(
+      `<div id="app" data-otfw-hydrate><h1>Hi</h1></div>`,
+    );
   });
 });
 
