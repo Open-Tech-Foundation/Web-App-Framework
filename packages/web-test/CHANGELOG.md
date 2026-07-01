@@ -1,5 +1,11 @@
 # @opentf/web-test
 
+## [Unreleased]
+
+## [1.1.0] - 2026-07-01
+
+_Dependency updates._
+
 ## 1.0.0
 
 ### Minor Changes

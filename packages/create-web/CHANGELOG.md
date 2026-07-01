@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-01
+
 ### Added
 
 - Documentation-site project template. `bun create @opentf/web` now prompts for a

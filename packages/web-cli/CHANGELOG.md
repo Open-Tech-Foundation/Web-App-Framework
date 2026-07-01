@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-01
+
 ### Added
 
 - `nav` config threading (`docs/HYDRATION.md` §7): `entrySource` reads `otfw.config`'s

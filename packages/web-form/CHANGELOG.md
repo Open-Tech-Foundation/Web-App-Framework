@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-01
+
 - **Engine Rebuild:** Rebuilt the form engine on the `reactive()` store primitive.
 - **Dependency Fix:** Normalized the peer dependency range for `@opentf/web` to `*` to improve compatibility.
 - **Documentation:** Updated the forms documentation to reflect the new `reactive()` engine, including working examples.

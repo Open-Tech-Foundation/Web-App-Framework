@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-01
+
 ### Fixed
 
 - Multiple components in one file no longer crash on first paint of a pre-rendered
