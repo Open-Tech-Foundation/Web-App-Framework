@@ -1,5 +1,5 @@
 adapters = ["npm"]
-tag_format = "v{version}"
+tag_format = "{name}@{version}"
 provider = "github"
 changelog_strategy = "curated"
 changelog_scope = "package"
