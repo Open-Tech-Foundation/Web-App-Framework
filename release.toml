@@ -1,0 +1,48 @@
+adapters = ["npm"]
+tag_format = "v{version}"
+provider = "github"
+changelog_strategy = "curated"
+changelog_scope = "package"
+github_release_notes = "auto-generate"
+
+[hooks]
+
+[[package]]
+name = "@opentf/web-compiler"
+adapter = "npm"
+mode = "publish"
+matrix = true
+command = "cargo build --release --target {triple}"
+artifacts = "target/{triple}/release/{bin}{ext}"
+bin_name = "otfwc"
+compress = "brotli"
+manifest = "packages/web-compiler/package.json"
+
+[[package.targets]]
+name = "linux"
+arch = "x86_64"
+triple = "x86_64-unknown-linux-gnu"
+runner = "ubuntu-latest"
+stage_as = "linux-x64"
+
+[[package.targets]]
+name = "macos"
+arch = "aarch64"
+triple = "aarch64-apple-darwin"
+runner = "macos-latest"
+stage_as = "darwin-arm64"
+
+[[package.targets]]
+name = "macos"
+arch = "x86_64"
+triple = "x86_64-apple-darwin"
+runner = "macos-latest"
+stage_as = "darwin-x64"
+
+[[package.targets]]
+name = "windows"
+arch = "x86_64"
+triple = "x86_64-pc-windows-msvc"
+runner = "windows-latest"
+stage_as = "win32-x64"
+ext = ".exe"

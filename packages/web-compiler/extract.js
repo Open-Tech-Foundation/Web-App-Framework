@@ -15,7 +15,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 // `process.platform-process.arch` maps directly onto our bin/ subdirectory names.
 const SUPPORTED = new Set([
   "linux-x64",
-  "linux-arm64",
   "darwin-x64",
   "darwin-arm64",
   "win32-x64",
