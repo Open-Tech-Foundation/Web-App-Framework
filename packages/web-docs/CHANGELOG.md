@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-01
+
 ### Added
 
 - **Mobile navigation drawer + responsive navbar.** Below 768px the sidebar is now
