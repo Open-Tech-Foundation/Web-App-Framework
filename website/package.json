@@ -8,12 +8,12 @@
     "build:ssg": "otfw build --ssg"
   },
   "dependencies": {
-    "@opentf/web": "^0.5.0",
-    "@opentf/web-docs": "^0.1.0",
-    "@opentf/web-form": "workspace:*",
-    "@opentf/web-i18n": "workspace:*"
+    "@opentf/web": "^0.6.0",
+    "@opentf/web-docs": "^0.2.0",
+    "@opentf/web-form": "^1.1.0",
+    "@opentf/web-i18n": "^1.1.0"
   },
   "devDependencies": {
-    "@opentf/web-cli": "^1.0.0"
+    "@opentf/web-cli": "^1.1.0"
   }
 }
