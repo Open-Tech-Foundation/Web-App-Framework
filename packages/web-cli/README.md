@@ -39,7 +39,10 @@ otfw serve          # build, then server-render each route per request (SSR)
   Picks port 3000 (scanning upward), or `--port` for an explicit one. Phase 1: the page
   becomes interactive via the client bundle (CSR mount); hydration is a later phase.
 
-`OTFWC_BIN` overrides the compiler binary location (used for compiler development).
+`OTFWC_BIN` overrides the compiler binary location. Published installs under
+`node_modules` use the packaged compiler, even when the app lives inside a Cargo
+workspace; this repository's own source checkout may build and use
+`target/debug/otfwc` for compiler development.
 
 ## License
 

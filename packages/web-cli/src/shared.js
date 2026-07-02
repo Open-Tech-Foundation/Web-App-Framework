@@ -108,7 +108,8 @@ export function findUp(name, from) {
 /**
  * Resolve the project and toolchain: the app being built (cwd), the runtime
  * package, the `otfwc` compiler, and the excluded routes. Exits with a clear
- * message on any hard failure. Builds the compiler on demand from the workspace.
+ * message on any hard failure. Source checkouts can build the compiler on demand
+ * from this repo's Cargo workspace; published installs use @opentf/web-compiler.
  */
 export function loadProject() {
   const root = process.cwd();
@@ -129,12 +130,13 @@ export function loadProject() {
     fail(`cannot resolve "@opentf/web" from ${root}\n  add it to your dependencies.`);
   }
 
-  // Locate the `otfwc` compiler. Published: the prebuilt binary from `@opentf/web-compiler`
-  // (a dependency of this CLI). In this repo's own dev (a Cargo workspace is found
-  // above the CLI): the cargo `target/debug` build, rebuilt on demand. `OTFWC_BIN`
-  // overrides both.
+  // Locate the `otfwc` compiler. `OTFWC_BIN` overrides everything. Published
+  // installs must use the prebuilt compiler package even when the user's project is
+  // itself a Cargo workspace. This repo's source checkout still uses the local
+  // Cargo build.
   const cliDir = dirname(fileURLToPath(import.meta.url));
-  const workspace = findUp("Cargo.toml", cliDir);
+  const installedPackage = cliDir.split(/[\\/]/).includes("node_modules");
+  const workspace = installedPackage ? null : findUp("Cargo.toml", cliDir);
   let otfwc;
   if (process.env.OTFWC_BIN) {
     otfwc = process.env.OTFWC_BIN;
