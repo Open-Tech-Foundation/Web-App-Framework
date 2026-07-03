@@ -7,6 +7,11 @@
 - Atom 1.0 blog feed rendering via `renderAtomFeed`, alongside the existing RSS
   renderer.
 
+### Changed
+
+- Config docs now mark `site.url` as required for production docs/blog builds unless
+  `--base-url` is passed.
+
 ## [0.2.0] - 2026-07-01
 
 ### Added

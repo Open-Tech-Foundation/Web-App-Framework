@@ -45,13 +45,14 @@
  * @property {string} [title]        Feed title (default `"<docs.title> Blog"`).
  * @property {string} [description]  Feed description (default the title). RSS and Atom
  *                            feeds (`<dir>/rss.xml`, `<dir>/atom.xml`) are generated
- *                            by `otfw build` when `site.url` is set; public feed files
- *                            override generated ones independently.
+ *                            by `otfw build`; production docs/blog builds require
+ *                            `site.url` or `--base-url` so feed URLs are absolute.
  * @property {boolean} [lastUpdated] Show a "Last updated" line on a post when it was
  *                            edited after its publish date (from git / frontmatter).
  *
  * @typedef {Object} SiteConfig
- * @property {{ url?: string }} [site]   Canonical site origin (for SEO / sitemap).
+ * @property {{ url?: string }} [site]   Canonical site origin (required for production
+ *                              docs/blog builds unless `--base-url` is passed).
  * @property {DocsConfig} [docs]         Documentation generator config.
  * @property {BlogConfig} [blog]         Blog generator config.
  */
