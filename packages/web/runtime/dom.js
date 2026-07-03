@@ -3,7 +3,7 @@
 // no diffing — just direct, fine-grained DOM writes wired to signals.
 
 import { effect, signal } from "../core/signals.js";
-import { claimListEnd, claimListStart } from "./hydrate.js";
+import { claimRegionEnd, claimRegionStart } from "./hydrate.js";
 
 // Attribute names that must be assigned as JS properties (not setAttribute) for
 // correct behavior. Mirrors the set the old runtime relied on (core/constants).
@@ -254,9 +254,40 @@ function toNodes(value) {
  * Returns the effect disposer.
  */
 export function bindChild(anchor, fn) {
-  let current = [];
+  return childEffect(anchor, fn, [], false);
+}
+
+/**
+ * Hydrate a server-rendered conditional / dynamic-node region (docs/HYDRATION.md §3.1,
+ * 2.1b). The cursor `cur` is at the `<!--[-->` marker; between it and `<!--]-->` sits the
+ * one branch the server rendered (or nothing). `adoptFn(cur)` evaluates the same branch
+ * expression with *adopt* calls — only the taken branch's builder runs, claiming its nodes
+ * off the shared cursor — so the adopted nodes become the region's initial content with no
+ * rebuild. `buildFn()` is the CSR version (build calls) the effect swaps to when a later
+ * reactive change selects a different branch. The closing `<!--]-->` is the swap anchor.
+ * Returns the effect disposer.
+ */
+export function hydrateChild(cur, adoptFn, buildFn) {
+  claimRegionStart(cur);
+  const adopted = toNodes(adoptFn(cur));
+  const anchor = claimRegionEnd(cur);
+  // Seed with the adopted nodes and skip the first effect run's DOM write: the branch is
+  // already in place. The first run still evaluates `buildFn` to subscribe to its reactive
+  // deps (the built nodes are discarded); from the second run on it swaps normally.
+  return childEffect(anchor, buildFn, adopted, true);
+}
+
+/** The child-region effect shared by {@link bindChild} (empty seed, no skip) and
+ * {@link hydrateChild} (seeded with adopted nodes, first DOM write skipped). On each run
+ * the previous nodes are replaced with the new ones, inserted before `anchor`. */
+function childEffect(anchor, fn, current, skipFirst) {
+  let first = skipFirst;
   return effect(() => {
     const next = toNodes(fn());
+    if (first) {
+      first = false;
+      return; // hydration: keep the adopted DOM on first paint (subscribe only)
+    }
     const host = anchor.parentNode;
     for (const n of current) {
       if (n.parentNode === host) host.removeChild(n);
@@ -293,7 +324,7 @@ export function bindList(parent, sourceFn, renderItem, keyFn) {
  * The closing `<!--]-->` becomes the reconcile anchor. Returns the effect disposer.
  */
 export function hydrateList(cur, sourceFn, adoptItem, renderItem, keyFn) {
-  claimListStart(cur);
+  claimRegionStart(cur);
   const data = sourceFn();
   const items = Array.isArray(data) ? data : [];
   const cache = new Map();
@@ -306,7 +337,7 @@ export function hydrateList(cur, sourceFn, adoptItem, renderItem, keyFn) {
     cache.set(key, { sig, node });
     prevKeys.push(key);
   }
-  const anchor = claimListEnd(cur);
+  const anchor = claimRegionEnd(cur);
   // The seeded effect's first run re-reads the same data: every key hits the cache, so it
   // subscribes for future updates without mutating the already-correct adopted DOM.
   return reconcileList(anchor, sourceFn, renderItem, keyFn, cache, prevKeys);

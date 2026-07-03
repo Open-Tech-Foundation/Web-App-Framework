@@ -4,6 +4,17 @@
 
 ### Added
 
+- **Conditional / dynamic-node hydration** (`docs/HYDRATION.md` §3.1 / phasing 2.1b): a
+  server-rendered `{cond ? <A/> : <B/>}` (or `{cond && <X/>}`) region now *adopts* the
+  rendered branch instead of rebuilding. SSG brackets the branch with `<!--[-->…<!--]-->`
+  (a falsy `&&` renders an empty region, like an empty list); the Hydrate codegen emits an
+  adopt fn and a CSR build fn per branch, and the new `hydrateChild` runtime helper runs the
+  adopt closure to claim the rendered branch off the shared cursor, then swaps to a
+  freshly-built branch (via the build closure) when a later reactive change selects a
+  different one — the closing `<!--]-->` is the swap anchor. `bindChild` is refactored to
+  share the swap effect (`childEffect`) with `hydrateChild`. New runtime API: `hydrateChild`.
+  The list/conditional region markers and their claim helpers are renamed to the neutral
+  `REGION_START`/`REGION_END` and `claimRegionStart`/`claimRegionEnd` (shared by both).
 - **Keyed-list hydration** (`docs/HYDRATION.md` §3.1 / phasing 2.1a): a server-rendered
   `{items.map(...)}` region now *adopts* instead of rebuilding. SSG brackets the region
   with `<!--[-->…<!--]-->` markers; the Hydrate codegen emits an adopt-item walk (claiming
@@ -12,9 +23,10 @@
   pairs — so the first paint claims the server `<li>`s with no flash, and a later data
   change builds/moves/removes items from that adopted state (kept items keep their identity).
   The closing `<!--]-->` becomes the reconcile anchor. `bindList` is refactored to share the
-  reconcile effect (`reconcileList`) with `hydrateList`. New runtime API: `hydrateList`,
-  `claimListStart`/`claimListEnd`, `LIST_START`/`LIST_END`. A list-containing page that
-  previously fell back to a CSR-only build now gets a full `hydrate` factory.
+  reconcile effect (`reconcileList`) with `hydrateList`. New runtime API: `hydrateList` and
+  the shared region-marker helpers `claimRegionStart`/`claimRegionEnd`,
+  `REGION_START`/`REGION_END`. A list-containing page that previously fell back to a CSR-only
+  build now gets a full `hydrate` factory.
 - **Compiler-driven rich data hydration** (`docs/HYDRATION.md` §3.7): a server-rendered
   island's props now cross to the client through a serialized payload — real JS values
   (objects, arrays, numbers), not lossy string attributes. During SSR/SSG, `ssgComponent`

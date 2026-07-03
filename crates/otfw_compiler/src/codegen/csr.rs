@@ -538,6 +538,26 @@ pub(crate) fn emit_build_item_fn(
     e.lines
 }
 
+/// Emit a standalone build function for a **conditional/dynamic-node branch** —
+/// `function name() { …; return root; }` — reusing the CSR build machinery. The hydrate
+/// backend calls this for the `buildFn` its `hydrateChild` swaps to when a later reactive
+/// change selects a different branch (adoption can only claim the branch the server
+/// rendered). Returns the function's source lines; `base` is set to the unique `fn_name`
+/// so nested builders inside get collision-free names. See [`emit_build_item_fn`].
+pub(crate) fn emit_build_node_fn(lowered: &Lowered, fn_name: &str, node: &ViewNode) -> Vec<String> {
+    let mut e = Emitter::new(lowered, Disposal::None);
+    e.base = fn_name.to_string();
+    e.build_fn(fn_name, node, "");
+    e.lines
+}
+
+/// Substitute node-builder calls into a JSX-embedding expression template (the
+/// `\u{0}i\u{0}` placeholders the lowering leaves for each branch). Shared with the
+/// hydrate backend, which substitutes adopt-branch calls for the same placeholders.
+pub(crate) fn substitute_branches_pub(template: &str, calls: &[String]) -> String {
+    substitute_branches(template, calls)
+}
+
 fn emit_module_inner(
     components: &[Lowered],
     module_stmts: &[BodyItem],

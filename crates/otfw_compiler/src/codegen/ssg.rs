@@ -312,7 +312,14 @@ impl<'a> Emitter<'a> {
                     .collect();
                 let template = self.code(*expr);
                 self.server.insert("ssgText");
-                format!("ssgText({})", substitute_branches(&template, &calls))
+                // Bracket the rendered branch with region markers (docs/HYDRATION.md §3.1) so
+                // the client can find the region to adopt/swap it — the closing `<!--]-->`
+                // becomes the swap anchor. An empty branch (falsy `&&`) renders nothing between
+                // the markers, mirroring an empty list. Inert for static SSG output.
+                format!(
+                    "\"<!--[-->\" + ssgText({}) + \"<!--]-->\"",
+                    substitute_branches(&template, &calls)
+                )
             }
             ViewNode::Children => {
                 if self.is_page {

@@ -23,11 +23,13 @@ import {
 } from "../server/ssg-runtime.js";
 import {
   __resetHydrationPayload,
+  bindChild,
   bindList,
   bindText,
   claimElement,
   claimText,
   cursor,
+  hydrateChild,
   hydrateList,
   hydrationProps,
   skipNode,
@@ -220,5 +222,54 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     expect(afterAdd.length).toBe(4);
     for (let i = 0; i < 3; i++) expect(afterAdd[i]).toBe(serverItems[i]); // kept, not rebuilt
     expect(afterAdd[3].textContent).toBe("item 4"); // newly built, in order before the anchor
+  });
+
+  // Phase 2.1b: a conditional / dynamic-node region hydrates. The server brackets the
+  // rendered branch with `<!--[-->…<!--]-->`; the Hydrate factory adopts that branch's
+  // node (no rebuild), then a reactive change swaps to the freshly-built other branch.
+  const condSource =
+    "export default function P(){ let open=$state(true);" +
+    " return <div><button onclick={() => open = !open}>t</button>" +
+    '{open ? <p class="yes">YES</p> : <span class="no">NO</span>}</div>; }';
+
+  test("the Hydrate factory adopts the rendered conditional branch and swaps on change", () => {
+    // 1. Server render (SSG) → the rendered branch bracketed by region markers.
+    const ssgFactory = loadModule(compile(condSource, "ssg"), { signal, ssgText }).default;
+    const html = ssgFactory();
+    expect(html).toContain("<!--[-->"); // region opens
+    expect(html).toMatch(/<p class="yes">YES<\/p>/); // the `true` branch was rendered
+    expect(html).not.toContain("NO"); // …not the other branch
+
+    // 2. Put it in the DOM and snapshot the server <p>.
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const serverP = container.querySelector("p.yes");
+    expect(serverP.textContent).toBe("YES");
+
+    // 3. Hydrate over the existing container.
+    const mod = loadModule(compile(condSource, "hydrate"), {
+      signal,
+      bindChild,
+      hydrateChild,
+      cursor,
+      claimElement,
+      claimText,
+      skipNode,
+    });
+    mod.hydrate(container);
+
+    // 4. Adoption — the server <p> was claimed, not re-created (same identity, no flash).
+    expect(container.querySelector("p.yes")).toBe(serverP);
+
+    // 5. Clicking toggles the condition → the region swaps to the other branch, built via
+    //    the CSR branch fn; the adopted <p> is removed and a <span> takes its place.
+    container.querySelector("button").click();
+    expect(container.querySelector("p.yes")).toBe(null);
+    expect(container.querySelector("span.no")?.textContent).toBe("NO");
+
+    // …and toggling back renders the first branch again (freshly built now, not adopted).
+    container.querySelector("button").click();
+    expect(container.querySelector("span.no")).toBe(null);
+    expect(container.querySelector("p.yes")?.textContent).toBe("YES");
   });
 });

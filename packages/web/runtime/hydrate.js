@@ -19,10 +19,12 @@
 export const HOLE_START = "$";
 export const HOLE_END = "/";
 
-/** Comment markers bounding a variable list region in server HTML (docs/HYDRATION.md
- * §3.1): `<!--[-->` opens, `<!--]-->` closes, with one item root node between them. */
-export const LIST_START = "[";
-export const LIST_END = "]";
+/** Comment markers bounding a variable structural region — a list or a conditional —
+ * in server HTML (docs/HYDRATION.md §3.1): `<!--[-->` opens, `<!--]-->` closes. A list
+ * holds one item root node per item; a conditional holds the currently rendered branch
+ * (or nothing). The closing marker becomes the reconcile/swap anchor on hydration. */
+export const REGION_START = "[";
+export const REGION_END = "]";
 
 const ELEMENT = 1;
 const TEXT = 3;
@@ -189,24 +191,24 @@ export function claimText(cur) {
   return textNode;
 }
 
-/** Claim the `<!--[-->` marker that opens a server-rendered list region, advancing the
- * cursor past it. Throws {@link HydrationMismatch} on a wrong/absent node. */
-export function claimListStart(cur) {
+/** Claim the `<!--[-->` marker that opens a server-rendered region (list or conditional),
+ * advancing the cursor past it. Throws {@link HydrationMismatch} on a wrong/absent node. */
+export function claimRegionStart(cur) {
   const n = cur.node;
-  if (!n || n.nodeType !== COMMENT || n.data !== LIST_START) {
-    throw new HydrationMismatch(`expected a list-region start marker, found ${describe(n)}`);
+  if (!n || n.nodeType !== COMMENT || n.data !== REGION_START) {
+    throw new HydrationMismatch(`expected a region start marker, found ${describe(n)}`);
   }
   cur.node = n.nextSibling;
   return n;
 }
 
-/** Claim the `<!--]-->` marker that closes a list region and return it — it becomes the
- * reconcile anchor (`hydrateList` inserts later-added items before it). Advances the
- * cursor past it. Throws {@link HydrationMismatch} on a wrong/absent node. */
-export function claimListEnd(cur) {
+/** Claim the `<!--]-->` marker that closes a region and return it — it becomes the
+ * reconcile/swap anchor (`hydrateList`/`hydrateChild` insert later nodes before it).
+ * Advances the cursor past it. Throws {@link HydrationMismatch} on a wrong/absent node. */
+export function claimRegionEnd(cur) {
   const n = cur.node;
-  if (!n || n.nodeType !== COMMENT || n.data !== LIST_END) {
-    throw new HydrationMismatch(`expected a list-region end marker, found ${describe(n)}`);
+  if (!n || n.nodeType !== COMMENT || n.data !== REGION_END) {
+    throw new HydrationMismatch(`expected a region end marker, found ${describe(n)}`);
   }
   cur.node = n.nextSibling;
   return n;

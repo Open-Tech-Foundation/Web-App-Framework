@@ -171,12 +171,16 @@ const PROBE = `(() => {
       try { const p = JSON.parse(s.textContent); return p[+stepperHost.getAttribute('data-h')].config; }
       catch { return 'PARSE_ERROR'; }
     })(),
-    // list region (Phase 2.1): each server <li> should be adopted (carry the __server tag),
+    // list region (Phase 2.1a): each server <li> should be adopted (carry the __server tag),
     // and a reactive change reconciles from that adopted state.
     listItems: Array.from(document.querySelectorAll('#app ul.items li')).map((li) => ({
       text: norm(li),
       server: !!li.__server,
     })),
+    // conditional region (Phase 2.1b): the server rendered the true branch (p.yes); it
+    // should be adopted, then a toggle swaps to the false branch (span.no).
+    condYes: (() => { const p = document.querySelector('#app .cond p.yes'); return p ? { text: norm(p), server: !!p.__server } : null; })(),
+    condNo: (() => { const s = document.querySelector('#app .cond span.no'); return s ? norm(s) : null; })(),
   };
 })()`;
 
@@ -203,7 +207,7 @@ async function run(port) {
     // ── 1. Adoption — the server DOM was claimed, not rebuilt ───────────────────
     const s = await evalJS(client, PROBE);
     assert(s.hasSentinel, "#app carries the data-otfw-hydrate sentinel (SSR shell)");
-    assert(s.buttonCount === 3, "three <button>s (page counter + component + list 'add') — nothing duplicated");
+    assert(s.buttonCount === 4, "four <button>s (counter + component + list 'add' + 'toggle') — nothing duplicated");
     assert(s.removedServer === 0, "no server-rendered node was removed (no CSR rebuild)");
     assert(s.mainIsServer, "the live <main> is the server-rendered node (adopted)");
     assert(s.incIsServer, "the page's counter <button> is the server-rendered node (adopted)");
@@ -232,6 +236,11 @@ async function run(port) {
     );
     assert(s.listItems.every((it) => it.server), "every <li> is a server node (adopted, not rebuilt)");
 
+    // ── 1d. The conditional region self-adopted (Phase 2.1b) ────────────────────
+    assert(s.condYes && s.condYes.text === "YES", "the conditional rendered its `true` branch (<p>YES)");
+    assert(s.condYes.server, "the conditional branch <p> is a server node (adopted, not rebuilt)");
+    assert(s.condNo === null, "the untaken branch (<span>NO) is absent, as the server rendered");
+
     // ── 2. Interactivity is live on both adopted islands + the list ─────────────
     await evalJS(client, `document.querySelector('#app main > button').click()`);
     await evalJS(client, `document.querySelector('#app .stepper').click()`);
@@ -253,6 +262,24 @@ async function run(port) {
     // A rebuild-on-reconcile would replaceChildren() the <ul>, tearing out the three tagged
     // server <li> (removedServer += 3). It stays 0 → the originals were kept, a 4th appended.
     assert(after.removedServer === 0, "reactivity updated in place — still no server node removed");
+
+    // ── 3. The conditional swaps on toggle (removing the adopted branch is correct here) ──
+    await evalJS(client, `document.querySelector('#app button.toggle').click()`);
+    await sleep(50);
+    const swapped = await evalJS(client, PROBE);
+    assert(swapped.condYes === null, "toggling removed the adopted `true` branch (<p>YES)");
+    assert(swapped.condNo === "NO", "toggling swapped in the freshly-built `false` branch (<span>NO)");
+    // Exactly one server node (the adopted <p>) was removed by the swap — not a page rebuild
+    // (that would also tear out <main>, the counter, the list…: removedServer would be >1).
+    // (The observer also tags client-built nodes, so this count is only meaningful up to the
+    // first post-hydration swap; that's enough to distinguish a branch swap from a rebuild.)
+    assert(swapped.removedServer === 1, "the swap removed only the adopted branch node, nothing else");
+    // Toggling back rebuilds the first branch (freshly built now — no adopted node involved).
+    await evalJS(client, `document.querySelector('#app button.toggle').click()`);
+    await sleep(50);
+    const back = await evalJS(client, PROBE);
+    assert(back.condYes && back.condYes.text === "YES", "toggling back renders the first branch again");
+    assert(back.condNo === null, "the false branch is gone after toggling back");
 
     client.close();
   } finally {

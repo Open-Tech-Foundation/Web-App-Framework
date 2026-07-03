@@ -17,19 +17,22 @@
 //! `this.firstChild` alone can't tell a server-rendered host from a client-`createElement`'d
 //! one that was handed call-site children (§3.4). csr stays a build-only backend — it only
 //! splices the adopt body this module hands it (`ComponentView::Adopt`) behind the switch
-//! (plus the mismatch-recovery scaffold); the adopt body itself is emitted here. Keyed
-//! **lists** adopt via `hydrateList` (Phase 2.1 — region markers `<!--[-->…<!--]-->`, an
-//! adopt-item walk + a CSR build-item fn seed the reconcile). A view this backend can't
-//! adopt yet (conditionals, `{children}`, fragments) falls back: pages get no `hydrate`
-//! export (the router rebuilds via CSR); components get `ComponentView::RebuildIfServerChildren`
-//! (discard server DOM + build).
+//! (plus the mismatch-recovery scaffold); the adopt body itself is emitted here. Variable
+//! regions bracket their server output with `<!--[-->…<!--]-->`: keyed **lists** adopt via
+//! `hydrateList` (an adopt-item walk + a CSR build-item fn seed the reconcile), and
+//! **conditionals** adopt via `hydrateChild` (an adopt fn claims the rendered branch, a CSR
+//! build fn swaps it on change) — Phase 2.1. A view this backend can't adopt yet
+//! (`{children}` slots, fragments) falls back: pages get no `hydrate` export (the router
+//! rebuilds via CSR); components get `ComponentView::RebuildIfServerChildren` (discard
+//! server DOM + build).
 
 use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
 use otfw_ir::ExpressionId;
 
 use crate::codegen::csr::{
-    self, emit_build_item_fn, event_options, is_event, is_listener, js_string, ComponentView,
+    self, emit_build_item_fn, emit_build_node_fn, event_options, is_event, is_listener, js_string,
+    substitute_branches_pub, ComponentView,
 };
 use crate::codegen::tags;
 use crate::lower::{BodyItem, ExprTable, Lowered, SignalDecl};
@@ -58,6 +61,7 @@ struct Uses {
     claim_text: bool,
     skip_node: bool,
     hydrate_list: bool,
+    hydrate_child: bool,
 }
 
 fn merge_uses(into: &mut Uses, from: &Uses) {
@@ -66,6 +70,7 @@ fn merge_uses(into: &mut Uses, from: &Uses) {
     into.claim_text |= from.claim_text;
     into.skip_node |= from.skip_node;
     into.hydrate_list |= from.hydrate_list;
+    into.hydrate_child |= from.hydrate_child;
 }
 
 /// Emit a whole module for the **hydrate target**. Calls `csr` to emit the build
@@ -170,6 +175,9 @@ fn claim_import(uses: &Uses) -> String {
     }
     if uses.hydrate_list {
         names.push("hydrateList");
+    }
+    if uses.hydrate_child {
+        names.push("hydrateChild");
     }
     if names.is_empty() {
         return String::new();
@@ -483,6 +491,14 @@ impl<'a> Emitter<'a> {
                 self.emit_list(cur, *source, item_param, index_param.as_deref(), item, *key);
                 String::new()
             }
+            // A conditional / dynamic-node region (`{cond ? <A/> : <B/>}`, `{cond && <X/>}`):
+            // the server brackets the rendered branch with `<!--[-->…<!--]-->`. Adopt that
+            // branch's nodes off the shared cursor, then wire `hydrateChild` to swap to a
+            // freshly-built branch when a later reactive change selects a different one.
+            ViewNode::DynamicNode { expr, branches } => {
+                self.emit_dynamic_node(cur, *expr, branches);
+                String::new()
+            }
             unsupported => {
                 self.errors.push(format!(
                     "hydrate: {} is not supported yet (Phase 2.1)",
@@ -558,6 +574,64 @@ impl<'a> Emitter<'a> {
 
         let index = index_param.unwrap_or("_index");
         self.line(format!("function {fn_name}(__ic, {item_param}, {index}) {{"));
+        for l in &body {
+            self.line(format!("  {l}"));
+        }
+        self.line(format!("  return {root};"));
+        self.line("}".to_string());
+    }
+
+    /// Adopt a conditional / dynamic-node region off the shared cursor `cur` (at the opening
+    /// `<!--[-->` marker). For each embedded JSX branch, emits an **adopt** fn (claims that
+    /// branch's server nodes off the cursor) and a CSR **build** fn (for when a later change
+    /// selects it). Two closures over the same branch expression — one substituting the adopt
+    /// calls, one the build calls — are handed to `hydrateChild`: it runs the adopt closure to
+    /// claim the rendered branch, then swaps via the build closure on change (the disposer is
+    /// collected like any other binding).
+    fn emit_dynamic_node(&mut self, cur: &str, expr: ExpressionId, branches: &[ViewNode]) {
+        let mut adopt_calls = Vec::with_capacity(branches.len());
+        let mut build_calls = Vec::with_capacity(branches.len());
+        for branch in branches {
+            let n = self.list_counter;
+            self.list_counter += 1;
+            let adopt_fn = format!("{}_hnode{}", self.base, n);
+            let build_fn = format!("{}_node{}", self.base, n);
+            self.emit_adopt_node_fn(&adopt_fn, branch);
+            for l in emit_build_node_fn(self.lowered, &build_fn, branch) {
+                self.line(l);
+            }
+            // The adopt fn claims off the shared region cursor `__ic`; the build fn takes none.
+            adopt_calls.push(format!("{adopt_fn}(__ic)"));
+            build_calls.push(format!("{build_fn}()"));
+        }
+
+        let template = self.code(expr);
+        let adopt_expr = substitute_branches_pub(&template, &adopt_calls);
+        let build_expr = substitute_branches_pub(&template, &build_calls);
+        self.uses.hydrate_child = true;
+        self.bind(format!(
+            "hydrateChild({cur}, (__ic) => ({adopt_expr}), () => ({build_expr}))"
+        ));
+    }
+
+    /// Emit a local `function {fn_name}(__ic) { …; return root; }` that *adopts* one
+    /// conditional branch's server subtree off the cursor `__ic` (the shared region cursor).
+    /// Only the branch the server rendered is claimed — the others' fns are never called
+    /// (the branch expression short-circuits). Closes over the component/page signals.
+    fn emit_adopt_node_fn(&mut self, fn_name: &str, branch: &ViewNode) {
+        let saved_lines = std::mem::take(&mut self.lines);
+        let saved_counter = self.counter;
+        let saved_sink = self.sink;
+        self.counter = 0;
+        self.sink = None;
+
+        let root = self.emit_node("__ic", branch);
+
+        let body = std::mem::replace(&mut self.lines, saved_lines);
+        self.counter = saved_counter;
+        self.sink = saved_sink;
+
+        self.line(format!("function {fn_name}(__ic) {{"));
         for l in &body {
             self.line(format!("  {l}"));
         }
@@ -656,9 +730,8 @@ impl<'a> Emitter<'a> {
 }
 
 fn node_kind(node: &ViewNode) -> &'static str {
+    // Lists and conditionals now have their own adopt arms (Phase 2.1); only these remain.
     match node {
-        ViewNode::List { .. } => "list (`array.map`)",
-        ViewNode::DynamicNode { .. } => "conditional / dynamic node region",
         ViewNode::Children => "`{children}` slot",
         ViewNode::Fragment(_) => "fragment / multi-node root",
         _ => "this construct",
@@ -892,6 +965,34 @@ mod tests {
             "import:\n{}",
             m.code
         );
+    }
+
+    #[test]
+    fn conditional_region_adopts_the_rendered_branch_and_swaps_on_change() {
+        // A `{cond ? <A/> : <B/>}` region hydrates (Phase 2.1b): the page gets a `hydrate`
+        // factory with an adopt fn + a CSR build fn per branch, and `hydrateChild` claims the
+        // rendered branch (adopt closure), swapping to a freshly-built branch on change.
+        let m = emit(
+            "export default function P(){ let open=$state(true); return <div>{open ? <p>yes</p> : <span>no</span>}</div>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        // Adopt fns claim each branch off the shared region cursor `__ic` (only the taken one runs).
+        assert!(hyd.contains("function default_hnode0(__ic) {"), "adopt fn branch 0:\n{}", hyd);
+        assert!(hyd.contains("claimElement(__ic, \"p\");"), "adopt claims <p>:\n{}", hyd);
+        assert!(hyd.contains("function default_hnode1(__ic) {"), "adopt fn branch 1:\n{}", hyd);
+        assert!(hyd.contains("claimElement(__ic, \"span\");"), "adopt claims <span>:\n{}", hyd);
+        // CSR build fns for the branch selected after first paint.
+        assert!(hyd.contains("function default_node0() {"), "build fn branch 0:\n{}", hyd);
+        assert!(hyd.contains("document.createElement(\"p\")"), "build fn builds <p>:\n{}", hyd);
+        // hydrateChild gets the adopt closure (claims) and the build closure (swaps), both over
+        // the same branch expression.
+        assert!(
+            hyd.contains("hydrateChild(__c2, (__ic) => (open.value ? default_hnode0(__ic) : default_hnode1(__ic)), () => (open.value ? default_node0() : default_node1()))"),
+            "hydrateChild call:\n{}",
+            hyd
+        );
+        assert!(m.code.contains("hydrateChild"), "hydrateChild imported:\n{}", m.code);
     }
 
     #[test]
