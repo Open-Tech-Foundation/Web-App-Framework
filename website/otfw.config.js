@@ -1,7 +1,7 @@
 import { defineDocsConfig } from "@opentf/web-docs/config";
 
 export default defineDocsConfig({
-  site: { url: "https://otfw.dev" },
+  site: { url: "https://web.opentechf.org" },
 
   // Docs generator: content lives under app/docs (routes under /docs). The marketing
   // navbar/footer come from the root app/layout.jsx, so the docs shell runs with

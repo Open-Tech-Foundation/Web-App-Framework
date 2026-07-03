@@ -28,7 +28,7 @@ your editor full type hints.
 <Callout type="info" title="One file, three consumers">
   The CLI uses it to wire build plugins (nav, posts, search, feeds, last-updated); the
   `Navbar`/`DocsLayout` components read `docs` at runtime; and the SSG step reads
-  `site.url` for canonical URLs and the sitemap.
+  `site.url` for canonical URLs, sitemap, and feeds.
 </Callout>
 
 ## Top-level keys
@@ -46,8 +46,8 @@ your editor full type hints.
 site: { url: "https://example.com" }
 ```
 
-Required for absolute URLs. Omit it (or pass `--base-url` at build) and canonicals stay
-relative and the sitemap/feeds are skipped.
+Required for production docs/blog builds. Omit it and the build fails before writing
+`dist/`; pass `--base-url` at build time to override it for a specific deploy.
 
 ## `docs`
 

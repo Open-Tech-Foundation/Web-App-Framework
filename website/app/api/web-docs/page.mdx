@@ -29,7 +29,7 @@ Identity helper that types `otfw.config.js`. Key fields:
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `site.url` | string | Canonical origin — canonicals, sitemap, RSS, Atom. |
+| `site.url` | string | Canonical origin — required for production docs/blog builds unless `--base-url` is passed. |
 | `docs` | object | Docs generator: `title`, `version`, `logo`, `github`, `repoUrl`, `dir`, `nav`, `footer`, `search`, `lastUpdated`. |
 | `blog` | object | Blog generator: `dir`, `title`, `description`, `lastUpdated`. |
 

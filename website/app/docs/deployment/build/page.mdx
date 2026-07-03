@@ -49,7 +49,8 @@ location / {
 ## Base URL
 
 Set `site.url` in `otfw.config.js` so the build can emit absolute canonical URLs, a
-sitemap, and (when a blog is configured) RSS/Atom feeds:
+sitemap, and (when a blog is configured) RSS/Atom feeds. Production docs/blog builds
+fail loudly when no site URL is configured:
 
 ```js
 export default defineDocsConfig({
