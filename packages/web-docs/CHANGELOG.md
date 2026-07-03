@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-03
+
 ### Added
 
 - `renderLlmsTxt` and `renderLlmsFullTxt` build helpers for generating `/llms.txt`

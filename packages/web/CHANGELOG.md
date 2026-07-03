@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-03
+
 ### Added
 
 - **Component `{children}`-slot hydration** (`docs/HYDRATION.md` §3.1 / phasing 2.1d): a
