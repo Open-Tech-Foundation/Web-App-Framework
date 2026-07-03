@@ -29,7 +29,7 @@ Identity helper that types `otfw.config.js`. Key fields:
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `site.url` | string | Canonical origin — canonicals, sitemap, RSS. |
+| `site.url` | string | Canonical origin — canonicals, sitemap, RSS, Atom. |
 | `docs` | object | Docs generator: `title`, `version`, `logo`, `github`, `repoUrl`, `dir`, `nav`, `footer`, `search`, `lastUpdated`. |
 | `blog` | object | Blog generator: `dir`, `title`, `description`, `lastUpdated`. |
 
@@ -58,6 +58,7 @@ Rolldown plugins + helpers used by the toolchain (registered automatically by
 | `blogPostsPlugin` / `loadPosts` | Resolves `@opentf/web-docs/posts`; `loadPosts` is the callable scan. |
 | `lastUpdatedPlugin` / `loadLastUpdated` | Resolves `@opentf/web-docs/updated` (git/frontmatter dates + edit paths). |
 | `renderBlogFeed` | Renders the RSS 2.0 feed from the post list. |
+| `renderAtomFeed` | Renders the Atom 1.0 feed from the post list. |
 | `indexWithPagefind` | Post-build hook that indexes the site for search. |
 
 <Callout type="info" title="You rarely call these directly">

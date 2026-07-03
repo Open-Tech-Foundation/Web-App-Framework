@@ -152,20 +152,20 @@ comes from the file's last git commit (or a `lastUpdated` frontmatter override).
 [Configuration → Last updated](/docs/packages/web-docs/configuration) for the details
 this shares with docs pages.
 
-## RSS feed
+## Feeds
 
-`otfw build` writes an RSS 2.0 feed to `<dir>/rss.xml` (e.g. `/blog/rss.xml`) whenever a
-`blog` block and a `site.url` are configured. Posts appear newest-first with absolute
-links, `<pubDate>` (from `date`), `<dc:creator>` (from `author`), and a `<category>` per
-tag.
+`otfw build` writes RSS 2.0 and Atom 1.0 feeds to `<dir>/rss.xml` and
+`<dir>/atom.xml` (e.g. `/blog/rss.xml` and `/blog/atom.xml`) whenever a `blog` block and
+a `site.url` are configured. Posts appear newest-first with absolute links, dates from
+`date`, author metadata, and categories from `tags`.
 
 ```js otfw.config.js
 export default defineDocsConfig({
   site: { url: "https://example.com" }, // required — feeds need absolute URLs
   blog: {
     dir: "blog",
-    title: "Example Blog",          // RSS channel title (optional)
-    description: "Notes from the team", // RSS channel description (optional)
+    title: "Example Blog",          // feed title (optional)
+    description: "Notes from the team", // feed description (optional)
   },
 });
 ```
@@ -174,10 +174,12 @@ Add an autodiscovery link to your `index.html` `<head>` so readers and browsers 
 
 ```html index.html
 <link rel="alternate" type="application/rss+xml" title="Example Blog" href="/blog/rss.xml" />
+<link rel="alternate" type="application/atom+xml" title="Example Blog" href="/blog/atom.xml" />
 ```
 
 <Callout type="info" title="Bring your own feed">
-  Drop a `public/<dir>/rss.xml` to take over the feed entirely — the generator detects
-  the override and won't overwrite it. The feed is skipped (with a warning) when no
-  `site.url` is set, since feed entries must be absolute URLs.
+  Drop a `public/<dir>/rss.xml` or `public/<dir>/atom.xml` to take over either feed —
+  the generator detects each override independently and won't overwrite it. Feeds are
+  skipped (with a warning) when no `site.url` is set, since feed entries must be
+  absolute URLs.
 </Callout>

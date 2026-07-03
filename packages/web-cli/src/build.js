@@ -185,13 +185,13 @@ export async function runBuild(options = {}) {
     searchStep.done(`Search index — ${search?.pages ?? 0} page(s)`);
   }
 
-  // Blog RSS feed (when a `blog` block + site URL are configured). Written after the
-  // public/ copy so a project-supplied feed override isn't clobbered.
+  // Blog RSS + Atom feeds (when a `blog` block + site URL are configured). Written
+  // after the public/ copy so project-supplied feed overrides aren't clobbered.
   if (config?.blog) {
-    const feedStep = step("Generating RSS feed");
+    const feedStep = step("Generating blog feeds");
     const feed = await runBlogFeed(root, appDir, config, outDir, resolveBaseUrl(config), exclude);
-    if (feed) feedStep.done(`RSS feed — ${feed.count} post(s) → ${feed.path}`);
-    else feedStep.done("RSS feed — skipped");
+    if (feed) feedStep.done(`Blog feeds — ${feed.count} post(s) → ${feed.paths.join(", ")}`);
+    else feedStep.done("Blog feeds — skipped");
   }
 
   console.log(`\n  → dist/  ready in ${fmtMs(performance.now() - t0)}\n`);

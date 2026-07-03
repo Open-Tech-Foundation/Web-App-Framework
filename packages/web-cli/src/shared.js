@@ -317,43 +317,56 @@ export async function runDocsSearchIndex(root, config, siteDir, onProgress) {
 }
 
 /**
- * Generate the blog RSS feed when the project has a `blog` config and a base URL.
- * Scans the post folders, renders RSS 2.0, and writes `<siteDir>/<blogDir>/rss.xml`.
- * A project-supplied `public/<blogDir>/rss.xml` takes precedence (it overwrites ours
- * on the public/ copy). Returns `{ path, url, count }` or null (no blog / no base URL
- * / package missing). Resolved from the app's `@opentf/web-docs`.
+ * Generate blog feeds when the project has a `blog` config and a base URL. Scans the
+ * post folders, renders RSS 2.0 + Atom 1.0, and writes them under
+ * `<siteDir>/<blogDir>/`. Project-supplied `public/<blogDir>/{rss,atom}.xml` files
+ * take precedence independently. Returns `{ paths, urls, count }` or null (no blog /
+ * no base URL / all feeds overridden / package missing). Resolved from the app's
+ * `@opentf/web-docs`.
  */
 export async function runBlogFeed(root, appDir, config, siteDir, baseUrl, exclude = new Set()) {
   const blog = config?.blog;
   if (!blog) return null;
   if (!baseUrl) {
-    console.warn("⚠ blog RSS feed skipped: no site URL (pass --base-url or set otfw.config)");
+    console.warn("⚠ blog feeds skipped: no site URL (pass --base-url or set otfw.config)");
     return null;
   }
   const contentDir = blog.dir ?? "blog";
-  if (existsSync(join(root, "public", contentDir, "rss.xml"))) return null; // honor override
   try {
     const entry = Bun.resolveSync("@opentf/web-docs/build", root);
-    const { loadPosts, renderBlogFeed } = await import(pathToFileURL(entry).href);
+    const { loadPosts, renderAtomFeed, renderBlogFeed } = await import(pathToFileURL(entry).href);
     const posts = loadPosts({ appDir, contentDir, exclude });
-    const feedPath = `/${contentDir}/rss.xml`;
     const title = blog.title || (config?.docs?.title ? `${config.docs.title} Blog` : "Blog");
-    const xml = renderBlogFeed({
-      posts,
-      baseUrl,
-      feedPath,
-      channel: {
-        title,
-        description: blog.description || title,
-        link: `/${contentDir}`,
+    const channel = {
+      title,
+      description: blog.description || title,
+      link: `/${contentDir}`,
+    };
+    const feeds = [
+      {
+        file: "rss.xml",
+        path: `/${contentDir}/rss.xml`,
+        render: renderBlogFeed,
       },
-    });
-    const out = join(siteDir, contentDir, "rss.xml");
-    mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, xml);
-    return { path: feedPath, url: baseUrl.replace(/\/+$/, "") + feedPath, count: posts.length };
+      {
+        file: "atom.xml",
+        path: `/${contentDir}/atom.xml`,
+        render: renderAtomFeed,
+      },
+    ];
+    const written = [];
+    for (const feed of feeds) {
+      if (existsSync(join(root, "public", contentDir, feed.file))) continue; // honor override
+      const out = join(siteDir, contentDir, feed.file);
+      mkdirSync(dirname(out), { recursive: true });
+      writeFileSync(out, feed.render({ posts, baseUrl, feedPath: feed.path, channel }));
+      written.push(feed.path);
+    }
+    if (!written.length) return null;
+    const origin = baseUrl.replace(/\/+$/, "");
+    return { paths: written, urls: written.map((path) => origin + path), count: posts.length };
   } catch (e) {
-    console.warn(`⚠ blog RSS feed skipped: ${e?.message ?? e}`);
+    console.warn(`⚠ blog feeds skipped: ${e?.message ?? e}`);
     return null;
   }
 }

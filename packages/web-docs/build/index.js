@@ -7,5 +7,5 @@
 export { docsNavPlugin } from "./docs-nav-plugin.js";
 export { blogPostsPlugin, loadPosts } from "./blog-posts-plugin.js";
 export { lastUpdatedPlugin, loadLastUpdated } from "./last-updated-plugin.js";
-export { renderBlogFeed } from "./feed.js";
+export { renderAtomFeed, renderBlogFeed } from "./feed.js";
 export { indexWithPagefind } from "./pagefind.js";

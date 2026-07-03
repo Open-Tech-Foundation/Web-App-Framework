@@ -43,8 +43,8 @@ export function blogPostsPlugin({ appDir, contentDir = "blog", exclude = new Set
 
 /**
  * Scan the blog content folder and return the ordered post list — the same array the
- * `blogPostsPlugin` virtual module exposes, but callable directly (used by the RSS
- * feed generator at build time). Returns `[]` when the folder is absent.
+ * `blogPostsPlugin` virtual module exposes, but callable directly (used by the feed
+ * generator at build time). Returns `[]` when the folder is absent.
  *
  * @param {Object} opts
  * @param {string} opts.appDir

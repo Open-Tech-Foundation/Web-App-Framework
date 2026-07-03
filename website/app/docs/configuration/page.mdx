@@ -26,7 +26,7 @@ export default defineDocsConfig({
 your editor full type hints.
 
 <Callout type="info" title="One file, three consumers">
-  The CLI uses it to wire build plugins (nav, posts, search, RSS, last-updated); the
+  The CLI uses it to wire build plugins (nav, posts, search, feeds, last-updated); the
   `Navbar`/`DocsLayout` components read `docs` at runtime; and the SSG step reads
   `site.url` for canonical URLs and the sitemap.
 </Callout>
@@ -35,9 +35,9 @@ your editor full type hints.
 
 | Key | Purpose |
 | --- | --- |
-| `site` | Canonical origin — `{ url }`. Drives absolute canonicals, the sitemap, and the blog RSS feed. |
+| `site` | Canonical origin — `{ url }`. Drives absolute canonicals, the sitemap, and blog feeds. |
 | `docs` | The documentation section (sidebar, navbar, search). |
-| `blog` | An optional blog section (post list, banners, RSS). |
+| `blog` | An optional blog section (post list, banners, feeds). |
 | `i18n` | Internationalization — locales for URL-prefix routing (`@opentf/web-i18n`). |
 
 ## `site`
@@ -47,7 +47,7 @@ site: { url: "https://example.com" }
 ```
 
 Required for absolute URLs. Omit it (or pass `--base-url` at build) and canonicals stay
-relative and the sitemap/RSS are skipped.
+relative and the sitemap/feeds are skipped.
 
 ## `docs`
 
@@ -97,7 +97,7 @@ of this file.
 
 ## `blog`
 
-Turns on the blog generator (post list, banners, reading time, RSS). See
+Turns on the blog generator (post list, banners, reading time, feeds). See
 [Packages → web-docs → Blog](/docs/packages/web-docs/blog).
 
 ```js

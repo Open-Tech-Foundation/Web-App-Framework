@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Blog feed generation now writes Atom 1.0 (`<dir>/atom.xml`) alongside RSS 2.0.
+
 ### Fixed
 
 - Compiler resolution now checks `OTFWC_BIN`, then the packaged
