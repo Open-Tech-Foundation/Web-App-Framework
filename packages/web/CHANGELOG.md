@@ -2,6 +2,59 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Compiler-driven rich data hydration** (`docs/HYDRATION.md` §3.7): a server-rendered
+  island's props now cross to the client through a serialized payload — real JS values
+  (objects, arrays, numbers), not lossy string attributes. During SSR/SSG, `ssgComponent`
+  assigns each island a `data-h` id and records its JSON-safe props into a single
+  `<script type="application/json" id="__otfw_h">` payload (injected by `otfw serve` and
+  `--ssg`); the hydrate-target component's **constructor** reads `hydrationProps(this)` and
+  initializes its prop *signals* from those rich values, falling back to the attribute/default
+  when absent (client-created element on SPA nav, or a plain CSR build). This removes the
+  per-component serialization boundary, the adopt-then-`setProp` flash, and the dependence on
+  a hydrating ancestor to deliver props; `class`/`style` props also resolve to their own value
+  rather than the host's merged attribute. Event-callback props are dropped from the payload
+  (client-only) and still delivered by the parent walk. New runtime API: `hydrationProps`,
+  and `beginHydrationCollect`/`endHydrationCollect` (server). A CSR-only app references no
+  hydration helper. `renderRoute()` now also returns `hydration` (the payload JSON).
+
+### Changed
+
+- Hydration: the dual component's build-vs-adopt discriminator is now
+  **`isHydrating() && this.firstChild`**, not `this.firstChild` alone (`docs/HYDRATION.md`
+  §0/§3.4 — supersedes the earlier "no global flag" decision). The structural test can't
+  tell a server-rendered host from a client-`createElement`'d one handed call-site children,
+  so it mis-adopted on plain SPA navigation and mangled `{children}` components. Route chunks
+  are lazy, so their custom elements upgrade during the router's `await import()`; the router
+  now brackets first paint with `beginHydration()` (before the import) / `endHydration()` (in
+  `finally`), so upgrading components observe the flag and adopt, while every later navigation
+  builds. Adds `beginHydration`/`endHydration` to the runtime.
+
+### Fixed
+
+- Hydration: a **static prop on a server-rendered component now reaches the client**
+  (`docs/HYDRATION.md` §3.2). `ssgComponent` reflects nothing onto the component host
+  tag, so on adoption the upgrading component read a missing attribute (`null`) and its
+  `bindText`/`bindAttr` clobbered the server-rendered value — a blank island. The Hydrate
+  codegen now re-applies static component props through `setProp` during the adopt walk
+  (exactly as the CSR build arm does), so the prop signal — and the adopted view — carry
+  the right value.
+- Hydration: an adopt-time **`HydrationMismatch` now recovers per component** (§3.5) —
+  it is reported (never silent) and the component rebuilds via CSR through a shared
+  `__build` closure; the rest of the page stays hydrated. Non-mismatch errors still route
+  to the nearest `<ErrorBoundary>` as before.
+- Hydration: the adopt walk now **collects `bindText`/`bindAttr` disposers** (it previously
+  emitted them as bare calls), so a hydrated component tears them down on disconnect like
+  the CSR path, and a page's partial walk disposes them if it throws a mismatch mid-way —
+  no orphaned, double-subscribed effects after the router's fallback rebuild.
+- Hydration: a `{children}`-slot component that falls back to rebuild no longer discards
+  call-site children on client navigation (the pre-capture clear is now gated on
+  `isHydrating()`), and no longer double-wraps its server DOM on first paint.
+- Hydration: `skipNode` now asserts the aligned node is a real text node (like its sibling
+  claim helpers) and throws `HydrationMismatch` on a cursor misalignment, surfacing the
+  desync at the offending step instead of at an unrelated downstream claim.
+
 ## [0.6.0] - 2026-07-01
 
 ### Added

@@ -89,6 +89,22 @@ describe("claimText", () => {
   });
 });
 
+describe("skipNode", () => {
+  test("advances past a static text node and returns it", () => {
+    const cur = cursor(serverDom("hi<span></span>"));
+    const skipped = skipNode(cur);
+    expect(skipped.nodeType).toBe(3);
+    expect(cur.node.tagName.toLowerCase()).toBe("span"); // advanced to the next node
+  });
+
+  test("throws when the aligned node is not static text (cursor misalignment)", () => {
+    // A step meant for a static `ViewNode::Text` must land on a real text node; an
+    // element/comment/absent node there means the walk desynced — surface it here.
+    expect(() => skipNode(cursor(serverDom("<span></span>")))).toThrow(HydrationMismatch);
+    expect(() => skipNode(cursor(serverDom("")))).toThrow(HydrationMismatch);
+  });
+});
+
 describe("integrated walk — adopt, don't rebuild", () => {
   test("hydrating <div><h1>Count {n}</h1></div> adopts nodes and wires reactivity", () => {
     // What the SSG/SSR backend emits for `<div class="box"><h1>Count {n}</h1></div>`

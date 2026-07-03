@@ -15,6 +15,7 @@
 
 import { clearError, reportError } from "../core/errors.js";
 import { signal } from "../core/signals.js";
+import { beginHydration, endHydration } from "./hydrate.js";
 import { runCleanup, runMount } from "./mount.js";
 
 const isBrowser = typeof window !== "undefined";
@@ -288,7 +289,16 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
   // target). Only leaf routes (no layout chain) hydrate so far — `{children}`-slot
   // adoption is a later phase — so anything else falls through to a clean CSR build. A
   // hydration mismatch is reported (never silent) and also falls through to a rebuild.
+  //
+  // The hydration flag must be live *before* the route module is imported: route chunks
+  // are code-split, so `customElements.define` — and the synchronous upgrade of every
+  // server-rendered `<web-*>` host — happens during `await match.entry()`, before the
+  // page factory runs. Those upgrading components read `isHydrating()` to adopt their
+  // server DOM rather than build (docs/HYDRATION.md §3.4). `endHydration()` in `finally`
+  // makes every subsequent client navigation build fresh; the CSR fallback below then
+  // runs with the flag cleared, so a rebuilt host builds instead of trying to re-adopt.
   if (hydrate && match) {
+    beginHydration();
     try {
       const mod = typeof match.entry === "function" ? await match.entry() : match.entry;
       if (mod && typeof mod.hydrate === "function" && layoutChain(match.route).length === 0) {
@@ -302,6 +312,8 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
     } catch (e) {
       reportError(e, { phase: "hydrate", path: url.pathname });
       // fall through to a clean CSR build below
+    } finally {
+      endHydration();
     }
   }
 

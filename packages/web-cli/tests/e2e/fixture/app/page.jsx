@@ -7,7 +7,7 @@ export default function Home() {
       <h1>E2E_HOME</h1>
       <p>count {count}</p>
       <button onclick={() => count++}>inc</button>
-      <Stepper />
+      <Stepper config={{ label: "Steps" }} />
     </main>
   );
 }

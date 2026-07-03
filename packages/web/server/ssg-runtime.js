@@ -20,6 +20,53 @@ export function defineSSG(tag, render) {
   registry[tag] = render;
 }
 
+// ── hydration props collector (compiler-driven data hydration) ────────────────
+// The lossy path is passing rich props through string attributes. Instead, each
+// server-rendered island gets a `data-h` id and its JSON-safe props are recorded into a
+// single payload the shell embeds as `<script type="application/json">`. At upgrade the
+// client component initializes its prop *signals* from those real JS values (objects,
+// arrays, numbers) — not from `getAttribute` — so islands resume with correct data, with
+// no flash and no dependence on a parent walk re-applying props. `renderRoute` brackets a
+// render with `beginHydrationCollect()` / `endHydrationCollect()`.
+let _collect = null;
+
+/** Start collecting per-island hydration props for one render. */
+export function beginHydrationCollect() {
+  _collect = [];
+}
+
+/**
+ * Finish collecting and return the payload as a JSON string ("" when nothing needs
+ * hydration). `<` is escaped so a prop value can never break out of the surrounding
+ * `<script>` (a `</script>` / `<!--` injection).
+ */
+export function endHydrationCollect() {
+  const data = _collect;
+  _collect = null;
+  if (!data || data.length === 0) return "";
+  return JSON.stringify(data).replace(/</g, "\\u003c");
+}
+
+/**
+ * Record an island's JSON-safe props, returning its hydration id — or `null` when not
+ * collecting, or when nothing serializes. A JSON round-trip drops functions (event
+ * callbacks are client-only — applied by the parent walk, invisible so no flash),
+ * `undefined`, and anything cyclic/DOM/signal-shaped, so only plain data crosses.
+ */
+function collectHydrationProps(props) {
+  if (!_collect || props == null || typeof props !== "object") return null;
+  let safe;
+  try {
+    safe = JSON.parse(JSON.stringify(props));
+  } catch {
+    return null; // cyclic / non-serializable → client falls back to attributes/defaults
+  }
+  if (!safe || typeof safe !== "object" || Object.keys(safe).length === 0) return null;
+  const id = _collect.length;
+  _collect.push(safe);
+  return id;
+}
+
 /** Escape text content for HTML. */
 export function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
@@ -104,9 +151,13 @@ export function ssgComponent(tag, props, children) {
     inner = ""; // fail soft (client renders/handles it)
   }
   // Stamp the stable styling hook on the host (mirrors CSR's `classList.add`) so
-  // tag-hashed components are still styleable by a readable class name.
+  // tag-hashed components are still styleable by a readable class name, plus the
+  // hydration id (`data-h`) keying this island's rich props in the payload (if any).
   const cls = render && render.hostClass;
-  return cls ? `<${tag} class="${cls}">${inner}</${tag}>` : `<${tag}>${inner}</${tag}>`;
+  const id = collectHydrationProps(props);
+  let attrs = cls ? ` class="${cls}"` : "";
+  if (id != null) attrs += ` data-h="${id}"`;
+  return `<${tag}${attrs}>${inner}</${tag}>`;
 }
 
 export { VOID };

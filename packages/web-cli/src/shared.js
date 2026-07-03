@@ -60,6 +60,20 @@ export function injectMarkup(shellHtml, markup) {
 }
 
 /**
+ * Embed the island hydration payload (`renderRoute().hydration`) as a
+ * `<script type="application/json" id="__otfw_h">` the client reads at upgrade so
+ * components resume from rich JS props (compiler-driven data hydration). Placed before
+ * `</body>`; a deferred module bundle runs after parse, so the payload is always in the
+ * DOM first. `json` is already `<`-escaped by the server collector, so it can't break out
+ * of the script. No-op for an empty payload. Uses a function replacer so `$` in the JSON
+ * stays literal.
+ */
+export function injectHydrationData(shellHtml, json) {
+  if (!json) return shellHtml;
+  return injectBeforeBody(shellHtml, `<script type="application/json" id="__otfw_h">${json}</script>`);
+}
+
+/**
  * Stamp the `data-otfw-hydrate` sentinel onto the shell's `#app` container, telling
  * the client to *adopt* the server-rendered DOM on first paint instead of rebuilding
  * it (`runtime/router.js` `mountApp`). Used when the client bundle was built for the

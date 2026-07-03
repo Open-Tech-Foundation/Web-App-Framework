@@ -12,12 +12,15 @@
 //! bundle that both adopts (first paint) and builds (SPA navigation)**. Pages get the
 //! CSR `export default` build factory **plus** a named `hydrate` adopt factory.
 //! Components get a **dual class**: csr emits the class, but its `connectedCallback`
-//! branches on `this.firstChild` (server-rendered ⇒ adopt; client-`createElement`'d ⇒
-//! build). csr stays a pure build-only backend — it only splices the adopt body this
-//! module hands it (`ComponentView::Adopt`) behind the switch; the adopt body itself is
-//! emitted here. A view this backend can't adopt yet (lists, conditionals, `{children}`,
-//! fragments) falls back: pages get no `hydrate` export (the router rebuilds via CSR);
-//! components get `ComponentView::RebuildIfServerChildren` (discard server DOM + build).
+//! branches on `isHydrating() && this.firstChild` (first-paint hydration over server DOM
+//! ⇒ adopt; client navigation ⇒ build). The global flag is the discriminator because
+//! `this.firstChild` alone can't tell a server-rendered host from a client-`createElement`'d
+//! one that was handed call-site children (§3.4). csr stays a build-only backend — it only
+//! splices the adopt body this module hands it (`ComponentView::Adopt`) behind the switch
+//! (plus the mismatch-recovery scaffold); the adopt body itself is emitted here. A view
+//! this backend can't adopt yet (lists, conditionals, `{children}`, fragments) falls back:
+//! pages get no `hydrate` export (the router rebuilds via CSR); components get
+//! `ComponentView::RebuildIfServerChildren` (discard server DOM + build).
 
 use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
@@ -89,8 +92,8 @@ pub fn emit_module(
             merge_uses(&mut uses, &e.uses);
             adopt_bodies.push(Some(body));
         } else {
-            // Can't adopt this component's view yet → build-only with a clear guard so a
-            // server-rendered host doesn't double-render. Report the reason (non-fatal).
+            // Can't adopt this component's view yet → `RebuildIfServerChildren`: discard the
+            // server DOM and build (a flash, but no double-render). Report why (non-fatal).
             errors.extend(e.errors);
             adopt_bodies.push(None);
         }
@@ -119,7 +122,12 @@ pub fn emit_module(
         if !c.is_page {
             continue;
         }
-        let mut e = Emitter::new(c, None);
+        // Sink into a local `__disposers` list: on success the page's effects live for its
+        // lifetime (never disposed here), but if the adopt walk throws a `HydrationMismatch`
+        // partway, the factory disposes what it already wired before rethrowing — so the
+        // router's fallback CSR rebuild doesn't leave orphaned effects double-subscribed
+        // (issue 6). The page node itself is discarded on navigation, as before.
+        let mut e = Emitter::new(c, Some("__disposers"));
         let body = e.page(c);
         if e.errors.is_empty() {
             merge_uses(&mut uses, &e.uses);
@@ -169,8 +177,10 @@ struct Emitter<'a> {
     counter: u32,
     uses: Uses,
     /// Disposal sink for effects/listeners/cleanups: `Some("this._cleanups")` in a
-    /// component (collected, removed on disconnect); `None` in a page (its node is
-    /// discarded on navigation, so listeners need no teardown).
+    /// component (collected, removed on disconnect) or `Some("__disposers")` in a page
+    /// (collected only so a mid-walk `HydrationMismatch` can dispose the partial wiring
+    /// before the router rebuilds — on success the page's effects live for its lifetime).
+    /// `None` inlines with no disposer collection (unused for the emitted factories).
     sink: Option<&'static str>,
 }
 
@@ -267,17 +277,21 @@ impl<'a> Emitter<'a> {
         } else {
             format!("hydrate_{export}")
         };
+        // Dispose the effects wired so far if the adopt walk throws a `HydrationMismatch`
+        // partway (issue 6): the router catches the throw and rebuilds via CSR, so without
+        // this the partial page's `bindText`/`bindAttr`/`effect` subscriptions would leak
+        // and double up against the rebuild.
         format!(
-            "export function {name}({params}) {{\n{}  return {root};\n}}\n",
-            self.render("  ")
+            "export function {name}({params}) {{\n  const __disposers = [];\n  try {{\n{}    return {root};\n  }} catch (__e) {{\n    for (const __d of __disposers) __d();\n    throw __e;\n  }}\n}}\n",
+            self.render("    ")
         )
     }
 
     // ── the component adopt body ──────────────────────────────────────────────────
 
     /// Emit the adopt branch of a component's `connectedCallback` (the inside of
-    /// `if (this.firstChild) { … }`, which csr splices in). The host's existing
-    /// children *are* the server-rendered view, so this claims them off `cursor(this)`,
+    /// `if (isHydrating() && this.firstChild) { … }`, which csr splices in). The host's
+    /// existing children *are* the server-rendered view, so this claims them off `cursor(this)`,
     /// wiring reactivity onto the adopted nodes. Mirrors csr's component plumbing —
     /// prop aliases/snapshots/rest, signal decls, effects, `$expose`, `onCleanup` — but
     /// with claims instead of `createElement`, and no `{children}` capture (the slotted
@@ -442,7 +456,9 @@ impl<'a> Emitter<'a> {
                 let var = self.fresh("t");
                 self.uses.claim_text = true;
                 self.line(format!("const {var} = claimText({cur});"));
-                self.line(format!("bindText({var}, () => ({}));", self.code(*expr)));
+                // Collect the effect's disposer (like the CSR build path) so it is torn
+                // down with the component and disposed on a mid-walk mismatch (issue 6).
+                self.bind(format!("bindText({var}, () => ({}))", self.code(*expr)));
                 var
             }
             unsupported => {
@@ -478,7 +494,8 @@ impl<'a> Emitter<'a> {
                 } else if is_event(&prop.name) {
                     self.line(format!("{el}.{} = {code};", prop.name.to_ascii_lowercase()));
                 } else {
-                    self.line(format!("bindAttr({el}, {}, () => ({code}));", js_string(&prop.name)));
+                    // Collect the disposer (like CSR) for teardown + mismatch cleanup.
+                    self.bind(format!("bindAttr({el}, {}, () => ({code}))", js_string(&prop.name)));
                 }
             }
             PropValue::DynamicNode { .. } => {
@@ -504,7 +521,11 @@ impl<'a> Emitter<'a> {
             return;
         }
         match &prop.value {
-            PropValue::Static(_) => {} // already serialized as a server attribute
+            // A static prop is carried by the serialized island payload and read by the
+            // upgrading component's constructor (rich value, no flash) — nothing to
+            // re-apply during adoption. (`ssgComponent` reflects nothing onto the host tag;
+            // the payload, not host attributes, is how declared props cross to the client.)
+            PropValue::Static(_) => {}
             PropValue::Dynamic(expr) => {
                 let code = self.code(*expr);
                 if is_listener(&prop.name) {
@@ -605,7 +626,10 @@ mod tests {
         assert!(hyd.contains("claimElement(__c2, \"h1\");"), "claim h1:\n{}", hyd);
         assert!(hyd.contains("skipNode(__c4);"), "skip static text:\n{}", hyd);
         assert!(hyd.contains("const t5 = claimText(__c4);"), "claim text hole:\n{}", hyd);
-        assert!(hyd.contains("bindText(t5, () => (n.value));"), "wire text:\n{}", hyd);
+        // The effect disposer is collected so a mid-walk mismatch can dispose it (issue 6).
+        assert!(hyd.contains("__disposers.push(bindText(t5, () => (n.value)));"), "wire text:\n{}", hyd);
+        assert!(hyd.contains("const __disposers = [];"), "disposer sink:\n{}", hyd);
+        assert!(hyd.contains("for (const __d of __disposers) __d();"), "mismatch cleanup:\n{}", hyd);
         assert!(!hyd.contains("createElement"), "adopt creates no nodes:\n{}", hyd);
         assert!(!hyd.contains("appendChild"), "adopt appends nothing:\n{}", hyd);
     }
@@ -628,9 +652,13 @@ mod tests {
         let m = emit("export default function P(){ return <div onscroll:passive={() => {}}>x</div>; }");
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         let hyd = hydrate_fn(&m.code);
+        // The page factory sinks disposers into `__disposers` (for mismatch cleanup), so
+        // the listener is bound to a captured handler and a remover is collected.
+        assert!(hyd.contains("const __ev2 = () => {};"), "captured handler:\n{}", hyd);
+        assert!(hyd.contains("el1.addEventListener(\"scroll\", __ev2, { passive: true });"), "listener:\n{}", hyd);
         assert!(
-            hyd.contains("el1.addEventListener(\"scroll\", () => {}, { passive: true });"),
-            "listener:\n{}",
+            hyd.contains("__disposers.push(() => el1.removeEventListener(\"scroll\", __ev2, { passive: true }));"),
+            "remover collected:\n{}",
             hyd
         );
     }
@@ -643,12 +671,27 @@ mod tests {
             "export default function Counter(){ let n=$state(0); return <button onclick={() => n++}>Count {n}</button>; }",
         );
         assert!(m.is_complete(), "errors: {:?}", m.errors);
-        // The dual switch: adopt when server-rendered, build otherwise.
-        assert!(m.code.contains("if (this.firstChild) {"), "dual switch:\n{}", m.code);
+        // The dual switch: adopt only during the first-paint hydration pass (the flag, not
+        // `this.firstChild` alone — a client-created host with call-site children also has
+        // one), build otherwise. The CSR build is shared via a `__build` closure.
+        assert!(m.code.contains("if (isHydrating() && this.firstChild) {"), "dual switch:\n{}", m.code);
+        assert!(m.code.contains("const __build = () => {"), "shared build closure:\n{}", m.code);
         assert!(m.code.contains("const __c0 = cursor(this);"), "adopt over this:\n{}", m.code);
         assert!(m.code.contains("claimElement(__c0, \"button\");"), "claim host child:\n{}", m.code);
-        assert!(m.code.contains("} else {"), "build arm present:\n{}", m.code);
+        assert!(m.code.contains("} else {\n      __build();"), "build arm runs the closure:\n{}", m.code);
         assert!(m.code.contains("document.createElement(\"button\")"), "build arm builds:\n{}", m.code);
+        // Per-component mismatch recovery (docs/HYDRATION.md §3.5): report + rebuild via CSR.
+        assert!(m.code.contains("if (!(__e instanceof HydrationMismatch)) throw __e;"), "mismatch guard:\n{}", m.code);
+        assert!(
+            m.code.contains("reportError(__e, { phase: \"hydrate\", component: \"Counter\" });"),
+            "mismatch reported:\n{}",
+            m.code
+        );
+        assert!(
+            m.code.contains("import { signal, bindText, handleError, isHydrating, HydrationMismatch, reportError }"),
+            "hydration helpers imported:\n{}",
+            m.code
+        );
         // No standalone `hydrate` export — a component hydrates via its class, not a factory.
         assert!(!m.code.contains("export function hydrate"), "no page factory:\n{}", m.code);
     }
@@ -670,13 +713,62 @@ mod tests {
     #[test]
     fn component_with_children_slot_falls_back_to_rebuild() {
         // A component that takes `{children}` can't adopt yet → csr emits a build-only
-        // class guarded to discard server children, and a warning is recorded.
+        // class. On client navigation it must capture the call-site children *before*
+        // clearing; only the first-paint hydration pass (server DOM is the rendered view,
+        // not the slot children) discards them. So the clear is gated on `isHydrating()`.
         let m = emit_component(
             "export default function Card({ children }){ return <div class=\"card\">{children}</div>; }",
         );
-        assert!(m.code.contains("if (this.firstChild) this.replaceChildren();"), "rebuild guard:\n{}", m.code);
+        assert!(
+            m.code.contains("if (isHydrating() && this.firstChild) this.replaceChildren();"),
+            "server-DOM discard gated on the hydration flag:\n{}",
+            m.code
+        );
+        // The unconditional clear (which would lose call-site children on nav) must be gone.
+        assert!(
+            !m.code.contains("try {\n    if (this.firstChild) this.replaceChildren();"),
+            "no unconditional pre-capture clear:\n{}",
+            m.code
+        );
+        assert!(m.code.contains("const children = Array.from(this.childNodes);"), "capture:\n{}", m.code);
         assert!(!m.code.contains("const __c0 = cursor(this);"), "no adopt walk:\n{}", m.code);
         assert!(m.errors.iter().any(|e| e.contains("children")), "warning: {:?}", m.errors);
+    }
+
+    #[test]
+    fn page_adopt_walk_does_not_re_apply_static_component_props() {
+        // Static component props cross to the client through the serialized island payload
+        // (read by the component's own constructor), not by the page re-applying them — so
+        // the page's adopt walk claims the host and wires nothing for a static prop
+        // (avoiding the adopt-then-`setProp` flash the earlier fix had).
+        let m = emit(
+            "import Badge from \"./Badge\"; export default function P(){ return <div><Badge label=\"hi\"/></div>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        assert!(hyd.contains("claimElement(__c2, Badge.tag);"), "claim host:\n{}", hyd);
+        assert!(!hyd.contains("setProp(c3"), "no static-prop re-application in adopt:\n{}", hyd);
+    }
+
+    #[test]
+    fn hydratable_component_constructor_reads_the_serialized_payload() {
+        // A hydrate-target component initializes its prop signals from the rich payload
+        // (keyed by the host's `data-h` id), falling back to the attribute/default.
+        let m = emit_component(
+            "export default function Badge({ label }){ return <span class=\"badge\">{label}</span>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("const __h = hydrationProps(this);"), "reads payload:\n{}", m.code);
+        assert!(
+            m.code.contains("label: signal(__h && \"label\" in __h ? __h[\"label\"] : (this.getAttribute(\"label\"))),"),
+            "prop init prefers payload, falls back to attribute:\n{}",
+            m.code
+        );
+        assert!(
+            m.code.lines().any(|l| l.contains("from \"@opentf/web\"") && l.contains("hydrationProps")),
+            "hydrationProps imported:\n{}",
+            m.code
+        );
     }
 
     #[test]

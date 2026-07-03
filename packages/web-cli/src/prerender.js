@@ -6,7 +6,13 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { buildServerBundle, injectHead, injectMarkup, withHtmlLang } from "./shared.js";
+import {
+  buildServerBundle,
+  injectHead,
+  injectHydrationData,
+  injectMarkup,
+  withHtmlLang,
+} from "./shared.js";
 
 // "/" → dist/index.html, "/post/1" → dist/post/1/index.html, "/fr/about" → dist/fr/about/index.html.
 function htmlPathFor(outDir, route) {
@@ -97,7 +103,8 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
       try {
         // Passing the localized URL pins router.locale (resolveLocale) and still
         // matches the locale-agnostic route table, so `t()` renders in `locale`.
-        const { html, metadata } = (await mod.renderRoute(urlPath, params)) ?? { html: "", metadata: {} };
+        const { html, metadata, hydration } =
+          (await mod.renderRoute(urlPath, params)) ?? { html: "", metadata: {}, hydration: "" };
         const meta = i18nOn
           ? { ...metadata, links: [...(metadata.links || []), ...alternatesFor(path, locales, defaultLocale)] }
           : metadata;
@@ -108,7 +115,13 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
         if (iso) head += `\n<meta property="article:modified_time" content="${escapeXml(iso)}">`;
         const file = htmlPathFor(outDir, urlPath);
         mkdirSync(dirname(file), { recursive: true });
-        writeFileSync(file, injectMarkup(injectHead(withHtmlLang(shellHtml, locale), head), html));
+        writeFileSync(
+          file,
+          injectHydrationData(
+            injectMarkup(injectHead(withHtmlLang(shellHtml, locale), head), html),
+            hydration,
+          ),
+        );
         rendered.push(urlPath);
       } catch (e) {
         failed.push(urlPath);
@@ -123,7 +136,10 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
     const result = await mod.renderRoute("/__otfw_404__");
     if (result) {
       const head = mod.renderHead({ robots: "noindex", ...result.metadata }, { baseUrl });
-      writeFileSync(join(outDir, "404.html"), injectMarkup(injectHead(shellHtml, head), result.html));
+      writeFileSync(
+        join(outDir, "404.html"),
+        injectHydrationData(injectMarkup(injectHead(shellHtml, head), result.html), result.hydration),
+      );
     }
   } catch {
     /* no 404 page */

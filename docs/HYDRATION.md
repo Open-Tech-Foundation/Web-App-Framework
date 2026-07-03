@@ -29,16 +29,30 @@ therefore needs **both** behaviors — and that dual requirement comes from **SP
 not from the CSR backend.**
 
 **Where build-vs-adopt lives:** in **`hydrate.rs`**, which owns the *dual component* (build
-+ adopt). The discriminator is a local, per-instance structural test — **`this.firstChild`**
-(server-rendered ⇒ has children ⇒ adopt; client-`createElement`'d during nav ⇒ empty ⇒
-build) — **not** a global hydration-mode flag. `csr.rs` stays a **pure build-only backend**
-for CSR apps and **never learns about hydration**; `hydrate.rs` reuses csr's leaf emitters
-and a hydration-agnostic class-scaffold helper, then adds the adopt walk and the switch.
++ adopt). The discriminator is **`isHydrating() && this.firstChild`** — the global
+first-paint flag (§3.3) gated by a cheap structural sanity check. Adopt during the one-shot
+first-paint pass over server DOM; build on every client navigation.
+
+> **Superseded decision (was: `this.firstChild` alone).** The original design used only the
+> per-instance structural test, on the reasoning that "server-rendered ⇒ has children ⇒
+> adopt; client-`createElement`'d ⇒ empty ⇒ build," with no global flag to sequence. That is
+> **wrong in two cases the structural test cannot distinguish**: (a) a component created on a
+> client navigation and handed **call-site children** (`<Card><p/></Card>`) also has a
+> `firstChild`, so it would mis-adopt and throw a mismatch; (b) a not-yet-adoptable
+> `{children}` component can't tell its server-rendered *wrapper* from its call-site slot
+> children, so it either loses children (clear-first) or double-wraps (capture-first). Both
+> are only resolvable by knowing *whether this is the first-paint pass* — which is exactly
+> what the flag encodes. The flag was always in `runtime/hydrate.js`; it is now the
+> discriminator.
+
+`csr.rs` still emits only *build* logic and the adopt body `hydrate.rs` hands it; it now also
+splices the `isHydrating()` switch and the mismatch-recovery scaffold (§3.5) around that body.
+A **pure-CSR app never references any hydration helper** — the flag/`HydrationMismatch`/
+`reportError` imports appear only when `hydrate.rs` supplies an `Adopt`/`RebuildIfServerChildren`
+view. So CSR stays clean in practice; it is no longer *by construction* hydration-blind.
 
 This is the SolidStart shape (fine-grained adopt, one artifact branches per instance),
-expressed on Custom Elements. The cost is one `this.firstChild` branch per component — the
-irreducible price of client-side route building, accepted in exchange for instant nav and a
-pure, untouched CSR backend. See §7 for the `nav` config that lets an app choose MPA, in
+expressed on Custom Elements. See §7 for the `nav` config that lets an app choose MPA, in
 which case components only ever adopt (the build arm is dead and can later be dropped).
 
 > **Implemented so far (2.0):** leaf pages, standalone components, and components *used*
@@ -170,22 +184,25 @@ client navigations):
   page the adopt walk can't handle yet gets CSR-only (no `hydrate` export); it still
   works, just without hydration.
 - **Component** _(implemented)_ → `hydrate.rs` emits the **dual component**: one
-  `connectedCallback` that branches on **`this.firstChild`** — server-rendered (has
-  children) ⇒ *adopt* `this.childNodes`; client-`createElement`'d during SPA nav (empty)
-  ⇒ *build* a fresh subtree. The branch is local and per-instance — **no global flag**.
-  All the class scaffolding (prop signals, host-class hook, error guard, effect teardown,
-  `attributeChangedCallback`) is shared, hydration-agnostic, and emitted by a `csr.rs`
-  helper that knows nothing about adoption; `hydrate.rs` reuses csr's build-view walk for
-  the build arm and contributes only the adopt walk. So `csr.rs` stays pure build-only.
+  `connectedCallback` that branches on **`isHydrating() && this.firstChild`** — during the
+  first-paint pass a server-rendered host *adopts* `this.childNodes`; a client-`createElement`'d
+  host on SPA nav *builds* a fresh subtree. The CSR build is factored into a `__build` closure
+  shared by the navigation arm and mismatch recovery (§3.5). All the class scaffolding (prop
+  signals, host-class hook, error guard, effect teardown, `attributeChangedCallback`) is shared
+  and emitted by a `csr.rs` helper; `hydrate.rs` reuses csr's build-view walk for the build arm
+  and contributes only the adopt walk. `csr.rs` emits only build logic + the switch scaffold —
+  it never generates adopt *steps*.
 
 ### 3.3 Runtime hydration context
 
 A small runtime module (`runtime/hydrate.js`, _implemented_): a DOM **cursor**
 (`cursor(parent)`), claim primitives (`claimElement(cur, tag)`, `claimText(cur)`,
-`skipNode(cur)`), the `isHydrating` / `runHydration` flag, and `HydrationMismatch`.
-There is no separate hydrate *binding* API — the Hydrate backend wires reactivity by
-calling the existing `bindText`/`bindAttr` on the **claimed** nodes, since those
-helpers already operate on existing nodes. Only acquisition (the claims) is new.
+`skipNode(cur)` — which asserts a text node, surfacing a cursor desync at its source),
+the first-paint flag (`isHydrating()`, with `runHydration(fn)` for synchronous scopes and
+`beginHydration()`/`endHydration()` for the async first-paint pass the router brackets),
+and `HydrationMismatch`. There is no separate hydrate *binding* API — the Hydrate backend
+wires reactivity by calling the existing `bindText`/`bindAttr` on the **claimed** nodes,
+since those helpers already operate on existing nodes. Only acquisition (the claims) is new.
 
 ### 3.4 Client boot switch + custom-element adoption
 
@@ -203,15 +220,18 @@ helpers already operate on existing nodes. Only acquisition (the claims) is new.
   an empty `#app`, so it keeps the leaner CSR bundle and stamps no sentinel. The compiler
   serve protocol carries the target as a token (`csr`/`ssg`/`hydrate`), so the client
   build requests `--target=hydrate` and gets the dual module per route.
-- **`connectedCallback` branches on `this.firstChild`** _(implemented)_ — when the client
-  bundle runs `customElements.define`, every server-rendered `<web-*>` upgrades
-  synchronously; its `connectedCallback` adopts `this.childNodes` when it already has
-  children (server-rendered) and builds otherwise (client-`createElement`'d during nav).
-  No global flag — the per-instance structural test is self-sufficient, and it fires
-  before the page hydrate factory claims the host, so components self-hydrate as islands
-  bottom-up.
+- **`connectedCallback` branches on `isHydrating() && this.firstChild`** _(implemented)_ —
+  route chunks are code-split (`() => import(...)`), so a route's `customElements.define`
+  runs **during the router's `await import()`**, and every server-rendered `<web-*>` upgrades
+  synchronously *before* the page hydrate factory runs. The router therefore sets the flag
+  with `beginHydration()` **before** importing the route module and clears it in `finally`,
+  so those upgrading components observe it and adopt; the factory then claims the hosts and
+  passes props (components self-hydrate as islands bottom-up, then the page wires the rest).
+  On a later SPA navigation the flag is false, so the same class builds. (First-paint
+  hydration is a single sequential boot step, so the module-global flag needs no re-entrancy
+  guard; `runHydration` remains for synchronous unit tests.)
 
-### 3.5 Mismatch detection & recovery — per-component _(decided)_
+### 3.5 Mismatch detection & recovery — per-component _(implemented)_
 
 Per `ARCHITECTURE.md §6`, mismatches are "detected at a specific slot path and
 reported, never silent." Because components are custom elements, the natural recovery
@@ -220,13 +240,64 @@ log the slot path to the dev overlay and **rebuild that component via CSR**. The
 of the page stays hydrated. Whole-page bail-out is not used — it throws away good work
 and hides where the mismatch was.
 
-### 3.6 Data — deferred to Phase 3, hook reserved now
+**Implemented:** the component's adopt arm is wrapped in `try { <adopt> } catch (e)`; a
+`HydrationMismatch` is reported via `reportError` (not routed to `<ErrorBoundary>` — the
+component *recovers*) and the shared `__build` closure rebuilds the subtree after clearing
+the mismatched server DOM. Any non-mismatch error re-throws to the outer render guard
+(`handleError` → nearest boundary), as before. A **page**'s adopt walk collects its effect
+disposers into a local `__disposers` and, if it throws partway, disposes them before
+rethrowing — so the router's fallback CSR rebuild doesn't leave the partial walk's
+`bindText`/`bindAttr`/`effect` subscriptions orphaned and double-subscribed.
 
-Phase 2 has no loaders, so signals initialize from identical `$state` values on both
+### 3.6 Data — loader data deferred to Phase 3; **island props hydrate now** (§3.7)
+
+Phase 2 has no *loaders*, so `$state` signals initialize from identical values on both
 sides — hydration is deterministic and matches. Genuinely non-deterministic code
-(`Date.now()`, `Math.random()`, browser-only reads) is what the mismatch policy
-(§3.5) catches. We reserve a `<script type="application/json">` data channel in the
-shell for Phase 3 loader-data hydration (TanStack-style), but do not implement it here.
+(`Date.now()`, `Math.random()`, browser-only reads) is what the mismatch policy (§3.5)
+catches. The reserved `<script type="application/json">` data channel is now **used for
+component-prop hydration** (§3.7); loader-data hydration (TanStack-style dehydrate/rehydrate
+of fetched data) still lands in Phase 3 on the same channel.
+
+### 3.7 Rich data hydration — the serialized props payload _(implemented)_
+
+**The problem this removes.** A component is a Custom Element, so on the server it can only
+receive props as **string attributes** — but `ssgComponent` deliberately reflects *nothing*
+onto the host (rich values don't round-trip through attributes; `class` collides with the
+styling hook). The earlier stopgap was: render the value into the view, then on the client
+re-apply each prop from a hydrating *ancestor* walk (`setProp`) after the component had
+already upgraded with a missing/`null` prop. That is lossy (only ancestors that hydrate can
+deliver props; rich objects can't be attributes at all), flashes (upgrade-then-correct), and
+depends on upgrade ordering. It is the framework's per-component **serialization boundary**.
+
+**The fix — a compiler-driven payload.** During SSR/SSG, `ssgComponent` assigns each island a
+`data-h` id and records its **JSON-safe props** into one payload; the shell embeds it as a
+single `<script type="application/json" id="__otfw_h">`. The hydrate-target component's
+**constructor** reads `hydrationProps(this)` (by the host's `data-h` id) and initializes its
+prop **signals from the real JS values** — objects, arrays, numbers — falling back to the
+attribute/default when absent (a client-`createElement`'d element on SPA nav, or a plain CSR
+build with no payload). So:
+
+- **Rich props round-trip** — an island can take `config={{…}}`/arrays; not just strings.
+- **No flash** — the prop is correct at upgrade time; no adopt-then-`setProp` correction. The
+  page walk no longer re-applies static props at all, and a dynamic prop's first effect run
+  now matches the payload value (deterministic), so it doesn't repaint either.
+- **No ordering dependence** — a standalone island reads its own payload; it doesn't need a
+  hydrating ancestor to hand it props.
+- **`class`/`style` props resolve cleanly** — the payload carries the prop's own value, not
+  the host's merged `class` attribute (which includes the styling hook).
+
+Mechanics: functions (event-callback props) are dropped by the JSON round-trip — they are
+client-only and still delivered by the parent walk (invisible, so flash-free); `<` is escaped
+so a value can't break out of the `<script>`; the payload is collected only during
+`renderRoute` (SSR/SSG), so a plain CSR build ships neither ids nor payload. `csr.rs` emits the
+payload-reading constructor **only for the hydrate target** — a CSR-only app references no
+hydration helper. Loader/query data (Phase 3) will ride the **same** channel.
+
+> **Not covered:** props whose values are genuinely non-serializable *and* visible (a live DOM
+> node, a class instance) still can't cross — but those aren't hydratable in any framework
+> without a custom (de)serializer, which is a Phase 3 concern. Structural region markers
+> (lists/conditionals/`{children}`) remain the separate 2.1 axis; data hydration is orthogonal
+> to them.
 
 ---
 
@@ -234,7 +305,8 @@ shell for Phase 3 loader-data hydration (TanStack-style), but do not implement i
 
 | Step | Scope |
 |---|---|
-| **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + dual-emit `hydrate.rs` (CSR build + `hydrate` adopt factory for pages) ✓ + `otfwc --target=hydrate` ✓ + router boot switch (leaf routes) ✓ + toolchain wiring (serve-protocol target token + hydrate client bundle + `data-otfw-hydrate` sentinel in `otfw serve`/`--ssg`) ✓ + **dual component (build/adopt via `this.firstChild`, csr stays pure)** ✓ + **`nav` config (spa/mpa) + `<Link reload>`** ✓ + ssg→hydrate, router-boot, serve-e2e & real-browser (CDP) hydration e2e (leaf page + component island) tests ✓ |
+| **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + dual-emit `hydrate.rs` (CSR build + `hydrate` adopt factory for pages) ✓ + `otfwc --target=hydrate` ✓ + router boot switch (leaf routes) ✓ + toolchain wiring (serve-protocol target token + hydrate client bundle + `data-otfw-hydrate` sentinel in `otfw serve`/`--ssg`) ✓ + **dual component (build/adopt via `isHydrating() && this.firstChild`; server props re-applied on adopt; per-component mismatch → CSR rebuild)** ✓ + **`nav` config (spa/mpa) + `<Link reload>`** ✓ + ssg→hydrate, router-boot, serve-e2e & real-browser (CDP) hydration e2e (leaf page + component island + prop island) tests ✓ |
+| **2.5** | **compiler-driven rich data hydration (§3.7)** — `ssgComponent` serializes each island's JSON-safe props into the `<script id="__otfw_h">` payload (`data-h` ids); the hydrate-target constructor reads `hydrationProps(this)` and initializes prop signals from the rich values (objects/arrays), no attribute round-trip, no flash. Payload injection in `otfw serve`/`--ssg`. ssg-collector + reader unit tests, codegen tests, and a real-browser (CDP) object-prop island e2e ✓ |
 | **2.1** | variable-region markers (`{children}`, lists, conditionals) → **layout-chain / `{children}`-slot adoption** + list/conditional hydration |
 | **2.2** | per-component island recovery wired into the dev overlay |
 | **2.3** _(deferred)_ | lazy/partial island directives (`client:idle` / `visible` / `media`) — leveraging the custom-element lifecycle. **Not in Phase 2**; revisited once core hydration is solid. |
@@ -271,10 +343,13 @@ whitespace nodes, double mounts). The bar:
 - **Node acquisition** (§3.3) — **cursor walk**, not absolute path indexing (both honor
   §4.8; cursor matches Solid and aligns 1:1 with the marker-free server output).
 
-- **Component build-vs-adopt discriminator** (§0, §3.2) — the per-instance
-  `this.firstChild` structural test, **not** a global hydration-mode flag. Resolves the
-  former "`__OTFW_HYDRATING` lifecycle across nested upgrades" open item: there is no
-  global flag to sequence; each upgrading element decides locally, bottom-up.
+- **Component build-vs-adopt discriminator** (§0, §3.2) — **`isHydrating() && this.firstChild`**:
+  the global first-paint flag, gated by a structural sanity check. _Supersedes the earlier
+  "`this.firstChild` alone, no global flag" decision_, which couldn't distinguish a
+  server-rendered host from a client-created one handed call-site children (§0 has the full
+  rationale). The feared "`__OTFW_HYDRATING` lifecycle across nested upgrades" is a non-issue
+  because route chunks are lazy: the flag is set for the single, sequential first-paint import
+  and cleared in `finally`, so there is nothing concurrent to sequence.
 - **Navigation model** (§0, §7) — SSG/SSR default to SPA (client router); MPA is the
   always-available substrate, selectable via `nav` config.
 

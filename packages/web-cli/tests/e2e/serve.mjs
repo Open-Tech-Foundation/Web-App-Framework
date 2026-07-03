@@ -60,7 +60,9 @@ async function main() {
   let port;
   try {
     port = await waitForReady(proc);
-    const base = `http://localhost:${port}`;
+    // 127.0.0.1, not `localhost` — the latter can resolve to IPv6 (::1) and hit an
+    // unrelated dev server on the same port on the other stack (`otfw serve` binds IPv4).
+    const base = `http://127.0.0.1:${port}`;
 
     // ── 1. A matched route is server-rendered into #app (status 200) ───────────
     const home = await fetch(`${base}/`);

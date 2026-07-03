@@ -15,14 +15,16 @@ import {
   setRouteState,
 } from "../runtime/router.js";
 import { resolveMetadata } from "./head.js";
+import { beginHydrationCollect, endHydrationCollect } from "./ssg-runtime.js";
 
 /**
- * Render `pathname` to `{ html, metadata, status }`: the markup for inside `#app`,
- * the resolved SEO metadata (for the `<head>`), and an HTTP `status` (200 when the
- * path matched a real route, 404 when it fell back to the registered 404 page — the
- * SSR server uses it; SSG ignores it). `params` (from `getStaticPaths`) override the
- * matched route's params for dynamic routes. Returns `null` if there's no match and
- * no 404 page.
+ * Render `pathname` to `{ html, metadata, status, hydration }`: the markup for inside
+ * `#app`, the resolved SEO metadata (for the `<head>`), an HTTP `status` (200 when the
+ * path matched a real route, 404 when it fell back to the registered 404 page — the SSR
+ * server uses it; SSG ignores it), and `hydration` — the JSON island-props payload the
+ * toolchain embeds so the client resumes from rich data (`""` when nothing needs it).
+ * `params` (from `getStaticPaths`) override the matched route's params for dynamic
+ * routes. Returns `null` if there's no match and no 404 page.
  */
 export async function renderRoute(pathname, params = null, search = "") {
   const real = matchRoute(pathname);
@@ -36,6 +38,10 @@ export async function renderRoute(pathname, params = null, search = "") {
 
   const query = Object.fromEntries(new URLSearchParams(search));
   const props = { params: match.params, query };
+
+  // Collect each island's rich props while the tree renders (ssgComponent records them
+  // and stamps `data-h` ids), then serialize the payload for the shell.
+  beginHydrationCollect();
   let html = (await resolveFactory(match.entry))(props);
 
   // Wrap with layouts, most-specific inward to root outermost.
@@ -44,6 +50,7 @@ export async function renderRoute(pathname, params = null, search = "") {
     const layout = await resolveFactory(chain[i]);
     html = layout({ ...props, children: html });
   }
+  const hydration = endHydrationCollect();
 
   const metadata = await resolveMetadata({
     route: match.route,
@@ -51,7 +58,7 @@ export async function renderRoute(pathname, params = null, search = "") {
     params: match.params,
     query,
   });
-  return { html, metadata, status: real ? 200 : 404 };
+  return { html, metadata, status: real ? 200 : 404, hydration };
 }
 
 /** Back-compat / convenience: render just the `#app` markup for `pathname`. */

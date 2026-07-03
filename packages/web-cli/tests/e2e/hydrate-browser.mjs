@@ -161,6 +161,16 @@ const PROBE = `(() => {
     stepperHostIsServer: !!(stepperHost && stepperHost.__server),
     stepperBtnIsServer: !!(stepperBtn && stepperBtn.__server),
     stepperText: norm(stepperBtn),
+    // compiler-driven data hydration: the rich object prop crosses via the payload,
+    // keyed by the host's data-h id, not as a stringified config attribute.
+    stepperHasDataH: !!(stepperHost && stepperHost.hasAttribute('data-h')),
+    stepperHasConfigAttr: !!(stepperHost && stepperHost.hasAttribute('config')),
+    payloadConfig: (() => {
+      const s = document.getElementById('__otfw_h');
+      if (!s) return null;
+      try { const p = JSON.parse(s.textContent); return p[+stepperHost.getAttribute('data-h')].config; }
+      catch { return 'PARSE_ERROR'; }
+    })(),
   };
 })()`;
 
@@ -177,7 +187,9 @@ async function run(port) {
     await client.send("Page.addScriptToEvaluateOnNewDocument", { source: OBSERVER });
 
     const loaded = client.once("Page.loadEventFired");
-    await client.send("Page.navigate", { url: `http://localhost:${port}/` });
+    // 127.0.0.1, not `localhost` — the latter can resolve to IPv6 (::1) and hit an
+    // unrelated dev server on the same port on the other stack (`otfw serve` binds IPv4).
+    await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/` });
     await loaded;
     // Deferred module scripts have executed by load; let the hydrate microtask settle.
     await sleep(200);
@@ -194,7 +206,17 @@ async function run(port) {
     // ── 1b. The component island self-adopted (custom element) ──────────────────
     assert(s.stepperHostIsServer, "the <web-stepper> host is the server-rendered node (adopted)");
     assert(s.stepperBtnIsServer, "the component's inner <button> is server-rendered (adopted)");
-    assert(s.stepperText === "n=7", "the component's server state (7) is preserved through hydrate");
+    // Compiler-driven data hydration: the rich `config` object crossed via the serialized
+    // payload (keyed by the host's data-h id), NOT as a stringified attribute — and the
+    // component's constructor read it at upgrade. "Steps n=7" proves `config.label` arrived
+    // on the adopted node with the internal `$state(7)` intact (no blank, no flash).
+    assert(s.stepperHasDataH, "the island host carries a data-h hydration id");
+    assert(!s.stepperHasConfigAttr, "the rich prop is NOT a stringified `config=` attribute");
+    assert(
+      s.payloadConfig && s.payloadConfig.label === "Steps",
+      "the payload carries the rich object prop (config.label)",
+    );
+    assert(s.stepperText === "Steps n=7", "the constructor read the object prop at upgrade (config.label + $state 7)");
 
     // ── 2. Interactivity is live on both adopted islands ────────────────────────
     await evalJS(client, `document.querySelector('#app main > button').click()`);
@@ -203,7 +225,7 @@ async function run(port) {
     const after = await evalJS(client, PROBE);
     assert(after.countText === "count 1", "clicking the page button increments its signal");
     assert(after.incIsServer, "the page button is still the same adopted node after the update");
-    assert(after.stepperText === "n=8", "clicking the component button increments its own signal");
+    assert(after.stepperText === "Steps n=8", "clicking the component button increments its own signal (prop intact)");
     assert(after.stepperBtnIsServer, "the component button is still the same adopted node");
     assert(after.removedServer === 0, "reactivity updated in place — still no server node removed");
 

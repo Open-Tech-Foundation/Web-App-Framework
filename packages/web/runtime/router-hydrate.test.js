@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { signal } from "../core/signals.js";
 import { bindText } from "./dom.js";
-import { claimElement, claimText, cursor, skipNode } from "./hydrate.js";
+import { claimElement, claimText, cursor, isHydrating, skipNode } from "./hydrate.js";
 import { mountApp, registerRoutes, routes } from "./router.js";
 
 afterEach(() => {
@@ -27,12 +27,14 @@ function makeModule(calls) {
   return {
     default() {
       calls.build = true;
+      calls.hydratingDuringBuild = isHydrating(); // must be false on a client-nav build
       const d = document.createElement("div");
       d.textContent = "BUILT";
       return d;
     },
     hydrate(__root) {
       calls.hydrate = true;
+      calls.hydratingDuringHydrate = isHydrating(); // flag must be live during adoption
       const n = signal(3);
       const c0 = cursor(__root);
       const div = claimElement(c0, "div");
@@ -71,6 +73,8 @@ describe("router boot — hydrate vs build", () => {
     await mountApp({ target: root });
 
     expect(calls.hydrate).toBe(true);
+    expect(calls.hydratingDuringHydrate).toBe(true); // flag live while adopting
+    expect(isHydrating()).toBe(false); // …and cleared once first paint resolves
     expect(calls.build).toBeUndefined(); // never rebuilt
     expect(root.firstChild).toBe(serverDiv); // adopted in place — same node
     expect(serverDiv.firstChild).toBe(serverButton);
@@ -91,6 +95,7 @@ describe("router boot — hydrate vs build", () => {
     await mountApp({ target: root });
 
     expect(calls.build).toBe(true);
+    expect(calls.hydratingDuringBuild).toBe(false); // a build never runs under the flag
     expect(calls.hydrate).toBeUndefined();
     expect(root.firstChild).not.toBe(serverDiv); // server DOM was replaced
     expect(root.textContent).toContain("BUILT");
@@ -103,6 +108,7 @@ describe("router boot — hydrate vs build", () => {
       "/proj/app/page.jsx": {
         default() {
           calls.build = true;
+          calls.hydratingDuringBuild = isHydrating();
           const d = document.createElement("div");
           d.textContent = "BUILT";
           return d;
@@ -113,6 +119,10 @@ describe("router boot — hydrate vs build", () => {
     await mountApp({ target: root });
 
     expect(calls.build).toBe(true);
+    // The flag was set for the import but cleared before the CSR fallback build runs, so a
+    // freshly-built component would build (not try to re-adopt an empty host).
+    expect(calls.hydratingDuringBuild).toBe(false);
+    expect(isHydrating()).toBe(false);
     expect(root.textContent).toContain("BUILT");
   });
 });

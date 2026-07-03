@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { registerRoutes, routes } from "../runtime/router.js";
+import { defineSSG, ssgComponent } from "./ssg-runtime.js";
 import { collectRoutePaths, renderRoute, renderToString } from "./render.js";
 
 // An SSG page render fn (what the SSG backend emits): returns an HTML string.
@@ -18,6 +19,26 @@ describe("server render (SSG, string-based)", () => {
   test("renderToString returns a matched route's HTML", async () => {
     registerRoutes({ "/app/about/page.jsx": page("<h1>About us</h1>") });
     expect(await renderToString("/about")).toBe("<h1>About us</h1>");
+  });
+
+  test("renderRoute returns the island hydration payload (data-h ids + rich props)", async () => {
+    // A page composing a component the way compiled SSG output does — via ssgComponent,
+    // which the collector observes during the render.
+    defineSSG("web-badge", (p) => `<span>${p.meta.text}</span>`);
+    registerRoutes({
+      "/app/page.jsx": {
+        default: () => `<div>${ssgComponent("web-badge", { meta: { text: "hi", n: 7 } }, "")}</div>`,
+      },
+    });
+    const result = await renderRoute("/");
+    expect(result.html).toMatch(/<web-badge[^>]*\bdata-h="0"/); // host keyed for hydration
+    expect(result.html).not.toContain("meta="); // rich prop not a host attribute
+    expect(JSON.parse(result.hydration)).toEqual([{ meta: { text: "hi", n: 7 } }]);
+  });
+
+  test("renderRoute yields an empty payload for a page with no islands", async () => {
+    registerRoutes({ "/app/page.jsx": page("<h1>Home</h1>") });
+    expect((await renderRoute("/")).hydration).toBe("");
   });
 
   test("wraps the page HTML in its layout chain", async () => {

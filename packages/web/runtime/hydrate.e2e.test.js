@@ -13,8 +13,22 @@ import { dirname, join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import { signal } from "../core/signals.js";
-import { ssgText } from "../server/ssg-runtime.js";
-import { bindText, claimElement, claimText, cursor, skipNode } from "./index.js";
+import {
+  beginHydrationCollect,
+  defineSSG,
+  endHydrationCollect,
+  ssgComponent,
+  ssgText,
+} from "../server/ssg-runtime.js";
+import {
+  __resetHydrationPayload,
+  bindText,
+  claimElement,
+  claimText,
+  cursor,
+  hydrationProps,
+  skipNode,
+} from "./index.js";
 
 function findUp(name, from) {
   let dir = from;
@@ -47,7 +61,11 @@ function loadModule(code, bindings) {
     .filter((l) => !l.startsWith("import "))
     .join("\n")
     .replace(/export default function\s*\(/g, "function __default(")
-    .replace(/export function /g, "function ");
+    .replace(/export function /g, "function ")
+    // A component compiles to `export class NameElement …` (+ a bare `export default
+    // NameElement;`); drop the `export` so the class registers via its own `define`.
+    .replace(/export class /g, "class ")
+    .replace(/^export default \w+;$/gm, "");
   const names = Object.keys(bindings);
   const ret =
     "\n; return {" +
@@ -101,5 +119,53 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     serverButton.click();
     expect(serverText.data).toBe("4");
     expect(serverButton.childNodes[2]).toBe(serverText); // identity unchanged after update
+  });
+
+  // Compiler-driven data hydration: a server-rendered island's props cross to the client
+  // through the serialized payload as a *rich* value (an object), not a string attribute.
+  // This covers the SSG side (assign `data-h`, serialize the object) and the client reader
+  // (resolve a host's rich props by its id). The remaining leg — the component constructor
+  // reading it *at upgrade* — is validated in the real-browser e2e, because happy-dom does
+  // not expose attributes in the constructor on upgrade (real browsers do, per the Custom
+  // Elements spec), so the constructor path can't be exercised here.
+  const islandSource =
+    'function Badge({ meta }){ return <span class="badge">{meta.text}</span>; }' +
+    ' export default function P(){ return <div><Badge meta={{ text: "hi", n: 7 }}/></div>; }';
+
+  test("SSG serializes a rich island prop into the payload, and the reader resolves it", () => {
+    // 1. Server render, collecting the island payload as renderRoute does.
+    const ssg = loadModule(compile(islandSource, "ssg"), { signal, ssgText, ssgComponent, defineSSG });
+    beginHydrationCollect();
+    const html = ssg.default();
+    const payload = endHydrationCollect();
+    expect(html).toMatch(/<web-badge[^>]*\bdata-h="0"/); // the host carries a hydration id
+    expect(html).not.toMatch(/<web-badge[^>]*\bmeta=/); // …but NOT the rich prop as an attribute
+    expect(html).toContain("<!--$-->hi<!--/-->"); // rendered from the object's field
+    // The whole object (incl. the unused `n`) is serialized — a real value, not a string.
+    expect(JSON.parse(payload)).toEqual([{ meta: { text: "hi", n: 7 } }]);
+
+    // 2. Inject the payload as the shell does, then the client reader resolves a host's
+    //    rich props by its `data-h` id — the value the constructor reads at upgrade.
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    document.body.appendChild(container);
+    const payloadScript = document.createElement("script");
+    payloadScript.type = "application/json";
+    payloadScript.id = "__otfw_h";
+    payloadScript.textContent = payload;
+    document.body.appendChild(payloadScript);
+    __resetHydrationPayload(); // fresh document → re-read the script
+
+    try {
+      const host = container.querySelector("[data-h]");
+      expect(hydrationProps(host)).toEqual({ meta: { text: "hi", n: 7 } });
+      // A host with no id (a client-created element on SPA nav) resolves to null → the
+      // component falls back to attributes/defaults, as a plain CSR build does.
+      expect(hydrationProps(document.createElement("web-badge"))).toBe(null);
+    } finally {
+      container.remove();
+      payloadScript.remove();
+      __resetHydrationPayload();
+    }
   });
 });

@@ -58,6 +58,14 @@ struct Uses {
     host: bool,
     set_prop: bool,
     read_context: bool,
+    /// The dual component's adopt/build discriminator + per-component mismatch recovery
+    /// (hydrate target only; a pure-CSR `Build` component references none of these).
+    is_hydrating: bool,
+    hydration_mismatch: bool,
+    report_error: bool,
+    /// The constructor reads rich island props from the serialized payload (hydrate
+    /// target only; a CSR `Build` component reads attributes as before).
+    hydration_props: bool,
 }
 
 impl Uses {
@@ -75,6 +83,10 @@ impl Uses {
         self.host |= o.host;
         self.set_prop |= o.set_prop;
         self.read_context |= o.read_context;
+        self.is_hydrating |= o.is_hydrating;
+        self.hydration_mismatch |= o.hydration_mismatch;
+        self.report_error |= o.report_error;
+        self.hydration_props |= o.hydration_props;
     }
 }
 
@@ -118,6 +130,18 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
     }
     if uses.read_context {
         names.push("readContext");
+    }
+    if uses.is_hydrating {
+        names.push("isHydrating");
+    }
+    if uses.hydration_mismatch {
+        names.push("HydrationMismatch");
+    }
+    if uses.report_error {
+        names.push("reportError");
+    }
+    if uses.hydration_props {
+        names.push("hydrationProps");
     }
     let mut merged: Vec<String> = names.into_iter().map(str::to_string).collect();
     for name in runtime_imports {
@@ -182,18 +206,24 @@ pub fn emit_component(lowered: &Lowered) -> CsrModule {
 }
 
 /// How a component's `connectedCallback` constructs its view. CSR always *builds*; the
-/// hydrate backend hands in an alternate body for the server-rendered case. This type
-/// is **hydration-agnostic** — csr only splices the provided body into an
-/// `if (this.firstChild)` switch; it never generates or interprets adopt logic.
+/// hydrate backend hands in an alternate body for the server-rendered case. csr only
+/// splices the provided adopt body behind the `isHydrating()` discriminator (and, for
+/// `Adopt`, the mismatch-recovery scaffold) — it never generates or interprets the adopt
+/// *walk* itself; that is entirely the hydrate backend's contribution.
 #[derive(Clone, Copy)]
 pub(crate) enum ComponentView<'a> {
-    /// Pure CSR: build the subtree and append it. No server DOM is ever present.
+    /// Pure CSR: build the subtree and append it. No server DOM is ever present, and no
+    /// hydration helper is referenced (a CSR-only app stays free of `isHydrating` etc.).
     Build,
-    /// Hydrate target, adoptable: `if (this.firstChild) { <body> } else { <build> }` —
-    /// adopt the server-rendered children, or build fresh when client-created on nav.
+    /// Hydrate target, adoptable:
+    /// `if (isHydrating() && this.firstChild) { <adopt> } else { <build> }` — adopt the
+    /// server DOM on first paint, build fresh on client navigation. An adopt-time
+    /// `HydrationMismatch` is reported and the component rebuilds via CSR (§3.5).
     Adopt(&'a str),
-    /// Hydrate target, not adoptable yet: discard any server children and rebuild
-    /// (a flash, but correct) so a server-rendered host doesn't double-render.
+    /// Hydrate target, not adoptable yet: rebuild. A component with no `{children}` slot
+    /// discards any pre-existing children unconditionally; one *with* a slot discards only
+    /// the server DOM (gated on `isHydrating()`), leaving call-site children for the nav
+    /// capture. A flash, but correct — a server-rendered host never double-renders.
     RebuildIfServerChildren,
 }
 
@@ -209,6 +239,9 @@ fn component_body_ex<'a>(
     // function Counter` registers `web-counter` to match a page's `<Counter/>`.
     let export = lowered.name.clone();
     let props = &lowered.props;
+    // Hydrate-target components (anything but pure CSR `Build`) initialize prop signals
+    // from the serialized rich-props payload; a CSR-only build reads attributes as before.
+    let hydratable = !matches!(view, ComponentView::Build);
 
     let mut e = Emitter::new(lowered, Disposal::Sink("this._cleanups"));
     e.emit_children_capture();
@@ -248,12 +281,28 @@ fn component_body_ex<'a>(
         let attrs = props.iter().map(|p| js_string(&p.attr)).collect::<Vec<_>>().join(", ");
         code.push_str(&format!("  static observedAttributes = [{attrs}];\n"));
 
-        // Initialize prop signals from the attribute (or default) before connect.
-        code.push_str("  constructor() {\n    super();\n    this._props = {\n");
+        // Initialize prop signals before connect. The hydrate target prefers the rich
+        // value from the serialized island payload (real objects/arrays/numbers — no
+        // string round-trip, no flash), keyed by this host's `data-h` id; it falls back
+        // to the attribute/default when the payload has no entry for it (a client-created
+        // element on SPA navigation, or a prop the payload didn't carry). A CSR-only build
+        // has no payload and reads the attribute directly.
+        code.push_str("  constructor() {\n    super();\n");
+        if hydratable {
+            e.uses.hydration_props = true;
+            code.push_str("    const __h = hydrationProps(this);\n");
+        }
+        code.push_str("    this._props = {\n");
         for p in props {
-            let init = match &p.default {
+            let attr_read = match &p.default {
                 Some(d) => format!("this.getAttribute({}) ?? ({d})", js_string(&p.attr)),
                 None => format!("this.getAttribute({})", js_string(&p.attr)),
+            };
+            let init = if hydratable {
+                let key = js_string(&p.attr);
+                format!("__h && {key} in __h ? __h[{key}] : ({attr_read})")
+            } else {
+                attr_read
             };
             code.push_str(&format!("      {}: signal({init}),\n", p.attr));
         }
@@ -313,18 +362,54 @@ fn component_body_ex<'a>(
             code.push_str(&format!("    this.appendChild({root});\n"));
         }
         ComponentView::RebuildIfServerChildren => {
-            code.push_str("    if (this.firstChild) this.replaceChildren();\n");
+            if lowered.children_local.is_some() {
+                // Has a `{children}` slot but isn't adoptable yet (Phase 2.1). During
+                // first-paint hydration the server DOM is the *rendered* view, not the
+                // original slot children, so it can't feed the capture in `body` — discard
+                // it and rebuild (a flash; the slotted content is lost until §2.1 markers).
+                // On client navigation `isHydrating()` is false, so the call-site light-DOM
+                // children are left in place for the capture to slot.
+                e.uses.is_hydrating = true;
+                code.push_str("    if (isHydrating() && this.firstChild) this.replaceChildren();\n");
+            } else {
+                // No slot to preserve — discard any pre-existing children (server DOM on
+                // hydration, or unused call-site children on navigation) before building.
+                code.push_str("    if (this.firstChild) this.replaceChildren();\n");
+            }
             code.push_str(&body);
             code.push_str(&format!("    this.appendChild({root});\n"));
         }
         ComponentView::Adopt(adopt_body) => {
-            // Server-rendered (has children) → adopt them; client-`createElement`'d on
-            // navigation (empty) → build. The discriminator is local and per-instance.
-            code.push_str("    if (this.firstChild) {\n");
-            code.push_str(adopt_body);
-            code.push_str("    } else {\n");
+            // Adopt the server DOM during the first-paint hydration pass; build fresh on a
+            // client navigation. `this.firstChild` can't discriminate on its own — a
+            // client-`createElement`'d host handed call-site children also has one — so gate
+            // on the global hydration flag (docs/HYDRATION.md §3.4). The CSR build is
+            // factored into `__build` so both the navigation path and mismatch recovery
+            // share it without duplicating the (possibly large) view body.
+            e.uses.is_hydrating = true;
+            e.uses.hydration_mismatch = true;
+            e.uses.report_error = true;
+            code.push_str("    const __build = () => {\n");
             code.push_str(&body);
             code.push_str(&format!("    this.appendChild({root});\n"));
+            code.push_str("    };\n");
+            code.push_str("    if (isHydrating() && this.firstChild) {\n");
+            code.push_str("      try {\n");
+            code.push_str(adopt_body);
+            code.push_str("      } catch (__e) {\n");
+            code.push_str("        if (!(__e instanceof HydrationMismatch)) throw __e;\n");
+            // Per-component recovery (docs/HYDRATION.md §3.5): report the mismatch (never
+            // silent) and rebuild THIS component via CSR; the rest of the page stays
+            // hydrated. `replaceChildren()` clears the mismatched server DOM first.
+            code.push_str(&format!(
+                "        reportError(__e, {{ phase: \"hydrate\", component: {} }});\n",
+                js_string(&export)
+            ));
+            code.push_str("        this.replaceChildren();\n");
+            code.push_str("        __build();\n");
+            code.push_str("      }\n");
+            code.push_str("    } else {\n");
+            code.push_str("      __build();\n");
             code.push_str("    }\n");
         }
     }

@@ -33,6 +33,7 @@ import {
   buildServerBundle,
   discoverPages,
   injectHead,
+  injectHydrationData,
   injectMarkup,
   loadConfig,
   loadDocsPlugins,
@@ -189,7 +190,10 @@ export async function runServe() {
       : result.metadata;
     const head = mod.renderHead(meta, { path: url.pathname, baseUrl });
     const localizedShell = i18nOn ? withHtmlLang(shell, localeOf(url.pathname)) : shell;
-    const html = injectMarkup(injectHead(localizedShell, head), result.html);
+    const html = injectHydrationData(
+      injectMarkup(injectHead(localizedShell, head), result.html),
+      result.hydration,
+    );
     // 200 for a real route; 404 when the path fell back to the registered 404 page.
     return new Response(html, {
       status: result.status ?? 200,
