@@ -323,11 +323,18 @@ impl<'a> Emitter<'a> {
             }
             ViewNode::Children => {
                 if self.is_page {
-                    match &self.page_param {
+                    // Bracket a page/layout's slot with region markers (docs/HYDRATION.md
+                    // §3.1, 2.1c) so the hydrating layout can find the nested route's DOM,
+                    // hand its cursor to the children adopt-thunk, and resume after it. Inert
+                    // for static SSG output.
+                    let inner = match &self.page_param {
                         Some(p) => format!("({p}?.children ?? \"\")"),
                         None => "\"\"".to_string(),
-                    }
+                    };
+                    format!("\"<!--[-->\" + {inner} + \"<!--]-->\"")
                 } else {
+                    // A component's light-DOM `{children}` — not hydratable yet (the component
+                    // falls back to rebuild), so no markers.
                     "(__children ?? \"\")".to_string()
                 }
             }

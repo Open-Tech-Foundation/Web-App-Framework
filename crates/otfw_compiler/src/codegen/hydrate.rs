@@ -21,10 +21,12 @@
 //! regions bracket their server output with `<!--[-->…<!--]-->`: keyed **lists** adopt via
 //! `hydrateList` (an adopt-item walk + a CSR build-item fn seed the reconcile), and
 //! **conditionals** adopt via `hydrateChild` (an adopt fn claims the rendered branch, a CSR
-//! build fn swaps it on change) — Phase 2.1. A view this backend can't adopt yet
-//! (`{children}` slots, fragments) falls back: pages get no `hydrate` export (the router
-//! rebuilds via CSR); components get `ComponentView::RebuildIfServerChildren` (discard
-//! server DOM + build).
+//! build fn swaps it on change) — Phase 2.1. A page/layout `{children}` slot adopts via the
+//! router-threaded children thunk (`hydrateAt(cursor, props)` + a `hydrate(root, props)`
+//! wrapper, so one cursor threads the whole layout chain — Phase 2.1c). A view this backend
+//! can't adopt yet (fragments / multi-node roots, a component's light-DOM `{children}`) falls
+//! back: pages get no `hydrate` export (the router rebuilds via CSR); components get
+//! `ComponentView::RebuildIfServerChildren` (discard server DOM + build).
 
 use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
@@ -62,6 +64,7 @@ struct Uses {
     skip_node: bool,
     hydrate_list: bool,
     hydrate_child: bool,
+    claim_region: bool,
 }
 
 fn merge_uses(into: &mut Uses, from: &Uses) {
@@ -71,6 +74,7 @@ fn merge_uses(into: &mut Uses, from: &Uses) {
     into.skip_node |= from.skip_node;
     into.hydrate_list |= from.hydrate_list;
     into.hydrate_child |= from.hydrate_child;
+    into.claim_region |= from.claim_region;
 }
 
 /// Emit a whole module for the **hydrate target**. Calls `csr` to emit the build
@@ -179,6 +183,10 @@ fn claim_import(uses: &Uses) -> String {
     if uses.hydrate_child {
         names.push("hydrateChild");
     }
+    if uses.claim_region {
+        names.push("claimRegionStart");
+        names.push("claimRegionEnd");
+    }
     if names.is_empty() {
         return String::new();
     }
@@ -252,9 +260,16 @@ impl<'a> Emitter<'a> {
 
     // ── the page shell ──────────────────────────────────────────────────────────
 
-    /// Emit a page/layout as a hydrate factory: `function (__root, props) { … }`. The
-    /// router passes the container whose existing children are the server-rendered
-    /// view; the factory adopts them and returns the claimed root node.
+    /// Emit a page/layout as a hydrate factory pair (docs/HYDRATION.md §3.4, 2.1c):
+    ///
+    /// - `hydrateAt(__c, props)` — the adopt walk over an *existing* cursor `__c`. A layout
+    ///   hands its own cursor to the nested content at its `{children}` slot (`props.children`
+    ///   is a thunk that adopts the inner route and advances the cursor), so one cursor threads
+    ///   the whole layout chain.
+    /// - `hydrate(__root, props)` — the top-level entry the router calls on the container:
+    ///   `hydrateAt(cursor(__root), props)`. Kept as the adoptability marker + leaf convenience.
+    ///
+    /// Both return the claimed root node.
     fn page(&mut self, lowered: &Lowered) -> String {
         if !lowered.props.is_empty() {
             self.errors.push("hydrate: page/factory props not supported yet".into());
@@ -263,10 +278,10 @@ impl<'a> Emitter<'a> {
             self.emit_decl_item(&item);
         }
 
-        // Adopt the view from a cursor over the container's children.
+        // Adopt the view from the passed-in cursor (over the container's — or the enclosing
+        // layout slot's — children). The cursor is `hydrateAt`'s first parameter, so nested
+        // routes adopt inline at the layout's slot without a fresh `cursor(root)`.
         let cur = self.fresh("__c");
-        self.uses.cursor = true;
-        self.line(format!("const {cur} = cursor(__root);"));
         let root = self.emit_node(&cur, &lowered.ir.view);
 
         // Top-level $effect callbacks run for the page's lifetime (page disposal: none).
@@ -288,23 +303,26 @@ impl<'a> Emitter<'a> {
         }
 
         let param = lowered.page_param.as_deref().unwrap_or("");
-        let params = if param.is_empty() {
-            "__root".to_string()
-        } else {
-            format!("__root, {param}")
-        };
         let export = &lowered.ir.id.export;
-        let name = if export == "default" {
-            "hydrate".to_string()
+        let (at_name, name) = if export == "default" {
+            ("hydrateAt".to_string(), "hydrate".to_string())
         } else {
-            format!("hydrate_{export}")
+            (format!("hydrateAt_{export}"), format!("hydrate_{export}"))
         };
+        let at_params =
+            if param.is_empty() { cur.clone() } else { format!("{cur}, {param}") };
+        let (wrap_params, wrap_args) = if param.is_empty() {
+            ("__root".to_string(), format!("cursor(__root)"))
+        } else {
+            (format!("__root, {param}"), format!("cursor(__root), {param}"))
+        };
+        self.uses.cursor = true; // the `hydrate` wrapper's `cursor(__root)`
         // Dispose the effects wired so far if the adopt walk throws a `HydrationMismatch`
         // partway (issue 6): the router catches the throw and rebuilds via CSR, so without
         // this the partial page's `bindText`/`bindAttr`/`effect` subscriptions would leak
         // and double up against the rebuild.
         format!(
-            "export function {name}({params}) {{\n  const __disposers = [];\n  try {{\n{}    return {root};\n  }} catch (__e) {{\n    for (const __d of __disposers) __d();\n    throw __e;\n  }}\n}}\n",
+            "export function {at_name}({at_params}) {{\n  const __disposers = [];\n  try {{\n{}    return {root};\n  }} catch (__e) {{\n    for (const __d of __disposers) __d();\n    throw __e;\n  }}\n}}\nexport function {name}({wrap_params}) {{\n  return {at_name}({wrap_args});\n}}\n",
             self.render("    ")
         )
     }
@@ -497,6 +515,19 @@ impl<'a> Emitter<'a> {
             // freshly-built branch when a later reactive change selects a different one.
             ViewNode::DynamicNode { expr, branches } => {
                 self.emit_dynamic_node(cur, *expr, branches);
+                String::new()
+            }
+            // A page/layout `{children}` slot (2.1c): the nested route's server DOM sits inline
+            // here, bracketed by `<!--[-->…<!--]-->`. `props.children` is the router-supplied
+            // adopt thunk — hand it our cursor so it claims the nested subtree and advances the
+            // cursor past it; then close the region. (A component's `{children}` uses
+            // `children_local`, which isn't adoptable yet — it errors below.)
+            ViewNode::Children if self.lowered.page_param.is_some() => {
+                let param = self.lowered.page_param.clone().unwrap();
+                self.uses.claim_region = true;
+                self.line(format!("claimRegionStart({cur});"));
+                self.line(format!("{param}.children({cur});"));
+                self.line(format!("claimRegionEnd({cur});"));
                 String::new()
             }
             unsupported => {
@@ -730,9 +761,11 @@ impl<'a> Emitter<'a> {
 }
 
 fn node_kind(node: &ViewNode) -> &'static str {
-    // Lists and conditionals now have their own adopt arms (Phase 2.1); only these remain.
+    // Lists, conditionals, and page/layout `{children}` slots now have their own adopt arms
+    // (Phase 2.1). A bare `Children` reaching here is a *component's* light-DOM slot (no
+    // `page_param`), which still falls back; fragments/multi-node roots aren't adopted yet.
     match node {
-        ViewNode::Children => "`{children}` slot",
+        ViewNode::Children => "component `{children}` slot",
         ViewNode::Fragment(_) => "fragment / multi-node root",
         _ => "this construct",
     }
@@ -787,9 +820,12 @@ mod tests {
         );
 
         let hyd = hydrate_fn(&m.code);
-        assert!(hyd.contains("export function hydrate(__root)"), "hydrate shape:\n{}", hyd);
-        assert!(hyd.contains("const __c0 = cursor(__root);"), "root cursor:\n{}", hyd);
-        assert!(hyd.contains("const el1 = claimElement(__c0, \"div\");"), "claim div:\n{}", hyd);
+        // The walk lives in `hydrateAt(cursor, …)`; `hydrate(root, …)` is a thin wrapper that
+        // seeds the cursor — so a nested route can adopt inline at its layout's `{children}` slot.
+        assert!(hyd.contains("export function hydrateAt(__c0)"), "hydrateAt walk:\n{}", hyd);
+        assert!(hyd.contains("export function hydrate(__root)"), "hydrate wrapper:\n{}", hyd);
+        assert!(hyd.contains("return hydrateAt(cursor(__root));"), "wrapper seeds the cursor:\n{}", hyd);
+        assert!(hyd.contains("const el1 = claimElement(__c0, \"div\");"), "claim div off the passed cursor:\n{}", hyd);
         assert!(hyd.contains("claimElement(__c2, \"h1\");"), "claim h1:\n{}", hyd);
         assert!(hyd.contains("skipNode(__c4);"), "skip static text:\n{}", hyd);
         assert!(hyd.contains("const t5 = claimText(__c4);"), "claim text hole:\n{}", hyd);
@@ -993,6 +1029,31 @@ mod tests {
             hyd
         );
         assert!(m.code.contains("hydrateChild"), "hydrateChild imported:\n{}", m.code);
+    }
+
+    #[test]
+    fn layout_adopts_its_children_slot_via_the_router_thunk() {
+        // A layout hydrates (Phase 2.1c): its `{children}` slot is a `<!--[-->…<!--]-->`
+        // region whose content is the nested route's server DOM. The layout hands its own
+        // cursor to `props.children` (the router-supplied adopt thunk), which claims the
+        // nested subtree and advances the cursor; the layout then closes the region.
+        let m = emit(
+            "export default function Layout({ children }){ return <main><nav>N</nav>{children}</main>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        // The walk takes the layout's props (so `props.children` resolves to the thunk).
+        assert!(hyd.contains("export function hydrateAt(__c0, __props)"), "hydrateAt takes props:\n{}", hyd);
+        assert!(hyd.contains("claimElement(__c0, \"main\");"), "claim layout root:\n{}", hyd);
+        // At the slot: open the region, hand the cursor to the children thunk, close it.
+        assert!(hyd.contains("claimRegionStart(__c2);"), "open children region:\n{}", hyd);
+        assert!(hyd.contains("__props.children(__c2);"), "hand cursor to the children thunk:\n{}", hyd);
+        assert!(hyd.contains("claimRegionEnd(__c2);"), "close children region:\n{}", hyd);
+        assert!(
+            m.code.contains("claimRegionStart, claimRegionEnd"),
+            "region claim helpers imported:\n{}",
+            m.code
+        );
     }
 
     #[test]

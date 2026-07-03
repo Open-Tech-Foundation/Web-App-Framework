@@ -27,6 +27,8 @@ import {
   bindList,
   bindText,
   claimElement,
+  claimRegionEnd,
+  claimRegionStart,
   claimText,
   cursor,
   hydrateChild,
@@ -75,7 +77,8 @@ function loadModule(code, bindings) {
   const ret =
     "\n; return {" +
     " default: typeof __default !== 'undefined' ? __default : undefined," +
-    " hydrate: typeof hydrate !== 'undefined' ? hydrate : undefined };";
+    " hydrate: typeof hydrate !== 'undefined' ? hydrate : undefined," +
+    " hydrateAt: typeof hydrateAt !== 'undefined' ? hydrateAt : undefined };";
   return new Function(...names, body + ret)(...names.map((n) => bindings[n]));
 }
 
@@ -271,5 +274,61 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     container.querySelector("button").click();
     expect(container.querySelector("span.no")).toBe(null);
     expect(container.querySelector("p.yes")?.textContent).toBe("YES");
+  });
+
+  // Phase 2.1c: a layout chain hydrates. The compiled layout's `hydrateAt` claims its own
+  // structure and hands its cursor to the page's `hydrateAt` at the `{children}` slot — one
+  // cursor threading both modules, exactly as the router does. Proves the *emitted* contract.
+  const layoutSource =
+    'export default function Layout({ children }){ return <div class="layout"><header>H</header>{children}</div>; }';
+  const innerPageSource =
+    'export default function P(){ let n=$state(5); return <main><button onclick={() => n++}>c {n}</button></main>; }';
+
+  test("a compiled layout adopts its chain — layout + page thread one cursor at the slot", () => {
+    const helpers = { signal, ssgText };
+    // 1. Server-compose exactly like renderRoute: render the page, wrap in the layout.
+    const pageSsg = loadModule(compile(innerPageSource, "ssg"), helpers).default;
+    const layoutSsg = loadModule(compile(layoutSource, "ssg"), helpers).default;
+    const html = layoutSsg({ children: pageSsg({}) });
+    expect(html).toMatch(/<div class="layout"><header>H<\/header><!--\[-->/); // slot region opens
+    expect(html).toContain("<main><button>c <!--$-->5<!--/--></button></main>"); // page inside
+
+    // 2. Put it in the DOM; snapshot the layout + nested page server nodes.
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const serverLayout = container.querySelector(".layout");
+    const serverMain = container.querySelector("main");
+    const serverBtn = container.querySelector("button");
+
+    // 3. Compile both to the hydrate target and thread one cursor, as the router's
+    //    `hydrateRouteNode` does: the layout adopts at the container and hands its cursor to
+    //    the page thunk at the slot.
+    const claimBindings = {
+      signal,
+      bindText,
+      cursor,
+      claimElement,
+      claimText,
+      skipNode,
+      claimRegionStart,
+      claimRegionEnd,
+    };
+    const layoutMod = loadModule(compile(layoutSource, "hydrate"), claimBindings);
+    const pageMod = loadModule(compile(innerPageSource, "hydrate"), claimBindings);
+    const rootNode = layoutMod.hydrateAt(cursor(container), {
+      children: (c) => pageMod.hydrateAt(c, {}),
+    });
+
+    // 4. Adoption — both layers claimed their server nodes, nothing rebuilt.
+    expect(rootNode).toBe(serverLayout);
+    expect(container.querySelector(".layout")).toBe(serverLayout);
+    expect(container.querySelector("main")).toBe(serverMain); // nested page adopted at the slot
+    expect(container.querySelectorAll("main, button").length).toBe(2); // no duplication
+    expect(serverBtn.textContent).toBe("c 5");
+
+    // 5. Reactivity is live on the adopted nested-page node.
+    serverBtn.click();
+    expect(serverBtn.textContent).toBe("c 6");
+    expect(container.querySelector("main")).toBe(serverMain); // identity unchanged
   });
 });

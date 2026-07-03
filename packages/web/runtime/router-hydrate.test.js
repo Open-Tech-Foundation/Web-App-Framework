@@ -7,7 +7,15 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { signal } from "../core/signals.js";
 import { bindText } from "./dom.js";
-import { claimElement, claimText, cursor, isHydrating, skipNode } from "./hydrate.js";
+import {
+  claimElement,
+  claimRegionEnd,
+  claimRegionStart,
+  claimText,
+  cursor,
+  isHydrating,
+  skipNode,
+} from "./hydrate.js";
 import { mountApp, registerRoutes, routes } from "./router.js";
 
 afterEach(() => {
@@ -21,8 +29,9 @@ afterEach(() => {
 const SERVER_HTML = '<div class="box"><button>Count <!--$-->3<!--/--></button></div>';
 
 // A stand-in for what the compiler emits for the hydrate target: a `default` build
-// factory (client navigation) + a `hydrate` adopt factory (first paint) using the real
-// claim primitives. `calls` records which path the router took.
+// factory (client navigation) + a `hydrateAt` adopt factory (first paint, over a cursor —
+// so nested routes adopt at their layout's slot) + a `hydrate` wrapper. Uses the real claim
+// primitives. `calls` records which path the router took.
 function makeModule(calls) {
   return {
     default() {
@@ -32,12 +41,11 @@ function makeModule(calls) {
       d.textContent = "BUILT";
       return d;
     },
-    hydrate(__root) {
+    hydrateAt(c0) {
       calls.hydrate = true;
       calls.hydratingDuringHydrate = isHydrating(); // flag must be live during adoption
       const n = signal(3);
-      const c0 = cursor(__root);
-      const div = claimElement(c0, "div");
+      const div = claimElement(c0, "div"); // c0 is the cursor the router threads in
       const c2 = cursor(div);
       const btn = claimElement(c2, "button");
       btn.onclick = () => n.value++;
@@ -46,6 +54,9 @@ function makeModule(calls) {
       const t = claimText(c4);
       bindText(t, () => n.value);
       return div;
+    },
+    hydrate(__root) {
+      return this.hydrateAt(cursor(__root));
     },
   };
 }
@@ -84,6 +95,92 @@ describe("router boot — hydrate vs build", () => {
     serverButton.click();
     expect(serverText.data).toBe("4"); // reactivity is live on the adopted node
     expect(serverButton.childNodes[2]).toBe(serverText); // identity unchanged
+  });
+
+  test("threads one cursor through a layout chain — layout + page both adopt (2.1c)", async () => {
+    const calls = { order: [] };
+    // A layout `<main class="shell"><nav>N</nav>{children}</main>` whose slot is a region.
+    // Its hydrateAt claims its own structure, then hands its cursor to the children thunk.
+    const layout = {
+      default: ({ children }) => {
+        const m = document.createElement("main");
+        if (children) m.appendChild(children);
+        return m;
+      },
+      hydrateAt(c0, props) {
+        calls.order.push("layout");
+        const main = claimElement(c0, "main");
+        const c2 = cursor(main);
+        claimElement(c2, "nav"); // static <nav>N</nav>
+        claimRegionStart(c2);
+        props.children(c2); // adopt the nested page inline, advancing c2 past it
+        claimRegionEnd(c2);
+        return main;
+      },
+      hydrate(root, props) {
+        return this.hydrateAt(cursor(root), props);
+      },
+    };
+    const pageCalls = {};
+    registerRoutes({
+      "/proj/app/layout.jsx": layout,
+      "/proj/app/page.jsx": makeModule(pageCalls),
+    });
+    // Wrap makeModule's page so its adopt records order too.
+    const page = routes.pages["/"];
+    const origAt = page.hydrateAt.bind(page);
+    page.hydrateAt = (c, props) => (calls.order.push("page"), origAt(c, props));
+
+    const root = document.createElement("div");
+    root.id = "app";
+    root.setAttribute("data-otfw-hydrate", "");
+    root.innerHTML =
+      '<main class="shell"><nav>N</nav><!--[-->' +
+      SERVER_HTML +
+      "<!--]--></main>";
+    document.body.appendChild(root);
+    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
+    window.history.replaceState({}, "", "/");
+
+    const serverMain = root.firstChild;
+    const serverPageDiv = root.querySelector(".box");
+    const serverButton = serverPageDiv.firstChild;
+    const serverText = serverButton.childNodes[2];
+
+    await mountApp({ target: root });
+
+    // Both layers adopted in place — nothing rebuilt, same nodes.
+    expect(calls.order).toEqual(["layout", "page"]); // outer walk runs, page adopts at the slot
+    expect(pageCalls.build).toBeUndefined();
+    expect(root.firstChild).toBe(serverMain);
+    expect(root.querySelector(".box")).toBe(serverPageDiv);
+    expect(root.querySelectorAll("main, button").length).toBe(2); // no duplication
+    expect(serverText.data).toBe("3");
+
+    // Reactivity is live on the adopted (nested) page node.
+    serverButton.click();
+    expect(serverText.data).toBe("4");
+  });
+
+  test("falls back to a CSR build when a layout in the chain isn't adoptable", async () => {
+    const calls = {};
+    // Page is adoptable, but its layout has no hydrateAt → the whole chain rebuilds.
+    registerRoutes({
+      "/proj/app/layout.jsx": { default: ({ children }) => { const m = document.createElement("main"); if (children) m.appendChild(children); return m; } },
+      "/proj/app/page.jsx": makeModule(calls),
+    });
+    const root = document.createElement("div");
+    root.id = "app";
+    root.setAttribute("data-otfw-hydrate", "");
+    root.innerHTML = '<main><!--[-->' + SERVER_HTML + "<!--]--></main>";
+    document.body.appendChild(root);
+    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
+    window.history.replaceState({}, "", "/");
+
+    await mountApp({ target: root });
+
+    expect(calls.hydrate).toBeUndefined(); // never adopted
+    expect(calls.build).toBe(true); // rebuilt via CSR instead
   });
 
   test("falls back to a CSR build when the sentinel is absent", async () => {

@@ -15,7 +15,7 @@
 
 import { clearError, reportError } from "../core/errors.js";
 import { signal } from "../core/signals.js";
-import { beginHydration, endHydration } from "./hydrate.js";
+import { beginHydration, cursor, endHydration } from "./hydrate.js";
 import { runCleanup, runMount } from "./mount.js";
 
 const isBrowser = typeof window !== "undefined";
@@ -202,6 +202,55 @@ export async function buildRouteNode(match, query = {}) {
 }
 
 /**
+ * Adopt a matched route's server-rendered DOM (docs/HYDRATION.md §3.4, 2.1c) — the hydrate
+ * analogue of {@link buildRouteNode}. One cursor threads the whole layout chain: the
+ * outermost layout adopts at the container, and each layout hands that cursor to the next at
+ * its `{children}` slot (`props.children` is a thunk that claims the nested route's subtree
+ * and advances the cursor), down to the page. Returns `{ nodes }` (page → … → root) for
+ * lifecycle, or `null` if the page or any layout isn't adoptable (no `hydrateAt` export) — the
+ * caller then falls back to a clean CSR build. A thrown `HydrationMismatch` propagates up,
+ * disposing each layer's partial wiring on the way (each `hydrateAt` has its own guard).
+ */
+export async function hydrateRouteNode(match, query, rootEl) {
+  const props = { params: match.params, query };
+  const pageMod = await resolveModule(match.entry);
+  if (!pageMod || typeof pageMod.hydrateAt !== "function") return null;
+  const chain = layoutChain(match.route);
+  const layoutMods = [];
+  for (const entry of chain) {
+    const m = await resolveModule(entry);
+    if (!m || typeof m.hydrateAt !== "function") return null; // whole chain must be adoptable
+    layoutMods.push(m);
+  }
+
+  // Compose the adopt thunks innermost-first: the page, then each layout wrapping it. Each
+  // thunk pushes its claimed root node, so `nodes` ends up page → … → outermost (the inner
+  // thunk runs — and pushes — during the outer layout's walk, before the outer pushes).
+  const nodes = [];
+  let thunk = (c) => {
+    const n = pageMod.hydrateAt(c, props);
+    nodes.push(n);
+    return n;
+  };
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const layout = layoutMods[i];
+    const inner = thunk;
+    thunk = (c) => {
+      const n = layout.hydrateAt(c, { ...props, children: inner });
+      nodes.push(n);
+      return n;
+    };
+  }
+  thunk(cursor(rootEl)); // outermost adopts at the container; the chain threads inward
+  return { nodes };
+}
+
+/** Resolve a route entry (lazy loader or module namespace) to its module. */
+async function resolveModule(entry) {
+  return typeof entry === "function" ? await entry() : entry;
+}
+
+/**
  * Set the reactive route state directly (no history/render). Used by server render
  * so a page reading `router.pathname`/`params`/`query` resolves to the route being
  * pre-rendered. The client uses `navigate` instead.
@@ -285,27 +334,26 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
   }
 
   // First paint over server-rendered DOM: *adopt* it (hydrate) instead of rebuilding,
-  // when the route module exposes a `hydrate` adopt factory (compiled with the hydrate
-  // target). Only leaf routes (no layout chain) hydrate so far — `{children}`-slot
-  // adoption is a later phase — so anything else falls through to a clean CSR build. A
+  // when the route module exposes a `hydrateAt` adopt factory (compiled with the hydrate
+  // target). `hydrateRouteNode` threads one cursor through the whole layout chain (2.1c);
+  // a route whose page or any layout isn't adoptable returns null → clean CSR build. A
   // hydration mismatch is reported (never silent) and also falls through to a rebuild.
   //
-  // The hydration flag must be live *before* the route module is imported: route chunks
+  // The hydration flag must be live *before* the route modules are imported: route chunks
   // are code-split, so `customElements.define` — and the synchronous upgrade of every
-  // server-rendered `<web-*>` host — happens during `await match.entry()`, before the
-  // page factory runs. Those upgrading components read `isHydrating()` to adopt their
-  // server DOM rather than build (docs/HYDRATION.md §3.4). `endHydration()` in `finally`
-  // makes every subsequent client navigation build fresh; the CSR fallback below then
-  // runs with the flag cleared, so a rebuilt host builds instead of trying to re-adopt.
+  // server-rendered `<web-*>` host — happens during those imports, before the factories
+  // run. Those upgrading components read `isHydrating()` to adopt their server DOM rather
+  // than build (docs/HYDRATION.md §3.4). `endHydration()` in `finally` makes every
+  // subsequent client navigation build fresh; the CSR fallback below then runs with the
+  // flag cleared, so a rebuilt host builds instead of trying to re-adopt.
   if (hydrate && match) {
     beginHydration();
     try {
-      const mod = typeof match.entry === "function" ? await match.entry() : match.entry;
-      if (mod && typeof mod.hydrate === "function" && layoutChain(match.route).length === 0) {
-        const query = Object.fromEntries(url.searchParams);
-        const node = mod.hydrate(rootEl, { params: match.params, query });
-        currentNodes = [node];
-        runMount(node);
+      const query = Object.fromEntries(url.searchParams);
+      const adopted = await hydrateRouteNode(match, query, rootEl);
+      if (adopted) {
+        currentNodes = adopted.nodes;
+        for (const n of adopted.nodes) runMount(n); // onMount for page + every layout
         clearError({ phase: "route" });
         return;
       }

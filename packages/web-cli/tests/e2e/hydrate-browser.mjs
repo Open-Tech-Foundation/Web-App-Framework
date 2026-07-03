@@ -181,6 +181,12 @@ const PROBE = `(() => {
     // should be adopted, then a toggle swaps to the false branch (span.no).
     condYes: (() => { const p = document.querySelector('#app .cond p.yes'); return p ? { text: norm(p), server: !!p.__server } : null; })(),
     condNo: (() => { const s = document.querySelector('#app .cond span.no'); return s ? norm(s) : null; })(),
+    // layout chain (Phase 2.1c): the page is wrapped in a layout whose {children} slot holds
+    // the page's DOM. The layout's own nodes must adopt, and the nested page must sit inside.
+    layoutIsServer: (() => { const l = document.querySelector('#app .layout'); return !!(l && l.__server); })(),
+    headerIsServer: (() => { const h = document.querySelector('#app .layout > .site-header'); return !!(h && h.__server); })(),
+    headerText: norm(document.querySelector('#app .site-header')),
+    pageInsideLayout: !!document.querySelector('#app .layout > main'), // page nested at the slot
   };
 })()`;
 
@@ -208,6 +214,11 @@ async function run(port) {
     const s = await evalJS(client, PROBE);
     assert(s.hasSentinel, "#app carries the data-otfw-hydrate sentinel (SSR shell)");
     assert(s.buttonCount === 4, "four <button>s (counter + component + list 'add' + 'toggle') — nothing duplicated");
+
+    // ── 1e. The layout chain self-adopted (Phase 2.1c) ──────────────────────────
+    assert(s.layoutIsServer, "the layout <div.layout> is a server node (adopted, not rebuilt)");
+    assert(s.headerIsServer && s.headerText === "E2E_LAYOUT", "the layout's static <header> adopted with its text");
+    assert(s.pageInsideLayout, "the page's <main> is nested inside the layout's {children} slot");
     assert(s.removedServer === 0, "no server-rendered node was removed (no CSR rebuild)");
     assert(s.mainIsServer, "the live <main> is the server-rendered node (adopted)");
     assert(s.incIsServer, "the page's counter <button> is the server-rendered node (adopted)");

@@ -4,6 +4,17 @@
 
 ### Added
 
+- **Layout-chain / `{children}`-slot hydration** (`docs/HYDRATION.md` §3.2/§3.4 / phasing
+  2.1c): a layout-wrapped route now *adopts* its whole server DOM instead of falling back to
+  a CSR rebuild — the last structural region. A page/layout now emits `hydrateAt(cursor,
+  props)` (the adopt walk over an existing cursor) plus a `hydrate(root, props)` wrapper
+  (`= hydrateAt(cursor(root), props)`); SSG brackets a page/layout `{children}` slot with
+  `<!--[-->…<!--]-->`; and the router's new `hydrateRouteNode` threads **one cursor** through
+  the entire layout chain — each layout claims its own structure and, at its `{children}`
+  slot, hands its cursor to the nested route's adopt thunk (`props.children(cur)`), which
+  claims the inner subtree and advances the cursor, down to the page. A route whose page or
+  any layout isn't adoptable falls back to a clean CSR build; a mismatch anywhere disposes
+  each layer's partial wiring on the way up. New runtime API: `hydrateRouteNode`.
 - **Conditional / dynamic-node hydration** (`docs/HYDRATION.md` §3.1 / phasing 2.1b): a
   server-rendered `{cond ? <A/> : <B/>}` (or `{cond && <X/>}`) region now *adopts* the
   rendered branch instead of rebuilding. SSG brackets the branch with `<!--[-->…<!--]-->`
