@@ -14,6 +14,12 @@
 - Config docs now mark `site.url` as required for production docs/blog builds unless
   `--base-url` is passed.
 
+### Fixed
+
+- `@opentf/web-docs/updated` now exports an empty `editPaths` fallback when
+  last-updated tracking is disabled, so `DocsLayout` builds without the
+  last-updated plugin.
+
 ## [0.2.0] - 2026-07-01
 
 ### Added
