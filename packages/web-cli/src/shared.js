@@ -105,6 +105,40 @@ export function findUp(name, from) {
   }
 }
 
+function hasLocalCompilerWorkspace(workspace) {
+  return !!workspace && existsSync(join(workspace, "crates", "otfw_cli", "Cargo.toml"));
+}
+
+export function resolveCompiler({
+  cliDir = dirname(fileURLToPath(import.meta.url)),
+  env = process.env,
+  resolvePackagedCompiler = otfwcPath,
+  findWorkspace = findUp,
+  ensure = ensureCompiler,
+} = {}) {
+  if (env.OTFWC_BIN) return { otfwc: env.OTFWC_BIN, workspace: null };
+
+  let packagedError = null;
+  try {
+    return { otfwc: resolvePackagedCompiler(), workspace: null };
+  } catch (e) {
+    packagedError = e;
+  }
+
+  const installedPackage = cliDir.split(/[\\/]/).includes("node_modules");
+  const workspace = installedPackage ? null : findWorkspace("Cargo.toml", cliDir);
+  if (hasLocalCompilerWorkspace(workspace)) {
+    const otfwc = join(workspace, "target", "debug", "otfwc");
+    ensure(otfwc, workspace);
+    return { otfwc, workspace };
+  }
+
+  fail(
+    `${packagedError?.message ?? "cannot resolve @opentf/web-compiler prebuilt binary"}\n` +
+      `  No local otfwc compiler workspace was found to build from source.`,
+  );
+}
+
 /**
  * Resolve the project and toolchain: the app being built (cwd), the runtime
  * package, the `otfwc` compiler, and the excluded routes. Exits with a clear
@@ -130,26 +164,9 @@ export function loadProject() {
     fail(`cannot resolve "@opentf/web" from ${root}\n  add it to your dependencies.`);
   }
 
-  // Locate the `otfwc` compiler. `OTFWC_BIN` overrides everything. Published
-  // installs must use the prebuilt compiler package even when the user's project is
-  // itself a Cargo workspace. This repo's source checkout still uses the local
-  // Cargo build.
-  const cliDir = dirname(fileURLToPath(import.meta.url));
-  const installedPackage = cliDir.split(/[\\/]/).includes("node_modules");
-  const workspace = installedPackage ? null : findUp("Cargo.toml", cliDir);
-  let otfwc;
-  if (process.env.OTFWC_BIN) {
-    otfwc = process.env.OTFWC_BIN;
-  } else if (workspace) {
-    otfwc = join(workspace, "target", "debug", "otfwc");
-    ensureCompiler(otfwc, workspace);
-  } else {
-    try {
-      otfwc = otfwcPath();
-    } catch (e) {
-      fail(e.message);
-    }
-  }
+  // Locate the `otfwc` compiler. Explicit overrides win, then the packaged
+  // compiler binary, then this repo's local Rust workspace as a source fallback.
+  const { otfwc, workspace } = resolveCompiler();
 
   // Route directories to skip during discovery — comma-separated names in
   // EXCLUDE_ROUTES. None are excluded by default.
@@ -164,6 +181,19 @@ function ensureCompiler(otfwc, workspace) {
   if (existsSync(otfwc)) return;
   if (!workspace) fail(`otfwc compiler not found at ${otfwc}`);
   console.log("building compiler (cargo build -p otfw_cli)…");
+  const cargo = Bun.spawnSync(["cargo", "--version"], {
+    cwd: workspace,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  if (cargo.error || cargo.exitCode !== 0) {
+    fail(
+      `cannot build otfwc because cargo is not available.\n` +
+        `  This source checkout needs Rust/Cargo to build ${otfwc}.\n` +
+        `  Install Rust in the build environment, set OTFWC_BIN to an existing otfwc binary,\n` +
+        `  or build with the published @opentf/web-cli package so @opentf/web-compiler can use its prebuilt binary.`,
+    );
+  }
   const b = Bun.spawnSync(["cargo", "build", "-p", "otfw_cli"], {
     cwd: workspace,
     stdout: "inherit",

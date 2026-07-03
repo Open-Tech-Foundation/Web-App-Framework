@@ -4,10 +4,10 @@
 
 ### Fixed
 
-- Published `@opentf/web-cli` installs now resolve the prebuilt
-  `@opentf/web-compiler` binary even when the consuming app is inside a Cargo
-  workspace. Only this repository's source checkout falls back to building
-  `target/debug/otfwc` from the local Rust workspace.
+- Compiler resolution now checks `OTFWC_BIN`, then the packaged
+  `@opentf/web-compiler` binary, then this repository's local `crates/otfw_cli`
+  workspace. Public `@opentf/web-cli` installs no longer try to run Cargo just
+  because the consuming app is inside a Cargo workspace.
 
 ## [1.1.0] - 2026-07-01
 
