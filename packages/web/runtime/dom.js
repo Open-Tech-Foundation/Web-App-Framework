@@ -3,6 +3,7 @@
 // no diffing — just direct, fine-grained DOM writes wired to signals.
 
 import { effect, signal } from "../core/signals.js";
+import { claimListEnd, claimListStart } from "./hydrate.js";
 
 // Attribute names that must be assigned as JS properties (not setAttribute) for
 // correct behavior. Mirrors the set the old runtime relied on (core/constants).
@@ -279,9 +280,45 @@ export function bindChild(anchor, fn) {
 export function bindList(parent, sourceFn, renderItem, keyFn) {
   const anchor = document.createComment("");
   parent.appendChild(anchor);
-  let cache = new Map(); // key -> { sig, node }
-  let prevKeys = []; // keys in current DOM order, for minimal-move reconciliation
+  return reconcileList(anchor, sourceFn, renderItem, keyFn, new Map(), []);
+}
 
+/**
+ * Hydrate a server-rendered list region (docs/HYDRATION.md §3.1/2.1). The cursor `cur` is
+ * positioned at the `<!--[-->` marker; the region holds one root node per item, then
+ * `<!--]-->`. Adopts each item's server node via `adoptItem(cur, itemSignal, index)`
+ * (claiming off the shared cursor, which advances to the next item), seeds the reconcile
+ * cache with the adopted `{sig, node}` pairs, then wires the *same* keyed-reconcile effect
+ * `bindList` uses — so a later data change builds/moves/removes with no first-paint flash.
+ * The closing `<!--]-->` becomes the reconcile anchor. Returns the effect disposer.
+ */
+export function hydrateList(cur, sourceFn, adoptItem, renderItem, keyFn) {
+  claimListStart(cur);
+  const data = sourceFn();
+  const items = Array.isArray(data) ? data : [];
+  const cache = new Map();
+  const prevKeys = [];
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    const key = keyFn ? keyFn(item, index) : index;
+    const sig = signal(item);
+    const node = adoptItem(cur, sig, index); // claims one item subtree off `cur`
+    cache.set(key, { sig, node });
+    prevKeys.push(key);
+  }
+  const anchor = claimListEnd(cur);
+  // The seeded effect's first run re-reads the same data: every key hits the cache, so it
+  // subscribes for future updates without mutating the already-correct adopted DOM.
+  return reconcileList(anchor, sourceFn, renderItem, keyFn, cache, prevKeys);
+}
+
+/**
+ * The keyed-reconcile effect shared by {@link bindList} (empty seed) and
+ * {@link hydrateList} (seeded from adopted nodes). `anchor` is the trailing comment new
+ * items are inserted before; `cache` (key → `{sig, node}`) and `prevKeys` (keys in DOM
+ * order) carry reconciliation state across runs. Returns the effect disposer.
+ */
+function reconcileList(anchor, sourceFn, renderItem, keyFn, cache, prevKeys) {
   return effect(() => {
     const data = sourceFn();
     const items = Array.isArray(data) ? data : [];
@@ -327,7 +364,8 @@ export function bindList(parent, sourceFn, renderItem, keyFn) {
     // cascade into. Walk back to front so each insertion's reference node is
     // already in its final position.
     const keep = longestIncreasingRun(prevIndex);
-    const host = anchor.parentNode || parent;
+    const host = anchor.parentNode;
+    if (!host) return; // anchor detached (list torn down) — nothing to place
     for (let i = nodes.length - 1; i >= 0; i--) {
       if (keep.has(i)) continue;
       const ref = i + 1 < nodes.length ? nodes[i + 1] : anchor;

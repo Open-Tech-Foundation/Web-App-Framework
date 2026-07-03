@@ -55,11 +55,13 @@ This is the SolidStart shape (fine-grained adopt, one artifact branches per inst
 expressed on Custom Elements. See §7 for the `nav` config that lets an app choose MPA, in
 which case components only ever adopt (the build arm is dead and can later be dropped).
 
-> **Implemented so far (2.0):** leaf pages, standalone components, and components *used*
-> in a page (the page claims the host; the component self-adopts) all hydrate. **Not yet
-> (2.1):** components that take a `{children}` slot, and **layout-chain** routes — both
-> need the variable-region (`{children}`/list/conditional) markers. Until then a
-> layout-wrapped route, or a component with children, falls back to a clean CSR build.
+> **Implemented so far (2.0–2.1a):** leaf pages, standalone components, components *used*
+> in a page (the page claims the host; the component self-adopts), and **keyed lists**
+> (`{items.map(...)}`, bracketed by `<!--[-->…<!--]-->`) all hydrate. **Not yet (2.1b):**
+> conditionals / dynamic-node regions, components that take a `{children}` slot, and
+> **layout-chain** routes — the last two need `{children}`-region markers and cross-module
+> cursor threading. Until then a layout-wrapped route, or a component with children, falls
+> back to a clean CSR build.
 
 | Mode | Nav | First paint | Subsequent nav | Components |
 |---|---|---|---|---|
@@ -151,7 +153,9 @@ small (comments around dynamic regions only) and is the price of zero-flash adop
 hole is emitted as `<!--$-->value<!--/-->`. The `$`/`/` comment pair survives the HTML
 parser's text-node merging, so the hole is findable even when `value` is empty
 (`<!--$--><!--/-->` → the client synthesizes an empty text anchor) or adjacent to
-static text. List/conditional region markers (`<!--[-->`/`<!--]-->`) follow in 2.1.
+static text. **List regions** are bracketed by `<!--[-->…<!--]-->` (Phase 2.1,
+_implemented_): the client claims each item root off the shared cursor and the closing
+`<!--]-->` becomes the reconcile anchor. Conditional region markers follow next.
 
 > **Hazard handled:** the HTML parser collapses/merges adjacent and empty text nodes
 > and trims whitespace. The `$`/`/` markers survive that; and because `ssg.rs`
@@ -296,7 +300,7 @@ hydration helper. Loader/query data (Phase 3) will ride the **same** channel.
 > **Not covered:** props whose values are genuinely non-serializable *and* visible (a live DOM
 > node, a class instance) still can't cross — but those aren't hydratable in any framework
 > without a custom (de)serializer, which is a Phase 3 concern. Structural region markers
-> (lists/conditionals/`{children}`) remain the separate 2.1 axis; data hydration is orthogonal
+> (conditionals/`{children}`; lists done in 2.1a) remain the separate 2.1 axis; data hydration is orthogonal
 > to them.
 
 ---
@@ -307,7 +311,8 @@ hydration helper. Loader/query data (Phase 3) will ride the **same** channel.
 |---|---|
 | **2.0** | marker scheme ✓ + `runtime/hydrate.js` primitives ✓ + dual-emit `hydrate.rs` (CSR build + `hydrate` adopt factory for pages) ✓ + `otfwc --target=hydrate` ✓ + router boot switch (leaf routes) ✓ + toolchain wiring (serve-protocol target token + hydrate client bundle + `data-otfw-hydrate` sentinel in `otfw serve`/`--ssg`) ✓ + **dual component (build/adopt via `isHydrating() && this.firstChild`; server props re-applied on adopt; per-component mismatch → CSR rebuild)** ✓ + **`nav` config (spa/mpa) + `<Link reload>`** ✓ + ssg→hydrate, router-boot, serve-e2e & real-browser (CDP) hydration e2e (leaf page + component island + prop island) tests ✓ |
 | **2.5** | **compiler-driven rich data hydration (§3.7)** — `ssgComponent` serializes each island's JSON-safe props into the `<script id="__otfw_h">` payload (`data-h` ids); the hydrate-target constructor reads `hydrationProps(this)` and initializes prop signals from the rich values (objects/arrays), no attribute round-trip, no flash. Payload injection in `otfw serve`/`--ssg`. ssg-collector + reader unit tests, codegen tests, and a real-browser (CDP) object-prop island e2e ✓ |
-| **2.1** | variable-region markers (`{children}`, lists, conditionals) → **layout-chain / `{children}`-slot adoption** + list/conditional hydration |
+| **2.1a** | **keyed-list hydration** ✓ — server brackets the region with `<!--[-->…<!--]-->`; `hydrate.rs` emits an adopt-item walk (claims each item root off the shared cursor) + a CSR build-item fn, and `hydrateList` seeds the keyed reconcile from the adopted `{sig, node}` pairs so later data changes build/move/remove with no first-paint flash. ssg-marker + codegen tests, an ssg→hydrate happy-dom round-trip, and a real-browser (CDP) list adopt + reconcile e2e ✓ |
+| **2.1b** | remaining variable regions → **conditional / dynamic-node** adoption, then **layout-chain / `{children}`-slot** adoption (cross-module cursor threading) |
 | **2.2** | per-component island recovery wired into the dev overlay |
 | **2.3** _(deferred)_ | lazy/partial island directives (`client:idle` / `visible` / `media`) — leveraging the custom-element lifecycle. **Not in Phase 2**; revisited once core hydration is solid. |
 
@@ -352,10 +357,13 @@ whitespace nodes, double mounts). The bar:
   and cleared in `finally`, so there is nothing concurrent to sequence.
 - **Navigation model** (§0, §7) — SSG/SSR default to SPA (client router); MPA is the
   always-available substrate, selectable via `nav` config.
+- **List region markers + reconcile-from-N adoption** (§3.1, 2.1a) — `<!--[-->…<!--]-->`
+  bracket the region; `hydrateList` adopts each item root off the shared cursor and seeds
+  the keyed reconcile, so post-hydration data changes build/move/remove with no flash.
 
 **Open:**
 
-- List/conditional region markers and their reconcile-from-N adoption (2.1).
+- Conditional / dynamic-node region markers and their swap-on-branch adoption (2.1b).
 - MPA-only build optimization: when `nav: "mpa"`, components never client-build, so the
   build arm is dead and `hydrate.rs` could emit pure-adopt components (smaller bundle).
 

@@ -18,14 +18,17 @@ import {
   defineSSG,
   endHydrationCollect,
   ssgComponent,
+  ssgList,
   ssgText,
 } from "../server/ssg-runtime.js";
 import {
   __resetHydrationPayload,
+  bindList,
   bindText,
   claimElement,
   claimText,
   cursor,
+  hydrateList,
   hydrationProps,
   skipNode,
 } from "./index.js";
@@ -167,5 +170,55 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
       payloadScript.remove();
       __resetHydrationPayload();
     }
+  });
+
+  // Phase 2.1: a keyed list region hydrates. The server brackets it with `<!--[-->…<!--]-->`;
+  // the Hydrate factory adopts each item's server node (no rebuild), then a reactive change
+  // reconciles from that adopted state — kept items keep their identity, new items build.
+  const listSource =
+    "export default function P(){ let items=$state([1,2,3]);" +
+    " return <div><button onclick={() => items = [...items, items.length+1]}>add</button>" +
+    "<ul>{items.map(x => <li>item {x}</li>)}</ul></div>; }";
+
+  test("the Hydrate factory adopts a server list region and reconciles from it with no flash", () => {
+    // 1. Server render (SSG) → the list is bracketed by region markers.
+    const ssgFactory = loadModule(compile(listSource, "ssg"), { signal, ssgText, ssgList }).default;
+    const html = ssgFactory();
+    expect(html).toContain("<!--[-->"); // list region opens
+    expect(html).toContain("<!--]-->"); // …and closes
+    expect(html).toMatch(/<li>item <!--\$-->1<!--\/--><\/li>/); // one root node per item
+
+    // 2. Put it in the DOM and snapshot the three server <li> nodes.
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const ul = container.querySelector("ul");
+    const serverItems = Array.from(ul.querySelectorAll("li"));
+    expect(serverItems.map((li) => li.textContent)).toEqual(["item 1", "item 2", "item 3"]);
+
+    // 3. Hydrate over the existing container.
+    const mod = loadModule(compile(listSource, "hydrate"), {
+      signal,
+      bindText,
+      bindList,
+      hydrateList,
+      cursor,
+      claimElement,
+      claimText,
+      skipNode,
+    });
+    mod.hydrate(container);
+
+    // 4. Adoption — the three <li> were claimed, not re-created (same identities, no flash).
+    const afterHydrate = Array.from(ul.querySelectorAll("li"));
+    expect(afterHydrate.length).toBe(3);
+    for (let i = 0; i < 3; i++) expect(afterHydrate[i]).toBe(serverItems[i]);
+
+    // 5. Reactivity reconciles from the adopted state: clicking "add" appends a fourth
+    //    item (built via the CSR item fn), and the three adopted nodes keep their identity.
+    container.querySelector("button").click();
+    const afterAdd = Array.from(ul.querySelectorAll("li"));
+    expect(afterAdd.length).toBe(4);
+    for (let i = 0; i < 3; i++) expect(afterAdd[i]).toBe(serverItems[i]); // kept, not rebuilt
+    expect(afterAdd[3].textContent).toBe("item 4"); // newly built, in order before the anchor
   });
 });

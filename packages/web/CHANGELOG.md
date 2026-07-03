@@ -4,6 +4,17 @@
 
 ### Added
 
+- **Keyed-list hydration** (`docs/HYDRATION.md` §3.1 / phasing 2.1a): a server-rendered
+  `{items.map(...)}` region now *adopts* instead of rebuilding. SSG brackets the region
+  with `<!--[-->…<!--]-->` markers; the Hydrate codegen emits an adopt-item walk (claiming
+  each item's root node off the shared cursor) plus a CSR build-item function, and the new
+  `hydrateList` runtime helper seeds the keyed reconcile from the adopted `{signal, node}`
+  pairs — so the first paint claims the server `<li>`s with no flash, and a later data
+  change builds/moves/removes items from that adopted state (kept items keep their identity).
+  The closing `<!--]-->` becomes the reconcile anchor. `bindList` is refactored to share the
+  reconcile effect (`reconcileList`) with `hydrateList`. New runtime API: `hydrateList`,
+  `claimListStart`/`claimListEnd`, `LIST_START`/`LIST_END`. A list-containing page that
+  previously fell back to a CSR-only build now gets a full `hydrate` factory.
 - **Compiler-driven rich data hydration** (`docs/HYDRATION.md` §3.7): a server-rendered
   island's props now cross to the client through a serialized payload — real JS values
   (objects, arrays, numbers), not lossy string attributes. During SSR/SSG, `ssgComponent`

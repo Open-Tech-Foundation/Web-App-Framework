@@ -171,6 +171,12 @@ const PROBE = `(() => {
       try { const p = JSON.parse(s.textContent); return p[+stepperHost.getAttribute('data-h')].config; }
       catch { return 'PARSE_ERROR'; }
     })(),
+    // list region (Phase 2.1): each server <li> should be adopted (carry the __server tag),
+    // and a reactive change reconciles from that adopted state.
+    listItems: Array.from(document.querySelectorAll('#app ul.items li')).map((li) => ({
+      text: norm(li),
+      server: !!li.__server,
+    })),
   };
 })()`;
 
@@ -197,7 +203,7 @@ async function run(port) {
     // ── 1. Adoption — the server DOM was claimed, not rebuilt ───────────────────
     const s = await evalJS(client, PROBE);
     assert(s.hasSentinel, "#app carries the data-otfw-hydrate sentinel (SSR shell)");
-    assert(s.buttonCount === 2, "two <button>s (page counter + component) — nothing duplicated");
+    assert(s.buttonCount === 3, "three <button>s (page counter + component + list 'add') — nothing duplicated");
     assert(s.removedServer === 0, "no server-rendered node was removed (no CSR rebuild)");
     assert(s.mainIsServer, "the live <main> is the server-rendered node (adopted)");
     assert(s.incIsServer, "the page's counter <button> is the server-rendered node (adopted)");
@@ -218,15 +224,34 @@ async function run(port) {
     );
     assert(s.stepperText === "Steps n=7", "the constructor read the object prop at upgrade (config.label + $state 7)");
 
-    // ── 2. Interactivity is live on both adopted islands ────────────────────────
+    // ── 1c. The list region self-adopted (Phase 2.1) ────────────────────────────
+    assert(s.listItems.length === 3, "the server rendered three <li> items");
+    assert(
+      s.listItems.every((it, i) => it.text === `item ${i + 1}`),
+      "the list items carry their server-rendered text",
+    );
+    assert(s.listItems.every((it) => it.server), "every <li> is a server node (adopted, not rebuilt)");
+
+    // ── 2. Interactivity is live on both adopted islands + the list ─────────────
     await evalJS(client, `document.querySelector('#app main > button').click()`);
     await evalJS(client, `document.querySelector('#app .stepper').click()`);
+    await evalJS(client, `document.querySelector('#app button.add').click()`); // append a 4th item
     await sleep(50);
     const after = await evalJS(client, PROBE);
     assert(after.countText === "count 1", "clicking the page button increments its signal");
     assert(after.incIsServer, "the page button is still the same adopted node after the update");
     assert(after.stepperText === "Steps n=8", "clicking the component button increments its own signal (prop intact)");
     assert(after.stepperBtnIsServer, "the component button is still the same adopted node");
+    // The list reconciled from the adopted state: the three server <li> stayed (still tagged),
+    // and a fourth was built and appended — no server node was torn out.
+    assert(after.listItems.length === 4, "clicking 'add' reconciled a fourth <li> into the list");
+    assert(
+      after.listItems.slice(0, 3).every((it) => it.server),
+      "the three adopted <li> kept their identity through reconcile (no rebuild)",
+    );
+    assert(after.listItems[3].text === "item 4", "the appended <li> built with the right text");
+    // A rebuild-on-reconcile would replaceChildren() the <ul>, tearing out the three tagged
+    // server <li> (removedServer += 3). It stays 0 → the originals were kept, a 4th appended.
     assert(after.removedServer === 0, "reactivity updated in place — still no server node removed");
 
     client.close();

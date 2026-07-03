@@ -430,8 +430,13 @@ impl<'a> Emitter<'a> {
             None => String::new(),
         };
         self.server.insert("ssgList");
+        // Bracket the list with region markers (docs/HYDRATION.md §3.1) so the client can
+        // find the variable region's boundary to reconcile from N. The closing `<!--]-->`
+        // becomes the reconcile anchor on hydration; static SSG output treats them as inert
+        // comments. Each item renders to one root node (bare-text items keep their own
+        // `<!--$-->…<!--/-->` markers), so no per-item separator is needed.
         format!(
-            "ssgList({}, (__it{n}, __idx{n}) => {{ const {item_param} = {{ value: __it{n} }}; {idx_decl}return {item_html}; }})",
+            "\"<!--[-->\" + ssgList({}, (__it{n}, __idx{n}) => {{ const {item_param} = {{ value: __it{n} }}; {idx_decl}return {item_html}; }}) + \"<!--]-->\"",
             self.code(source),
             n = n,
             item_param = item_param,

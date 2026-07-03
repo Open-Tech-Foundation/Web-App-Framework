@@ -517,6 +517,27 @@ pub(crate) fn emit_module_with_adopt(
     emit_module_inner(components, module_stmts, module_exprs, views)
 }
 
+/// Emit a standalone build function for a **list item** — `function name(itemSig, index)
+/// { …; return root; }` — reusing the full CSR build machinery. The hydrate backend calls
+/// this for the `renderItem` its list-reconcile effect needs when items appear *after*
+/// first paint (adoption can only claim server nodes, it can't build new ones). Returns
+/// the function's source lines. The same item subtree is also built in the component/page's
+/// own CSR arm, so its helper imports are already covered by that module's header. `base`
+/// is set to the (unique) `fn_name` so any nested list/dynamic builders inside get
+/// collision-free names within the hydrate factory's scope.
+pub(crate) fn emit_build_item_fn(
+    lowered: &Lowered,
+    fn_name: &str,
+    item: &ViewNode,
+    item_param: &str,
+    index_param: Option<&str>,
+) -> Vec<String> {
+    let mut e = Emitter::new(lowered, Disposal::None);
+    e.base = fn_name.to_string();
+    e.build_item_fn(fn_name, item, item_param, index_param);
+    e.lines
+}
+
 fn emit_module_inner(
     components: &[Lowered],
     module_stmts: &[BodyItem],

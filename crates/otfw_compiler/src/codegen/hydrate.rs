@@ -17,17 +17,19 @@
 //! `this.firstChild` alone can't tell a server-rendered host from a client-`createElement`'d
 //! one that was handed call-site children (§3.4). csr stays a build-only backend — it only
 //! splices the adopt body this module hands it (`ComponentView::Adopt`) behind the switch
-//! (plus the mismatch-recovery scaffold); the adopt body itself is emitted here. A view
-//! this backend can't adopt yet (lists, conditionals, `{children}`, fragments) falls back:
-//! pages get no `hydrate` export (the router rebuilds via CSR); components get
-//! `ComponentView::RebuildIfServerChildren` (discard server DOM + build).
+//! (plus the mismatch-recovery scaffold); the adopt body itself is emitted here. Keyed
+//! **lists** adopt via `hydrateList` (Phase 2.1 — region markers `<!--[-->…<!--]-->`, an
+//! adopt-item walk + a CSR build-item fn seed the reconcile). A view this backend can't
+//! adopt yet (conditionals, `{children}`, fragments) falls back: pages get no `hydrate`
+//! export (the router rebuilds via CSR); components get `ComponentView::RebuildIfServerChildren`
+//! (discard server DOM + build).
 
 use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
 use otfw_ir::ExpressionId;
 
 use crate::codegen::csr::{
-    self, event_options, is_event, is_listener, js_string, ComponentView,
+    self, emit_build_item_fn, event_options, is_event, is_listener, js_string, ComponentView,
 };
 use crate::codegen::tags;
 use crate::lower::{BodyItem, ExprTable, Lowered, SignalDecl};
@@ -55,6 +57,7 @@ struct Uses {
     claim_element: bool,
     claim_text: bool,
     skip_node: bool,
+    hydrate_list: bool,
 }
 
 fn merge_uses(into: &mut Uses, from: &Uses) {
@@ -62,6 +65,7 @@ fn merge_uses(into: &mut Uses, from: &Uses) {
     into.claim_element |= from.claim_element;
     into.claim_text |= from.claim_text;
     into.skip_node |= from.skip_node;
+    into.hydrate_list |= from.hydrate_list;
 }
 
 /// Emit a whole module for the **hydrate target**. Calls `csr` to emit the build
@@ -164,6 +168,9 @@ fn claim_import(uses: &Uses) -> String {
     if uses.skip_node {
         names.push("skipNode");
     }
+    if uses.hydrate_list {
+        names.push("hydrateList");
+    }
     if names.is_empty() {
         return String::new();
     }
@@ -182,6 +189,11 @@ struct Emitter<'a> {
     /// before the router rebuilds — on success the page's effects live for its lifetime).
     /// `None` inlines with no disposer collection (unused for the emitted factories).
     sink: Option<&'static str>,
+    /// Prefix for generated list adopt/build item functions (the component export name),
+    /// mirroring `csr`'s `base` so names are stable and collision-free.
+    base: String,
+    /// Monotonic counter for unique list item-function names within a factory scope.
+    list_counter: u32,
 }
 
 impl<'a> Emitter<'a> {
@@ -193,6 +205,8 @@ impl<'a> Emitter<'a> {
             counter: 0,
             uses: Uses::default(),
             sink,
+            base: lowered.ir.id.export.clone(),
+            list_counter: 0,
         }
     }
 
@@ -461,6 +475,14 @@ impl<'a> Emitter<'a> {
                 self.bind(format!("bindText({var}, () => ({}))", self.code(*expr)));
                 var
             }
+            // A keyed list region (`array.map`, docs/HYDRATION.md §3.1/2.1): the server
+            // brackets it with `<!--[-->…<!--]-->`. Adopt each item's server node, seed the
+            // reconcile cache, then wire the same keyed-reconcile effect CSR uses — so later
+            // data changes build/move/remove with no first-paint flash.
+            ViewNode::List { source, item_param, index_param, item, key } => {
+                self.emit_list(cur, *source, item_param, index_param.as_deref(), item, *key);
+                String::new()
+            }
             unsupported => {
                 self.errors.push(format!(
                     "hydrate: {} is not supported yet (Phase 2.1)",
@@ -469,6 +491,78 @@ impl<'a> Emitter<'a> {
                 String::new()
             }
         }
+    }
+
+    /// Adopt a keyed list region off the shared cursor `cur` (positioned at the opening
+    /// `<!--[-->` marker). Emits two item functions into the current scope — an **adopt**
+    /// walk (`{base}_hitem{n}`, claims one server item off the cursor) and a CSR **build**
+    /// (`{base}_item{n}`, for items that appear after first paint) — then a `hydrateList`
+    /// call that seeds the reconcile cache from the adopted nodes and wires the ongoing
+    /// keyed-reconcile effect (its disposer collected like any other binding).
+    fn emit_list(
+        &mut self,
+        cur: &str,
+        source: ExpressionId,
+        item_param: &str,
+        index_param: Option<&str>,
+        item: &ViewNode,
+        key: Option<ExpressionId>,
+    ) {
+        let n = self.list_counter;
+        self.list_counter += 1;
+        let adopt_fn = format!("{}_hitem{}", self.base, n);
+        let build_fn = format!("{}_item{}", self.base, n);
+
+        // The adopt-item walk (claims one server item subtree off the shared cursor).
+        self.emit_adopt_item_fn(&adopt_fn, item, item_param, index_param);
+        // The CSR build for items reconciled in *after* first paint — the same subtree the
+        // component/page's own CSR arm builds, so no new helper imports are introduced.
+        for l in emit_build_item_fn(self.lowered, &build_fn, item, item_param, index_param) {
+            self.line(l);
+        }
+
+        let source_code = self.code(source);
+        let key_fn = match key {
+            Some(k) => format!("({item_param}, _index) => ({})", self.code(k)),
+            None => "undefined".to_string(),
+        };
+        self.uses.hydrate_list = true;
+        self.bind(format!(
+            "hydrateList({cur}, () => ({source_code}), {adopt_fn}, {build_fn}, {key_fn})"
+        ));
+    }
+
+    /// Emit a local `function {fn_name}(__ic, {item_param}, {index}) { …; return root; }`
+    /// that *adopts* one list item's server subtree off the cursor `__ic` (the shared list
+    /// cursor — claiming the item root advances it to the next item). Closes over the
+    /// component/page signals (emitted inline in the factory scope). Inner item effects are
+    /// not collected — they live and die with the item node (mirrors csr's `build_fn`).
+    fn emit_adopt_item_fn(
+        &mut self,
+        fn_name: &str,
+        item: &ViewNode,
+        item_param: &str,
+        index_param: Option<&str>,
+    ) {
+        let saved_lines = std::mem::take(&mut self.lines);
+        let saved_counter = self.counter;
+        let saved_sink = self.sink;
+        self.counter = 0;
+        self.sink = None;
+
+        let root = self.emit_node("__ic", item);
+
+        let body = std::mem::replace(&mut self.lines, saved_lines);
+        self.counter = saved_counter;
+        self.sink = saved_sink;
+
+        let index = index_param.unwrap_or("_index");
+        self.line(format!("function {fn_name}(__ic, {item_param}, {index}) {{"));
+        for l in &body {
+            self.line(format!("  {l}"));
+        }
+        self.line(format!("  return {root};"));
+        self.line("}".to_string());
     }
 
     /// Wire a prop onto an already-claimed **host element**. Static attributes are in
@@ -772,9 +866,41 @@ mod tests {
     }
 
     #[test]
-    fn list_page_emits_csr_only_with_a_warning() {
+    fn list_page_adopts_the_region_with_a_seeded_reconcile() {
+        // A keyed list region hydrates (Phase 2.1): the page gets a `hydrate` factory that
+        // claims each item off the shared cursor via an adopt-item fn, keeps a CSR build-item
+        // fn for items added after first paint, and seeds `hydrateList` with both.
         let m = emit("export default function P(){ return <ul>{[1,2,3].map(x => <li>{x}</li>)}</ul>; }");
-        assert!(!m.code.contains("export function hydrate"), "no hydrate export:\n{}", m.code);
-        assert!(m.errors.iter().any(|e| e.contains("list")), "warning: {:?}", m.errors);
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        assert!(hyd.contains("export function hydrate(__root)"), "page hydrate factory:\n{}", hyd);
+        // Adopt-item fn: claims the <li> and its text hole off the shared cursor `__ic`.
+        assert!(hyd.contains("function default_hitem0(__ic, x, _index) {"), "adopt-item fn:\n{}", hyd);
+        assert!(hyd.contains("const el0 = claimElement(__ic, \"li\");"), "adopt claims item root:\n{}", hyd);
+        assert!(hyd.contains("bindText(t2, () => (x.value));"), "adopt wires the item text hole:\n{}", hyd);
+        // Build-item fn: a real CSR builder (for items reconciled in after first paint).
+        assert!(hyd.contains("function default_item0(x, _index) {"), "build-item fn:\n{}", hyd);
+        assert!(hyd.contains("document.createElement(\"li\")"), "build-item builds:\n{}", hyd);
+        // The reconcile is seeded with both, over the list's shared cursor.
+        assert!(
+            hyd.contains("hydrateList(__c2, () => ([1,2,3]), default_hitem0, default_item0, undefined)"),
+            "hydrateList call:\n{}",
+            hyd
+        );
+        assert!(
+            m.code.contains("import { cursor, claimElement, claimText, hydrateList }"),
+            "import:\n{}",
+            m.code
+        );
+    }
+
+    #[test]
+    fn keyed_list_threads_its_key_fn_through() {
+        let m = emit(
+            "export default function P(){ return <ul>{[1,2].map(x => <li key={x}>{x}</li>)}</ul>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        assert!(hyd.contains("(x, _index) => (x)"), "key fn threaded to hydrateList:\n{}", hyd);
     }
 }
