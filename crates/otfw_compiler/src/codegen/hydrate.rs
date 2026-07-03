@@ -23,10 +23,12 @@
 //! **conditionals** adopt via `hydrateChild` (an adopt fn claims the rendered branch, a CSR
 //! build fn swaps it on change) — Phase 2.1. A page/layout `{children}` slot adopts via the
 //! router-threaded children thunk (`hydrateAt(cursor, props)` + a `hydrate(root, props)`
-//! wrapper, so one cursor threads the whole layout chain — Phase 2.1c). A view this backend
-//! can't adopt yet (fragments / multi-node roots, a component's light-DOM `{children}`) falls
-//! back: pages get no `hydrate` export (the router rebuilds via CSR); components get
-//! `ComponentView::RebuildIfServerChildren` (discard server DOM + build).
+//! wrapper, so one cursor threads the whole layout chain — Phase 2.1c). A *component's*
+//! light-DOM `{children}` slot adopts too (Phase 2.1d): the component steps over its slot
+//! (`skipSlot`) while the composing parent locates the slot and adopts the slotted content's
+//! reactivity (`hydrateSlot`), since that content is the parent's JSX. A view this backend
+//! can't adopt yet (fragments / multi-node roots) falls back: pages get no `hydrate` export
+//! (the router rebuilds via CSR); components get `ComponentView::RebuildIfServerChildren`.
 
 use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
@@ -65,6 +67,8 @@ struct Uses {
     hydrate_list: bool,
     hydrate_child: bool,
     claim_region: bool,
+    skip_slot: bool,
+    hydrate_slot: bool,
 }
 
 fn merge_uses(into: &mut Uses, from: &Uses) {
@@ -75,6 +79,8 @@ fn merge_uses(into: &mut Uses, from: &Uses) {
     into.hydrate_list |= from.hydrate_list;
     into.hydrate_child |= from.hydrate_child;
     into.claim_region |= from.claim_region;
+    into.skip_slot |= from.skip_slot;
+    into.hydrate_slot |= from.hydrate_slot;
 }
 
 /// Emit a whole module for the **hydrate target**. Calls `csr` to emit the build
@@ -186,6 +192,12 @@ fn claim_import(uses: &Uses) -> String {
     if uses.claim_region {
         names.push("claimRegionStart");
         names.push("claimRegionEnd");
+    }
+    if uses.skip_slot {
+        names.push("skipSlot");
+    }
+    if uses.hydrate_slot {
+        names.push("hydrateSlot");
     }
     if names.is_empty() {
         return String::new();
@@ -335,17 +347,11 @@ impl<'a> Emitter<'a> {
     /// wiring reactivity onto the adopted nodes. Mirrors csr's component plumbing —
     /// prop aliases/snapshots/rest, signal decls, effects, `$expose`, `onCleanup` — but
     /// with claims instead of `createElement`, and no `{children}` capture (the slotted
-    /// children are already in place). `onMount` is shared (csr emits it after the
-    /// switch). A view it can't walk pushes an error → caller falls back to rebuild.
+    /// children are already in place — the component steps over its `{children}` slot via
+    /// `skipSlot`, and the *parent* adopts the slotted content's reactivity, §2.1d). `onMount`
+    /// is shared (csr emits it after the switch). A view it can't walk pushes an error →
+    /// caller falls back to rebuild.
     fn component_adopt(&mut self, lowered: &Lowered) -> String {
-        // A component that takes `{children}` renders its slot inline on the server; the
-        // children-region adoption (markers) is Phase 2.1. The `ViewNode::Children` in
-        // its view would already error, but bail early with a clearer reason.
-        if lowered.children_local.is_some() {
-            self.errors
-                .push("hydrate: components with a `{children}` slot are not adoptable yet (Phase 2.1)".into());
-            return String::new();
-        }
         self.emit_prop_aliases();
         self.emit_prop_snapshots();
         self.emit_rest();
@@ -464,11 +470,14 @@ impl<'a> Emitter<'a> {
                 }
                 var
             }
-            // A child component: claim its host element and wire any dynamic props onto
-            // it, but do NOT recurse — the component self-adopts its own children when it
-            // upgrades (its `connectedCallback` runs at `define`, before this walk), so
-            // claiming the host advances the cursor past its whole subtree.
-            ViewNode::Component { name, props, .. } => {
+            // A child component: claim its host element and wire any dynamic props onto it,
+            // but do NOT recurse into its *own* structure — the component self-adopts that when
+            // it upgrades (its `connectedCallback` runs at `define`, before this walk), so
+            // claiming the host advances the cursor past its whole subtree. Slotted **children**
+            // (2.1d) are the exception: they're *this* view's JSX, server-rendered inside the
+            // host at the component's `{children}` slot, so we own their reactivity — locate the
+            // slot (`hydrateSlot`) and adopt them there.
+            ViewNode::Component { name, props, children } => {
                 if name.contains('.') {
                     self.errors.push(format!(
                         "hydrate: member-expression component <{name}> is not supported (SPEC §4.0.1)"
@@ -482,6 +491,9 @@ impl<'a> Emitter<'a> {
                 self.line(format!("const {var} = claimElement({cur}, {tag_expr});"));
                 for prop in props {
                     self.emit_component_prop(&var, prop);
+                }
+                if !children.is_empty() {
+                    self.emit_slotted_children(&var, children);
                 }
                 var
             }
@@ -528,6 +540,14 @@ impl<'a> Emitter<'a> {
                 self.line(format!("claimRegionStart({cur});"));
                 self.line(format!("{param}.children({cur});"));
                 self.line(format!("claimRegionEnd({cur});"));
+                String::new()
+            }
+            // A *component's* light-DOM `{children}` slot (2.1d): the slotted nodes are the
+            // parent's JSX, whose reactivity the parent wires via `hydrateSlot`. Here the
+            // component just steps its own cursor over the `<!--c[-->…<!--c]-->` region.
+            ViewNode::Children if self.lowered.children_local.is_some() => {
+                self.uses.skip_slot = true;
+                self.line(format!("skipSlot({cur});"));
                 String::new()
             }
             unsupported => {
@@ -670,6 +690,27 @@ impl<'a> Emitter<'a> {
         self.line("}".to_string());
     }
 
+    /// Adopt a child component's slotted children (2.1d): these are *this* view's JSX,
+    /// server-rendered inside the component `host` at its `{children}` slot, so their
+    /// reactivity is ours to wire. `hydrateSlot` locates the slot by its `<!--c[-->` marker
+    /// within the host and hands us a cursor at the first slotted node; the walk claims them
+    /// there. Disposers collect into the current sink (the enclosing page/component), so a
+    /// mid-walk mismatch or a disconnect tears them down like any other binding.
+    fn emit_slotted_children(&mut self, host: &str, children: &[ViewNode]) {
+        self.uses.hydrate_slot = true;
+        let slot_cur = self.fresh("__sc");
+        let saved = std::mem::take(&mut self.lines);
+        for child in children {
+            self.emit_node(&slot_cur, child);
+        }
+        let body = std::mem::replace(&mut self.lines, saved);
+        self.line(format!("hydrateSlot({host}, ({slot_cur}) => {{"));
+        for l in &body {
+            self.line(format!("  {l}"));
+        }
+        self.line("});".to_string());
+    }
+
     /// Wire a prop onto an already-claimed **host element**. Static attributes are in
     /// the server HTML, so they are skipped; only dynamic attributes, events, and `ref`
     /// produce code.
@@ -761,11 +802,12 @@ impl<'a> Emitter<'a> {
 }
 
 fn node_kind(node: &ViewNode) -> &'static str {
-    // Lists, conditionals, and page/layout `{children}` slots now have their own adopt arms
-    // (Phase 2.1). A bare `Children` reaching here is a *component's* light-DOM slot (no
-    // `page_param`), which still falls back; fragments/multi-node roots aren't adopted yet.
+    // Lists, conditionals, and `{children}` slots (page/layout via a thunk, component via
+    // skipSlot) all have their own adopt arms now (Phase 2.1). Only fragments / multi-node
+    // roots remain unadopted; a `Children` reaching here has neither a page_param nor a
+    // children_local (a malformed slot).
     match node {
-        ViewNode::Children => "component `{children}` slot",
+        ViewNode::Children => "`{children}` slot outside a page/layout/component",
         ViewNode::Fragment(_) => "fragment / multi-node root",
         _ => "this construct",
     }
@@ -914,28 +956,40 @@ mod tests {
     }
 
     #[test]
-    fn component_with_children_slot_falls_back_to_rebuild() {
-        // A component that takes `{children}` can't adopt yet → csr emits a build-only
-        // class. On client navigation it must capture the call-site children *before*
-        // clearing; only the first-paint hydration pass (server DOM is the rendered view,
-        // not the slot children) discards them. So the clear is gated on `isHydrating()`.
+    fn component_with_children_slot_adopts_stepping_over_its_slot() {
+        // A component that takes `{children}` now adopts (Phase 2.1d): the dual class's adopt
+        // arm claims the component's own structure and steps its cursor over the `{children}`
+        // slot via `skipSlot` (the slotted content is the *parent's* JSX — the parent wires its
+        // reactivity, §2.1d). The build arm still captures the call-site children for client nav.
         let m = emit_component(
-            "export default function Card({ children }){ return <div class=\"card\">{children}</div>; }",
+            "export default function Card({ children }){ return <div class=\"card\"><b>x</b>{children}</div>; }",
         );
-        assert!(
-            m.code.contains("if (isHydrating() && this.firstChild) this.replaceChildren();"),
-            "server-DOM discard gated on the hydration flag:\n{}",
-            m.code
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // Adopt arm: walk the component's own structure, step over the slot.
+        assert!(m.code.contains("if (isHydrating() && this.firstChild) {"), "dual switch:\n{}", m.code);
+        assert!(m.code.contains("const __c0 = cursor(this);"), "adopt walk present:\n{}", m.code);
+        assert!(m.code.contains("claimElement(__c0, \"div\");"), "claim the view root:\n{}", m.code);
+        assert!(m.code.contains("skipSlot(__c2);"), "step over the {{children}} slot:\n{}", m.code);
+        // Build arm (client nav) still captures the call-site children.
+        assert!(m.code.contains("const children = Array.from(this.childNodes);"), "build-arm capture:\n{}", m.code);
+        assert!(m.code.contains("import { cursor, claimElement, skipNode, skipSlot }"), "skipSlot imported:\n{}", m.code);
+    }
+
+    #[test]
+    fn parent_adopts_a_components_slotted_children() {
+        // The other half of §2.1d: a page composing `<Card>…reactive JSX…</Card>` owns the
+        // slotted content's reactivity, so its adopt walk claims the host then adopts the
+        // children into the component's slot via `hydrateSlot` (which locates `<!--c[-->`).
+        let m = emit(
+            "import Card from \"./Card\"; export default function P(){ let n=$state(0); return <main><Card><button onclick={() => n++}>c {n}</button></Card></main>; }",
         );
-        // The unconditional clear (which would lose call-site children on nav) must be gone.
-        assert!(
-            !m.code.contains("try {\n    if (this.firstChild) this.replaceChildren();"),
-            "no unconditional pre-capture clear:\n{}",
-            m.code
-        );
-        assert!(m.code.contains("const children = Array.from(this.childNodes);"), "capture:\n{}", m.code);
-        assert!(!m.code.contains("const __c0 = cursor(this);"), "no adopt walk:\n{}", m.code);
-        assert!(m.errors.iter().any(|e| e.contains("children")), "warning: {:?}", m.errors);
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        assert!(hyd.contains("claimElement(__c2, Card.tag);"), "claim the component host:\n{}", hyd);
+        assert!(hyd.contains("hydrateSlot(c3, (__sc4) => {"), "adopt slotted children in the host slot:\n{}", hyd);
+        assert!(hyd.contains("const el5 = claimElement(__sc4, \"button\");"), "claim the slotted button:\n{}", hyd);
+        assert!(hyd.contains("el5.onclick = () => n.value++;"), "wire the parent's reactivity onto it:\n{}", hyd);
+        assert!(m.code.contains("hydrateSlot"), "hydrateSlot imported:\n{}", m.code);
     }
 
     #[test]

@@ -187,6 +187,12 @@ const PROBE = `(() => {
     headerIsServer: (() => { const h = document.querySelector('#app .layout > .site-header'); return !!(h && h.__server); })(),
     headerText: norm(document.querySelector('#app .site-header')),
     pageInsideLayout: !!document.querySelector('#app .layout > main'), // page nested at the slot
+    // component {children} slot (Phase 2.1d): a <Card> island with a slotted button. The Card
+    // adopts its OWN structure/toggle (skipSlot), and the PAGE adopts the slotted button
+    // (hydrateSlot) — its reactivity (count) is the page's, not the card's.
+    cardIsServer: (() => { const c = document.querySelector('#app .card'); return !!(c && c.__server); })(),
+    cardToggleText: norm(document.querySelector('#app .card-toggle')),
+    slotted: (() => { const b = document.querySelector('#app .slotted'); return b ? { text: norm(b), server: !!b.__server } : null; })(),
   };
 })()`;
 
@@ -213,12 +219,18 @@ async function run(port) {
     // ── 1. Adoption — the server DOM was claimed, not rebuilt ───────────────────
     const s = await evalJS(client, PROBE);
     assert(s.hasSentinel, "#app carries the data-otfw-hydrate sentinel (SSR shell)");
-    assert(s.buttonCount === 4, "four <button>s (counter + component + list 'add' + 'toggle') — nothing duplicated");
+    assert(s.buttonCount === 6, "six <button>s (counter + stepper + 'add' + 'toggle' + card-toggle + slotted) — nothing duplicated");
 
     // ── 1e. The layout chain self-adopted (Phase 2.1c) ──────────────────────────
     assert(s.layoutIsServer, "the layout <div.layout> is a server node (adopted, not rebuilt)");
     assert(s.headerIsServer && s.headerText === "E2E_LAYOUT", "the layout's static <header> adopted with its text");
     assert(s.pageInsideLayout, "the page's <main> is nested inside the layout's {children} slot");
+
+    // ── 1f. A component's own {children} slot self-adopted (Phase 2.1d) ─────────
+    assert(s.cardIsServer, "the <Card> island's <div.card> is a server node (adopted its own structure)");
+    assert(s.cardToggleText === "card 0", "the Card's own reactive state rendered (its $state, its skipSlot walk)");
+    assert(s.slotted && s.slotted.server, "the slotted <button> is a server node (adopted, not rebuilt)");
+    assert(s.slotted.text === "slotted 0", "the slotted button shows the parent's count (parent-owned reactivity)");
     assert(s.removedServer === 0, "no server-rendered node was removed (no CSR rebuild)");
     assert(s.mainIsServer, "the live <main> is the server-rendered node (adopted)");
     assert(s.incIsServer, "the page's counter <button> is the server-rendered node (adopted)");
@@ -252,13 +264,20 @@ async function run(port) {
     assert(s.condYes.server, "the conditional branch <p> is a server node (adopted, not rebuilt)");
     assert(s.condNo === null, "the untaken branch (<span>NO) is absent, as the server rendered");
 
-    // ── 2. Interactivity is live on both adopted islands + the list ─────────────
+    // ── 2. Interactivity is live on every adopted island + the list ─────────────
     await evalJS(client, `document.querySelector('#app main > button').click()`);
     await evalJS(client, `document.querySelector('#app .stepper').click()`);
     await evalJS(client, `document.querySelector('#app button.add').click()`); // append a 4th item
+    await evalJS(client, `document.querySelector('#app .card-toggle').click()`); // the Card's own state
+    await evalJS(client, `document.querySelector('#app .slotted').click()`); // parent's count via the slot
     await sleep(50);
     const after = await evalJS(client, PROBE);
-    assert(after.countText === "count 1", "clicking the page button increments its signal");
+    // The page counter and the slotted button share the page's `count` signal; clicking inc
+    // and the slotted button each once brings it to 2, updating both bound text nodes.
+    assert(after.countText === "count 2", "the page counter reflects both its own + the slotted click");
+    assert(after.slotted.text === "slotted 2", "the slotted button's parent-owned reactivity is live and shared");
+    assert(after.slotted.server, "the slotted button stayed the same adopted node through updates");
+    assert(after.cardToggleText === "card 1", "the Card's own button incremented its independent $state (skipSlot walk wired it)");
     assert(after.incIsServer, "the page button is still the same adopted node after the update");
     assert(after.stepperText === "Steps n=8", "clicking the component button increments its own signal (prop intact)");
     assert(after.stepperBtnIsServer, "the component button is still the same adopted node");

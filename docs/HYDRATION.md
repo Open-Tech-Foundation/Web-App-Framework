@@ -55,14 +55,14 @@ This is the SolidStart shape (fine-grained adopt, one artifact branches per inst
 expressed on Custom Elements. See §7 for the `nav` config that lets an app choose MPA, in
 which case components only ever adopt (the build arm is dead and can later be dropped).
 
-> **Implemented so far (2.0–2.1c):** leaf pages, standalone components, components *used*
-> in a page (the page claims the host; the component self-adopts), **keyed lists**
-> (`{items.map(...)}`), **conditionals / dynamic-node regions** (`{cond ? <A/> : <B/>}`,
-> `{cond && <X/>}`) — all bracketed by `<!--[-->…<!--]-->` — and **layout-chain routes** (a
-> layout's `{children}` slot is a region whose content is the nested route; one cursor threads
-> the whole chain via `hydrateAt`) all hydrate. **Not yet:** a *component* that takes a
-> light-DOM `{children}` slot, and fragment/multi-node route roots — both fall back to a clean
-> CSR build.
+> **Implemented so far (2.0–2.1d):** leaf pages, standalone components, components *used* in
+> a page, **keyed lists** (`{items.map(...)}`), **conditionals / dynamic-node regions**
+> (`{cond ? <A/> : <B/>}`, `{cond && <X/>}`), **layout-chain routes** (a layout's `{children}`
+> slot is a region whose content is the nested route; one cursor threads the chain via
+> `hydrateAt`), and a **component's light-DOM `{children}` slot** (the component steps over its
+> slot; the composing parent adopts the slotted content's reactivity, since that content is the
+> parent's JSX) all hydrate. **Not yet:** fragment / multi-node route roots (the adopt walk
+> assumes a single claimed root) — falls back to a clean CSR build.
 
 | Mode | Nav | First paint | Subsequent nav | Components |
 |---|---|---|---|---|
@@ -154,12 +154,16 @@ small (comments around dynamic regions only) and is the price of zero-flash adop
 hole is emitted as `<!--$-->value<!--/-->`. The `$`/`/` comment pair survives the HTML
 parser's text-node merging, so the hole is findable even when `value` is empty
 (`<!--$--><!--/-->` → the client synthesizes an empty text anchor) or adjacent to
-static text. **List, conditional, and `{children}`-slot regions** are bracketed by
+static text. **List, conditional, and layout `{children}` regions** are bracketed by
 `<!--[-->…<!--]-->` (Phase 2.1, _implemented_): the client claims the rendered content off
 the shared cursor and the closing `<!--]-->` becomes the reconcile/swap anchor. A list holds
 one item root per item; a conditional holds the one rendered branch (or nothing, for a falsy
 `&&` — an empty region, like an empty list); a layout's `{children}` slot holds the nested
-route's DOM, which the layout adopts by handing its cursor to a children thunk.
+route's DOM, which the layout adopts by handing its cursor to a children thunk. A **component's**
+light-DOM `{children}` slot uses **distinct** markers `<!--c[-->…<!--c]-->` (2.1d) so the
+composing parent can locate that slot inside the host — by scanning for the marker, independent
+of when the component upgrades — and adopt the slotted content (whose reactivity it owns), while
+the component itself steps over the slot.
 
 > **Hazard handled:** the HTML parser collapses/merges adjacent and empty text nodes
 > and trims whitespace. The `$`/`/` markers survive that; and because `ssg.rs`
@@ -307,7 +311,7 @@ hydration helper. Loader/query data (Phase 3) will ride the **same** channel.
 > **Not covered:** props whose values are genuinely non-serializable *and* visible (a live DOM
 > node, a class instance) still can't cross — but those aren't hydratable in any framework
 > without a custom (de)serializer, which is a Phase 3 concern. Structural region markers
-> (lists/conditionals/`{children}` done in 2.1a–2.1c) are the structural-region axis; data hydration is orthogonal
+> (lists/conditionals/`{children}` done in 2.1a–2.1d) are the structural-region axis; data hydration is orthogonal
 > to them.
 
 ---
@@ -321,6 +325,7 @@ hydration helper. Loader/query data (Phase 3) will ride the **same** channel.
 | **2.1a** | **keyed-list hydration** ✓ — server brackets the region with `<!--[-->…<!--]-->`; `hydrate.rs` emits an adopt-item walk (claims each item root off the shared cursor) + a CSR build-item fn, and `hydrateList` seeds the keyed reconcile from the adopted `{sig, node}` pairs so later data changes build/move/remove with no first-paint flash. ssg-marker + codegen tests, an ssg→hydrate happy-dom round-trip, and a real-browser (CDP) list adopt + reconcile e2e ✓ |
 | **2.1b** | **conditional / dynamic-node hydration** ✓ — the server brackets the rendered branch with `<!--[-->…<!--]-->`; `hydrate.rs` emits an adopt fn + a CSR build fn per branch, and `hydrateChild` claims the rendered branch (adopt closure) then swaps to a freshly-built branch on change (build closure), the closing marker as the swap anchor. A falsy `&&` adopts an empty region. codegen tests, an ssg→hydrate happy-dom round-trip, and a real-browser (CDP) adopt + swap-both-ways e2e ✓ |
 | **2.1c** | **layout-chain / `{children}`-slot hydration** ✓ — a page/layout emits `hydrateAt(cursor, props)` (walk) + a `hydrate(root, props)` wrapper; SSG brackets the `{children}` slot with `<!--[-->…<!--]-->`; the router's `hydrateRouteNode` threads one cursor through the chain, each layout handing its cursor to the nested route's adopt thunk at the slot. Codegen tests, a router chain-adopt unit test (+ non-adoptable-layout fallback), a compiled-layout ssg→hydrate happy-dom round-trip, and a real-browser (CDP) layout-chain e2e ✓ |
+| **2.1d** | **component `{children}`-slot hydration** ✓ — a component's light-DOM slot is bracketed by distinct `<!--c[-->…<!--c]-->` markers; the component steps over it (`skipSlot`) while the composing parent locates the slot by its marker (`hydrateSlot`) and adopts the slotted content's reactivity (which it owns). Order-independent of the component's upgrade (adoption only wires, never moves, nodes). Codegen tests (component skipSlot + parent hydrateSlot), a happy-dom parent-slot-adoption round-trip, and a real-browser (CDP) `<Card>`-with-slotted-button e2e ✓ |
 | **2.2** | per-component island recovery wired into the dev overlay |
 | **2.3** _(deferred)_ | lazy/partial island directives (`client:idle` / `visible` / `media`) — leveraging the custom-element lifecycle. **Not in Phase 2**; revisited once core hydration is solid. |
 
@@ -344,9 +349,10 @@ whitespace nodes, double mounts). The bar:
      reset/flash.
 
   The harness now also covers component islands + rich data (2.5), list & conditional
-  regions (2.1a/2.1b), and the **layout chain** (2.1c): the fixture wraps its page in a
-  layout, and the e2e asserts the layout's `<div.layout>`/`<header>` and the nested page all
-  adopt with `removedServer === 0` (no rebuild anywhere).
+  regions (2.1a/2.1b), the **layout chain** (2.1c), and a **component `{children}` slot**
+  (2.1d): the fixture wraps its page in a layout and includes a `<Card>` island with a slotted
+  button, and the e2e asserts the layout, the nested page, the card's own toggle, and the
+  parent-owned slotted button all adopt with `removedServer === 0` (no rebuild anywhere).
 
 ---
 
@@ -377,12 +383,14 @@ whitespace nodes, double mounts). The bar:
   `hydrateAt(cursor, props)` + a `hydrate(root, props)` wrapper; the `{children}` slot is a
   `<!--[-->…<!--]-->` region, and the router's `hydrateRouteNode` threads one cursor through
   the chain, each layout handing its cursor to the nested route's adopt thunk at the slot.
+- **Component `{children}`-slot adoption** (§3.1, 2.1d) — distinct `<!--c[-->…<!--c]-->`
+  markers; the component `skipSlot`s over its slot, the parent `hydrateSlot`s to locate it and
+  adopt the slotted content's reactivity. Order-independent (adoption only wires nodes).
 
 **Open:**
 
-- A **component's** light-DOM `{children}` slot (a `<Card>{…}</Card>` island) — distinct from
-  a layout slot; still falls back to rebuild.
-- **Fragment / multi-node route roots** — the adopt walk assumes a single claimed root node.
+- **Fragment / multi-node route roots** — the adopt walk assumes a single claimed root node;
+  a page/component whose view root is a fragment falls back to a clean CSR build.
 - MPA-only build optimization: when `nav: "mpa"`, components never client-build, so the
   build arm is dead and `hydrate.rs` could emit pure-adopt components (smaller bundle).
 

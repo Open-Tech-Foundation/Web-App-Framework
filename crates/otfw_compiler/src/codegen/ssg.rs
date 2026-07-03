@@ -333,9 +333,11 @@ impl<'a> Emitter<'a> {
                     };
                     format!("\"<!--[-->\" + {inner} + \"<!--]-->\"")
                 } else {
-                    // A component's light-DOM `{children}` — not hydratable yet (the component
-                    // falls back to rebuild), so no markers.
-                    "(__children ?? \"\")".to_string()
+                    // A component's light-DOM `{children}` slot (2.1d): bracket it with the
+                    // distinct `<!--c[-->…<!--c]-->` slot markers so the component can step
+                    // over it and the parent can locate + adopt the slotted content (whose
+                    // reactivity the parent owns). Inert for static SSG output.
+                    "\"<!--c[-->\" + (__children ?? \"\") + \"<!--c]-->\"".to_string()
                 }
             }
             ViewNode::List { source, item_param, index_param, item, key: _ } => {

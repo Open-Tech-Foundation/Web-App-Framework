@@ -4,6 +4,16 @@
 
 ### Added
 
+- **Component `{children}`-slot hydration** (`docs/HYDRATION.md` §3.1 / phasing 2.1d): a
+  component used *with* children (`<Card><button onclick=…/></Card>`) now hydrates instead of
+  falling back to a rebuild — the last structural region. SSG brackets a component's light-DOM
+  slot with **distinct** `<!--c[-->…<!--c]-->` markers; the component's adopt walk steps over
+  its slot with the new `skipSlot`, while the **composing parent** owns the slotted content's
+  reactivity (it's the parent's JSX) and adopts it via the new `hydrateSlot`, which locates the
+  slot by scanning the host for its marker. This is order-independent of when the component
+  upgrades, because adoption only wires (never moves) nodes — so a parent page and a
+  self-upgrading child island can co-adopt the same host's interleaved content. New runtime
+  API: `skipSlot`, `hydrateSlot`, `SLOT_START`/`SLOT_END`.
 - **Layout-chain / `{children}`-slot hydration** (`docs/HYDRATION.md` §3.2/§3.4 / phasing
   2.1c): a layout-wrapped route now *adopts* its whole server DOM instead of falling back to
   a CSR rebuild — the last structural region. A page/layout now emits `hydrateAt(cursor,

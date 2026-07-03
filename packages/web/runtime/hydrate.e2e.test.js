@@ -31,11 +31,17 @@ import {
   claimRegionStart,
   claimText,
   cursor,
+  handleError,
+  HydrationMismatch,
   hydrateChild,
   hydrateList,
+  hydrateSlot,
   hydrationProps,
+  isHydrating,
   skipNode,
+  skipSlot,
 } from "./index.js";
+import { reportError } from "../core/errors.js";
 
 function findUp(name, from) {
   let dir = from;
@@ -330,5 +336,61 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     serverBtn.click();
     expect(serverBtn.textContent).toBe("c 6");
     expect(container.querySelector("main")).toBe(serverMain); // identity unchanged
+  });
+
+  // Phase 2.1d: a component's light-DOM `{children}` slot. The slotted content is the
+  // *parent's* JSX (server-rendered inside the host at the `<!--c[-->…<!--c]-->` slot), so the
+  // parent owns its reactivity: its adopt walk locates the slot via `hydrateSlot` and wires the
+  // slotted node in place — order-independent of whether the component has upgraded. (The
+  // component's own `skipSlot` walk is a Custom Element upgrade, validated in the browser e2e.)
+  const slotSource =
+    'function Card({ children }){ return <div class="card"><b>C</b>{children}</div>; }' +
+    ' export default function P(){ let n=$state(0);' +
+    ' return <main><Card><button class="inner" onclick={() => n++}>c {n}</button></Card></main>; }';
+
+  test("a parent adopts a component's slotted children's reactivity (2.1d)", () => {
+    // 1. Server render: the slot is bracketed by the distinct <!--c[-->…<!--c]--> markers,
+    //    with the parent's <button class="inner"> rendered inside the host.
+    const ssg = loadModule(compile(slotSource, "ssg"), {
+      signal,
+      ssgText,
+      ssgComponent,
+      defineSSG,
+    }).default;
+    const html = ssg({});
+    expect(html).toContain("<!--c[-->"); // component slot opens
+    expect(html).toMatch(/<button class="inner">c <!--\$-->0<!--\/--><\/button>/); // parent JSX inside
+
+    // 2. Put it in a DETACHED container so the Card custom element does NOT upgrade — proving
+    //    the parent's slot adoption stands on its own (it scans for the marker, not the class).
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const serverInner = container.querySelector("button.inner");
+    expect(serverInner.textContent).toBe("c 0");
+
+    // 3. Run the page's adopt walk; it claims the host and adopts the slotted button via
+    //    hydrateSlot (wiring the parent's `n` onto it).
+    const mod = loadModule(compile(slotSource, "hydrate"), {
+      signal,
+      bindText,
+      handleError,
+      isHydrating,
+      HydrationMismatch,
+      reportError,
+      cursor,
+      claimElement,
+      claimText,
+      skipNode,
+      skipSlot,
+      hydrateSlot,
+    });
+    mod.hydrate(container);
+
+    // 4. The slotted button was adopted in place (same node), and the parent's reactivity is
+    //    live on it — clicking increments `n`, updating the same adopted text node.
+    expect(container.querySelector("button.inner")).toBe(serverInner);
+    serverInner.click();
+    expect(serverInner.textContent).toBe("c 1");
+    expect(container.querySelector("button.inner")).toBe(serverInner); // no rebuild
   });
 });

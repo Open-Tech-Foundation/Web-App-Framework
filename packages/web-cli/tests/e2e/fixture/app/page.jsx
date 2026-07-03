@@ -1,3 +1,4 @@
+import Card from "./Card.jsx";
 import Stepper from "./Stepper.jsx";
 
 export default function Home() {
@@ -18,6 +19,9 @@ export default function Home() {
       </ul>
       <button class="toggle" onclick={() => (open = !open)}>toggle</button>
       <div class="cond">{open ? <p class="yes">YES</p> : <span class="no">NO</span>}</div>
+      <Card>
+        <button class="slotted" onclick={() => count++}>slotted {count}</button>
+      </Card>
     </main>
   );
 }

@@ -26,6 +26,14 @@ export const HOLE_END = "/";
 export const REGION_START = "[";
 export const REGION_END = "]";
 
+/** Markers bounding a *component's* light-DOM `{children}` slot (docs/HYDRATION.md §3.1,
+ * 2.1d) — distinct bytes from the list/conditional region markers so a component's own
+ * internal regions never collide with its slot. The slot's content is the *parent's* JSX
+ * (server-rendered here), so the parent finds this slot by its `<!--c[-->` marker within the
+ * host and adopts the children (its reactivity), while the component steps over the slot. */
+export const SLOT_START = "c[";
+export const SLOT_END = "c]";
+
 const ELEMENT = 1;
 const TEXT = 3;
 const COMMENT = 8;
@@ -212,6 +220,42 @@ export function claimRegionEnd(cur) {
   }
   cur.node = n.nextSibling;
   return n;
+}
+
+/** Step a component's own adopt walk past its `{children}` slot — claim the
+ * `<!--c[-->`…`<!--c]-->` markers and skip the slotted nodes (the parent owns their
+ * reactivity, wired separately by {@link hydrateSlot}), leaving them in place. Advances the
+ * cursor past the closing marker. Throws {@link HydrationMismatch} on a missing start marker. */
+export function skipSlot(cur) {
+  const start = cur.node;
+  if (!start || start.nodeType !== COMMENT || start.data !== SLOT_START) {
+    throw new HydrationMismatch(`expected a children-slot marker, found ${describe(start)}`);
+  }
+  let n = start.nextSibling;
+  while (n && !(n.nodeType === COMMENT && n.data === SLOT_END)) n = n.nextSibling;
+  cur.node = n ? n.nextSibling : null; // step past the `<!--c]-->` end marker
+}
+
+/**
+ * Adopt a component's slotted children — the *parent's* JSX, server-rendered inside the
+ * component host at its `{children}` slot. The parent owns their reactivity but the
+ * component decides where they sit, so the parent locates the slot by its `<!--c[-->` marker
+ * within `host` and adopts from the first slotted node via `adoptFn(cursor)`. Independent of
+ * when the component upgrades: the markers are static server DOM and adoption only *wires*
+ * (never moves) nodes, so it commutes with the component's own `skipSlot`. A missing marker
+ * (a rebuilt component, or no children) is a no-op.
+ */
+export function hydrateSlot(host, adoptFn) {
+  const start = findComment(host, SLOT_START);
+  if (start) adoptFn({ node: start.nextSibling });
+}
+
+/** The first descendant comment of `root` whose data is `data` (tree order). */
+function findComment(root, data) {
+  const walker = document.createTreeWalker(root, 128 /* NodeFilter.SHOW_COMMENT */);
+  let n;
+  while ((n = walker.nextNode())) if (n.data === data) return n;
+  return null;
 }
 
 /** A short human description of a node for mismatch messages. */
