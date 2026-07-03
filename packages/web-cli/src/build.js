@@ -36,17 +36,37 @@ import { fmtMs, step } from "./reporter.js";
 
 const hash = (s) => Bun.hash(s).toString(16).padStart(16, "0").slice(0, 8);
 
-// Site origin for absolute canonical / sitemap URLs. Priority: `--base-url=` flag,
-// then `otfw.config` (`{ site: { url } }`), else "" (relative canonicals, sitemap
-// skipped with a warning).
-function resolveBaseUrl(config) {
-  const flag = process.argv.find((a) => a.startsWith("--base-url="));
+// Site origin for absolute canonical / sitemap/feed URLs. Priority: `--base-url=`
+// flag, then `otfw.config` (`{ site: { url } }`).
+export function resolveBaseUrl(config, argv = process.argv) {
+  const flag = argv.find((a) => a.startsWith("--base-url="));
   if (flag) return flag.slice("--base-url=".length).replace(/\/+$/, "");
   if (config?.site?.url) return String(config.site.url).replace(/\/+$/, "");
   return "";
 }
 
+export function buildRequiresBaseUrl(config, argv = process.argv) {
+  return argv.includes("--ssg") || !!config?.docs || !!config?.blog;
+}
+
+function requireBaseUrl(config, argv = process.argv) {
+  const baseUrl = resolveBaseUrl(config, argv);
+  if (baseUrl || !buildRequiresBaseUrl(config, argv)) return baseUrl;
+  console.error(
+    `✗ site.url is required for this production build.\n` +
+      `  Add it to otfw.config.js:\n\n` +
+      `  export default defineDocsConfig({\n` +
+      `    site: { url: "https://example.com" }\n` +
+      `  })\n\n` +
+      `  Or pass --base-url=https://example.com`,
+  );
+  process.exit(1);
+}
+
 export async function runBuild(options = {}) {
+  const projectRoot = process.cwd();
+  const config = await loadConfig(projectRoot);
+  const baseUrl = requireBaseUrl(config);
   const { root, appDir, webEntry, otfwc, exclude } = loadProject();
   const t0 = performance.now();
 
@@ -63,7 +83,6 @@ export async function runBuild(options = {}) {
 
   // Docs generator: resolve `@opentf/web-docs/nav` to the build-time nav tree when
   // the project has a `docs` config block.
-  const config = await loadConfig(root);
   const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
 
   const outDir = join(root, "dist");
@@ -145,7 +164,6 @@ export async function runBuild(options = {}) {
   // (so per-route files carry the same bundle + stylesheet links).
   let ssg = null;
   if (process.argv.includes("--ssg")) {
-    const baseUrl = resolveBaseUrl(config);
     const { runPrerender } = await import("./prerender.js");
     // Per-page last-updated map (git/frontmatter) for the article:modified_time tag.
     const lastUpdated = await runLastUpdated(root, appDir, config, exclude);
@@ -185,11 +203,11 @@ export async function runBuild(options = {}) {
     searchStep.done(`Search index — ${search?.pages ?? 0} page(s)`);
   }
 
-  // Blog RSS + Atom feeds (when a `blog` block + site URL are configured). Written
+  // Blog RSS + Atom feeds (when a `blog` block is configured). Written
   // after the public/ copy so project-supplied feed overrides aren't clobbered.
   if (config?.blog) {
     const feedStep = step("Generating blog feeds");
-    const feed = await runBlogFeed(root, appDir, config, outDir, resolveBaseUrl(config), exclude);
+    const feed = await runBlogFeed(root, appDir, config, outDir, baseUrl, exclude);
     if (feed) feedStep.done(`Blog feeds — ${feed.count} post(s) → ${feed.paths.join(", ")}`);
     else feedStep.done("Blog feeds — skipped");
   }

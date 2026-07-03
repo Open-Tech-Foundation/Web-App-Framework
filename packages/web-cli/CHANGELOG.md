@@ -6,6 +6,12 @@
 
 - Blog feed generation now writes Atom 1.0 (`<dir>/atom.xml`) alongside RSS 2.0.
 
+### Changed
+
+- Production docs/blog and SSG builds now require `site.url` or `--base-url` so
+  canonical URLs, sitemap, feeds, and future LLM metadata are emitted with absolute
+  URLs.
+
 ### Fixed
 
 - Compiler resolution now checks `OTFWC_BIN`, then the packaged
