@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-03
+
+_Dependency updates._
+
 ## [1.1.0] - 2026-07-01
 
 - **New Package:** Introduced `@opentf/web-i18n` featuring reactive ICU `t()` translations and `Intl` formatters.

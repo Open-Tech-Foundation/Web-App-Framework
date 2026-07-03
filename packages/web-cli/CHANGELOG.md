@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-03
+
 ### Added
 
 - Docs/blog builds now generate `/llms.txt` and `/llms-full.txt` from filesystem
