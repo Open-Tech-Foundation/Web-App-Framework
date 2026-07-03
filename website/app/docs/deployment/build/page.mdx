@@ -60,6 +60,13 @@ export default defineDocsConfig({
 
 You can override it at build time with `--base-url=https://example.com`.
 
+## LLM context
+
+Docs/blog builds also write `/llms.txt` and `/llms-full.txt` from the filesystem router.
+The compact file links to key docs, API, and blog routes; the full file includes cleaned
+Markdown content for MD/MDX pages. Drop `public/llms.txt` or `public/llms-full.txt` to
+override either generated file.
+
 ## Previewing locally
 
 `dist/` is plain static files — serve it with any static server to smoke-test the

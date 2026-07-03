@@ -26,7 +26,8 @@ export default defineDocsConfig({
 your editor full type hints.
 
 <Callout type="info" title="One file, three consumers">
-  The CLI uses it to wire build plugins (nav, posts, search, feeds, last-updated); the
+  The CLI uses it to wire build plugins (nav, posts, search, feeds, LLM context,
+  last-updated); the
   `Navbar`/`DocsLayout` components read `docs` at runtime; and the SSG step reads
   `site.url` for canonical URLs, sitemap, and feeds.
 </Callout>
@@ -35,7 +36,7 @@ your editor full type hints.
 
 | Key | Purpose |
 | --- | --- |
-| `site` | Canonical origin — `{ url }`. Drives absolute canonicals, the sitemap, and blog feeds. |
+| `site` | Canonical origin — `{ url }`. Drives absolute canonicals, the sitemap, blog feeds, and LLM context links. |
 | `docs` | The documentation section (sidebar, navbar, search). |
 | `blog` | An optional blog section (post list, banners, feeds). |
 | `i18n` | Internationalization — locales for URL-prefix routing (`@opentf/web-i18n`). |

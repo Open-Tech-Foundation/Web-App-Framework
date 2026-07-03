@@ -4,6 +4,8 @@
 
 ### Added
 
+- `renderLlmsTxt` and `renderLlmsFullTxt` build helpers for generating `/llms.txt`
+  and `/llms-full.txt` from filesystem routes.
 - Atom 1.0 blog feed rendering via `renderAtomFeed`, alongside the existing RSS
   renderer.
 

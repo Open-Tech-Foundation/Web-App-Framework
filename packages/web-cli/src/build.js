@@ -29,6 +29,7 @@ import {
   readHtmlShell,
   runBlogFeed,
   runDocsSearchIndex,
+  runLlmsFiles,
   runLastUpdated,
   stampHydrateSentinel,
 } from "./shared.js";
@@ -210,6 +211,13 @@ export async function runBuild(options = {}) {
     const feed = await runBlogFeed(root, appDir, config, outDir, baseUrl, exclude);
     if (feed) feedStep.done(`Blog feeds — ${feed.count} post(s) → ${feed.paths.join(", ")}`);
     else feedStep.done("Blog feeds — skipped");
+  }
+
+  if (config?.docs || config?.blog) {
+    const llmsStep = step("Generating LLM context");
+    const llms = await runLlmsFiles(root, appDir, pages, config, outDir, baseUrl);
+    if (llms) llmsStep.done(`LLM context — ${llms.paths.join(", ")}`);
+    else llmsStep.done("LLM context — skipped");
   }
 
   console.log(`\n  → dist/  ready in ${fmtMs(performance.now() - t0)}\n`);

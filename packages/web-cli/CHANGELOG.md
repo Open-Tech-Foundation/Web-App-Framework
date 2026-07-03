@@ -4,6 +4,8 @@
 
 ### Added
 
+- Docs/blog builds now generate `/llms.txt` and `/llms-full.txt` from filesystem
+  routes, honoring `public/llms.txt` and `public/llms-full.txt` overrides.
 - Blog feed generation now writes Atom 1.0 (`<dir>/atom.xml`) alongside RSS 2.0.
 
 ### Changed

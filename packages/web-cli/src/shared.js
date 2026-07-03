@@ -371,6 +371,36 @@ export async function runBlogFeed(root, appDir, config, siteDir, baseUrl, exclud
   }
 }
 
+/**
+ * Generate `/llms.txt` and `/llms-full.txt` for docs/blog sites from the same
+ * filesystem route list used by the app build. Project-supplied public files override
+ * each output independently.
+ */
+export async function runLlmsFiles(root, appDir, pages, config, siteDir, baseUrl) {
+  if (!config?.docs && !config?.blog) return null;
+  const outputs = [
+    { file: "llms.txt", render: "renderLlmsTxt" },
+    { file: "llms-full.txt", render: "renderLlmsFullTxt" },
+  ].filter((out) => !existsSync(join(root, "public", out.file)));
+  if (!outputs.length) return null;
+
+  try {
+    const entry = Bun.resolveSync("@opentf/web-docs/build", root);
+    const mod = await import(pathToFileURL(entry).href);
+    const written = [];
+    for (const out of outputs) {
+      const render = mod[out.render];
+      if (typeof render !== "function") continue;
+      writeFileSync(join(siteDir, out.file), render({ appDir, pages, baseUrl, config }));
+      written.push(`/${out.file}`);
+    }
+    return written.length ? { paths: written } : null;
+  } catch (e) {
+    console.warn(`⚠ llms.txt skipped: ${e?.message ?? e}`);
+    return null;
+  }
+}
+
 /** Discover file-based routes under `app/`: every page/layout and the 404. */
 export function discoverPages(dir, exclude) {
   const out = [];
