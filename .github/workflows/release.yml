@@ -12,25 +12,20 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
-      version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install otf-release
+        if: runner.os != 'Windows'
+        shell: bash
+        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.sh | bash
+      - name: Install otf-release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: irm https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.ps1 | iex
       - id: check
-        run: |
-          version="$(jq -r '.version' packages/web-compiler/package.json)"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          if [ "$version" = "0.0.0" ]; then
-            echo "Version is 0.0.0 (unreleased); skipping build."
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          tag="@opentf/web-compiler@$version"
-          if git ls-remote --tags origin "refs/tags/$tag" | grep -q .; then
-            echo "Tag $tag already exists; nothing to release."
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "should_release=true" >> "$GITHUB_OUTPUT"
+        run: echo "should_release=$(otf-release check)" >> "$GITHUB_OUTPUT"
 
   matrix-opentf-web-compiler:
     needs: [check-release]
