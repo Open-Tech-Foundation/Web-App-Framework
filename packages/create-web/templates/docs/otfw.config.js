@@ -7,13 +7,8 @@ export default defineDocsConfig({
 
   docs: {
     title: "My Docs",
-    // Docs content lives at the app root (routes at "/"). Set to a folder name
-    // (e.g. "docs") to serve docs under "/docs" alongside other pages.
-    dir: ".",
-    nav: [{ label: "Guide", href: "/guide" }],
-    github: "https://github.com/your-org/your-repo",
+    dir: "docs",
+    nav: [{ label: "Docs", href: "/docs" }],
     footer: { text: "© 2026 My Project" },
-    // Phase 2: static search. Add `pagefind` as a devDependency to enable.
-    // search: { provider: "pagefind" },
   },
 });

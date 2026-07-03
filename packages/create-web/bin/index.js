@@ -55,7 +55,7 @@ async function init() {
             {
               title: cyan("Documentation site"),
               value: "docs",
-              description: "MDX docs powered by @opentf/web-docs (sidebar, TOC, dark mode)",
+              description: "A one-page MDX docs starter powered by @opentf/web-docs",
             },
           ],
         },
@@ -94,26 +94,12 @@ async function init() {
   else if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
 
   const templateDir = path.resolve(__dirname, `../templates/${template}`);
-  // When run from inside this monorepo, point @opentf/* deps at the local packages
-  // so a scaffolded app can be tested without publishing.
-  const monorepoPackages = path.resolve(__dirname, "../../../packages");
-  const isInMonorepo = fs.existsSync(monorepoPackages);
-
   for (const file of fs.readdirSync(templateDir)) {
     const src = path.join(templateDir, file);
     const dest = path.join(root, file);
     if (file === "package.json") {
       const pkg = JSON.parse(fs.readFileSync(src, "utf-8"));
       pkg.name = path.basename(root);
-      if (isInMonorepo) {
-        for (const deps of [pkg.dependencies, pkg.devDependencies]) {
-          for (const dep of Object.keys(deps || {})) {
-            if (dep.startsWith("@opentf/")) {
-              deps[dep] = `file:${path.join(monorepoPackages, dep.split("/")[1])}`;
-            }
-          }
-        }
-      }
       fs.writeFileSync(dest, JSON.stringify(pkg, null, 2) + "\n");
     } else {
       copy(src, dest);

@@ -1,14 +1,12 @@
-// Root layout: wrap every page in the documentation shell (navbar + sidebar + TOC +
-// footer). The sidebar nav is generated at build time from `_meta.js` + frontmatter.
-
-import { DocsLayout } from "@opentf/web-docs";
-import nav from "@opentf/web-docs/nav";
+import { Footer, Navbar } from "@opentf/web-docs";
 import config from "../otfw.config.js";
 
 export default function Layout(props) {
   return (
-    <DocsLayout config={config.docs} nav={nav}>
-      {props.children}
-    </DocsLayout>
+    <div class="otfw-shell">
+      <Navbar config={config.docs} />
+      <div class="otfw-shell-body">{props.children}</div>
+      <Footer config={config.docs} />
+    </div>
   );
 }

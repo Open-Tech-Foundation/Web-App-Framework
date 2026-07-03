@@ -4,8 +4,16 @@
 
 ### Changed
 
+- Updated scaffolded template dependencies to the latest released OTF Web package
+  versions.
+- Simplified the app template to a single welcome page.
+- Updated the docs template with a landing page plus a `/docs` section that shows the
+  generated navbar, `_meta.js` sidebar ordering, and table of contents.
 - Docs templates now scaffold `site.url: null` as an explicit production-build
   placeholder.
+- Generated projects now keep the template's published package ranges when the
+  scaffolder is run from this monorepo, instead of rewriting `@opentf/*`
+  dependencies to local `file:` packages.
 
 ## [0.6.0] - 2026-07-01
 
