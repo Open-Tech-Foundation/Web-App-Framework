@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Docs templates now scaffold `site.url: null` as an explicit production-build
+  placeholder.
+
 ## [0.6.0] - 2026-07-01
 
 ### Added

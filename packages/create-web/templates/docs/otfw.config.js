@@ -1,8 +1,9 @@
 import { defineDocsConfig } from "@opentf/web-docs/config";
 
 export default defineDocsConfig({
-  // Canonical site origin — used for SEO canonical URLs + sitemap.xml.
-  site: { url: "https://example.com" },
+  // Canonical site origin — required for production builds.
+  // Set this to your deployed origin, e.g. "https://example.com".
+  site: { url: null },
 
   docs: {
     title: "My Docs",
