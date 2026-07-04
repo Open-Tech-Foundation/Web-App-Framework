@@ -10,7 +10,11 @@
   and nested `_middleware` composed outermost-first with a shared `context.locals`. Returns
   `null` on no-match so the caller can fall through to SSR. `createFetchHandler` wraps it
   into a total Fetch handler for Fetch-native runtimes (Bun/Cloudflare Workers/Deno), and
-  `@opentf/web/server/adapters/node` (`toNodeListener`) bridges `node:http`. Ships
+  `@opentf/web/server/adapters/node` (`toNodeListener`) bridges `node:http` — including
+  multi-cookie responses (each `Set-Cookie` is written as its own header line). Params
+  arrive percent-decoded, a root `app/_middleware.*` governs every endpoint, auto-`HEAD`
+  mirrors the headers of a plain-value `GET`, and `createApiHandler` takes an `appDir`
+  option (the CLI passes it) so route derivation is exact for any folder name. Ships
   TypeScript definitions for the server surface (`ApiHandler`, `Middleware`, `ApiContext`,
   `RouteParams`, …).
 - **Reactive ownership scopes** (`scope()` in the signals core, exported from the package
@@ -20,6 +24,13 @@
 
 ### Fixed
 
+- **Route derivation clipped folders whose name starts with "app".** The page router
+  stripped the app-dir prefix with a greedy `/app` match, so a route folder like
+  `app/appointments/` derived to a broken path (`ointments`) and never matched. The
+  prefix is now pinned to a complete `/app` path segment.
+- **Literal regex characters in route folders were treated as patterns.** A `v1.0`
+  folder matched `/v1X0` too; literal parts of a route are now regex-escaped in both
+  the page router and the API dispatcher.
 - **Evicted keyed-list items leaked their binding effects.** `bindList`/`hydrateList`
   removed a stale row's DOM node but left its `bindText`/`bindAttr` effects subscribed, so
   any signal shared across rows (e.g. a selection signal every row's `class` reads)

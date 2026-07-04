@@ -53,6 +53,15 @@ describe("sendWebResponse", () => {
     expect(res.headers["content-type"]).toContain("application/json");
     expect(JSON.parse(res.body)).toEqual({ ok: true });
   });
+
+  test("multiple Set-Cookie headers stay separate (array header value)", async () => {
+    const res = fakeRes();
+    const webRes = new Response(null, { status: 200 });
+    webRes.headers.append("set-cookie", "session=abc; Path=/; HttpOnly");
+    webRes.headers.append("set-cookie", "csrf=xyz; Path=/");
+    await sendWebResponse(res, webRes);
+    expect(res.headers["set-cookie"]).toEqual(["session=abc; Path=/; HttpOnly", "csrf=xyz; Path=/"]);
+  });
 });
 
 describe("toNodeListener", () => {

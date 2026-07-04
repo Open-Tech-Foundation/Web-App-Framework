@@ -139,10 +139,12 @@ export const router = {
   replace: (path) => navigate(path, true),
 };
 
-/** Derive the route ("/counter", "/") from a `.../app/<route>/page.jsx` path. */
+/** Derive the route ("/counter", "/") from a `.../app/<route>/page.jsx` path. The
+ *  lookahead pins `/app` to a complete path segment, so a route folder that merely
+ *  starts with "app" (`/appointments`) isn't clipped. */
 function routeFromPath(filePath) {
   const r = filePath
-    .replace(/^.*\/app/, "")
+    .replace(/^.*\/app(?=\/)/, "")
     .replace(/\/(page|layout|404)\.(jsx|tsx|mdx|md)$/, "");
   return r === "" ? "/" : r;
 }
@@ -270,9 +272,16 @@ export function setRouteState({ pathname = "/", search = "", params = {}, locale
 export function matchRoute(pathname) {
   pathname = resolveLocale(pathname).path;
   for (const route in routes.pages) {
+    // `[param]` / `[...rest]` become named groups; literal parts are regex-escaped
+    // (a `v1.0` folder must not match `v1X0`).
     const pattern = route
-      .replace(/\[\.\.\.([^\]]+)\]/g, "(?<$1>.+)")
-      .replace(/\[([^\]]+)\]/g, "(?<$1>[^/]+)");
+      .split(/(\[\.\.\.[^\]]+\]|\[[^\]]+\])/)
+      .map((part) => {
+        if (part.startsWith("[...")) return `(?<${part.slice(4, -1)}>.+)`;
+        if (part.startsWith("[")) return `(?<${part.slice(1, -1)}>[^/]+)`;
+        return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      })
+      .join("");
     const m = pathname.match(new RegExp(`^${pattern}/?$`));
     if (m) {
       const params = { ...(m.groups || {}) };

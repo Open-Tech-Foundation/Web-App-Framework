@@ -17,31 +17,62 @@
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 /**
+ * Strip the app-directory prefix from a route/middleware file path. When the
+ * caller knows the app dir (the CLI always does), the exact prefix is removed —
+ * unambiguous even for an `app/app/...` folder. Without it, fall back to the last
+ * complete `/app` path segment; the lookahead keeps folders that merely *start*
+ * with "app" (`/appointments`, `/apps`) intact.
+ */
+function stripAppDir(filePath, appDir) {
+  if (appDir) {
+    const base = appDir.replace(/\/+$/, "");
+    if (filePath.startsWith(base + "/")) return filePath.slice(base.length);
+  }
+  return filePath.replace(/^.*\/app(?=\/)/, "");
+}
+
+/**
  * Derive the API route path from a `.../app/<...>/route.{js,ts}` file path — the
  * folder is the URL, mirroring `routeFromPath` in the page router.
  * `app/api/status/route.js` → `/api/status`, `app/api/users/[id]/route.ts` →
- * `/api/users/[id]`, `app/route.js` → `/`.
+ * `/api/users/[id]`, `app/route.js` → `/`. Pass `appDir` (the absolute app
+ * directory) when known so the prefix is stripped exactly.
  */
-export function apiRouteFromPath(filePath) {
-  const r = filePath.replace(/^.*\/app/, "").replace(/\/route\.(jsx?|tsx?)$/, "");
+export function apiRouteFromPath(filePath, appDir) {
+  const r = stripAppDir(filePath, appDir).replace(/\/route\.(jsx?|tsx?)$/, "");
   return r === "" ? "/" : r;
 }
 
 /** The folder route a `_middleware.{js,ts}` file governs: `app/api/_middleware.js`
  *  → `/api` (applies to `/api` and everything nested under it). */
-export function middlewareScopeFromPath(filePath) {
-  const r = filePath.replace(/^.*\/app/, "").replace(/\/_middleware\.(jsx?|tsx?)$/, "");
+export function middlewareScopeFromPath(filePath, appDir) {
+  const r = stripAppDir(filePath, appDir).replace(/\/_middleware\.(jsx?|tsx?)$/, "");
   return r === "" ? "/" : r;
 }
 
 /** Compile a route path with `[param]` / `[...rest]` segments to a matcher regex.
- *  Named groups become route params; the optional trailing slash is tolerated. */
+ *  Named groups become route params; literal parts are regex-escaped (a `v1.0`
+ *  folder must not match `v1X0`); the optional trailing slash is tolerated. */
 function compilePattern(route) {
   const src = route
-    .replace(/\[\.\.\.([^\]]+)\]/g, "(?<$1>.+)")
-    .replace(/\[([^\]]+)\]/g, "(?<$1>[^/]+)");
+    .split(/(\[\.\.\.[^\]]+\]|\[[^\]]+\])/)
+    .map((part) => {
+      if (part.startsWith("[...")) return `(?<${part.slice(4, -1)}>.+)`;
+      if (part.startsWith("[")) return `(?<${part.slice(1, -1)}>[^/]+)`;
+      return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    })
+    .join("");
   return new RegExp(`^${src}/?$`);
 }
+
+// Percent-decode a matched param segment; malformed input stays raw rather than throwing.
+const decodeParam = (s) => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
 
 const normalize = (p) => (p || "/").replace(/(.)\/+$/, "$1");
 
@@ -61,12 +92,14 @@ function allowedMethods(mod) {
  *        — each module exports method handlers (`GET`, `POST`, …).
  * @param {Record<string, object>} middlewareModules  `{ [absFilePath]: moduleNamespace }`
  *        for `_middleware.{js,ts}` files; the middleware is the default export.
+ * @param {{ appDir?: string }} [options]  `appDir` — the absolute app directory the
+ *        module keys live under, for exact route derivation (the CLI passes it).
  * @returns {(request: Request) => Promise<Response | null>}
  */
-export function createApiHandler(routeModules = {}, middlewareModules = {}) {
+export function createApiHandler(routeModules = {}, middlewareModules = {}, { appDir } = {}) {
   const routes = [];
   for (const file in routeModules) {
-    const route = apiRouteFromPath(file);
+    const route = apiRouteFromPath(file, appDir);
     routes.push({ route, pattern: compilePattern(route), module: routeModules[file], dynamic: route.includes("[") });
   }
   // Static routes before dynamic, longer (more specific) before shorter, so the
@@ -77,7 +110,7 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}) {
   for (const file in middlewareModules) {
     const mod = middlewareModules[file];
     const fn = mod.default ?? mod.middleware;
-    if (typeof fn === "function") middleware.push({ scope: middlewareScopeFromPath(file), fn });
+    if (typeof fn === "function") middleware.push({ scope: middlewareScopeFromPath(file, appDir), fn });
   }
   // Outermost (shortest scope) runs first, so `/api/_middleware` wraps `/api/users/_middleware`.
   middleware.sort((a, b) => a.scope.length - b.scope.length);
@@ -93,8 +126,12 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}) {
       if (!m) continue;
       matched = r;
       params = { ...(m.groups || {}) };
+      // Params reach handlers percent-decoded (`/users/John%20Doe` → "John Doe");
+      // catch-all segments are split first so an encoded `%2F` never adds a segment.
       for (const k in params) {
-        if (r.route.includes(`[...${k}]`)) params[k] = params[k].split("/");
+        params[k] = r.route.includes(`[...${k}]`)
+          ? params[k].split("/").map(decodeParam)
+          : decodeParam(params[k]);
       }
       break;
     }
@@ -116,7 +153,10 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}) {
       if (typeof fn === "function") return fn(req, context);
       // Auto HEAD from GET (drop the body); auto OPTIONS; else 405.
       if (method === "HEAD" && typeof mod.GET === "function") {
-        const res = await mod.GET(req, context);
+        const got = await mod.GET(req, context);
+        // GET may lean on the plain-value → JSON convenience; HEAD must then carry
+        // the same status/headers that GET response would have had.
+        const res = got instanceof Response ? got : Response.json(got);
         return new Response(null, { status: res.status, headers: res.headers });
       }
       if (method === "OPTIONS") return new Response(null, { status: 204, headers: { Allow: allowedMethods(mod) } });
@@ -124,7 +164,10 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}) {
     };
 
     // Compose the applicable middleware chain around dispatch (outermost first).
-    const chain = middleware.filter((mw) => pathname === mw.scope || pathname.startsWith(mw.scope + "/"));
+    // The root scope ("/", from an `app/_middleware.*`) governs every route.
+    const chain = middleware.filter(
+      (mw) => mw.scope === "/" || pathname === mw.scope || pathname.startsWith(mw.scope + "/"),
+    );
     let next = dispatch;
     for (let i = chain.length - 1; i >= 0; i--) {
       const { fn } = chain[i];

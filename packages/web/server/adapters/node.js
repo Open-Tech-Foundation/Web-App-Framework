@@ -37,8 +37,13 @@ function readBody(req) {
 export async function sendWebResponse(res, webRes) {
   const headers = {};
   webRes.headers.forEach((value, key) => {
-    headers[key] = value;
+    if (key !== "set-cookie") headers[key] = value;
   });
+  // `Headers` iteration collapses repeated Set-Cookie values into one string, which
+  // breaks multi-cookie responses (session + CSRF). Recover the individual cookies;
+  // Node accepts an array header value and writes one Set-Cookie line per entry.
+  const cookies = webRes.headers.getSetCookie?.() ?? [];
+  if (cookies.length > 0) headers["set-cookie"] = cookies;
   res.writeHead(webRes.status, headers);
   if (webRes.body) {
     const buf = Buffer.from(await webRes.arrayBuffer());

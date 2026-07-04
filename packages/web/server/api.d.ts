@@ -9,7 +9,8 @@ type MaybePromise<T> = T | Promise<T>;
 
 /**
  * Route params resolved from `[param]` / `[...rest]` segments. A `[param]` segment
- * resolves to a `string`; a `[...rest]` catch-all resolves to a `string[]`.
+ * resolves to a `string`; a `[...rest]` catch-all resolves to a `string[]`. Values
+ * arrive percent-decoded (`/users/John%20Doe` → `"John Doe"`).
  */
 export type RouteParams = Record<string, string | string[]>;
 
@@ -67,11 +68,20 @@ export interface FetchHandlerOptions {
   fallback?: (request: Request) => MaybePromise<Response>;
 }
 
+export interface ApiHandlerOptions {
+  /**
+   * Absolute path of the app directory the module keys live under. When given, the
+   * route is derived by stripping this exact prefix (the CLI always passes it);
+   * without it a `/app` path-segment heuristic is used.
+   */
+  appDir?: string;
+}
+
 /** Derive the route path from an `app/**/route.{js,ts}` file path (folder = URL). */
-export function apiRouteFromPath(filePath: string): string;
+export function apiRouteFromPath(filePath: string, appDir?: string): string;
 
 /** Derive the folder route a `_middleware` file governs from its file path. */
-export function middlewareScopeFromPath(filePath: string): string;
+export function middlewareScopeFromPath(filePath: string, appDir?: string): string;
 
 /**
  * Build the API request handler from discovered route + middleware modules (both
@@ -80,6 +90,7 @@ export function middlewareScopeFromPath(filePath: string): string;
 export function createApiHandler(
   routeModules?: Record<string, RouteModule>,
   middlewareModules?: Record<string, MiddlewareModule>,
+  options?: ApiHandlerOptions,
 ): RequestHandler;
 
 /**

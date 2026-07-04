@@ -12,12 +12,24 @@ describe("apiRouteFromPath", () => {
     expect(apiRouteFromPath("/proj/app/api/route.js")).toBe("/api");
     expect(apiRouteFromPath("/proj/app/route.js")).toBe("/");
   });
+
+  test("folders that merely start with 'app' are not clipped", () => {
+    expect(apiRouteFromPath("/proj/app/api/appointments/route.js")).toBe("/api/appointments");
+    expect(apiRouteFromPath("/proj/app/apps/[id]/route.ts")).toBe("/apps/[id]");
+  });
+
+  test("an explicit appDir strips the exact prefix (handles app/app nesting)", () => {
+    expect(apiRouteFromPath("/proj/app/app/status/route.js", "/proj/app")).toBe("/app/status");
+    expect(apiRouteFromPath("/proj/app/api/status/route.js", "/proj/app")).toBe("/api/status");
+  });
 });
 
 describe("middlewareScopeFromPath", () => {
   test("derives the folder route a _middleware governs", () => {
     expect(middlewareScopeFromPath("/proj/app/api/_middleware.js")).toBe("/api");
     expect(middlewareScopeFromPath("/proj/app/api/users/_middleware.ts")).toBe("/api/users");
+    expect(middlewareScopeFromPath("/proj/app/_middleware.js")).toBe("/");
+    expect(middlewareScopeFromPath("/proj/app/approvals/_middleware.js", "/proj/app")).toBe("/approvals");
   });
 });
 
@@ -42,6 +54,23 @@ describe("createApiHandler", () => {
       "/app/api/users/[id]/route.js": { GET: (_r, { params }) => Response.json({ id: params.id }) },
     });
     expect(await (await handle(req("/api/users/42"))).json()).toEqual({ id: "42" });
+  });
+
+  test("params arrive percent-decoded (catch-all segments too)", async () => {
+    const handle = createApiHandler({
+      "/app/api/users/[id]/route.js": { GET: (_r, { params }) => Response.json(params.id) },
+      "/app/api/files/[...path]/route.js": { GET: (_r, { params }) => Response.json(params.path) },
+    });
+    expect(await (await handle(req("/api/users/John%20Doe"))).json()).toBe("John Doe");
+    expect(await (await handle(req("/api/files/a%20b/c"))).json()).toEqual(["a b", "c"]);
+  });
+
+  test("literal dots in a route folder are matched literally, not as regex wildcards", async () => {
+    const handle = createApiHandler({
+      "/app/api/v1.0/route.js": { GET: () => Response.json("versioned") },
+    });
+    expect(await (await handle(req("/api/v1.0"))).json()).toBe("versioned");
+    expect(await handle(req("/api/v1X0"))).toBeNull();
   });
 
   test("resolves [...rest] to an array segment", async () => {
@@ -88,6 +117,14 @@ describe("createApiHandler", () => {
     const opts = await handle(req("/api/thing", { method: "OPTIONS" }));
     expect(opts.status).toBe(204);
     expect(opts.headers.get("Allow")).toContain("GET");
+  });
+
+  test("auto HEAD from a lenient (plain-value) GET carries the JSON headers", async () => {
+    const handle = createApiHandler({ "/app/api/plain/route.js": { GET: () => ({ a: 1 }) } });
+    const head = await handle(req("/api/plain", { method: "HEAD" }));
+    expect(head.status).toBe(200);
+    expect(head.headers.get("content-type")).toContain("application/json");
+    expect(await head.text()).toBe("");
   });
 
   test("errors thrown in a handler become a 500 JSON response", async () => {
@@ -155,6 +192,29 @@ describe("createApiHandler", () => {
     const res = await handle(req("/api/users/7"));
     expect(await res.json()).toEqual({ a: 1, b: 2 });
     expect(order).toEqual(["outer", "inner"]);
+  });
+
+  test("a root app/_middleware.* governs every route", async () => {
+    const routes = { "/app/api/x/route.js": { GET: (_r, { locals }) => Response.json(locals) } };
+    const mw = {
+      "/app/_middleware.js": {
+        default: (_r, ctx, next) => {
+          ctx.locals.root = true;
+          return next();
+        },
+      },
+    };
+    const handle = createApiHandler(routes, mw);
+    expect(await (await handle(req("/api/x"))).json()).toEqual({ root: true });
+  });
+
+  test("appDir option pins route derivation for app-prefixed folders", async () => {
+    const handle = createApiHandler(
+      { "/proj/app/api/appointments/route.js": { GET: () => Response.json("booked") } },
+      {},
+      { appDir: "/proj/app" },
+    );
+    expect(await (await handle(req("/api/appointments"))).json()).toBe("booked");
   });
 
   test("a non-Response return value is JSON-encoded", async () => {
