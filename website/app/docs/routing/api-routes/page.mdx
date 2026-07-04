@@ -99,5 +99,6 @@ export default auth;
 - **`otfw build`** emits `dist/server/api.js`, a self-contained handler you deploy
   with a runtime adapter — see the [Server API reference](/api/server).
 
-Only `PUBLIC_`-prefixed environment variables reach the client; everything else in
-`.env` stays server-only and is available to handlers via `process.env`.
+Environment variables are never bundled into the client. Handlers read them via
+`process.env` — `otfw dev`/`otfw serve` load your `.env` automatically (Bun), and a
+deployed `dist/server/api.js` uses whatever environment the host runtime provides.

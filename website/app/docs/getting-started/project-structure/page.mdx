@@ -15,6 +15,9 @@ my-app/
 │  ├─ 404.jsx         # not-found page
 │  ├─ about/
 │  │  └─ page.jsx     # route: /about
+│  ├─ api/
+│  │  └─ hello/
+│  │     └─ route.js  # API endpoint: GET /api/hello
 │  └─ global.css
 ├─ index.html         # mount point + injected bundle
 └─ package.json
@@ -27,6 +30,8 @@ my-app/
 | `page.jsx` | A route. The folder path is the URL (`app/about/page.jsx` → `/about`). |
 | `layout.jsx` | Wraps every route below it; nests with the folder tree. |
 | `404.jsx` | Rendered when no route matches. |
+| `route.js` | An [API endpoint](/docs/routing/api-routes). The folder is the URL (`app/api/hello/route.js` → `/api/hello`); a folder holds a `page.*` or a `route.*`, never both. |
+| `_middleware.js` | [API middleware](/docs/routing/api-routes) for its folder and everything nested under it. |
 | `index.html` | The HTML shell. The toolchain mounts the app into `#app` and injects the bundle. |
 
 Every other PascalCase `.jsx`/`.tsx` file is a reusable component — no registration

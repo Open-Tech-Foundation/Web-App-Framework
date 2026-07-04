@@ -54,10 +54,11 @@ import { createFetchHandler } from "@opentf/web/server";
 export default { fetch: createFetchHandler(apiHandler) };
 ```
 
-### `createApiHandler(routeModules?, middlewareModules?)`
+### `createApiHandler(routeModules?, middlewareModules?, options?)`
 
 Builds a `RequestHandler` from discovered route + middleware modules (keyed by file
-path). Called by the toolchain; you rarely call it yourself.
+path). `options.appDir` pins the app directory the keys live under, so routes derive
+exactly for any folder name. Called by the toolchain; you rarely call it yourself.
 
 ## Adapters
 

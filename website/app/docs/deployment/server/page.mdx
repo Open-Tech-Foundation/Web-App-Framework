@@ -25,8 +25,9 @@ One process serves SSR **and** API routes, plus the static assets from `dist/`. 
 the recommended target when you control the runtime (a VM, container, or any Bun host).
 
 <Callout type="info" title="How a request resolves">
-  Assets are served from `dist/`. Then a matching API handler wins; a miss falls through
-  to SSR, so pages and endpoints coexist. Unmatched paths render your 404.
+  A matching API handler wins first (same order as `otfw dev`). Then asset paths are
+  served from `dist/`, and everything else falls through to SSR — so pages and endpoints
+  coexist. Unmatched paths render your 404.
 </Callout>
 
 ## Option 2 — deploy `dist/server/api.js` with an adapter
@@ -65,9 +66,10 @@ See the [Server API reference](/api/server) for the full adapter surface.
 
 ## Environment variables
 
-Server-only secrets in `.env` are available to handlers via `process.env`. Only
-`PUBLIC_`-prefixed variables are ever injected into the client bundle, so nothing else
-leaks to the browser.
+Environment variables are never bundled into the client, so secrets can't leak to the
+browser. Handlers read them via `process.env` — `otfw serve` loads your `.env`
+automatically (Bun), and a deployed `dist/server/api.js` uses whatever environment the
+host runtime provides.
 
 ## What ships today
 
