@@ -215,18 +215,19 @@ export async function runServe() {
   const server = serve(startPort, explicitPort, {
     async fetch(req) {
       const url = new URL(req.url);
-      // A path with a file extension is an asset request; serve it from dist/. A
-      // miss on a real asset is a 404 (don't fall through to the SSR shell). Assets
-      // are checked first — a route.* endpoint never maps to an extension path.
-      if (/\.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== "/") {
-        const asset = serveStatic(url.pathname);
-        return asset ?? new Response("not found", { status: 404 });
-      }
-      // API endpoints (route.* files, at any path — SPEC §11): a matched handler's
-      // Response wins; a miss falls through to SSR, so pages and endpoints coexist.
+      // API endpoints (route.* files, at any path — SPEC §11) are checked first —
+      // before the asset branch, matching `otfw dev` — so an endpoint path with a
+      // dotted segment (`/api/v1.0`) still resolves. A matched handler's Response
+      // wins; a miss falls through to assets / SSR, so pages and endpoints coexist.
       if (api) {
         const res = await api.handler(req);
         if (res) return res;
+      }
+      // A path with a file extension is an asset request; serve it from dist/. A
+      // miss on a real asset is a 404 (don't fall through to the SSR shell).
+      if (/\.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== "/") {
+        const asset = serveStatic(url.pathname);
+        return asset ?? new Response("not found", { status: 404 });
       }
       // Locale detection: a bare path (no locale prefix) whose visitor prefers a
       // non-default locale is redirected to the prefixed URL. The default locale

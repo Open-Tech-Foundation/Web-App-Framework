@@ -33,6 +33,12 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # dev server output
 .dev
 
+# toolchain temp build dirs (cleaned on exit; ignore crash leftovers)
+.otfw
+.otfw-ssg
+.otfw-api
+.otfw-api-build
+
 # IntelliJ based IDEs
 .idea
 

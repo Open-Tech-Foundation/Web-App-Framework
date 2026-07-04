@@ -117,6 +117,10 @@ async function main() {
     assert(created.status === 201, "POST /api/status → 201 (method-based handler)");
     assert((await created.json()).received.n === 1, "POST body is read from the standard Request");
 
+    const appt = await fetch(`${base}/api/appointments`);
+    assert(appt.status === 200, "GET /api/appointments → 200 (app-prefixed folder not clipped)");
+    assert((await appt.json()).booked === true, "/api/appointments returns its JSON body");
+
     const user = await fetch(`${base}/api/users/42`);
     const userJson = await user.json();
     assert(user.status === 200, "GET /api/users/42 → 200");

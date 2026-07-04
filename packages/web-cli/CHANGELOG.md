@@ -15,6 +15,18 @@
 
 - A folder may hold a `page.*` **or** a `route.*`, not both — `otfw dev`/`build` now error on
   a page/endpoint path conflict (matching Next.js's App Router).
+- `otfw serve` checks API endpoints before the static-asset branch (matching `otfw dev`), so
+  an endpoint path with a dotted segment (`/api/v1.0`) resolves in both.
+
+### Fixed
+
+- Route derivation clipped folders whose name starts with "app" (`app/appointments/` →
+  `ointments`). The toolchain now passes the exact app directory to the API dispatcher and
+  strips it verbatim for pages, endpoints, and middleware — any folder name works,
+  including a nested `app/app/`.
+- A failed API-bundle build in `otfw dev` no longer serves the SPA shell for endpoint URLs:
+  discovered endpoints answer `500` with the build diagnostic until the next successful
+  rebuild (an endpoint edit triggers it, as before).
 
 ## [1.2.0] - 2026-07-03
 

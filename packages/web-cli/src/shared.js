@@ -439,15 +439,29 @@ export function discoverApiRoutes(appDir, exclude = new Set()) {
   return { routes, middleware };
 }
 
+/**
+ * Strip the app-directory prefix from a route file path. With `appDir` the exact
+ * prefix is removed (unambiguous even for `app/app/...`); without it, fall back to
+ * the last complete `/app` path segment — the lookahead keeps folders that merely
+ * start with "app" (`/appointments`) intact.
+ */
+function stripAppPrefix(filePath, appDir) {
+  if (appDir) {
+    const base = appDir.replace(/\/+$/, "");
+    if (filePath.startsWith(base + "/")) return filePath.slice(base.length);
+  }
+  return filePath.replace(/^.*\/app(?=\/)/, "");
+}
+
 /** The page URL for a `.../app/<...>/page.{mdx,md,jsx,tsx}` file (folder = URL). */
-export function pageRouteFromPath(filePath) {
-  const r = filePath.replace(/^.*\/app/, "").replace(/\/page\.(mdx|md|jsx|tsx)$/, "");
+export function pageRouteFromPath(filePath, appDir) {
+  const r = stripAppPrefix(filePath, appDir).replace(/\/page\.(mdx|md|jsx|tsx)$/, "");
   return r === "" ? "/" : r;
 }
 
 /** The route URL for a `.../app/<...>/route.{js,ts}` file (folder = URL). */
-function apiRoutePath(filePath) {
-  const r = filePath.replace(/^.*\/app/, "").replace(/\/route\.(jsx?|tsx?)$/, "");
+function apiRoutePath(filePath, appDir) {
+  const r = stripAppPrefix(filePath, appDir).replace(/\/route\.(jsx?|tsx?)$/, "");
   return r === "" ? "/" : r;
 }
 
@@ -459,11 +473,11 @@ function apiRoutePath(filePath) {
 export function detectRouteConflicts(appDir, exclude = new Set()) {
   const pageByRoute = new Map();
   for (const p of discoverPages(appDir, exclude)) {
-    if (/\/page\.(mdx|md|jsx|tsx)$/.test(p)) pageByRoute.set(pageRouteFromPath(p), p);
+    if (/\/page\.(mdx|md|jsx|tsx)$/.test(p)) pageByRoute.set(pageRouteFromPath(p, appDir), p);
   }
   const conflicts = [];
   for (const r of discoverApiRoutes(appDir, exclude).routes) {
-    const path = apiRoutePath(r);
+    const path = apiRoutePath(r, appDir);
     if (pageByRoute.has(path)) conflicts.push({ path, page: pageByRoute.get(path), route: r });
   }
   return conflicts;
@@ -483,15 +497,18 @@ export function assertNoRouteConflicts(appDir, exclude = new Set()) {
  * route from the path), then export the composed `Request → Response | null`
  * handler. Mirrors `serverEntrySource` for the page/SSG bundle.
  */
-export function apiEntrySource({ routes, middleware }) {
+export function apiEntrySource({ routes, middleware }, appDir) {
   const rImports = routes.map((p, i) => `import * as r${i} from ${JSON.stringify(p)};`).join("\n");
   const mImports = middleware.map((p, i) => `import * as m${i} from ${JSON.stringify(p)};`).join("\n");
   const rMap = routes.map((p, i) => `  [${JSON.stringify(p)}]: r${i},`).join("\n");
   const mMap = middleware.map((p, i) => `  [${JSON.stringify(p)}]: m${i},`).join("\n");
+  // `appDir` pins the exact prefix to strip from the keys — route derivation stays
+  // correct for folders whose name starts with "app" and for nested app/app dirs.
+  const opts = appDir ? `\n{ appDir: ${JSON.stringify(appDir)} },\n` : "\n";
   return (
     `import { createApiHandler } from "@opentf/web/server";\n` +
     `${rImports}\n${mImports}\n` +
-    `export const apiHandler = createApiHandler(\n{\n${rMap}\n},\n{\n${mMap}\n},\n);\n`
+    `export const apiHandler = createApiHandler(\n{\n${rMap}\n},\n{\n${mMap}\n},${opts});\n`
   );
 }
 
@@ -510,7 +527,7 @@ export async function buildApiBundle({ root, appDir, webEntry, exclude, tmpName 
   const tmp = join(root, tmpName);
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "api-entry.js");
-  writeFileSync(entry, apiEntrySource(discovered));
+  writeFileSync(entry, apiEntrySource(discovered, appDir));
 
   const serverApi = join(dirname(webEntry), "server", "index.js");
   await build({
@@ -553,7 +570,7 @@ export async function emitApiBundle({ root, appDir, webEntry, exclude, outDir })
   const tmp = join(root, ".otfw-api-build");
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "api-entry.js");
-  writeFileSync(entry, apiEntrySource(discovered));
+  writeFileSync(entry, apiEntrySource(discovered, appDir));
 
   const serverApi = join(dirname(webEntry), "server", "index.js");
   mkdirSync(outDir, { recursive: true });

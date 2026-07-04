@@ -18,7 +18,8 @@
 
 import { rolldown } from "rolldown";
 import { existsSync, mkdirSync, readFileSync, statSync, watch, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { compileCss, usesTailwind } from "./tailwind.js";
 import { overlayClient } from "./overlay.js";
@@ -28,6 +29,7 @@ import {
   assertNoRouteConflicts,
   buildApiBundle,
   cssPlugin,
+  discoverApiRoutes,
   discoverPages,
   entrySource,
   injectBeforeBody,
@@ -199,11 +201,34 @@ export async function runDev() {
         apiBundle = await buildApiBundle({ root, appDir, webEntry, exclude, bust: ++apiVersion });
       } catch (e) {
         console.error(`✗ API build failed: ${e?.message ?? e}`);
-        apiBundle = null;
+        apiBundle = await brokenApiStub(e);
       }
       apiBuilt = true;
     }
     return apiBundle;
+  }
+  // A failed API build must not silently serve the SPA shell for endpoint URLs:
+  // stand in with a handler that 500s exactly the discovered endpoints (real
+  // matching semantics via createApiHandler) until the next successful rebuild.
+  async function brokenApiStub(err) {
+    try {
+      const serverApi = pathToFileURL(join(dirname(webEntry), "server", "index.js")).href;
+      const { createApiHandler } = await import(serverApi);
+      // Strip ANSI color codes — the bundler's terminal diagnostic goes into JSON here.
+      const msg = String(err?.message ?? err).replace(/\u001b\[[0-9;]*m/g, "");
+      const fail = () => Response.json({ error: `API routes failed to build: ${msg}` }, { status: 500 });
+      const stub = Object.fromEntries(
+        ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((m) => [m, fail]),
+      );
+      const { routes } = discoverApiRoutes(appDir, exclude);
+      return {
+        handler: createApiHandler(Object.fromEntries(routes.map((f) => [f, stub])), {}, { appDir }),
+        routes,
+        cleanup: () => {},
+      };
+    } catch {
+      return null;
+    }
   }
   function invalidateApi() {
     try {
