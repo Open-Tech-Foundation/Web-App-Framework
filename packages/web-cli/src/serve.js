@@ -215,11 +215,11 @@ export async function runServe() {
   const server = serve(startPort, explicitPort, {
     async fetch(req) {
       const url = new URL(req.url);
-      // API routes take precedence over assets and SSR (SPEC §11). A match returns
-      // its Response; a non-match under /api/ is a 404, never the SSR shell.
+      // API routes are tried first (SPEC §11): a matched handler's Response wins.
+      // A miss falls through to assets/SSR, so an app can also serve pages under /api.
       if (api && (url.pathname === "/api" || url.pathname.startsWith("/api/"))) {
         const res = await api.handler(req);
-        return res ?? new Response("not found", { status: 404 });
+        if (res) return res;
       }
       // A path with a file extension is an asset request; serve it from dist/. A
       // miss on a real asset is a 404 (don't fall through to the SSR shell).

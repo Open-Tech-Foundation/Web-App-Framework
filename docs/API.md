@@ -84,8 +84,9 @@ Request validation (e.g. with `zod`) belongs here or at the top of a handler.
 
 - **`otfw dev`** — `/api/*` is served by a bundle built lazily on first request and
   rebuilt on edit (hot reload).
-- **`otfw serve`** — the SSR server mounts `/api/*` ahead of assets and SSR; an
-  unmatched `/api/*` path is a `404` (never the app shell).
+- **`otfw serve`** — the SSR server tries `/api/*` handlers ahead of assets and SSR;
+  a request that matches no handler falls through to the page router, so pages and
+  API routes can coexist under `/api` (e.g. the docs site's `/api` reference section).
 - **`otfw build`** — emits `dist/server/api.js`, a self-contained ESM module
   exporting `apiHandler(request) => Response | null` (the runtime dispatcher is
   bundled in; your npm/node deps stay external for the target).

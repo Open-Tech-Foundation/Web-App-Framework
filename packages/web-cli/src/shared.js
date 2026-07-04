@@ -432,6 +432,9 @@ export function discoverApiRoutes(appDir, exclude = new Set()) {
       }
       const name = entry.name;
       if (!/\.(jsx?|tsx?)$/.test(name)) continue;
+      // page/layout/404 are page-router files (an app may put pages under /api too);
+      // they're never API handlers.
+      if (/^(page|layout|404)\.(jsx?|tsx?)$/.test(name)) continue;
       const full = join(dir, name);
       if (/^_middleware\.(jsx?|tsx?)$/.test(name)) middleware.push(full);
       else if (!name.startsWith("_")) routes.push(full);

@@ -133,7 +133,13 @@ async function main() {
     assert(allowed.status === 200, "authorized /api/secret → 200 (middleware calls next)");
 
     const apiMiss = await fetch(`${base}/api/nope`);
-    assert(apiMiss.status === 404, "unmatched /api/* → 404 (does not fall through to SSR)");
+    assert(apiMiss.status === 404, "unmatched /api/* with no page → 404");
+
+    // A page can live under /api alongside handlers: a handler miss falls through to SSR.
+    const apiPage = await fetch(`${base}/api/docs`);
+    const apiPageHtml = await apiPage.text();
+    assert(apiPage.status === 200, "GET /api/docs → 200 (page under /api renders)");
+    assert(apiPageHtml.includes("E2E_API_DOCS_PAGE"), "/api/docs page falls through to SSR");
 
     console.log(`\n✓ otfw serve e2e — ${passed} assertions passed\n`);
   } finally {

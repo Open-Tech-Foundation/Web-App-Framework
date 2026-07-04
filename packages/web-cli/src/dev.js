@@ -339,12 +339,13 @@ export async function runDev() {
       if (pathname.startsWith(ROUTE_PREFIX) && pathname.endsWith(".js")) {
         return js(await serveRoute(fromRouteUrl(pathname)));
       }
-      // API routes take precedence over the SPA shell; a non-match under /api/ is a
-      // 404 (never the shell). See SPEC §11.
+      // API routes are tried first (SPEC §11): a matched handler's Response wins. A
+      // miss falls through to static assets / the SPA shell, so pages can live under
+      // /api too (e.g. the docs site's /api reference section).
       if (pathname === "/api" || pathname.startsWith("/api/")) {
         const api = await getApi();
         const res = api ? await api.handler(req) : null;
-        return res ?? new Response("not found", { status: 404 });
+        if (res) return res;
       }
       if (pathname !== "/") {
         const asset = await serveStatic(pathname);
