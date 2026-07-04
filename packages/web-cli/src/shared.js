@@ -467,7 +467,7 @@ export function apiEntrySource({ routes, middleware }) {
  * resolved at runtime from the project's node_modules, so server deps and native
  * modules aren't dragged into the bundle. Returns `null` when there are no routes.
  */
-export async function buildApiBundle({ root, appDir, webEntry, exclude, tmpName = ".otfw-api" }) {
+export async function buildApiBundle({ root, appDir, webEntry, exclude, tmpName = ".otfw-api", bust }) {
   const discovered = discoverApiRoutes(appDir, exclude);
   if (discovered.routes.length === 0) return null;
 
@@ -490,7 +490,10 @@ export async function buildApiBundle({ root, appDir, webEntry, exclude, tmpName 
     checks: { pluginTimings: false },
   });
 
-  const mod = await import(pathToFileURL(join(tmp, "out", "api.js")).href);
+  // `bust` busts the ESM import cache so `otfw dev` picks up handler edits on rebuild
+  // (re-importing the same URL would otherwise return the cached module).
+  const href = pathToFileURL(join(tmp, "out", "api.js")).href + (bust ? `?v=${bust}` : "");
+  const mod = await import(href);
   return {
     handler: mod.apiHandler,
     routes: discovered.routes,
