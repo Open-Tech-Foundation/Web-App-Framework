@@ -25,6 +25,7 @@ import { overlayClient } from "./overlay.js";
 import {
   EXTENSIONS,
   MIME,
+  buildApiBundle,
   cssPlugin,
   discoverPages,
   entrySource,
@@ -184,6 +185,32 @@ export async function runDev() {
     return routeCache.get(file);
   }
 
+  // API routes (SPEC §11) are plain server modules under app/api/. In dev they're
+  // built lazily on the first /api/* request and rebuilt after an edit (the watcher
+  // clears the cache). `bust` busts the ESM import cache so edits take effect.
+  let apiBundle = null;
+  let apiBuilt = false;
+  let apiVersion = 0;
+  async function getApi() {
+    if (!apiBuilt) {
+      try {
+        apiBundle = await buildApiBundle({ root, appDir, webEntry, exclude, bust: ++apiVersion });
+      } catch (e) {
+        console.error(`✗ API build failed: ${e?.message ?? e}`);
+        apiBundle = null;
+      }
+      apiBuilt = true;
+    }
+    return apiBundle;
+  }
+  function invalidateApi() {
+    try {
+      apiBundle?.cleanup();
+    } catch {}
+    apiBundle = null;
+    apiBuilt = false;
+  }
+
   // The module graph powers precise invalidation; build it in the background so it
   // never blocks startup. Until it's ready, a change clears every cache (safe).
   let graph = { has: () => false, affected: () => new Set() };
@@ -217,6 +244,13 @@ export async function runDev() {
   const watcher = watch(appDir, { recursive: true }, (_evt, name) => {
     if (!name) return;
     const file = join(appDir, name);
+    // An API route/middleware edit (app/api/**/*.{js,ts,jsx,tsx}) rebuilds the API
+    // bundle on the next request and triggers a reload.
+    if (name.startsWith("api/") && /\.(jsx?|tsx?)$/.test(name)) {
+      invalidateApi();
+      publish({ type: "reload" });
+      return;
+    }
     if (/\.(mdx|md|[jt]sx|css)$/.test(name)) {
       if (/^(page|layout|404)\.(mdx|md|[jt]sx)$/.test(name.split("/").pop()) && !pages.includes(file)) {
         const fresh = discoverPages(appDir, exclude);
@@ -234,6 +268,7 @@ export async function runDev() {
     try {
       watcher.close();
     } catch {}
+    invalidateApi();
     process.exit(0);
   };
   process.once("SIGINT", shutdown);
@@ -242,6 +277,7 @@ export async function runDev() {
     try {
       watcher.close();
     } catch {}
+    invalidateApi();
   });
 
   // Import map (so `@opentf/web` resolves to the shared runtime chunk) + entry + the
@@ -302,6 +338,13 @@ export async function runDev() {
       if (pathname === "/bundle.js") return js(await serveEntry());
       if (pathname.startsWith(ROUTE_PREFIX) && pathname.endsWith(".js")) {
         return js(await serveRoute(fromRouteUrl(pathname)));
+      }
+      // API routes take precedence over the SPA shell; a non-match under /api/ is a
+      // 404 (never the shell). See SPEC §11.
+      if (pathname === "/api" || pathname.startsWith("/api/")) {
+        const api = await getApi();
+        const res = api ? await api.handler(req) : null;
+        return res ?? new Response("not found", { status: 404 });
       }
       if (pathname !== "/") {
         const asset = await serveStatic(pathname);

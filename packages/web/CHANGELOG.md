@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Reactive ownership scopes** (`scope()` in the signals core, exported from the package
+  root): collects the disposers of every effect created while a build function runs, so a
+  dynamic region can tear its bindings down as a unit. Effects created during a flush-time
+  re-run never attach to an ambient scope — ownership is always explicit.
+
+### Fixed
+
+- **Evicted keyed-list items leaked their binding effects.** `bindList`/`hydrateList`
+  removed a stale row's DOM node but left its `bindText`/`bindAttr` effects subscribed, so
+  any signal shared across rows (e.g. a selection signal every row's `class` reads)
+  accumulated one zombie effect per discarded row and re-ran them all on every later write.
+  In the js-framework-benchmark suite this made *select row* cost more than *create 1,000
+  rows* (~85 ms vs ~65 ms unthrottled). Items now build inside a `scope` and are disposed on
+  eviction; the list's own disposer also tears down all live items.
+- **Swapped conditional branches leaked their binding effects** the same way: `bindChild`/
+  `hydrateChild` regions now own each branch's effects and dispose them when the branch is
+  replaced (including the discarded subscribe-only first build during hydration).
+- **Unmounted pages leaked their binding effects**: `mount()` now builds a factory view
+  inside a `scope` and registers its disposer as a lifecycle cleanup, so the router's
+  navigation teardown stops every effect the outgoing page created.
+
 ## [0.7.0] - 2026-07-03
 
 ### Added

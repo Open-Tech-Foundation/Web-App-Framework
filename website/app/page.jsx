@@ -89,7 +89,8 @@ export default function HomePage() {
         <div className="text-center space-y-3">
           <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Fast where it counts.</h2>
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            The standard js-framework-benchmark operation set vs React, Solid, and Svelte 5 — one shared harness. Median ms, lower is better.
+            The standard js-framework-benchmark operation set vs React, Solid, and Svelte 5 — one shared harness,
+            production builds, 4× CPU throttle. Median ms over 10–12 samples, lower is better.
           </p>
         </div>
 
@@ -120,7 +121,8 @@ export default function HomePage() {
           </div>
         </div>
         <p className="text-center text-xs text-[var(--text-muted)]">
-          Indicative only — a frame-quantized timer (~16.6&nbsp;ms floor). Run it yourself: <span className="mono">bun run bench all</span>.
+          Bold marks a winner only when the margin beats the ~8.3&nbsp;ms timing resolution — anything closer is a tie.
+          Indicative, not a head-to-head. Run it yourself: <span className="mono">bun run bench all</span>.
         </p>
       </section>
 

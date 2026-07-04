@@ -2,7 +2,7 @@
 // Mirrors benchmarks/otfw exactly: same operations, same measurement harness,
 // same in-page contract — only the framework differs.
 //
-//   window.__BENCH_RESULTS__ = { engine, ua, cases: [{ label, median, runs }] }
+//   window.__BENCH_RESULTS__ = { engine, ua, cases: [{ label, median, runs, samples }] }
 //   window.__BENCH_DONE__    = true
 //
 // React detail: the async measurement harness must read the *current* row data
@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { buildRows, median, nextFrame } from "./_bench.js";
+import { buildRows, measure, nextFrame } from "./_bench.js";
 
 function Bench() {
   const [rows, setRows] = useState([]);
@@ -58,20 +58,7 @@ function Bench() {
   const select = (id) => setSelected(id);
   const remove = (id) => commit(rowsRef.current.filter((r) => r.id !== id));
 
-  // --- Measurement (identical to the OTF Web case) ----------------------------
-  async function measure(label, setup, op, runs) {
-    const times = [];
-    for (let i = 0; i < runs; i++) {
-      setup();
-      await nextFrame();
-      const t0 = performance.now();
-      op();
-      await nextFrame();
-      times.push(performance.now() - t0);
-    }
-    return { label, median: +median(times).toFixed(2), runs };
-  }
-
+  // --- Measurement (shared `measure` from _bench.js, identical across cases) --
   async function runAll() {
     setStatus("running");
     setResults(null);
@@ -80,23 +67,23 @@ function Bench() {
     run(); await nextFrame(); clear(); await nextFrame(); // warm up
 
     const cases = [];
-    cases.push(await measure("create 1,000 rows", empty, run, 5));
-    cases.push(await measure("create 10,000 rows", empty, runLots, 3));
-    cases.push(await measure("append 1,000 to 1,000", run, add, 5));
-    cases.push(await measure("update every 10th (1k)", run, update, 5));
-    cases.push(await measure("swap 2 rows (1k)", run, swapRows, 5));
+    cases.push(await measure("create 1,000 rows", empty, run, 10));
+    cases.push(await measure("create 10,000 rows", empty, runLots, 5, 1));
+    cases.push(await measure("append 1,000 to 1,000", run, add, 10));
+    cases.push(await measure("update every 10th (1k)", run, update, 12));
+    cases.push(await measure("swap 2 rows (1k)", run, swapRows, 12));
     cases.push(
       await measure(
         "select row (1k)",
         () => { run(); setSelected(-1); },
         () => select(rowsRef.current[500].id),
-        5,
+        12,
       ),
     );
     cases.push(
-      await measure("remove row (1k)", run, () => remove(rowsRef.current[500].id), 5),
+      await measure("remove row (1k)", run, () => remove(rowsRef.current[500].id), 12),
     );
-    cases.push(await measure("clear 10,000 rows", runLots, clear, 5));
+    cases.push(await measure("clear 10,000 rows", runLots, clear, 5, 1));
 
     clear();
     setResults(cases);

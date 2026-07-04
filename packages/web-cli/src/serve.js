@@ -26,11 +26,13 @@
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { runBuild } from "./build.js";
 import {
   MIME,
   buildServerBundle,
+  discoverApiRoutes,
   discoverPages,
   injectHead,
   injectHydrationData,
@@ -150,19 +152,28 @@ export async function runServe() {
 
   const { mod, cleanup } = await buildServerBundle({ root, pages, webEntry, otfwc, docsPlugins, i18n });
 
-  const shutdown = () => {
+  // API routes (SPEC §11): the client build already emitted the handler bundle to
+  // dist/server/api.js (build.js `emitApiBundle`). Import it and hold it live;
+  // `apiHandler(req)` returns a Response or null (no route matched).
+  const apiFile = join(distDir, "server", "api.js");
+  let api = null;
+  if (existsSync(apiFile)) {
+    const apiMod = await import(pathToFileURL(apiFile).href);
+    api = { handler: apiMod.apiHandler, routes: discoverApiRoutes(appDir, exclude).routes };
+  }
+
+  const cleanupAll = () => {
     try {
       cleanup();
     } catch {}
+  };
+  const shutdown = () => {
+    cleanupAll();
     process.exit(0);
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
-  process.once("exit", () => {
-    try {
-      cleanup();
-    } catch {}
-  });
+  process.once("exit", cleanupAll);
 
   // Serve a built asset from dist/ (only regular files; a directory path falls
   // through to SSR). `dist/` already contains hashed assets, copied public/ files,
@@ -204,6 +215,12 @@ export async function runServe() {
   const server = serve(startPort, explicitPort, {
     async fetch(req) {
       const url = new URL(req.url);
+      // API routes take precedence over assets and SSR (SPEC §11). A match returns
+      // its Response; a non-match under /api/ is a 404, never the SSR shell.
+      if (api && (url.pathname === "/api" || url.pathname.startsWith("/api/"))) {
+        const res = await api.handler(req);
+        return res ?? new Response("not found", { status: 404 });
+      }
       // A path with a file extension is an asset request; serve it from dist/. A
       // miss on a real asset is a 404 (don't fall through to the SSR shell).
       if (/\.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== "/") {
@@ -233,6 +250,7 @@ export async function runServe() {
   });
 
   console.log(`\n  OTF Web SSR server`);
-  console.log(`  → http://localhost:${server.port}  (${pages.length} routes, server-rendered)`);
+  const apiNote = api ? `, ${api.routes.length} API routes` : "";
+  console.log(`  → http://localhost:${server.port}  (${pages.length} routes, server-rendered${apiNote})`);
   console.log(`  ✓ ready in ${Date.now() - bootStart}ms\n`);
 }

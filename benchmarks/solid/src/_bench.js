@@ -50,3 +50,30 @@ export function nextFrame() {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
 }
+
+/**
+ * Time one operation. Per sample: re-establish the precondition, settle a
+ * frame, garbage-collect when exposed (--js-flags=--expose-gc, so earlier
+ * samples' garbage never bills a later one), then time op() to the next
+ * painted frame. The first `warmup` iterations run identically but are
+ * discarded (JIT/IC warm-up per operation path). Returns the median plus every
+ * kept sample so runners can report spread, not just a point estimate.
+ */
+export async function measure(label, setup, op, runs, warmup = 2) {
+  const times = [];
+  for (let i = 0; i < warmup + runs; i++) {
+    setup();
+    await nextFrame();
+    if (typeof window.gc === "function") window.gc();
+    const t0 = performance.now();
+    op();
+    await nextFrame();
+    if (i >= warmup) times.push(performance.now() - t0);
+  }
+  return {
+    label,
+    median: +median(times).toFixed(2),
+    runs,
+    samples: times.map((t) => +t.toFixed(2)),
+  };
+}

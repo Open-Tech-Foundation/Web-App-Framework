@@ -2,7 +2,7 @@
 // also back runtime-driven updates (reactive text/attributes). No virtual DOM,
 // no diffing — just direct, fine-grained DOM writes wired to signals.
 
-import { effect, signal } from "../core/signals.js";
+import { effect, scope, signal } from "../core/signals.js";
 import { claimRegionEnd, claimRegionStart } from "./hydrate.js";
 
 // Attribute names that must be assigned as JS properties (not setAttribute) for
@@ -269,32 +269,47 @@ export function bindChild(anchor, fn) {
  */
 export function hydrateChild(cur, adoptFn, buildFn) {
   claimRegionStart(cur);
-  const adopted = toNodes(adoptFn(cur));
+  // Adopt inside a scope so the adopted branch owns its bindings' effects; the
+  // region disposes it when a reactive change swaps the branch out.
+  const adoptedScope = scope(() => toNodes(adoptFn(cur)));
   const anchor = claimRegionEnd(cur);
   // Seed with the adopted nodes and skip the first effect run's DOM write: the branch is
   // already in place. The first run still evaluates `buildFn` to subscribe to its reactive
   // deps (the built nodes are discarded); from the second run on it swaps normally.
-  return childEffect(anchor, buildFn, adopted, true);
+  return childEffect(anchor, buildFn, adoptedScope.result, true, adoptedScope);
 }
 
 /** The child-region effect shared by {@link bindChild} (empty seed, no skip) and
  * {@link hydrateChild} (seeded with adopted nodes, first DOM write skipped). On each run
- * the previous nodes are replaced with the new ones, inserted before `anchor`. */
-function childEffect(anchor, fn, current, skipFirst) {
+ * the previous nodes are replaced with the new ones, inserted before `anchor`; the
+ * previous branch's scope is disposed so its bindings' effects don't outlive it. */
+function childEffect(anchor, fn, current, skipFirst, currentScope = null) {
   let first = skipFirst;
-  return effect(() => {
-    const next = toNodes(fn());
+  const disposeEffect = effect(() => {
+    // Build in a scope: the branch's nested bindings (text/attr/list effects)
+    // belong to this run and are disposed when the branch is replaced.
+    const built = scope(() => toNodes(fn()));
     if (first) {
       first = false;
-      return; // hydration: keep the adopted DOM on first paint (subscribe only)
+      // Hydration first run subscribes the region effect only; the discarded
+      // build's own effects must not stay live alongside the adopted branch.
+      built.dispose();
+      return; // keep the adopted DOM on first paint
     }
+    const next = built.result;
     const host = anchor.parentNode;
     for (const n of current) {
       if (n.parentNode === host) host.removeChild(n);
     }
     if (host) for (const n of next) host.insertBefore(n, anchor);
+    if (currentScope) currentScope.dispose();
+    currentScope = built;
     current = next;
   });
+  return () => {
+    disposeEffect();
+    if (currentScope) currentScope.dispose();
+  };
 }
 
 /**
@@ -333,8 +348,10 @@ export function hydrateList(cur, sourceFn, adoptItem, renderItem, keyFn) {
     const item = items[index];
     const key = keyFn ? keyFn(item, index) : index;
     const sig = signal(item);
-    const node = adoptItem(cur, sig, index); // claims one item subtree off `cur`
-    cache.set(key, { sig, node });
+    // Adopt inside a scope so the item owns its bindings' effects; eviction
+    // disposes them (same ownership as CSR-built items in reconcileList).
+    const s = scope(() => adoptItem(cur, sig, index)); // claims one item subtree off `cur`
+    cache.set(key, { sig, node: s.result, dispose: s.dispose });
     prevKeys.push(key);
   }
   const anchor = claimRegionEnd(cur);
@@ -350,7 +367,7 @@ export function hydrateList(cur, sourceFn, adoptItem, renderItem, keyFn) {
  * order) carry reconciliation state across runs. Returns the effect disposer.
  */
 function reconcileList(anchor, sourceFn, renderItem, keyFn, cache, prevKeys) {
-  return effect(() => {
+  const disposeEffect = effect(() => {
     const data = sourceFn();
     const items = Array.isArray(data) ? data : [];
     const next = new Map();
@@ -373,7 +390,12 @@ function reconcileList(anchor, sourceFn, renderItem, keyFn, cache, prevKeys) {
         prevIndex[index] = prevPos.has(key) ? prevPos.get(key) : -1;
       } else {
         const sig = signal(item);
-        entry = { sig, node: renderItem(sig, index) };
+        // Build inside a scope: the item owns its bindings' effects, so
+        // evicting it detaches them from shared signals (e.g. a selection
+        // signal every row's class reads). Without this every discarded row
+        // leaves a zombie effect that all later writes keep re-running.
+        const s = scope(() => renderItem(sig, index));
+        entry = { sig, node: s.result, dispose: s.dispose };
         prevIndex[index] = -1;
       }
       next.set(key, entry);
@@ -381,8 +403,9 @@ function reconcileList(anchor, sourceFn, renderItem, keyFn, cache, prevKeys) {
       nodes[index] = entry.node;
     }
 
-    // Remove nodes whose keys disappeared.
+    // Remove nodes whose keys disappeared, and dispose their bindings.
     for (const entry of cache.values()) {
+      if (entry.dispose) entry.dispose();
       if (entry.node.parentNode) entry.node.parentNode.removeChild(entry.node);
     }
     cache = next;
@@ -403,6 +426,13 @@ function reconcileList(anchor, sourceFn, renderItem, keyFn, cache, prevKeys) {
       if (nodes[i].nextSibling !== ref) host.insertBefore(nodes[i], ref);
     }
   });
+  return () => {
+    disposeEffect();
+    for (const entry of cache.values()) {
+      if (entry.dispose) entry.dispose();
+    }
+    cache.clear();
+  };
 }
 
 /**

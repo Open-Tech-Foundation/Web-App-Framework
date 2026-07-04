@@ -15,6 +15,8 @@ import { reportError } from "./errors.js";
 
 /** The consumer (effect or computed) currently executing, if any. */
 let activeConsumer = null;
+/** Disposer collector of the innermost `scope()` currently building, if any. */
+let activeScope = null;
 /** Depth of nested `batch()` calls; effects flush when this returns to 0. */
 let batchDepth = 0;
 /** Re-entrancy guard for the flush loop. */
@@ -150,6 +152,36 @@ export function computed(fn) {
 }
 
 /**
+ * Collect ownership of the effects created while `fn` runs. Returns
+ * `{ result, dispose }`: `dispose()` stops every effect `fn` created (including
+ * ones created in nested calls, unless an inner `scope()` claimed them first).
+ *
+ * This is how dynamic regions own their bindings: a keyed-list item, a
+ * conditional branch, or a mounted page builds its DOM inside a scope, and
+ * evicting/swapping/unmounting disposes the scope — otherwise the bindings'
+ * effects would stay subscribed to their signals forever (a leak that also
+ * makes every later write pay for dead subscribers).
+ */
+export function scope(fn) {
+  const disposers = [];
+  const prev = activeScope;
+  activeScope = disposers;
+  let result;
+  try {
+    result = fn();
+  } finally {
+    activeScope = prev;
+  }
+  return {
+    result,
+    dispose() {
+      for (const d of disposers) d();
+      disposers.length = 0;
+    },
+  };
+}
+
+/**
  * Run `fn` immediately, tracking the signals it reads, and re-run it whenever
  * any of them change. `fn` may return a cleanup function, which runs before the
  * next re-run and on dispose. Returns a disposer that stops the effect.
@@ -166,22 +198,31 @@ export function effect(fn) {
       runCleanup(node);
       clearSources(node);
       const prev = activeConsumer;
+      const prevScope = activeScope;
+      // Effects created during a run belong to whoever the run's body says they
+      // do (an explicit inner scope()), never to whatever scope happens to be
+      // ambient — a flush-time re-run must not donate its children to an
+      // unrelated scope that was open when the write occurred.
       activeConsumer = node;
+      activeScope = null;
       try {
         const result = node.fn();
         if (typeof result === "function") node.cleanup = result;
       } finally {
         activeConsumer = prev;
+        activeScope = prevScope;
       }
     },
   };
   node.run();
-  return function dispose() {
+  const dispose = function dispose() {
     if (node.disposed) return;
     node.disposed = true;
     runCleanup(node);
     clearSources(node);
   };
+  if (activeScope) activeScope.push(dispose);
+  return dispose;
 }
 
 function runCleanup(node) {

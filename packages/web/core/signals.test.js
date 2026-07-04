@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { batch, computed, effect, signal } from "./signals.js";
+import { batch, computed, effect, scope, signal } from "./signals.js";
 
 describe("signal", () => {
   test("reads and writes a value", () => {
@@ -138,5 +138,72 @@ describe("batch", () => {
     });
     expect(sum).toBe(30);
     expect(runs).toBe(2); // initial + one batched run
+  });
+});
+
+describe("scope", () => {
+  test("dispose stops every effect created inside", () => {
+    const s = signal(0);
+    let runsA = 0;
+    let runsB = 0;
+    const sc = scope(() => {
+      effect(() => { runsA++; s.value; });
+      effect(() => { runsB++; s.value; });
+      return "result";
+    });
+    expect(sc.result).toBe("result");
+
+    s.value = 1;
+    expect(runsA).toBe(2);
+    expect(runsB).toBe(2);
+
+    sc.dispose();
+    s.value = 2;
+    expect(runsA).toBe(2); // no re-run after dispose
+    expect(runsB).toBe(2);
+  });
+
+  test("an inner scope claims its effects away from the outer one", () => {
+    const s = signal(0);
+    let outerRuns = 0;
+    let innerRuns = 0;
+    let inner;
+    const outer = scope(() => {
+      effect(() => { outerRuns++; s.value; });
+      inner = scope(() => {
+        effect(() => { innerRuns++; s.value; });
+      });
+    });
+
+    outer.dispose(); // must not touch the inner scope's effect
+    s.value = 1;
+    expect(outerRuns).toBe(1);
+    expect(innerRuns).toBe(2);
+
+    inner.dispose();
+    s.value = 2;
+    expect(innerRuns).toBe(2);
+  });
+
+  test("effects created during a flush re-run don't join an ambient scope", () => {
+    // A region effect creating children on re-run manages them itself; the
+    // scope that happened to be open when the *write* occurred must not adopt
+    // them (it would dispose another region's live bindings).
+    const trigger = signal(0);
+    const s = signal(0);
+    let childRuns = 0;
+    effect(() => {
+      if (trigger.value > 0) {
+        effect(() => { childRuns++; s.value; });
+      }
+    });
+
+    const ambient = scope(() => {
+      trigger.value = 1; // re-runs the outer effect, which creates the child
+    });
+    ambient.dispose();
+
+    s.value = 1; // child must still be alive — ambient never owned it
+    expect(childRuns).toBe(2);
   });
 });
