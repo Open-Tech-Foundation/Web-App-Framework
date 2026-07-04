@@ -16,13 +16,13 @@
 //   • anything else → SSR: render the route's markup + <head>, inject into the
 //     shell, return text/html.
 //
-// Hydration (Phase 2.0): the client build is the hydrate target and the shell's
-// `#app` carries the `data-otfw-hydrate` sentinel, so the client *adopts* the
-// server-rendered DOM on first paint (no rebuild/flash) for leaf routes that the
-// hydrate backend can emit an adopt factory for; anything it can't (layout chains,
-// child components, lists/conditionals — see docs/HYDRATION.md §4) falls back to a
-// clean CSR mount. The per-request HTML is real either way (first paint, dynamic
-// content, SEO).
+// Hydration (Phase 2, complete — docs/HYDRATION.md §4): the client build is the
+// hydrate target and the shell's `#app` carries the `data-otfw-hydrate` sentinel,
+// so the client *adopts* the server-rendered DOM on first paint (no rebuild/flash)
+// — pages, layout chains, keyed lists, conditionals, and component islands with
+// rich props (2.0/2.5/2.1a–d). A route the adopt walk can't handle falls back to
+// a clean CSR mount per component. The per-request HTML is real either way (first
+// paint, dynamic content, SEO).
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
