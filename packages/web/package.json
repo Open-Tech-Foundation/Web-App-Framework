@@ -7,8 +7,14 @@
     ".": "./index.js",
     "./signals": "./core/signals.js",
     "./runtime": "./runtime/index.js",
-    "./server": "./server/index.js",
-    "./server/adapters/node": "./server/adapters/node.js"
+    "./server": {
+      "types": "./server/index.d.ts",
+      "default": "./server/index.js"
+    },
+    "./server/adapters/node": {
+      "types": "./server/adapters/node.d.ts",
+      "default": "./server/adapters/node.js"
+    }
   },
   "files": [
     "index.js",
