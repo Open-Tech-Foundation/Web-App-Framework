@@ -25,10 +25,13 @@ function assert(cond, label) {
   ok(label);
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// SSG markup interleaves hydration markers (`todo <!--$-->alpha<!--/-->`); strip
+// them so assertions can match the text a browser would show.
+const visibleText = (html) => html.replace(/<!--[^>]*-->/g, "");
 
 // Remove the fixture's generated build output between/after runs.
 function cleanFixture() {
-  for (const d of ["dist", ".otfw", ".otfw-ssg", ".otfw-api", ".dev"]) {
+  for (const d of ["dist", ".otfw", ".otfw-ssg", ".otfw-api", ".otfw-loaders", ".otfw-loaders-build", ".dev"]) {
     rmSync(`${FIXTURE}/${d}`, { recursive: true, force: true });
   }
 }
@@ -144,6 +147,61 @@ async function main() {
     const apiPageHtml = await apiPage.text();
     assert(apiPage.status === 200, "GET /api/docs → 200 (page under /api renders)");
     assert(apiPageHtml.includes("E2E_API_DOCS_PAGE"), "/api/docs page falls through to SSR");
+
+    // ── 7. Route loaders (docs/DATA.md): server data → SSR + inline payload ─────
+    const todos = await fetch(`${base}/todos`);
+    const todosHtml = await todos.text();
+    assert(todos.status === 200, "GET /todos → 200");
+    assert(
+      /<div id="app"[^>]*>[\s\S]*E2E_TODOS[\s\S]*<\/div>/.test(todosHtml),
+      "/todos markup is server-rendered inside #app",
+    );
+    assert(visibleText(todosHtml).includes("todo alpha"), "the loader's data is server-rendered into the page");
+    const payload = todosHtml.match(/<script type="application\/json" id="__otfw_data">([\s\S]*?)<\/script>/);
+    assert(!!payload, "/todos inlines the __otfw_data payload script");
+    assert(JSON.parse(payload[1]).items[0] === "alpha", "the inline payload parses to the loader data");
+
+    const todosQ = await fetch(`${base}/todos?q=abc`);
+    assert(visibleText(await todosQ.text()).includes("q:abc"), "the request's query string reaches the loader");
+
+    // ── 8. The <path>/__data.json endpoint (SPA navigation's data source) ───────
+    const data = await fetch(`${base}/todos/__data.json`);
+    assert(data.status === 200, "GET /todos/__data.json → 200");
+    assert(
+      (data.headers.get("content-type") || "").includes("application/json"),
+      "the data endpoint serves application/json",
+    );
+    assert(data.headers.get("cache-control") === "no-store", "the data endpoint is no-store under serve");
+    assert((await data.json()).items[0] === "alpha", "the data endpoint returns the raw loader JSON");
+
+    const dataQ = await fetch(`${base}/todos/__data.json?q=xyz`);
+    assert((await dataQ.json()).q === "xyz", "the data endpoint forwards the query string");
+
+    const item = await fetch(`${base}/items/7`);
+    assert(visibleText(await item.text()).includes("ITEM 7"), "a dynamic route's loader data renders (params)");
+    const itemData = await fetch(`${base}/items/7/__data.json`);
+    assert((await itemData.json()).id === "7", "dynamic [id] params resolve on the data endpoint");
+
+    // ── 9. Loader error semantics ────────────────────────────────────────────────
+    const missingItem = await fetch(`${base}/items/missing`);
+    assert(missingItem.status === 404, "a loader notFound() → HTTP 404 for the page");
+    assert((await missingItem.text()).includes("E2E_404"), "notFound() renders the registered 404 page");
+    const missingData = await fetch(`${base}/items/missing/__data.json`);
+    assert(missingData.status === 404, "a loader notFound() → 404 on the data endpoint");
+
+    const dataMiss = await fetch(`${base}/about/__data.json`);
+    assert(dataMiss.status === 404, "__data.json for a loader-less page → 404 (reserved, no SSR fall-through)");
+
+    const boom = await fetch(`${base}/boom`);
+    assert(boom.status === 500, "a throwing loader → HTTP 500 for the page");
+    const boomData = await fetch(`${base}/boom/__data.json`);
+    assert(boomData.status === 500, "a throwing loader → 500 JSON on the data endpoint");
+    assert((await boomData.json()).error === "Internal Server Error", "the 500 body is the JSON error envelope");
+
+    // Loader-less pages are untouched by the feature (regression).
+    const aboutAgain = await fetch(`${base}/about`);
+    assert(aboutAgain.status === 200, "loader-less /about still renders (regression)");
+    assert(!(await aboutAgain.text()).includes("__otfw_data"), "no data payload injected for a loader-less page");
 
     console.log(`\n✓ otfw serve e2e — ${passed} assertions passed\n`);
   } finally {

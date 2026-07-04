@@ -73,6 +73,23 @@ export function injectHydrationData(shellHtml, json) {
   return injectBeforeBody(shellHtml, `<script type="application/json" id="__otfw_h">${json}</script>`);
 }
 
+/** The reserved per-route data filename/URL suffix (mirrors the runtime's
+ *  `DATA_FILE` in `@opentf/web` runtime/route-data.js). */
+export const DATA_FILE = "__data.json";
+
+/**
+ * Embed a route loader's data (docs/DATA.md) as a `<script type="application/json"
+ * id="__otfw_data">` the client router reads on first paint (instead of fetching
+ * `<path>/__data.json`). A separate script from the island payload above — the two
+ * channels have independent shapes and readers. `json` comes `<`-escaped from
+ * `serializeRouteData`; no-op for an empty payload (route without a loader, or an
+ * undefined loader result).
+ */
+export function injectRouteData(shellHtml, json) {
+  if (!json) return shellHtml;
+  return injectBeforeBody(shellHtml, `<script type="application/json" id="__otfw_data">${json}</script>`);
+}
+
 /**
  * Stamp the `data-otfw-hydrate` sentinel onto the shell's `#app` container, telling
  * the client to *adopt* the server-rendered DOM on first paint instead of rebuilding
@@ -466,6 +483,32 @@ function apiRoutePath(filePath, appDir) {
 }
 
 /**
+ * Discover route loaders anywhere under `app/` (docs/DATA.md). A loader is a
+ * `loader.{js,ts}` file sibling to a `page.*` — the data analogue of a `route.*`
+ * endpoint. Strictly `js|ts` (no `x` variants): loaders are plain server modules,
+ * never JSX. Returns absolute file paths.
+ */
+export function discoverLoaders(appDir, exclude = new Set()) {
+  const out = [];
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        if (!exclude.has(entry.name)) walk(join(dir, entry.name));
+      } else if (/^loader\.(js|ts)$/.test(entry.name)) out.push(join(dir, entry.name));
+    }
+  };
+  walk(appDir);
+  return out;
+}
+
+/** The page route a `.../app/<...>/loader.{js,ts}` file feeds (folder = URL). */
+export function loaderRoutePath(filePath, appDir) {
+  const r = stripAppPrefix(filePath, appDir).replace(/\/loader\.(js|ts)$/, "");
+  return r === "" ? "/" : r;
+}
+
+/**
  * Detect folders that hold both a `page.*` and a `route.*` — they'd resolve to the
  * same URL. Returns the conflicting `{ path, page, route }` entries (empty = none).
  * A page and an endpoint cannot own the same path (as in Next.js's App Router).
@@ -483,12 +526,41 @@ export function detectRouteConflicts(appDir, exclude = new Set()) {
   return conflicts;
 }
 
-/** Print the route/page conflicts and exit — shared by build, dev, and serve. */
+/**
+ * Detect misplaced `loader.*` files (docs/DATA.md): a loader feeds the page in
+ * its folder, so one without a sibling `page.*` — including one placed next to a
+ * `route.*` endpoint — has nothing to feed. Returns `{ loader, route, reason }`.
+ */
+export function detectLoaderConflicts(appDir, exclude = new Set()) {
+  const conflicts = [];
+  for (const loader of discoverLoaders(appDir, exclude)) {
+    const dir = dirname(loader);
+    const hasPage = ["page.jsx", "page.tsx", "page.mdx", "page.md"].some((f) => existsSync(join(dir, f)));
+    if (hasPage) continue;
+    const hasRoute = ["route.js", "route.ts"].some((f) => existsSync(join(dir, f)));
+    conflicts.push({
+      loader,
+      route: loaderRoutePath(loader, appDir),
+      reason: hasRoute
+        ? "sits next to a route.* API endpoint (endpoints take a Request; loaders feed pages)"
+        : "has no sibling page.* to feed",
+    });
+  }
+  return conflicts;
+}
+
+/** Print the route/page/loader conflicts and exit — shared by build, dev, and serve. */
 export function assertNoRouteConflicts(appDir, exclude = new Set()) {
   const conflicts = detectRouteConflicts(appDir, exclude);
-  if (conflicts.length === 0) return;
-  const lines = conflicts.map((c) => `  ${c.path}\n    page:  ${c.page}\n    route: ${c.route}`).join("\n");
-  fail(`a page and an API route cannot resolve to the same path:\n${lines}\n  Move one to a different folder.`);
+  if (conflicts.length > 0) {
+    const lines = conflicts.map((c) => `  ${c.path}\n    page:  ${c.page}\n    route: ${c.route}`).join("\n");
+    fail(`a page and an API route cannot resolve to the same path:\n${lines}\n  Move one to a different folder.`);
+  }
+  const loaderConflicts = detectLoaderConflicts(appDir, exclude);
+  if (loaderConflicts.length > 0) {
+    const lines = loaderConflicts.map((c) => `  ${c.route}\n    loader: ${c.loader}\n    ${c.reason}`).join("\n");
+    fail(`a loader.* file must sit next to the page.* it feeds:\n${lines}`);
+  }
 }
 
 /**
@@ -530,6 +602,10 @@ export async function buildApiBundle({ root, appDir, webEntry, exclude, tmpName 
   writeFileSync(entry, apiEntrySource(discovered, appDir));
 
   const serverApi = join(dirname(webEntry), "server", "index.js");
+  // `bust` versions the emitted *filename* so `otfw dev` picks up handler edits on
+  // rebuild — Bun's ESM cache is keyed by file path and ignores a `?v=` query, so
+  // only a genuinely new path re-evaluates the module.
+  const outName = bust ? `api.${bust}.js` : "api.js";
   await build({
     input: entry,
     platform: "node",
@@ -539,14 +615,11 @@ export async function buildApiBundle({ root, appDir, webEntry, exclude, tmpName 
     },
     // Keep npm/node builtins external — server handlers resolve them at runtime.
     external: (id) => !id.startsWith(".") && !id.startsWith("/") && !id.startsWith("@opentf/web"),
-    output: { dir: join(tmp, "out"), format: "esm", entryFileNames: "api.js" },
+    output: { dir: join(tmp, "out"), format: "esm", entryFileNames: outName },
     checks: { pluginTimings: false },
   });
 
-  // `bust` busts the ESM import cache so `otfw dev` picks up handler edits on rebuild
-  // (re-importing the same URL would otherwise return the cached module).
-  const href = pathToFileURL(join(tmp, "out", "api.js")).href + (bust ? `?v=${bust}` : "");
-  const mod = await import(href);
+  const mod = await import(pathToFileURL(join(tmp, "out", outName)).href);
   return {
     handler: mod.apiHandler,
     routes: discovered.routes,
@@ -586,6 +659,96 @@ export async function emitApiBundle({ root, appDir, webEntry, exclude, outDir })
   return { routes: discovered.routes };
 }
 
+/**
+ * Entry source for the loader bundle (docs/DATA.md): statically import every
+ * `loader.{js,ts}` module (keyed by absolute path so the registry derives each
+ * route from it) and export the composed registry. Mirrors `apiEntrySource`.
+ */
+export function loaderEntrySource(loaderFiles, appDir, i18n = null) {
+  const imports = loaderFiles.map((p, i) => `import * as l${i} from ${JSON.stringify(p)};`).join("\n");
+  const map = loaderFiles.map((p, i) => `  [${JSON.stringify(p)}]: l${i},`).join("\n");
+  const i18nOpt =
+    i18n && Array.isArray(i18n.locales) && i18n.locales.length
+      ? `, i18n: ${JSON.stringify({ locales: i18n.locales, defaultLocale: i18n.defaultLocale })}`
+      : "";
+  const opts = `\n{ appDir: ${JSON.stringify(appDir ?? "")}${i18nOpt} },\n`;
+  return (
+    `import { createLoaderRegistry } from "@opentf/web/server";\n` +
+    `${imports}\n` +
+    `export const loaders = createLoaderRegistry(\n{\n${map}\n},${opts});\n`
+  );
+}
+
+/**
+ * Build the loader bundle and import it. Returns `{ loaders, files, cleanup }`
+ * where `loaders` is the registry (`match`/`load`/`loadSerialized`/`handle` —
+ * see `createLoaderRegistry`), or `null` when the app has no loader files.
+ * Loaders are *plain server code*, bundled exactly like the API handler bundle:
+ * no `otfwc` DOM transform, npm/node builtins external (DB drivers and native
+ * modules resolve at runtime from the project's node_modules).
+ */
+export async function buildLoaderBundle({ root, appDir, webEntry, exclude, i18n, tmpName = ".otfw-loaders", bust }) {
+  const files = discoverLoaders(appDir, exclude);
+  if (files.length === 0) return null;
+
+  const tmp = join(root, tmpName);
+  mkdirSync(tmp, { recursive: true });
+  const entry = join(tmp, "loaders-entry.js");
+  writeFileSync(entry, loaderEntrySource(files, appDir, i18n));
+
+  const serverApi = join(dirname(webEntry), "server", "index.js");
+  // Versioned filename, not a `?v=` query — Bun's ESM cache ignores the query for
+  // file URLs, so only a new path re-evaluates the rebuilt module (see buildApiBundle).
+  const outName = bust ? `loaders.${bust}.js` : "loaders.js";
+  await build({
+    input: entry,
+    platform: "node",
+    resolve: {
+      alias: { "@opentf/web/server": serverApi, "@opentf/web": webEntry },
+      extensions: EXTENSIONS,
+    },
+    external: (id) => !id.startsWith(".") && !id.startsWith("/") && !id.startsWith("@opentf/web"),
+    output: { dir: join(tmp, "out"), format: "esm", entryFileNames: outName },
+    checks: { pluginTimings: false },
+  });
+
+  const mod = await import(pathToFileURL(join(tmp, "out", outName)).href);
+  return {
+    loaders: mod.loaders,
+    files,
+    cleanup: () => rmSync(tmp, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * Emit the loader bundle to `outDir/loaders.js` for production (`dist/server/`,
+ * next to `api.js`) — `otfw serve` imports it and runs loaders per request /
+ * serves the `<path>/__data.json` endpoint. Returns `{ files }`, or `null` when
+ * the app has no loader files.
+ */
+export async function emitLoaderBundle({ root, appDir, webEntry, exclude, i18n, outDir }) {
+  const files = discoverLoaders(appDir, exclude);
+  if (files.length === 0) return null;
+
+  const tmp = join(root, ".otfw-loaders-build");
+  mkdirSync(tmp, { recursive: true });
+  const entry = join(tmp, "loaders-entry.js");
+  writeFileSync(entry, loaderEntrySource(files, appDir, i18n));
+
+  const serverApi = join(dirname(webEntry), "server", "index.js");
+  mkdirSync(outDir, { recursive: true });
+  await build({
+    input: entry,
+    platform: "node",
+    resolve: { alias: { "@opentf/web/server": serverApi, "@opentf/web": webEntry }, extensions: EXTENSIONS },
+    external: (id) => !id.startsWith(".") && !id.startsWith("/") && !id.startsWith("@opentf/web"),
+    output: { dir: outDir, format: "esm", entryFileNames: "loaders.js" },
+    checks: { pluginTimings: false },
+  });
+  rmSync(tmp, { recursive: true, force: true });
+  return { files };
+}
+
 /** The optional `app/routeGuard.{js,ts}` path, or null. */
 export function findGuard(appDir) {
   return [join(appDir, "routeGuard.js"), join(appDir, "routeGuard.ts")].find(
@@ -601,7 +764,7 @@ export function findGuard(appDir) {
  * The production build imports the file directly (Rolldown code-splits it); the dev
  * server passes a `/__route/…` URL so the route compiles on first navigation.
  */
-export function entrySource(pages, appDir, loaderUrl = (p) => p, i18n = null, nav = null) {
+export function entrySource(pages, appDir, loaderUrl = (p) => p, i18n = null, nav = null, loaderRoutes = []) {
   const map = pages
     .map((p) => `    [${JSON.stringify(p)}]: () => import(${JSON.stringify(loaderUrl(p))}),`)
     .join("\n");
@@ -615,11 +778,14 @@ export function entrySource(pages, appDir, loaderUrl = (p) => p, i18n = null, na
   // Navigation mode (otfw.config `nav`): "mpa" disables client-side link interception
   // (docs/HYDRATION.md §7). Only emitted when explicitly "mpa"; "spa" is the default.
   const navOpt = nav === "mpa" ? `\n  nav: "mpa",` : "";
+  // Route patterns with a server loader (docs/DATA.md) — the router fetches
+  // `<path>/__data.json` for these on navigation.
+  const loadersOpt = loaderRoutes.length ? `\n  loaders: ${JSON.stringify(loaderRoutes)},` : "";
   return (
     `import { mountApp } from "@opentf/web";\n` +
     (guard ? `import guard from ${JSON.stringify(guard)};\n` : "") +
     `mountApp({\n  pages: {\n${map}\n  },\n` +
-    `  target: document.getElementById("app"),${guard ? "\n  guard," : ""}${i18nOpt}${navOpt}\n});\n`
+    `  target: document.getElementById("app"),${guard ? "\n  guard," : ""}${i18nOpt}${navOpt}${loadersOpt}\n});\n`
   );
 }
 

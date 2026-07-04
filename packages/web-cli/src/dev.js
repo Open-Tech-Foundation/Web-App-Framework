@@ -28,10 +28,13 @@ import {
   MIME,
   assertNoRouteConflicts,
   buildApiBundle,
+  buildLoaderBundle,
   cssPlugin,
   discoverApiRoutes,
+  discoverLoaders,
   discoverPages,
   entrySource,
+  loaderRoutePath,
   injectBeforeBody,
   loadConfig,
   loadDocsPlugins,
@@ -109,7 +112,10 @@ export async function runDev() {
   const devDir = join(root, ".dev");
   mkdirSync(devDir, { recursive: true });
   const entryFile = join(devDir, "entry.js");
-  writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl, config?.i18n, config?.nav));
+  const loaderRoutes = () => discoverLoaders(appDir, exclude).map((f) => loaderRoutePath(f, appDir));
+  const writeEntry = () =>
+    writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl, config?.i18n, config?.nav, loaderRoutes()));
+  writeEntry();
 
   let server;
   const publish = (msg) => server?.publish("hmr", JSON.stringify(msg));
@@ -238,6 +244,39 @@ export async function runDev() {
     apiBuilt = false;
   }
 
+  // Route loaders (docs/DATA.md) are plain server modules like API routes, and get
+  // the same treatment: built lazily on the first `__data.json` request, rebuilt
+  // after an edit (the watcher clears the cache), ESM cache busted per rebuild.
+  let loaderBundle = null;
+  let loadersBuilt = false;
+  let loaderVersion = 0;
+  async function getLoaders() {
+    if (!loadersBuilt) {
+      try {
+        loaderBundle = await buildLoaderBundle({
+          root,
+          appDir,
+          webEntry,
+          exclude,
+          i18n: config?.i18n,
+          bust: ++loaderVersion,
+        });
+      } catch (e) {
+        console.error(`✗ loader build failed: ${e?.message ?? e}`);
+        loaderBundle = null;
+      }
+      loadersBuilt = true;
+    }
+    return loaderBundle;
+  }
+  function invalidateLoaders() {
+    try {
+      loaderBundle?.cleanup();
+    } catch {}
+    loaderBundle = null;
+    loadersBuilt = false;
+  }
+
   // The module graph powers precise invalidation; build it in the background so it
   // never blocks startup. Until it's ready, a change clears every cache (safe).
   let graph = { has: () => false, affected: () => new Set() };
@@ -278,12 +317,23 @@ export async function runDev() {
       publish({ type: "reload" });
       return;
     }
+    // A loader edit rebuilds the loader bundle on the next data request; a new or
+    // deleted loader.* also changes the route set baked into the entry, so the
+    // entry is rewritten and its cached chunk dropped (a stale set would make SPA
+    // nav skip the fetch — or fetch a 404).
+    if (/^loader\.(js|ts)$/.test(name.split("/").pop())) {
+      invalidateLoaders();
+      writeEntry();
+      entryCode = null;
+      publish({ type: "reload" });
+      return;
+    }
     if (/\.(mdx|md|[jt]sx|css)$/.test(name)) {
       if (/^(page|layout|404)\.(mdx|md|[jt]sx)$/.test(name.split("/").pop()) && !pages.includes(file)) {
         const fresh = discoverPages(appDir, exclude);
         pages.length = 0;
         pages.push(...fresh);
-        writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl, config?.i18n, config?.nav));
+        writeEntry();
       }
       onChange(file);
     }
@@ -296,6 +346,7 @@ export async function runDev() {
       watcher.close();
     } catch {}
     invalidateApi();
+    invalidateLoaders();
     process.exit(0);
   };
   process.once("SIGINT", shutdown);
@@ -305,6 +356,7 @@ export async function runDev() {
       watcher.close();
     } catch {}
     invalidateApi();
+    invalidateLoaders();
   });
 
   // Import map (so `@opentf/web` resolves to the shared runtime chunk) + entry + the
@@ -374,6 +426,20 @@ export async function runDev() {
         const api = await getApi();
         const res = api ? await api.handler(req) : null;
         if (res) return res;
+      }
+      // The route-loader data endpoint (docs/DATA.md): `<path>/__data.json` is a
+      // reserved suffix — answered here (SPA navigation fetches it) and never
+      // allowed to fall through to assets or the SPA shell, so a miss is a 404.
+      if (pathname === "/__data.json" || pathname.endsWith("/__data.json")) {
+        try {
+          const bundle = await getLoaders();
+          const res = bundle ? await bundle.loaders.handle(req) : null;
+          if (res) return res;
+        } catch (e) {
+          console.error(`✗ loader failed for ${pathname}: ${e?.message ?? e}`);
+          return Response.json({ error: "Internal Server Error" }, { status: 500 });
+        }
+        return Response.json(null, { status: 404 });
       }
       if (pathname !== "/") {
         const asset = await serveStatic(pathname);

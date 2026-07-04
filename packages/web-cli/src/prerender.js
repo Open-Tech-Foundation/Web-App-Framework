@@ -7,10 +7,12 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import {
+  DATA_FILE,
   buildServerBundle,
   injectHead,
   injectHydrationData,
   injectMarkup,
+  injectRouteData,
   withHtmlLang,
 } from "./shared.js";
 
@@ -81,7 +83,7 @@ function escapeXml(s) {
  * Pre-render the app to static HTML files under `outDir`. Returns
  * `{ count, skipped, failed }`.
  */
-export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", docsPlugins = [], lastUpdated = {}, i18n = null, onCompile, onRender }) {
+export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", docsPlugins = [], lastUpdated = {}, i18n = null, loaders = null, onCompile, onRender }) {
   const { mod, cleanup } = await buildServerBundle({ root, pages, webEntry, otfwc, docsPlugins, i18n, onCompile });
 
   // i18n (docs/I18N.md §6): pre-render each route once per locale. The default
@@ -101,10 +103,20 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
     for (const locale of locales) {
       const urlPath = localizeFor(path, locale, defaultLocale);
       try {
+        // Route loader (docs/DATA.md): run it at build time with no `request` and
+        // an empty query (a query-dependent loader needs `otfw serve`). The result
+        // is threaded into the render (`router.data`), inlined into the HTML, and
+        // written as a sibling `__data.json` — per locale, since a localized
+        // loader can return locale-dependent data.
+        const m = loaders?.match(urlPath);
+        let data;
+        let dataJson = "";
+        if (m) ({ data, json: dataJson } = await loaders.loadSerialized(m, { query: {} }));
+
         // Passing the localized URL pins router.locale (resolveLocale) and still
         // matches the locale-agnostic route table, so `t()` renders in `locale`.
         const { html, metadata, hydration } =
-          (await mod.renderRoute(urlPath, params)) ?? { html: "", metadata: {}, hydration: "" };
+          (await mod.renderRoute(urlPath, params, "", { data })) ?? { html: "", metadata: {}, hydration: "" };
         const meta = i18nOn
           ? { ...metadata, links: [...(metadata.links || []), ...alternatesFor(path, locales, defaultLocale)] }
           : metadata;
@@ -117,15 +129,28 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
         mkdirSync(dirname(file), { recursive: true });
         writeFileSync(
           file,
-          injectHydrationData(
-            injectMarkup(injectHead(withHtmlLang(shellHtml, locale), head), html),
-            hydration,
+          injectRouteData(
+            injectHydrationData(
+              injectMarkup(injectHead(withHtmlLang(shellHtml, locale), head), html),
+              hydration,
+            ),
+            dataJson,
           ),
         );
+        if (m) {
+          // The static data file SPA navigation fetches on a plain static host —
+          // byte-identical to the inline payload ("null" when the loader returned
+          // undefined, so a 200 still parses as JSON).
+          const dataFile =
+            urlPath === "/" ? join(outDir, DATA_FILE) : join(outDir, urlPath, DATA_FILE);
+          mkdirSync(dirname(dataFile), { recursive: true });
+          writeFileSync(dataFile, dataJson || "null");
+        }
         rendered.push(urlPath);
       } catch (e) {
         failed.push(urlPath);
-        console.error(`✗ pre-render failed for ${urlPath}: ${e?.message ?? e}`);
+        const why = e?.otfwNotFound ? "loader called notFound()" : (e?.message ?? e);
+        console.error(`✗ pre-render failed for ${urlPath}: ${why}`);
       }
     }
   }

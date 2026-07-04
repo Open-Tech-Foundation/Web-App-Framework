@@ -48,7 +48,7 @@ function assert(cond, label) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function cleanFixture() {
-  for (const d of ["dist", ".otfw", ".otfw-ssg", ".dev"]) {
+  for (const d of ["dist", ".otfw", ".otfw-ssg", ".otfw-loaders", ".otfw-loaders-build", ".dev"]) {
     rmSync(`${FIXTURE}/${d}`, { recursive: true, force: true });
   }
 }
@@ -310,6 +310,30 @@ async function run(port) {
     const back = await evalJS(client, PROBE);
     assert(back.condYes && back.condYes.text === "YES", "toggling back renders the first branch again");
     assert(back.condNo === null, "the false branch is gone after toggling back");
+
+    // ── 4. SPA navigation to a loader route fetches <path>/__data.json ──────────
+    // (docs/DATA.md) The /todos page's list exists only in its loader's data, so
+    // rendering it after a client-side navigation proves the router fetched the
+    // data endpoint and committed it as router.data — no full page load involved
+    // (pushState + popstate drives the exact same `navigate()` path a <Link>
+    // click takes, without adding an island to the adoption probes above).
+    // Run last: the route swap replaces #app's children, which ends the usefulness
+    // of the identity/removedServer probes.
+    await evalJS(
+      client,
+      `history.pushState({}, '', '/todos'); window.dispatchEvent(new PopStateEvent('popstate'))`,
+    );
+    await sleep(300); // client nav: route chunk import + data fetch + swap
+    const nav = await evalJS(
+      client,
+      `(() => ({
+        path: location.pathname,
+        text: (document.querySelector('#app')?.textContent || '').replace(/\\s+/g, ' '),
+      }))()`,
+    );
+    assert(nav.path === "/todos", "the client router navigated to /todos (no page load)");
+    assert(nav.text.includes("E2E_TODOS"), "the /todos page rendered after SPA navigation");
+    assert(nav.text.includes("todo alpha"), "SPA navigation fetched the loader data (__data.json) and rendered it");
 
     client.close();
   } finally {

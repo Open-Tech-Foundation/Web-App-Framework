@@ -37,6 +37,7 @@ import {
   injectHead,
   injectHydrationData,
   injectMarkup,
+  injectRouteData,
   loadConfig,
   loadDocsPlugins,
   loadProject,
@@ -162,6 +163,15 @@ export async function runServe() {
     api = { handler: apiMod.apiHandler, routes: discoverApiRoutes(appDir, exclude).routes };
   }
 
+  // Route loaders (docs/DATA.md): the client build emitted the registry bundle to
+  // dist/server/loaders.js (build.js `emitLoaderBundle`). Import it and hold it
+  // live; per request it runs the matched page's loader (threaded into the render
+  // as `router.data`) and answers the `<path>/__data.json` endpoint.
+  const loadersFile = join(distDir, "server", "loaders.js");
+  const loaders = existsSync(loadersFile)
+    ? (await import(pathToFileURL(loadersFile).href)).loaders
+    : null;
+
   const cleanupAll = () => {
     try {
       cleanup();
@@ -188,22 +198,45 @@ export async function runServe() {
     });
   }
 
-  // SSR one navigation: render the route's markup + <head>, inject into the shell.
-  async function render(url) {
-    const result = await mod.renderRoute(url.pathname, null, url.search);
-    if (!result) {
-      const notFound = join(distDir, "404.html");
-      const body = existsSync(notFound) ? readFileSync(notFound) : "<h1>404 — Not Found</h1>";
-      return new Response(body, { status: 404, headers: { "content-type": "text/html" } });
+  // The 404 response: the pre-built dist/404.html when present, else a bare body.
+  function renderNotFound() {
+    const notFound = join(distDir, "404.html");
+    const body = existsSync(notFound) ? readFileSync(notFound) : "<h1>404 — Not Found</h1>";
+    return new Response(body, { status: 404, headers: { "content-type": "text/html" } });
+  }
+
+  // SSR one navigation: run the route's loader (if any), render the markup +
+  // <head>, inject into the shell.
+  async function render(url, req) {
+    // Loader first — `notFound()` must resolve before anything renders. The check
+    // is a property (`otfwNotFound`), not instanceof: the loader bundle is its own
+    // module graph. On notFound, re-render as the unmatched sentinel path so the
+    // registered 404 page is served with HTTP 404 (same as a route miss). Any
+    // other loader throw propagates to the 500 branch in `fetch`.
+    let data;
+    let dataJson = "";
+    const m = loaders?.match(url.pathname);
+    if (m) {
+      try {
+        ({ data, json: dataJson } = await loaders.loadSerialized(m, {
+          request: req,
+          query: Object.fromEntries(url.searchParams),
+        }));
+      } catch (e) {
+        if (e?.otfwNotFound === true) return render(new URL("/__otfw_404__", url), req);
+        throw e;
+      }
     }
+    const result = await mod.renderRoute(url.pathname, null, url.search, { data });
+    if (!result) return renderNotFound();
     const meta = i18nOn
       ? { ...result.metadata, links: [...(result.metadata.links || []), ...alternatesFor(stripLocale(url.pathname))] }
       : result.metadata;
     const head = mod.renderHead(meta, { path: url.pathname, baseUrl });
     const localizedShell = i18nOn ? withHtmlLang(shell, localeOf(url.pathname)) : shell;
-    const html = injectHydrationData(
-      injectMarkup(injectHead(localizedShell, head), result.html),
-      result.hydration,
+    const html = injectRouteData(
+      injectHydrationData(injectMarkup(injectHead(localizedShell, head), result.html), result.hydration),
+      dataJson,
     );
     // 200 for a real route; 404 when the path fell back to the registered 404 page.
     return new Response(html, {
@@ -223,6 +256,14 @@ export async function runServe() {
         const res = await api.handler(req);
         if (res) return res;
       }
+      // The route-loader data endpoint (docs/DATA.md): `<path>/__data.json` is a
+      // reserved suffix, answered before the asset branch below would swallow it
+      // (it has a file extension) and never falling through to SSR (a catch-all
+      // page would happily match the suffix as a path segment) — a miss is a 404.
+      if (url.pathname === "/__data.json" || url.pathname.endsWith("/__data.json")) {
+        const res = loaders ? await loaders.handle(req) : null;
+        return res ?? Response.json(null, { status: 404 });
+      }
       // A path with a file extension is an asset request; serve it from dist/. A
       // miss on a real asset is a 404 (don't fall through to the SSR shell).
       if (/\.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== "/") {
@@ -240,7 +281,7 @@ export async function runServe() {
         }
       }
       try {
-        return await render(url);
+        return await render(url, req);
       } catch (e) {
         console.error(`✗ SSR failed for ${url.pathname}: ${e?.message ?? e}`);
         return new Response(`<pre>SSR error: ${e?.message ?? e}</pre>`, {
@@ -253,6 +294,7 @@ export async function runServe() {
 
   console.log(`\n  OTF Web SSR server`);
   const apiNote = api ? `, ${api.routes.length} API routes` : "";
-  console.log(`  → http://localhost:${server.port}  (${pages.length} routes, server-rendered${apiNote})`);
+  const loaderNote = loaders ? `, ${loaders.routes.length} loaders` : "";
+  console.log(`  → http://localhost:${server.port}  (${pages.length} routes, server-rendered${apiNote}${loaderNote})`);
   console.log(`  ✓ ready in ${Date.now() - bootStart}ms\n`);
 }

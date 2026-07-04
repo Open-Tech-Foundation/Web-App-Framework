@@ -14,15 +14,19 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { compileCss, usesTailwind } from "./tailwind.js";
 import {
   EXTENSIONS,
   assertNoRouteConflicts,
   cssPlugin,
+  discoverLoaders,
   discoverPages,
   emitApiBundle,
+  emitLoaderBundle,
   entrySource,
+  loaderRoutePath,
   injectBeforeBody,
   loadConfig,
   loadDocsPlugins,
@@ -97,7 +101,9 @@ export async function runBuild(options = {}) {
   const tmp = join(root, ".otfw");
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "entry.js");
-  writeFileSync(entry, entrySource(pages, appDir, undefined, config?.i18n, config?.nav));
+  const loaderFiles = discoverLoaders(appDir, exclude);
+  const loaderRoutes = loaderFiles.map((f) => loaderRoutePath(f, appDir));
+  writeFileSync(entry, entrySource(pages, appDir, undefined, config?.i18n, config?.nav, loaderRoutes));
 
   console.log("\n  OTF Web — production build\n");
 
@@ -164,6 +170,24 @@ export async function runBuild(options = {}) {
   const chunks = result.output.filter((o) => o.type === "chunk").length;
   buildStep.done(`Compiled ${pages.length} routes · bundled ${chunks} chunks`);
 
+  // Route loaders (docs/DATA.md): emit the server bundle to dist/server/loaders.js
+  // — `otfw serve` imports it per request, and the SSG pre-render below runs it at
+  // build time (so this must precede the SSG step).
+  let loaders = null;
+  if (loaderFiles.length > 0) {
+    const loaderStep = step("Bundling route loaders");
+    await emitLoaderBundle({
+      root,
+      appDir,
+      webEntry,
+      exclude,
+      i18n: config?.i18n,
+      outDir: join(outDir, "server"),
+    });
+    loaders = (await import(pathToFileURL(join(outDir, "server", "loaders.js")).href)).loaders;
+    loaderStep.done(`Route loaders — ${loaderFiles.length} → dist/server/loaders.js`);
+  }
+
   // SSG: pre-render each route into static HTML using the shell we just composed
   // (so per-route files carry the same bundle + stylesheet links).
   let ssg = null;
@@ -184,6 +208,7 @@ export async function runBuild(options = {}) {
       docsPlugins,
       lastUpdated,
       i18n: config?.i18n,
+      loaders,
       onCompile: (id) => ssgStep.update(`compiling ${basename(id)}  (${++ssgCompiled})`),
       onRender: (done, total) => ssgStep.update(`rendering ${done}/${total}`),
     });

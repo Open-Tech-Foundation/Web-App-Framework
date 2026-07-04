@@ -4,6 +4,16 @@
 
 ### Added
 
+- **Route loaders** (docs/DATA.md): a `loader.{js,ts}` sibling to a `page.*` runs on the
+  server and feeds the page's reactive `router.data`. `otfw dev` builds the loader bundle
+  lazily and hot-reloads it on edits; `otfw serve` runs the matched loader per request
+  before SSR and answers the `<path>/__data.json` endpoint; `otfw build` emits
+  `dist/server/loaders.js`, and `--ssg` runs loaders at build time — inlining the
+  `#__otfw_data` payload into each prerendered page and writing the per-locale sibling
+  `__data.json` files SPA navigation fetches on a static host. `__data.json` is a reserved
+  path: answered after API routes, before the asset branch, and a miss is a 404 (it never
+  falls through to SSR). A loader `notFound()` serves the registered 404 page with HTTP
+  404; a loader throw is a 500.
 - **API routes** (SPEC §11): an endpoint is a `route.{js,ts}` file — the API analogue of a
   page's `page.{jsx,tsx}`, resolvable in any folder under `app/` (folder = URL). `otfw dev`
   serves them with hot reload, `otfw serve` mounts them ahead of SSR, and `otfw build` emits
@@ -14,11 +24,17 @@
 ### Changed
 
 - A folder may hold a `page.*` **or** a `route.*`, not both — `otfw dev`/`build` now error on
-  a page/endpoint path conflict (matching Next.js's App Router).
+  a page/endpoint path conflict (matching Next.js's App Router). A `loader.*` without a
+  sibling `page.*` (including one placed next to a `route.*`) is likewise a build error.
 - `otfw serve` checks API endpoints before the static-asset branch (matching `otfw dev`), so
   an endpoint path with a dotted segment (`/api/v1.0`) resolves in both.
 
 ### Fixed
+
+- **`otfw dev` hot reload of server bundles never actually reloaded.** The API (and now
+  loader) bundles were re-imported with a `?v=N` cache-buster, but Bun's ESM cache ignores
+  the query string on file URLs, so edits kept serving the first build. Rebuilds now emit a
+  versioned *filename* (`api.<n>.js` / `loaders.<n>.js`), which genuinely re-evaluates.
 
 - Route derivation clipped folders whose name starts with "app" (`app/appointments/` →
   `ointments`). The toolchain now passes the exact app directory to the API dispatcher and
