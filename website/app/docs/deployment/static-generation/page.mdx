@@ -20,9 +20,10 @@ otfw build --ssg
 Each route is rendered to an `.html` file under `dist/`, alongside the hashed JS and
 CSS bundles. On load, the same components take over the static markup.
 
-<Callout type="info" title="No hydration cost">
-  The static HTML is already the final markup. Components attach to it directly rather
-  than reconciling a virtual tree.
+<Callout type="info" title="Hydration adopts, never rebuilds">
+  The static HTML is already the final markup. On first paint the client adopts those
+  server-rendered nodes in place — wiring reactivity without re-rendering or
+  reconciling a virtual tree.
 </Callout>
 
 ## What gets rendered

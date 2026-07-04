@@ -38,8 +38,8 @@ export const capabilities = [
     items: [
       { name: "Static generation (SSG)", status: "supported", desc: "Pre-render routes to HTML at build time." },
       { name: "MDX", status: "supported", desc: "MDX pages and components; docs theme included." },
-      { name: "Server rendering (SSR)", status: "planned", desc: "Per-request HTML for full-stack apps." },
-      { name: "Hydration", status: "planned", desc: "Adopt server markup without re-rendering." },
+      { name: "Server rendering (SSR)", status: "supported", desc: "Per-request HTML via otfw serve — the same render path as SSG." },
+      { name: "Hydration", status: "supported", desc: "First paint adopts the server DOM — pages, layouts, lists, conditionals, and islands with rich props." },
     ],
   },
   {

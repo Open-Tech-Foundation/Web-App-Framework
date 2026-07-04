@@ -73,6 +73,8 @@ host runtime provides.
 
 ## What ships today
 
-Per-request SSR and file-based API routes are implemented. **Typed server functions and
-loaders** (calling server code straight from components) are on the roadmap — until then,
-components talk to the server through your API routes with `fetch`.
+Per-request SSR, first-paint hydration (the client adopts the server DOM — pages,
+layouts, lists, conditionals, and component islands with rich props), and file-based API
+routes are implemented. **Typed server functions and loaders** (calling server code
+straight from components) are on the roadmap — until then, components talk to the server
+through your API routes with `fetch`.

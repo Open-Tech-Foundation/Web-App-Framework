@@ -40,9 +40,10 @@ re-runs.
 
 That button is the snippet above, compiled and running — click it.
 
-<Callout type="info" title="No hydration step">
-  The compiled output builds the DOM directly and is interactive immediately. There is
-  no virtual tree to reconcile on load.
+<Callout type="info" title="No virtual tree to reconcile">
+  The compiled output builds the DOM directly and is interactive immediately. With SSR
+  or SSG, first paint adopts the server-rendered nodes in place instead of re-rendering
+  them.
 </Callout>
 
 ## Next steps
