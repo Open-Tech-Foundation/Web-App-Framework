@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-04
+
 ### Changed
 
 - Updated scaffolded template dependencies to `@opentf/web@^0.7.0`,
