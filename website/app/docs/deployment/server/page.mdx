@@ -1,0 +1,76 @@
+---
+title: Server & API
+description: Deploy the fullstack story — per-request SSR and API routes — with otfw serve or a runtime adapter.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Server & API
+
+A static `dist/` covers SPA and pre-rendered sites. When your app renders per request
+(SSR) or exposes [API routes](/docs/routing/api-routes), you run a **server** instead.
+There are two ways to ship it.
+
+## Option 1 — `otfw serve` (Bun)
+
+The simplest path. `otfw serve` builds the client, then runs a Bun server that renders
+each route on request and mounts your `route.{js,ts}` endpoints at their paths:
+
+```bash
+bun run serve
+# → otfw serve   (add --port 8080 to override)
+```
+
+One process serves SSR **and** API routes, plus the static assets from `dist/`. This is
+the recommended target when you control the runtime (a VM, container, or any Bun host).
+
+<Callout type="info" title="How a request resolves">
+  Assets are served from `dist/`. Then a matching API handler wins; a miss falls through
+  to SSR, so pages and endpoints coexist. Unmatched paths render your 404.
+</Callout>
+
+## Option 2 — deploy `dist/server/api.js` with an adapter
+
+`otfw build` emits a self-contained **`dist/server/api.js`** that exports
+`apiHandler(request) => Response | null` (the runtime dispatcher is bundled in; your npm
+deps stay external). Pair it with the static `dist/` — served by the platform's CDN /
+static layer — to run your API routes on any runtime.
+
+**Fetch-native runtimes** (Cloudflare Workers, Bun, Deno) use it directly:
+
+```js
+import { apiHandler } from "./dist/server/api.js";
+import { createFetchHandler } from "@opentf/web/server";
+
+export default { fetch: createFetchHandler(apiHandler) };
+```
+
+**Node** uses the `node:http` adapter:
+
+```js
+import { createServer } from "node:http";
+import { apiHandler } from "./dist/server/api.js";
+import { toNodeListener } from "@opentf/web/server/adapters/node";
+
+createServer(toNodeListener(apiHandler)).listen(3000);
+```
+
+See the [Server API reference](/api/server) for the full adapter surface.
+
+<Callout type="tip" title="Pair with static output">
+  Build the client with `otfw build` (or `--ssg` for pre-rendered HTML) and let your host
+  serve `dist/` from its CDN, while the adapter above handles `/api/*`. This split — static
+  edge + API handler — deploys cleanly to Workers, serverless, and Node hosts alike.
+</Callout>
+
+## Environment variables
+
+Server-only secrets in `.env` are available to handlers via `process.env`. Only
+`PUBLIC_`-prefixed variables are ever injected into the client bundle, so nothing else
+leaks to the browser.
+
+## What ships today
+
+Per-request SSR and file-based API routes are implemented. **Typed server functions and
+loaders** (calling server code straight from components) are on the roadmap — until then,
+components talk to the server through your API routes with `fetch`.

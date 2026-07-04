@@ -1,6 +1,6 @@
 ---
 title: Deployment
-description: Build your OTF Web app and ship the static output to any host.
+description: Ship your OTF Web app — static output to any host, or a server for SSR and API routes.
 ---
 
 import { Callout } from "@opentf/web-docs";
@@ -16,7 +16,7 @@ OTF Web is a fullstack framework. Alongside the static output, it can run a serv
 [API routes](/docs/routing/api-routes) at `/api/*`. Typed server functions are still
 in progress.
 
-There are two output modes, both produced by `otfw build`:
+There are three ways to deploy:
 
 - **[Production Build](/docs/deployment/build)** — a single-page app: one `index.html`
   shell plus the bundle. The client renders every route. Best for app-like sites behind
@@ -24,6 +24,9 @@ There are two output modes, both produced by `otfw build`:
 - **[Static Generation](/docs/deployment/static-generation)** — additionally
   pre-renders every route to its own `.html` file (`--ssg`). Best for content and
   marketing sites that need SEO and instant first paint.
+- **[Server & API](/docs/deployment/server)** — run a server for per-request SSR and
+  [API routes](/docs/routing/api-routes), via `otfw serve` or a runtime adapter. Best for
+  fullstack apps that need server logic.
 
 <Callout type="tip" title="Same bundle, more HTML">
   SSG doesn't change your app — it runs the same components through a string renderer at
@@ -42,20 +45,9 @@ For a **single-page** build, configure the host to fall back to `index.html` for
 paths so client-side routes resolve. A fully **static-generated** site needs no fallback
 — every route already has its own HTML file.
 
-## Server (SSR & API routes)
+## Running a server
 
 If your app uses SSR or [API routes](/docs/routing/api-routes), run a server instead of
-serving `dist/` statically:
-
-- `otfw serve` builds, then runs the per-request server on Bun (SSR + `/api/*`).
-- `otfw build` also emits `dist/server/api.js` — a self-contained handler you can mount
-  on any runtime with an adapter. Fetch-native hosts (Bun, Cloudflare Workers, Deno) use
-  `createFetchHandler`; Node uses `toNodeListener`. See the
-  [Server API reference](/api/server).
-
-```js
-// Cloudflare Workers / Bun / Deno
-import { apiHandler } from "./dist/server/api.js";
-import { createFetchHandler } from "@opentf/web/server";
-export default { fetch: createFetchHandler(apiHandler) };
-```
+serving `dist/` statically — either `otfw serve` (Bun) or the emitted
+`dist/server/api.js` behind a runtime adapter (Bun, Node, Cloudflare Workers, Deno). See
+**[Server & API](/docs/deployment/server)** for both paths.
