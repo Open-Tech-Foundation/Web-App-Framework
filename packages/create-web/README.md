@@ -16,11 +16,13 @@ bun run dev
 ## Features
 
 - 🏗️ **Instant Scaffolding**: A ready-to-run OTF Web app or one-page MDX docs site.
+- 🔌 **API routes**: the app template ships an example `app/api/hello/route.js`
+  endpoint (standard `Request`/`Response`) wired to a fetch demo on the home page.
 - 🎨 **Styling choice**: Plain CSS, or TailwindCSS v4 compiled by the toolchain (no
   extra config).
 - ⚡ **OpenTF toolchain**: `otfw dev` (Rolldown-driven dev server with live reload),
-  `otfw build`, and `otfw build --ssg` (static pre-render) — powered by the IR
-  compiler.
+  `otfw build`, `otfw build --ssg` (static pre-render), and `otfw serve` (SSR +
+  API routes) — powered by the IR compiler.
 
 ## Usage
 

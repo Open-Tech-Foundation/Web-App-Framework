@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "otfw dev",
     "build": "otfw build",
-    "build:ssg": "otfw build --ssg"
+    "build:ssg": "otfw build --ssg",
+    "serve": "otfw serve"
   },
   "dependencies": {
     "@opentf/web": "^0.7.0"
