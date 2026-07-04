@@ -1,8 +1,11 @@
 // File-based API routes for the OTF Web runtime — the API backend (ARCHITECTURE
-// §6, SPEC §11). Handlers live in `app/api/**` and are *plain server modules*
-// (not JSX/DOM-compiled): each exports named functions per HTTP method that take
-// a standard `Request` and return a standard `Response`, so routes are portable
-// across Bun / Node / Cloudflare Workers (SPEC §11.1).
+// §6, SPEC §11). An endpoint is a `route.{js,ts}` file — the API analogue of a
+// page's `page.{jsx,tsx}` — so the folder is the URL (`app/api/users/[id]/route.ts`
+// → `/api/users/:id`), exactly like pages. Handlers are *plain server modules*
+// (not JSX/DOM-compiled): each exports named functions per HTTP method that take a
+// standard `Request` and return a standard `Response`, portable across Bun / Node /
+// Cloudflare Workers (SPEC §11.1). A folder may hold a `page.*` or a `route.*`, not
+// both — the toolchain errors on the conflict (like Next.js's App Router).
 //
 // This module is runtime-agnostic: `createApiHandler` turns a discovered route
 // map into a single `(request) => Response | null` function. `null` means "no
@@ -14,13 +17,13 @@
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 /**
- * Derive the API route path from a `.../app/api/<...>.{js,ts}` file path.
- * `app/api/status.js` → `/api/status`, `app/api/users/[id].js` → `/api/users/[id]`,
- * `app/api/index.js` → `/api`. Mirrors `routeFromPath` in the page router.
+ * Derive the API route path from a `.../app/<...>/route.{js,ts}` file path — the
+ * folder is the URL, mirroring `routeFromPath` in the page router.
+ * `app/api/status/route.js` → `/api/status`, `app/api/users/[id]/route.ts` →
+ * `/api/users/[id]`, `app/route.js` → `/`.
  */
 export function apiRouteFromPath(filePath) {
-  let r = filePath.replace(/^.*\/app/, "").replace(/\.(jsx?|tsx?)$/, "");
-  r = r.replace(/\/index$/, ""); // app/api/index.js → /api
+  const r = filePath.replace(/^.*\/app/, "").replace(/\/route\.(jsx?|tsx?)$/, "");
   return r === "" ? "/" : r;
 }
 

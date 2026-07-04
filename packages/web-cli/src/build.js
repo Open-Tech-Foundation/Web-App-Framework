@@ -18,6 +18,7 @@ import { basename, join } from "node:path";
 import { compileCss, usesTailwind } from "./tailwind.js";
 import {
   EXTENSIONS,
+  assertNoRouteConflicts,
   cssPlugin,
   discoverPages,
   emitApiBundle,
@@ -77,6 +78,7 @@ export async function runBuild(options = {}) {
     console.error(`✗ no page.jsx files found under ${appDir}`);
     process.exit(1);
   }
+  assertNoRouteConflicts(appDir, exclude);
 
   // Build the client for hydration when there will be server markup to adopt — the
   // SSR server (`runBuild({ hydrate: true })`) and `--ssg` pre-rendered pages. A

@@ -25,6 +25,7 @@ import { overlayClient } from "./overlay.js";
 import {
   EXTENSIONS,
   MIME,
+  assertNoRouteConflicts,
   buildApiBundle,
   cssPlugin,
   discoverPages,
@@ -98,6 +99,7 @@ export async function runDev() {
     console.error(`✗ no page.jsx files found under ${appDir}`);
     process.exit(1);
   }
+  assertNoRouteConflicts(appDir, exclude);
 
   const config = await loadConfig(root);
   const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
@@ -244,9 +246,9 @@ export async function runDev() {
   const watcher = watch(appDir, { recursive: true }, (_evt, name) => {
     if (!name) return;
     const file = join(appDir, name);
-    // An API route/middleware edit (app/api/**/*.{js,ts,jsx,tsx}) rebuilds the API
-    // bundle on the next request and triggers a reload.
-    if (name.startsWith("api/") && /\.(jsx?|tsx?)$/.test(name)) {
+    // An API endpoint/middleware edit (any `route.*` / `_middleware.*` file) rebuilds
+    // the API bundle on the next request and triggers a reload.
+    if (/^(route|_middleware)\.(jsx?|tsx?)$/.test(name.split("/").pop())) {
       invalidateApi();
       publish({ type: "reload" });
       return;
@@ -339,10 +341,11 @@ export async function runDev() {
       if (pathname.startsWith(ROUTE_PREFIX) && pathname.endsWith(".js")) {
         return js(await serveRoute(fromRouteUrl(pathname)));
       }
-      // API routes are tried first (SPEC §11): a matched handler's Response wins. A
-      // miss falls through to static assets / the SPA shell, so pages can live under
-      // /api too (e.g. the docs site's /api reference section).
-      if (pathname === "/api" || pathname.startsWith("/api/")) {
+      // API endpoints (route.* files, at any path — SPEC §11): a matched handler's
+      // Response wins; a miss falls through to static assets / the SPA shell, so pages
+      // and endpoints coexist. `getApi()` is O(1) after the first build (or a no-op
+      // when the app has no route.* files).
+      {
         const api = await getApi();
         const res = api ? await api.handler(req) : null;
         if (res) return res;

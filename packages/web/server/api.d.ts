@@ -67,7 +67,7 @@ export interface FetchHandlerOptions {
   fallback?: (request: Request) => MaybePromise<Response>;
 }
 
-/** Derive the `/api/...` route path from an `app/api/**` file path. */
+/** Derive the route path from an `app/**/route.{js,ts}` file path (folder = URL). */
 export function apiRouteFromPath(filePath: string): string;
 
 /** Derive the folder route a `_middleware` file governs from its file path. */

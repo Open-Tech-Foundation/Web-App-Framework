@@ -5,11 +5,12 @@ import { apiRouteFromPath, createApiHandler, middlewareScopeFromPath } from "./a
 const req = (url, init) => new Request(`http://localhost${url}`, init);
 
 describe("apiRouteFromPath", () => {
-  test("maps file paths to /api routes", () => {
-    expect(apiRouteFromPath("/proj/app/api/status.js")).toBe("/api/status");
-    expect(apiRouteFromPath("/proj/app/api/users/[id].ts")).toBe("/api/users/[id]");
-    expect(apiRouteFromPath("/proj/app/api/files/[...path].js")).toBe("/api/files/[...path]");
-    expect(apiRouteFromPath("/proj/app/api/index.js")).toBe("/api");
+  test("maps route.* file paths to routes (folder = URL)", () => {
+    expect(apiRouteFromPath("/proj/app/api/status/route.js")).toBe("/api/status");
+    expect(apiRouteFromPath("/proj/app/api/users/[id]/route.ts")).toBe("/api/users/[id]");
+    expect(apiRouteFromPath("/proj/app/api/files/[...path]/route.js")).toBe("/api/files/[...path]");
+    expect(apiRouteFromPath("/proj/app/api/route.js")).toBe("/api");
+    expect(apiRouteFromPath("/proj/app/route.js")).toBe("/");
   });
 });
 
@@ -22,14 +23,14 @@ describe("middlewareScopeFromPath", () => {
 
 describe("createApiHandler", () => {
   test("returns null when no route matches (falls through to SSR)", async () => {
-    const handle = createApiHandler({ "/app/api/status.js": { GET: () => Response.json({ ok: true }) } });
+    const handle = createApiHandler({ "/app/api/status/route.js": { GET: () => Response.json({ ok: true }) } });
     expect(await handle(req("/not-api"))).toBeNull();
     expect(await handle(req("/api/missing"))).toBeNull();
   });
 
   test("dispatches static routes to the method handler", async () => {
     const handle = createApiHandler({
-      "/app/api/status.js": { GET: () => Response.json({ ok: true }) },
+      "/app/api/status/route.js": { GET: () => Response.json({ ok: true }) },
     });
     const res = await handle(req("/api/status"));
     expect(res.status).toBe(200);
@@ -38,22 +39,22 @@ describe("createApiHandler", () => {
 
   test("resolves dynamic [param] and passes params via context", async () => {
     const handle = createApiHandler({
-      "/app/api/users/[id].js": { GET: (_r, { params }) => Response.json({ id: params.id }) },
+      "/app/api/users/[id]/route.js": { GET: (_r, { params }) => Response.json({ id: params.id }) },
     });
     expect(await (await handle(req("/api/users/42"))).json()).toEqual({ id: "42" });
   });
 
   test("resolves [...rest] to an array segment", async () => {
     const handle = createApiHandler({
-      "/app/api/files/[...path].js": { GET: (_r, { params }) => Response.json({ path: params.path }) },
+      "/app/api/files/[...path]/route.js": { GET: (_r, { params }) => Response.json({ path: params.path }) },
     });
     expect(await (await handle(req("/api/files/a/b/c"))).json()).toEqual({ path: ["a", "b", "c"] });
   });
 
   test("static routes take precedence over dynamic ones", async () => {
     const handle = createApiHandler({
-      "/app/api/users/[id].js": { GET: () => Response.json("dynamic") },
-      "/app/api/users/me.js": { GET: () => Response.json("static") },
+      "/app/api/users/[id]/route.js": { GET: () => Response.json("dynamic") },
+      "/app/api/users/me/route.js": { GET: () => Response.json("static") },
     });
     expect(await (await handle(req("/api/users/me"))).json()).toBe("static");
     expect(await (await handle(req("/api/users/9"))).json()).toBe("dynamic");
@@ -61,7 +62,7 @@ describe("createApiHandler", () => {
 
   test("reads query params and body from the standard Request", async () => {
     const handle = createApiHandler({
-      "/app/api/echo.js": {
+      "/app/api/echo/route.js": {
         GET: (_r, { query }) => Response.json({ q: query.q }),
         POST: async (r) => Response.json(await r.json(), { status: 201 }),
       },
@@ -73,14 +74,14 @@ describe("createApiHandler", () => {
   });
 
   test("405 with Allow header when the method is not exported", async () => {
-    const handle = createApiHandler({ "/app/api/only-get.js": { GET: () => Response.json(1) } });
+    const handle = createApiHandler({ "/app/api/only-get/route.js": { GET: () => Response.json(1) } });
     const res = await handle(req("/api/only-get", { method: "DELETE" }));
     expect(res.status).toBe(405);
     expect(res.headers.get("Allow")).toContain("GET");
   });
 
   test("auto HEAD from GET (no body) and auto OPTIONS", async () => {
-    const handle = createApiHandler({ "/app/api/thing.js": { GET: () => Response.json({ a: 1 }) } });
+    const handle = createApiHandler({ "/app/api/thing/route.js": { GET: () => Response.json({ a: 1 }) } });
     const head = await handle(req("/api/thing", { method: "HEAD" }));
     expect(head.status).toBe(200);
     expect(await head.text()).toBe("");
@@ -91,7 +92,7 @@ describe("createApiHandler", () => {
 
   test("errors thrown in a handler become a 500 JSON response", async () => {
     const handle = createApiHandler({
-      "/app/api/boom.js": {
+      "/app/api/boom/route.js": {
         GET: () => {
           throw new Error("kaboom");
         },
@@ -104,7 +105,7 @@ describe("createApiHandler", () => {
 
   test("a handler may throw a Response to short-circuit", async () => {
     const handle = createApiHandler({
-      "/app/api/guarded.js": {
+      "/app/api/guarded/route.js": {
         GET: () => {
           throw Response.json({ error: "nope" }, { status: 403 });
         },
@@ -116,7 +117,7 @@ describe("createApiHandler", () => {
   });
 
   test("middleware wraps handlers and can short-circuit", async () => {
-    const routes = { "/app/api/private.js": { GET: () => Response.json("secret") } };
+    const routes = { "/app/api/private/route.js": { GET: () => Response.json("secret") } };
     const mw = {
       "/app/api/_middleware.js": {
         default: (r, _ctx, next) =>
@@ -132,7 +133,7 @@ describe("createApiHandler", () => {
   test("middleware passes data to handlers via context.locals, nested outermost-first", async () => {
     const order = [];
     const routes = {
-      "/app/api/users/[id].js": { GET: (_r, { locals }) => Response.json(locals) },
+      "/app/api/users/[id]/route.js": { GET: (_r, { locals }) => Response.json(locals) },
     };
     const mw = {
       "/app/api/_middleware.js": {
@@ -157,7 +158,7 @@ describe("createApiHandler", () => {
   });
 
   test("a non-Response return value is JSON-encoded", async () => {
-    const handle = createApiHandler({ "/app/api/plain.js": { GET: () => ({ hello: "world" }) } });
+    const handle = createApiHandler({ "/app/api/plain/route.js": { GET: () => ({ hello: "world" }) } });
     const res = await handle(req("/api/plain"));
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(await res.json()).toEqual({ hello: "world" });

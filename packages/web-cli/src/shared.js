@@ -414,13 +414,12 @@ export function discoverPages(dir, exclude) {
 }
 
 /**
- * Discover file-based API routes under `app/api/` (SPEC §11). Returns
- * `{ routes, middleware }` — absolute paths to method-handler modules and to
- * `_middleware.{js,ts}` files respectively. Files whose name starts with `_`
- * (other than `_middleware`) are treated as private helpers, not routes.
+ * Discover file-based API routes anywhere under `app/` (SPEC §11). An endpoint is a
+ * `route.{js,ts}` file (the API analogue of `page.{jsx,tsx}`); its folder is the URL.
+ * Returns `{ routes, middleware }` — absolute paths to `route.*` handler modules and
+ * to `_middleware.{js,ts}` files (folder middleware) respectively.
  */
 export function discoverApiRoutes(appDir, exclude = new Set()) {
-  const apiDir = join(appDir, "api");
   const routes = [];
   const middleware = [];
   const walk = (dir) => {
@@ -431,17 +430,51 @@ export function discoverApiRoutes(appDir, exclude = new Set()) {
         continue;
       }
       const name = entry.name;
-      if (!/\.(jsx?|tsx?)$/.test(name)) continue;
-      // page/layout/404 are page-router files (an app may put pages under /api too);
-      // they're never API handlers.
-      if (/^(page|layout|404)\.(jsx?|tsx?)$/.test(name)) continue;
       const full = join(dir, name);
-      if (/^_middleware\.(jsx?|tsx?)$/.test(name)) middleware.push(full);
-      else if (!name.startsWith("_")) routes.push(full);
+      if (/^route\.(jsx?|tsx?)$/.test(name)) routes.push(full);
+      else if (/^_middleware\.(jsx?|tsx?)$/.test(name)) middleware.push(full);
     }
   };
-  walk(apiDir);
+  walk(appDir);
   return { routes, middleware };
+}
+
+/** The page URL for a `.../app/<...>/page.{mdx,md,jsx,tsx}` file (folder = URL). */
+export function pageRouteFromPath(filePath) {
+  const r = filePath.replace(/^.*\/app/, "").replace(/\/page\.(mdx|md|jsx|tsx)$/, "");
+  return r === "" ? "/" : r;
+}
+
+/** The route URL for a `.../app/<...>/route.{js,ts}` file (folder = URL). */
+function apiRoutePath(filePath) {
+  const r = filePath.replace(/^.*\/app/, "").replace(/\/route\.(jsx?|tsx?)$/, "");
+  return r === "" ? "/" : r;
+}
+
+/**
+ * Detect folders that hold both a `page.*` and a `route.*` — they'd resolve to the
+ * same URL. Returns the conflicting `{ path, page, route }` entries (empty = none).
+ * A page and an endpoint cannot own the same path (as in Next.js's App Router).
+ */
+export function detectRouteConflicts(appDir, exclude = new Set()) {
+  const pageByRoute = new Map();
+  for (const p of discoverPages(appDir, exclude)) {
+    if (/\/page\.(mdx|md|jsx|tsx)$/.test(p)) pageByRoute.set(pageRouteFromPath(p), p);
+  }
+  const conflicts = [];
+  for (const r of discoverApiRoutes(appDir, exclude).routes) {
+    const path = apiRoutePath(r);
+    if (pageByRoute.has(path)) conflicts.push({ path, page: pageByRoute.get(path), route: r });
+  }
+  return conflicts;
+}
+
+/** Print the route/page conflicts and exit — shared by build, dev, and serve. */
+export function assertNoRouteConflicts(appDir, exclude = new Set()) {
+  const conflicts = detectRouteConflicts(appDir, exclude);
+  if (conflicts.length === 0) return;
+  const lines = conflicts.map((c) => `  ${c.path}\n    page:  ${c.page}\n    route: ${c.route}`).join("\n");
+  fail(`a page and an API route cannot resolve to the same path:\n${lines}\n  Move one to a different folder.`);
 }
 
 /**
