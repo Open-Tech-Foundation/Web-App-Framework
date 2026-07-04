@@ -96,7 +96,9 @@ async function init() {
   const templateDir = path.resolve(__dirname, `../templates/${template}`);
   for (const file of fs.readdirSync(templateDir)) {
     const src = path.join(templateDir, file);
-    const dest = path.join(root, file);
+    // Templates ship `_gitignore` (npm strips `.gitignore` files from packages);
+    // rename it on scaffold so the new project starts with a proper .gitignore.
+    const dest = path.join(root, file === "_gitignore" ? ".gitignore" : file);
     if (file === "package.json") {
       const pkg = JSON.parse(fs.readFileSync(src, "utf-8"));
       pkg.name = path.basename(root);

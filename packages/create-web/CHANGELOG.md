@@ -7,6 +7,9 @@
 - The app template now scaffolds an example API route (`app/api/hello/route.js`, a
   `GET /api/hello` endpoint) and a fetch demo on the home page, plus a `serve`
   script (`otfw serve`) to run the SSR + API server.
+- Scaffolded projects now start with a `.gitignore` (node_modules, `dist/`, and the
+  toolchain's working dirs like `.dev` / `.otfw-*`). Templates ship it as `_gitignore`
+  — npm strips `.gitignore` files from packages — and the scaffolder renames it.
 
 ## [0.7.0] - 2026-07-04
 
