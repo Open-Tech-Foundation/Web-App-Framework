@@ -5,10 +5,10 @@
 //     and reports the median time-to-next-frame for each (see app/_bench.js).
 //
 // The measured contract (read by benchmarks/run.mjs and shared by every engine):
-//   window.__BENCH_RESULTS__ = { engine, ua, cases: [{ label, median, runs }] }
+//   window.__BENCH_RESULTS__ = { engine, ua, cases: [{ label, median, runs, samples }] }
 //   window.__BENCH_DONE__    = true   // set once, after all cases complete
 
-import { buildRows, median, nextFrame } from "./_bench.js";
+import { buildRows, measure, nextFrame } from "./_bench.js";
 
 export default function Bench() {
   let rows = $state([]);
@@ -43,21 +43,11 @@ export default function Bench() {
   const remove = (id) => { rows = rows.filter((r) => r.id !== id); };
 
   // --- Measurement ------------------------------------------------------------
-  // One case: re-establish the precondition, settle a frame, time the op up to
-  // the next painted frame, repeat. Returns the median over `runs` samples.
-  async function measure(label, setup, op, runs) {
-    const times = [];
-    for (let i = 0; i < runs; i++) {
-      setup();
-      await nextFrame();
-      const t0 = performance.now();
-      op();
-      await nextFrame();
-      times.push(performance.now() - t0);
-    }
-    return { label, median: +median(times).toFixed(2), runs };
-  }
-
+  // Timing lives in _bench.js `measure` (shared verbatim across engines): per
+  // sample it re-establishes the precondition, settles a frame, GCs when
+  // exposed, times the op to the next painted frame, and discards the warm-up
+  // iterations. The 10k cases use fewer samples (and one warm-up) because each
+  // sample rebuilds a 10,000-row list under CPU throttling.
   async function runAll() {
     if (status === "running") return;
     status = "running";
@@ -68,23 +58,23 @@ export default function Bench() {
     run(); await nextFrame(); clear(); await nextFrame();
 
     const cases = [];
-    cases.push(await measure("create 1,000 rows", empty, run, 5));
-    cases.push(await measure("create 10,000 rows", empty, runLots, 3));
-    cases.push(await measure("append 1,000 to 1,000", run, add, 5));
-    cases.push(await measure("update every 10th (1k)", run, update, 5));
-    cases.push(await measure("swap 2 rows (1k)", run, swapRows, 5));
+    cases.push(await measure("create 1,000 rows", empty, run, 10));
+    cases.push(await measure("create 10,000 rows", empty, runLots, 5, 1));
+    cases.push(await measure("append 1,000 to 1,000", run, add, 10));
+    cases.push(await measure("update every 10th (1k)", run, update, 12));
+    cases.push(await measure("swap 2 rows (1k)", run, swapRows, 12));
     cases.push(
       await measure(
         "select row (1k)",
         () => { run(); selected = -1; },
         () => select(rows[500].id),
-        5,
+        12,
       ),
     );
     cases.push(
-      await measure("remove row (1k)", run, () => remove(rows[500].id), 5),
+      await measure("remove row (1k)", run, () => remove(rows[500].id), 12),
     );
-    cases.push(await measure("clear 10,000 rows", runLots, clear, 5));
+    cases.push(await measure("clear 10,000 rows", runLots, clear, 5, 1));
 
     clear();
     results = cases;

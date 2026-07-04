@@ -13,9 +13,15 @@
 //   bun run bench all             # every case directory, compared
 //   bun run bench -- --headful    # show the browser window
 //   bun run bench -- --no-build   # reuse existing dist/ (skip the compile step)
+//   bun run bench -- --throttle=1 # disable CPU throttling (default 4×)
+//
+// The page is loaded only after the CDP session applies CPU throttling
+// (Emulation.setCPUThrottlingRate, 4× by default, as in js-framework-benchmark):
+// throttling stretches sub-frame operations across several frames so the
+// double-rAF timer can resolve differences the ~16.7 ms frame floor would hide.
 //
 // In-page contract (see benchmarks/README.md):
-//   window.__BENCH_RESULTS__ = { engine, ua, cases: [{ label, median, runs }] }
+//   window.__BENCH_RESULTS__ = { engine, ua, cases: [{ label, median, runs, samples }] }
 //   window.__BENCH_DONE__    = true
 
 import {
@@ -31,6 +37,14 @@ const flags = new Set(args.filter((a) => a.startsWith("--")));
 const positionals = args.filter((a) => !a.startsWith("--"));
 const headful = flags.has("--headful");
 const noBuild = flags.has("--no-build");
+const throttleArg = args.find((a) => a.startsWith("--throttle="));
+const throttle = throttleArg ? Math.max(1, Number(throttleArg.split("=")[1]) || 1) : 4;
+
+// Double-rAF timing quantizes to frame boundaries, so medians closer than half
+// a frame are indistinguishable — the comparison table only declares a winner
+// beyond this margin.
+const FRAME_MS = 1000 / 60;
+const RESOLUTION_MS = FRAME_MS / 2;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const die = (msg) => { console.error(`✗ ${msg}`); process.exit(1); };
@@ -94,6 +108,10 @@ async function runCase(caseName) {
 
   const cdpPort = await freePort();
   const profile = mkdtempSync(join(tmpdir(), "otfw-bench-"));
+  // Opens on about:blank; driveAndCollect navigates to the app only after CPU
+  // throttling is applied, so no timed sample runs unthrottled. Fixed window
+  // size + scale factor keep the layout area identical across runs; --expose-gc
+  // lets the in-page harness collect garbage between samples.
   const chrome = Bun.spawn(
     [
       chromeBin,
@@ -101,15 +119,17 @@ async function runCase(caseName) {
       "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
       "--disable-extensions", "--disable-background-timer-throttling",
       "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows",
+      "--window-size=1280,800", "--force-device-scale-factor=1",
+      "--js-flags=--expose-gc",
       `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`,
-      appUrl,
+      "about:blank",
     ],
     { stdout: "ignore", stderr: "ignore" },
   );
-  console.log(`• [${caseName}] running suite …`);
+  console.log(`• [${caseName}] running suite (${throttle}× CPU throttle) …`);
 
   try {
-    return await driveAndCollect(cdpPort);
+    return await driveAndCollect(cdpPort, appUrl);
   } finally {
     chrome.kill();
     server.stop(true);
@@ -135,7 +155,7 @@ function serveStatic(dist) {
 
 // --- CDP driver -------------------------------------------------------------
 
-async function driveAndCollect(port) {
+async function driveAndCollect(port, appUrl) {
   const target = await waitForPageTarget(port);
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((res, rej) => {
@@ -168,19 +188,23 @@ async function driveAndCollect(port) {
   };
 
   await send("Runtime.enable");
+  // Throttle before the page exists so even the first warm-up runs throttled.
+  await send("Emulation.setCPUThrottlingRate", { rate: throttle });
+  await send("Page.navigate", { url: appUrl });
 
-  const deadline = Date.now() + 120_000;
+  // Generous ceiling: 12-sample cases under 4× throttling take a while.
+  const deadline = Date.now() + 300_000;
   while (Date.now() < deadline) {
     if (await evaluate("window.__BENCH_DONE__ === true")) {
       const json = await evaluate("JSON.stringify(window.__BENCH_RESULTS__)");
       ws.close();
       if (!json) throw new Error("suite finished but __BENCH_RESULTS__ was empty");
-      return JSON.parse(json);
+      return { ...JSON.parse(json), throttle };
     }
     await sleep(250);
   }
   ws.close();
-  throw new Error("timed out waiting for the in-page suite to finish (120s)");
+  throw new Error("timed out waiting for the in-page suite to finish (300s)");
 }
 
 async function waitForPageTarget(port) {
@@ -202,14 +226,20 @@ async function waitForPageTarget(port) {
 
 function reportOne(results) {
   const rows = results.cases ?? [];
+  const spread = (c) =>
+    c.samples?.length
+      ? `${Math.min(...c.samples).toFixed(1)}–${Math.max(...c.samples).toFixed(1)}`
+      : "—";
   const labelW = Math.max(9, ...rows.map((c) => c.label.length));
-  const head = `| ${"operation".padEnd(labelW)} | median (ms) | samples |`;
-  const sep = `| ${"-".repeat(labelW)} | ----------: | ------: |`;
+  const spreadW = Math.max(12, ...rows.map((c) => spread(c).length));
+  const head = `| ${"operation".padEnd(labelW)} | median (ms) | ${"min–max (ms)".padEnd(spreadW)} | samples |`;
+  const sep = `| ${"-".repeat(labelW)} | ----------: | ${"-".repeat(spreadW - 1)}: | ------: |`;
   const body = rows
-    .map((c) => `| ${c.label.padEnd(labelW)} | ${String(c.median).padStart(11)} | ${String(c.runs).padStart(7)} |`)
+    .map((c) =>
+      `| ${c.label.padEnd(labelW)} | ${String(c.median).padStart(11)} | ${spread(c).padStart(spreadW)} | ${String(c.runs).padStart(7)} |`)
     .join("\n");
 
-  console.log(`\nengine: ${results.engine}`);
+  console.log(`\nengine: ${results.engine} (CPU throttle ${results.throttle ?? 1}×)`);
   console.log(`${results.ua}`);
   console.log([head, sep, body].join("\n"));
 
@@ -235,10 +265,15 @@ function reportComparison(all) {
   const body = labels
     .map((label) => {
       const vals = all.map((r) => lookup(r, label));
-      const best = Math.min(...vals.filter((v) => v != null));
-      const winner = engines[vals.findIndex((v) => v === best)] ?? "—";
+      const present = vals.filter((v) => v != null);
+      const best = Math.min(...present);
+      // Only call a winner when the runner-up is more than the timing
+      // resolution behind; anything closer is a tie the frame clock can't split.
+      const runnerUp = Math.min(...present.filter((v) => v > best), Infinity);
+      const decisive = present.length > 1 && runnerUp - best > RESOLUTION_MS;
+      const winner = decisive ? engines[vals.findIndex((v) => v === best)] : "~ tie";
       const cells = vals
-        .map((v, i) => (v === best ? `**${fmt(v)}**` : fmt(v)).padStart(colW[i]))
+        .map((v, i) => (decisive && v === best ? `**${fmt(v)}**` : fmt(v)).padStart(colW[i]))
         .join(" | ");
       return `| ${label.padEnd(labelW)} | ${cells} | ${winner.padEnd(7)} |`;
     })
@@ -247,8 +282,10 @@ function reportComparison(all) {
   console.log(`\n## Comparison (median ms, lower is better — bold = fastest)\n`);
   console.log([header, sep, body].join("\n"));
   console.log(
-    `\n> Same harness, same machine, same double-rAF timing. Indicative, not a` +
-      ` publishable head-to-head until tracing-based timing lands (see README).`,
+    `\n> Same harness, same machine, ${all[0]?.throttle ?? 1}× CPU throttle, double-rAF` +
+      ` timing (resolution ≈ ${RESOLUTION_MS.toFixed(1)} ms — margins below that are` +
+      ` reported as "~ tie"). Indicative, not a publishable head-to-head until` +
+      ` tracing-based timing lands (see README).`,
   );
 
   const outDir = join(HERE, "results");
