@@ -11,9 +11,10 @@ An OTF Web app compiles to **static files** — a hashed JS bundle, CSS, and (op
 pre-rendered HTML — so today you build once and serve `dist/` from any static host or
 CDN, with no runtime to operate.
 
-OTF Web is a fullstack framework; the server runtime (SSR, server functions, and
-request handling) is **in progress**. This page covers the static output that ships
-today — server deployment will be documented here as it lands.
+OTF Web is a fullstack framework. Alongside the static output, it can run a server:
+`otfw serve` renders routes per request (SSR) and mounts your
+[API routes](/docs/routing/api-routes) at `/api/*`. Typed server functions are still
+in progress.
 
 There are two output modes, both produced by `otfw build`:
 
@@ -40,3 +41,21 @@ There are two output modes, both produced by `otfw build`:
 For a **single-page** build, configure the host to fall back to `index.html` for unknown
 paths so client-side routes resolve. A fully **static-generated** site needs no fallback
 — every route already has its own HTML file.
+
+## Server (SSR & API routes)
+
+If your app uses SSR or [API routes](/docs/routing/api-routes), run a server instead of
+serving `dist/` statically:
+
+- `otfw serve` builds, then runs the per-request server on Bun (SSR + `/api/*`).
+- `otfw build` also emits `dist/server/api.js` — a self-contained handler you can mount
+  on any runtime with an adapter. Fetch-native hosts (Bun, Cloudflare Workers, Deno) use
+  `createFetchHandler`; Node uses `toNodeListener`. See the
+  [Server API reference](/api/server).
+
+```js
+// Cloudflare Workers / Bun / Deno
+import { apiHandler } from "./dist/server/api.js";
+import { createFetchHandler } from "@opentf/web/server";
+export default { fetch: createFetchHandler(apiHandler) };
+```

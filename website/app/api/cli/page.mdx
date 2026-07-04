@@ -13,11 +13,16 @@ through `package.json` scripts (`bun run dev`, `bun run build`).
 | `otfw dev` | Start the dev server with on-demand compile and hot reload. |
 | `otfw build` | Compile and bundle to a static `dist/`. |
 | `otfw build --ssg` | Build and pre-render every route to static HTML. |
+| `otfw serve` | Build, then run the per-request SSR server (`--port` to override). |
 
 ```bash
 otfw dev            # development
 otfw build --ssg    # production, static-rendered
+otfw serve          # production SSR + API routes
 ```
+
+Both `otfw dev` and `otfw serve` mount [API routes](/docs/routing/api-routes) at
+`/api/*`; `otfw build` emits the handler bundle to `dist/server/api.js`.
 
 ## Scaffolding
 

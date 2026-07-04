@@ -1,0 +1,79 @@
+---
+title: Server (API Routes)
+description: The @opentf/web/server API-routes surface — handler types, createApiHandler, createFetchHandler, and runtime adapters.
+---
+
+# Server / API Routes
+
+The `@opentf/web/server` entry exposes the runtime that powers file-based
+[API routes](/docs/routing/api-routes). Most apps never call these directly — the
+toolchain wires them up — but they're the contract for authoring handlers in
+TypeScript and for deploying `dist/server/api.js` to a custom runtime.
+
+## Types
+
+```ts
+import type {
+  ApiHandler,
+  Middleware,
+  ApiContext,
+  RouteParams,
+} from "@opentf/web/server";
+```
+
+| Type | Description |
+| --- | --- |
+| `ApiHandler` | `(request: Request, context: ApiContext) => MaybePromise<Response>` — an HTTP method export (`GET`, `POST`, …). |
+| `Middleware` | `(request: Request, context: ApiContext, next: NextFn) => MaybePromise<Response>` — a `_middleware` default export. |
+| `ApiContext` | `{ params, query, url, locals }` — the per-request context (second handler argument). |
+| `RouteParams` | `Record<string, string \| string[]>` — a `[...rest]` segment resolves to `string[]`. |
+| `RequestHandler` | `(request: Request) => Promise<Response \| null>` — the composed handler; `null` = no route matched. |
+
+### `ApiContext`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `params` | `RouteParams` | Dynamic segments from the matched path. |
+| `query` | `Record<string, string>` | Parsed query string. |
+| `url` | `URL` | The parsed request URL. |
+| `locals` | `Record<string, unknown>` | Mutable bag; middleware writes, handlers read. |
+
+## Functions
+
+### `createFetchHandler(handler, options?)`
+
+Wraps a `RequestHandler` into a total Fetch handler that always returns a
+`Response` — a `null` becomes `options.fallback` or a `404`. Use it on
+Fetch-native runtimes.
+
+```js
+import { apiHandler } from "./dist/server/api.js";
+import { createFetchHandler } from "@opentf/web/server";
+
+// Cloudflare Workers / Bun / Deno
+export default { fetch: createFetchHandler(apiHandler) };
+```
+
+### `createApiHandler(routeModules?, middlewareModules?)`
+
+Builds a `RequestHandler` from discovered route + middleware modules (keyed by file
+path). Called by the toolchain; you rarely call it yourself.
+
+## Adapters
+
+`dist/server/api.js` exports `apiHandler` (a `RequestHandler`). Fetch-native
+runtimes use it via `createFetchHandler`. Node uses the `node:http` adapter:
+
+```js
+import { createServer } from "node:http";
+import { apiHandler } from "./dist/server/api.js";
+import { toNodeListener } from "@opentf/web/server/adapters/node";
+
+createServer(toNodeListener(apiHandler)).listen(3000);
+```
+
+| Export | From | Purpose |
+| --- | --- | --- |
+| `toNodeListener(handler, opts?)` | `@opentf/web/server/adapters/node` | Fetch handler → Node `(req, res)` listener. |
+| `toWebRequest(req)` | `@opentf/web/server/adapters/node` | Node `IncomingMessage` → `Request`. |
+| `sendWebResponse(res, webRes)` | `@opentf/web/server/adapters/node` | Write a `Response` to a Node `ServerResponse`. |

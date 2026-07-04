@@ -1,0 +1,100 @@
+---
+title: API Routes
+description: File-based server endpoints under app/api — standard Request/Response handlers, dynamic params, and middleware.
+---
+
+# API Routes
+
+API routes are server endpoints that live alongside your pages. They're **plain
+server modules** (not components): each exports a function per HTTP method that
+takes a standard [`Request`](https://developer.mozilla.org/docs/Web/API/Request)
+and returns a standard [`Response`](https://developer.mozilla.org/docs/Web/API/Response),
+so they run unchanged on Bun, Node, Cloudflare Workers, and Deno.
+
+## File routing
+
+Handlers go under `app/api/`, mapped to the `/api/*` prefix using the same
+`[param]` / `[...rest]` convention as pages:
+
+| File | Route |
+| --- | --- |
+| `app/api/status.js` | `/api/status` |
+| `app/api/index.js` | `/api` |
+| `app/api/users/[id].js` | `/api/users/:id` |
+| `app/api/files/[...path].js` | `/api/files/*` |
+
+Static routes win over dynamic ones. Files whose name starts with `_` (other than
+`_middleware`) are private helpers, never routes.
+
+## Method handlers
+
+Export one function per HTTP method. The second argument is a context with the
+route `params`, parsed `query`, the request `url`, and a mutable `locals` bag.
+
+```js
+// app/api/users/[id].js
+export async function GET(request, { params }) {
+  const user = await db.users.find(params.id);
+  return user
+    ? Response.json(user)
+    : Response.json({ error: "Not found" }, { status: 404 });
+}
+
+export async function POST(request, { params }) {
+  const data = await request.json();
+  const user = await db.users.update(params.id, data);
+  return Response.json(user, { status: 201 });
+}
+```
+
+- `HEAD` is derived from `GET` automatically; `OPTIONS` is answered automatically.
+- An unhandled method on a matched path returns `405` with an `Allow` header.
+- A handler may **throw a `Response`** to short-circuit.
+
+## Middleware
+
+A `_middleware.js` file applies to its folder and everything nested under it.
+Multiple middleware compose outermost-first. The signature is
+`(request, context, next)` — call `next()` to continue, or return a `Response` to
+short-circuit. Pass data to handlers through `context.locals`.
+
+```js
+// app/api/_middleware.js
+export default function (request, context, next) {
+  const token = request.headers.get("authorization");
+  if (!token) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  context.locals.user = verify(token); // handlers read context.locals.user
+  return next();
+}
+```
+
+Request validation (e.g. with `zod`) belongs in middleware or at the top of a
+handler.
+
+## TypeScript
+
+Handlers can be authored in `.ts`. Annotate the exports with the framework types:
+
+```ts
+// app/api/users/[id].ts
+import type { ApiHandler, Middleware } from "@opentf/web/server";
+
+export const GET: ApiHandler = (request, { params }) => {
+  return Response.json({ id: params.id });
+};
+
+// _middleware.ts default export
+const auth: Middleware = (request, ctx, next) => next();
+export default auth;
+```
+
+## Running & deploying
+
+- **`otfw dev`** serves `/api/*` with hot reload.
+- **`otfw serve`** tries `/api/*` handlers first, then SSR — so a request that matches
+  no handler falls through to your pages (pages and API routes can share `/api`).
+- **`otfw build`** emits `dist/server/api.js`, a self-contained handler you deploy
+  with a runtime adapter — see the [Server API reference](/api/server).
+
+Only `PUBLIC_`-prefixed environment variables reach the client; everything else in
+`.env` stays server-only and is available to handlers via `process.env`.
