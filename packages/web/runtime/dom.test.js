@@ -256,6 +256,63 @@ describe("bindList", () => {
     items.value = ["x", "y", "z"];
     expect(text(parent)).toBe("x,y,z");
   });
+
+  test("evicting a row disposes its bindings (no zombie effects on shared signals)", () => {
+    // Every row's class binding reads the shared `selected` signal — the
+    // js-framework-benchmark "select row" shape. Evicted rows must unsubscribe,
+    // or each rebuild leaks 1 effect per row and every later `selected` write
+    // re-runs all of them (this made select-row cost more than create-1k).
+    const selected = signal(-1);
+    const items = signal([{ id: 1 }, { id: 2 }]);
+    const parent = document.createElement("ul");
+    let classRuns = 0;
+    bindList(
+      parent,
+      () => items.value,
+      (sig) => {
+        const li = document.createElement("li");
+        bindAttr(li, "class", () => {
+          classRuns++;
+          return selected.value === sig.value.id ? "on" : "";
+        });
+        return li;
+      },
+      (item) => item.id,
+    );
+
+    items.value = [{ id: 3 }, { id: 4 }]; // all-new keys: rows 1,2 evicted
+    classRuns = 0;
+    selected.value = 3;
+    expect(classRuns).toBe(2); // only the 2 live rows, not 4
+    expect(parent.querySelector("li").getAttribute("class")).toBe("on");
+  });
+
+  test("dispose stops the list and its per-row bindings", () => {
+    const label = signal("a");
+    const items = signal([{ id: 1 }]);
+    const parent = document.createElement("ul");
+    let runs = 0;
+    const dispose = bindList(
+      parent,
+      () => items.value,
+      () => {
+        const li = document.createElement("li");
+        bindText(li.appendChild(document.createTextNode("")), () => {
+          runs++;
+          return label.value;
+        });
+        return li;
+      },
+      (item) => item.id,
+    );
+
+    dispose();
+    runs = 0;
+    items.value = [{ id: 2 }]; // reconciliation stopped
+    label.value = "b"; // row binding disposed
+    expect(runs).toBe(0);
+    expect(parent.querySelector("li").textContent).toBe("a"); // frozen
+  });
 });
 
 describe("spread", () => {
@@ -327,6 +384,29 @@ describe("bindChild", () => {
     dispose();
     on.value = false;
     expect(parent.querySelector("b")).not.toBeNull(); // frozen
+  });
+
+  test("swapping a branch disposes the old branch's bindings", () => {
+    const on = signal(true);
+    const label = signal("a");
+    const parent = document.createElement("div");
+    const anchor = parent.appendChild(document.createComment(""));
+    let runs = 0;
+    bindChild(anchor, () => {
+      if (!on.value) return null;
+      const p = document.createElement("p");
+      bindText(p.appendChild(document.createTextNode("")), () => {
+        runs++;
+        return label.value;
+      });
+      return p;
+    });
+    expect(parent.textContent).toBe("a");
+
+    on.value = false; // branch swapped out — its text binding must die with it
+    runs = 0;
+    label.value = "b";
+    expect(runs).toBe(0);
   });
 });
 

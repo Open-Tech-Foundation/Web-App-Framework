@@ -2,6 +2,7 @@
 // SPEC §2.2). Components compile to Custom Elements and mount via the DOM.
 
 import { reportError } from "../core/errors.js";
+import { scope } from "../core/signals.js";
 
 /**
  * Mount a view into `target`. `view` is either a factory function returning a
@@ -11,9 +12,21 @@ import { reportError } from "../core/errors.js";
  * built from `onMount`/`onCleanup`. After insertion we run the `onMount` callbacks,
  * collecting any returned disposer into `cleanups` so a caller (e.g. the router)
  * can tear the page down on navigation.
+ *
+ * A factory build runs inside a reactive `scope`, and the scope's disposer joins
+ * the cleanups: teardown (router navigation) stops every binding effect the page
+ * created, so a replaced page's subscriptions don't outlive it.
  */
 export function mount(view, target) {
-  const node = typeof view === "function" ? view() : view;
+  let node;
+  if (typeof view === "function") {
+    const s = scope(view);
+    node = s.result;
+    const lc = (node.__lifecycle ??= { mounts: [], cleanups: [] });
+    lc.cleanups.push(s.dispose);
+  } else {
+    node = view;
+  }
   target.appendChild(node);
   runMount(node);
   return node;
