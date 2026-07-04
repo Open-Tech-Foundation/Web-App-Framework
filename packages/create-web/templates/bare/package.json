@@ -9,9 +9,9 @@
     "build:ssg": "otfw build --ssg"
   },
   "dependencies": {
-    "@opentf/web": "^0.6.0"
+    "@opentf/web": "^0.7.0"
   },
   "devDependencies": {
-    "@opentf/web-cli": "^1.1.0"
+    "@opentf/web-cli": "^1.2.0"
   }
 }

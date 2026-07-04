@@ -4,8 +4,8 @@
 
 ### Changed
 
-- Updated scaffolded template dependencies to the latest released OTF Web package
-  versions.
+- Updated scaffolded template dependencies to `@opentf/web@^0.7.0`,
+  `@opentf/web-cli@^1.2.0`, and `@opentf/web-docs@^0.3.0`.
 - Simplified the app template to a single welcome page.
 - Updated the docs template with a landing page plus a `/docs` section that shows the
   generated navbar, `_meta.js` sidebar ordering, and table of contents.
