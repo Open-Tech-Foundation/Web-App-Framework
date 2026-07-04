@@ -4,6 +4,15 @@
 
 ### Added
 
+- **API routes runtime** (`@opentf/web/server`): `createApiHandler` dispatches file-based
+  `Request → Response` endpoints — method-named handlers (`GET`/`POST`/…), `[param]` /
+  `[...rest]` matching (shared with the page router), auto `HEAD`/`OPTIONS`, `405` + `Allow`,
+  and nested `_middleware` composed outermost-first with a shared `context.locals`. Returns
+  `null` on no-match so the caller can fall through to SSR. `createFetchHandler` wraps it
+  into a total Fetch handler for Fetch-native runtimes (Bun/Cloudflare Workers/Deno), and
+  `@opentf/web/server/adapters/node` (`toNodeListener`) bridges `node:http`. Ships
+  TypeScript definitions for the server surface (`ApiHandler`, `Middleware`, `ApiContext`,
+  `RouteParams`, …).
 - **Reactive ownership scopes** (`scope()` in the signals core, exported from the package
   root): collects the disposers of every effect created while a build function runs, so a
   dynamic region can tear its bindings down as a unit. Effects created during a flush-time

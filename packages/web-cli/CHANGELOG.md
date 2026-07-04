@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- **API routes** (SPEC §11): an endpoint is a `route.{js,ts}` file — the API analogue of a
+  page's `page.{jsx,tsx}`, resolvable in any folder under `app/` (folder = URL). `otfw dev`
+  serves them with hot reload, `otfw serve` mounts them ahead of SSR, and `otfw build` emits
+  a self-contained `dist/server/api.js` for deploy adapters. A matched handler wins; a miss
+  falls through to the page/SSR router so pages and endpoints coexist.
+- The CLI help and docs now cover `otfw serve` (the per-request SSR server).
+
+### Changed
+
+- A folder may hold a `page.*` **or** a `route.*`, not both — `otfw dev`/`build` now error on
+  a page/endpoint path conflict (matching Next.js's App Router).
+
 ## [1.2.0] - 2026-07-03
 
 ### Added
