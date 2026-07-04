@@ -21,8 +21,8 @@ otfw build --ssg    # production, static-rendered
 otfw serve          # production SSR + API routes
 ```
 
-Both `otfw dev` and `otfw serve` mount [API routes](/docs/routing/api-routes) at
-`/api/*`; `otfw build` emits the handler bundle to `dist/server/api.js`.
+Both `otfw dev` and `otfw serve` serve your [API routes](/docs/routing/api-routes)
+(`route.{js,ts}` files); `otfw build` emits the handler bundle to `dist/server/api.js`.
 
 ## Scaffolding
 

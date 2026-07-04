@@ -371,12 +371,14 @@ Each backend is a **pure function of the IRs / Project Graph**. Adding a target
   interactive via a CSR mount. Hydration (adopt the server DOM, no re-render) and
   streaming are later phases, gated on the Hydrate backend.
 - **API** _(Phase A implemented — designed in [`docs/API.md`](docs/API.md))_ —
-  file-based `Request → Response` endpoints under `app/api/` (SPEC §11). Phase A
-  routes are **plain server modules** (method-named exports `GET`/`POST`/…, standard
-  Fetch `Request`/`Response`, `[param]`/`[...rest]`, nested `_middleware`), so they
-  are discovered and bundled by the JS toolchain rather than DOM-compiled by the Rust
-  front end; `otfw dev`/`serve` mount `/api/*` and `otfw build` emits a self-contained
-  `dist/server/api.js` for deploy adapters (Bun/Node/CF Workers). Phase B — typed
+  file-based `Request → Response` endpoints (SPEC §11). An endpoint is a
+  `route.{js,ts}` file (the API analogue of `page.{jsx,tsx}`; folder = URL), so a
+  folder holds a page **or** an endpoint, not both (conflict = toolchain error, like
+  Next.js). Phase A routes are **plain server modules** (method-named exports
+  `GET`/`POST`/…, standard Fetch `Request`/`Response`, `[param]`/`[...rest]`, nested
+  `_middleware`), discovered and bundled by the JS toolchain rather than DOM-compiled
+  by the Rust front end; `otfw dev`/`serve` serve them and `otfw build` emits a
+  self-contained `dist/server/api.js` for deploy adapters (Bun/Node/CF Workers). Phase B — typed
   **server functions / loaders** callable from components, splitting the client/server
   boundary through the Metadata + Server IR (§4.4) — is the compiler-backed follow-up
   that turns the Server IR placeholder into real lowering.

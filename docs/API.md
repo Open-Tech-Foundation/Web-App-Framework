@@ -10,30 +10,33 @@
 
 ## 1. Model
 
-OTF Web API routes are **plain server modules** — not JSX, not DOM-compiled. Each
-handler receives a standard Fetch [`Request`](https://developer.mozilla.org/docs/Web/API/Request)
-and returns a standard [`Response`](https://developer.mozilla.org/docs/Web/API/Response),
-so routes are portable across Bun, Node 20+, Cloudflare Workers, and Deno.
+An endpoint is a **`route.{js,ts}` file** — the API analogue of a page's
+`page.{jsx,tsx}`. Its **folder is the URL**, exactly like pages. Handlers are
+**plain server modules** (not JSX, not DOM-compiled): each receives a standard
+Fetch [`Request`](https://developer.mozilla.org/docs/Web/API/Request) and returns a
+standard [`Response`](https://developer.mozilla.org/docs/Web/API/Response), so they
+run unchanged on Bun, Node 20+, Cloudflare Workers, and Deno.
 
 Because they're plain server code, they're discovered and bundled by the JS
-toolchain (not the Rust compiler): `otfw dev` and `otfw serve` mount `/api/*`, and
+toolchain (not the Rust compiler): `otfw dev` and `otfw serve` serve them, and
 `otfw build` emits a self-contained `dist/server/api.js` for deployment.
 
 ## 2. File-based routing
 
-Routes live under `app/api/`, mapped to the `/api/*` prefix using the same
-`[param]` / `[...rest]` convention as pages:
+A `route.{js,ts}` file works in **any folder** under `app/` (conventionally
+`app/api/`); the folder is the URL, using the same `[param]` / `[...rest]`
+convention as pages:
 
 | File | Route |
 |------|-------|
-| `app/api/status.js` | `/api/status` |
-| `app/api/index.js` | `/api` |
-| `app/api/users/[id].js` | `/api/users/:id` |
-| `app/api/files/[...path].js` | `/api/files/*` (rest → array) |
+| `app/api/status/route.js` | `/api/status` |
+| `app/api/route.js` | `/api` |
+| `app/api/users/[id]/route.js` | `/api/users/:id` |
+| `app/api/files/[...path]/route.js` | `/api/files/*` (rest → array) |
 
 Static routes take precedence over dynamic ones; a longer (more specific) match
-wins. Files whose name starts with `_` (other than `_middleware`) are treated as
-private helpers, never routes.
+wins. A folder may hold a `page.*` **or** a `route.*`, not both — the toolchain
+errors on the conflict (as in Next.js's App Router).
 
 ## 3. Method handlers
 
@@ -41,7 +44,7 @@ Export a named function per HTTP method. The second argument is a **context** wi
 the resolved route params, parsed query, the `URL`, and a mutable `locals` bag.
 
 ```js
-// app/api/users/[id].js
+// app/api/users/[id]/route.js
 export async function GET(request, { params, query }) {
   const user = await db.users.find(params.id);
   return user ? Response.json(user) : Response.json({ error: "Not found" }, { status: 404 });
@@ -80,13 +83,27 @@ export default function (request, context, next) {
 
 Request validation (e.g. with `zod`) belongs here or at the top of a handler.
 
-## 5. Running & deploying
+## 5. TypeScript
 
-- **`otfw dev`** — `/api/*` is served by a bundle built lazily on first request and
+Author handlers in `.ts` and annotate the exports:
+
+```ts
+// app/api/users/[id]/route.ts
+import type { ApiHandler, Middleware } from "@opentf/web/server";
+
+export const GET: ApiHandler = (request, { params }) => Response.json({ id: params.id });
+```
+
+`ApiHandler`, `Middleware`, `ApiContext`, and `RouteParams` are exported from
+`@opentf/web/server`.
+
+## 6. Running & deploying
+
+- **`otfw dev`** — endpoints are served by a bundle built lazily on first request and
   rebuilt on edit (hot reload).
-- **`otfw serve`** — the SSR server tries `/api/*` handlers ahead of assets and SSR;
+- **`otfw serve`** — the SSR server tries a matching `route.*` handler ahead of SSR;
   a request that matches no handler falls through to the page router, so pages and
-  API routes can coexist under `/api` (e.g. the docs site's `/api` reference section).
+  endpoints coexist (only a *same-folder* `page.*` + `route.*` is rejected).
 - **`otfw build`** — emits `dist/server/api.js`, a self-contained ESM module
   exporting `apiHandler(request) => Response | null` (the runtime dispatcher is
   bundled in; your npm/node deps stay external for the target).
@@ -111,7 +128,7 @@ import { toNodeListener } from "@opentf/web/server/adapters/node";
 createServer(toNodeListener(apiHandler)).listen(3000);
 ```
 
-## 6. Environment variables
+## 7. Environment variables
 
 Server-only secrets in `.env` are available to handlers via `process.env`. Only
 `PUBLIC_`-prefixed variables are ever exposed to the client bundle (SPEC §14).

@@ -5,7 +5,8 @@ description: File-based server endpoints under app/api — standard Request/Resp
 
 # API Routes
 
-API routes are server endpoints that live alongside your pages. They're **plain
+An API route is a **`route.{js,ts}` file** — the server analogue of a page's
+`page.{jsx,tsx}`. Its folder is the URL, just like pages. Handlers are **plain
 server modules** (not components): each exports a function per HTTP method that
 takes a standard [`Request`](https://developer.mozilla.org/docs/Web/API/Request)
 and returns a standard [`Response`](https://developer.mozilla.org/docs/Web/API/Response),
@@ -13,18 +14,19 @@ so they run unchanged on Bun, Node, Cloudflare Workers, and Deno.
 
 ## File routing
 
-Handlers go under `app/api/`, mapped to the `/api/*` prefix using the same
-`[param]` / `[...rest]` convention as pages:
+A `route.{js,ts}` file works in **any folder** under `app/` (conventionally
+`app/api/`); the folder is the URL, using the same `[param]` / `[...rest]`
+convention as pages:
 
 | File | Route |
 | --- | --- |
-| `app/api/status.js` | `/api/status` |
-| `app/api/index.js` | `/api` |
-| `app/api/users/[id].js` | `/api/users/:id` |
-| `app/api/files/[...path].js` | `/api/files/*` |
+| `app/api/status/route.js` | `/api/status` |
+| `app/api/route.js` | `/api` |
+| `app/api/users/[id]/route.js` | `/api/users/:id` |
+| `app/api/files/[...path]/route.js` | `/api/files/*` |
 
-Static routes win over dynamic ones. Files whose name starts with `_` (other than
-`_middleware`) are private helpers, never routes.
+Static routes win over dynamic ones. A folder holds a `page.*` **or** a `route.*`,
+never both — the toolchain errors on the conflict (as in Next.js's App Router).
 
 ## Method handlers
 
@@ -32,7 +34,7 @@ Export one function per HTTP method. The second argument is a context with the
 route `params`, parsed `query`, the request `url`, and a mutable `locals` bag.
 
 ```js
-// app/api/users/[id].js
+// app/api/users/[id]/route.js
 export async function GET(request, { params }) {
   const user = await db.users.find(params.id);
   return user
@@ -76,7 +78,7 @@ handler.
 Handlers can be authored in `.ts`. Annotate the exports with the framework types:
 
 ```ts
-// app/api/users/[id].ts
+// app/api/users/[id]/route.ts
 import type { ApiHandler, Middleware } from "@opentf/web/server";
 
 export const GET: ApiHandler = (request, { params }) => {
@@ -90,9 +92,9 @@ export default auth;
 
 ## Running & deploying
 
-- **`otfw dev`** serves `/api/*` with hot reload.
-- **`otfw serve`** tries `/api/*` handlers first, then SSR — so a request that matches
-  no handler falls through to your pages (pages and API routes can share `/api`).
+- **`otfw dev`** serves your endpoints with hot reload.
+- **`otfw serve`** tries a matching `route.*` handler first, then SSR — so a request
+  that matches no handler falls through to your pages (pages and endpoints coexist).
 - **`otfw build`** emits `dist/server/api.js`, a self-contained handler you deploy
   with a runtime adapter — see the [Server API reference](/api/server).
 
