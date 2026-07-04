@@ -28,7 +28,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Remove the fixture's generated build output between/after runs.
 function cleanFixture() {
-  for (const d of ["dist", ".otfw", ".otfw-ssg", ".dev"]) {
+  for (const d of ["dist", ".otfw", ".otfw-ssg", ".otfw-api", ".dev"]) {
     rmSync(`${FIXTURE}/${d}`, { recursive: true, force: true });
   }
 }
@@ -104,6 +104,36 @@ async function main() {
     const missingHtml = await missing.text();
     assert(missing.status === 404, "GET /no-such-route → 404 status");
     assert(missingHtml.includes("E2E_404"), "the registered 404 page is rendered on a miss");
+
+    // ── 6. API routes (SPEC §11): file-based Request→Response handlers ─────────
+    const status = await fetch(`${base}/api/status`);
+    assert(status.status === 200, "GET /api/status → 200");
+    assert((await status.json()).ok === true, "/api/status returns its JSON body");
+
+    const created = await fetch(`${base}/api/status`, {
+      method: "POST",
+      body: JSON.stringify({ n: 1 }),
+    });
+    assert(created.status === 201, "POST /api/status → 201 (method-based handler)");
+    assert((await created.json()).received.n === 1, "POST body is read from the standard Request");
+
+    const user = await fetch(`${base}/api/users/42`);
+    const userJson = await user.json();
+    assert(user.status === 200, "GET /api/users/42 → 200");
+    assert(userJson.id === "42", "dynamic [id] param resolves");
+    assert(userJson.viaMiddleware === "mw", "_middleware ran and passed data via locals");
+
+    const notAMethod = await fetch(`${base}/api/status`, { method: "DELETE" });
+    assert(notAMethod.status === 405, "unhandled method → 405");
+    assert((notAMethod.headers.get("allow") || "").includes("GET"), "405 carries an Allow header");
+
+    const blocked = await fetch(`${base}/api/secret`);
+    assert(blocked.status === 401, "middleware short-circuits /api/secret → 401");
+    const allowed = await fetch(`${base}/api/secret`, { headers: { authorization: "t" } });
+    assert(allowed.status === 200, "authorized /api/secret → 200 (middleware calls next)");
+
+    const apiMiss = await fetch(`${base}/api/nope`);
+    assert(apiMiss.status === 404, "unmatched /api/* → 404 (does not fall through to SSR)");
 
     console.log(`\n✓ otfw serve e2e — ${passed} assertions passed\n`);
   } finally {

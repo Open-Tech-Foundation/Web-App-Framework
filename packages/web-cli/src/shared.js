@@ -413,6 +413,91 @@ export function discoverPages(dir, exclude) {
   return out;
 }
 
+/**
+ * Discover file-based API routes under `app/api/` (SPEC §11). Returns
+ * `{ routes, middleware }` — absolute paths to method-handler modules and to
+ * `_middleware.{js,ts}` files respectively. Files whose name starts with `_`
+ * (other than `_middleware`) are treated as private helpers, not routes.
+ */
+export function discoverApiRoutes(appDir, exclude = new Set()) {
+  const apiDir = join(appDir, "api");
+  const routes = [];
+  const middleware = [];
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        if (!exclude.has(entry.name)) walk(join(dir, entry.name));
+        continue;
+      }
+      const name = entry.name;
+      if (!/\.(jsx?|tsx?)$/.test(name)) continue;
+      const full = join(dir, name);
+      if (/^_middleware\.(jsx?|tsx?)$/.test(name)) middleware.push(full);
+      else if (!name.startsWith("_")) routes.push(full);
+    }
+  };
+  walk(apiDir);
+  return { routes, middleware };
+}
+
+/**
+ * Entry source for the API handler bundle: statically import every route +
+ * middleware module (keyed by absolute path so `createApiHandler` can derive the
+ * route from the path), then export the composed `Request → Response | null`
+ * handler. Mirrors `serverEntrySource` for the page/SSG bundle.
+ */
+export function apiEntrySource({ routes, middleware }) {
+  const rImports = routes.map((p, i) => `import * as r${i} from ${JSON.stringify(p)};`).join("\n");
+  const mImports = middleware.map((p, i) => `import * as m${i} from ${JSON.stringify(p)};`).join("\n");
+  const rMap = routes.map((p, i) => `  [${JSON.stringify(p)}]: r${i},`).join("\n");
+  const mMap = middleware.map((p, i) => `  [${JSON.stringify(p)}]: m${i},`).join("\n");
+  return (
+    `import { createApiHandler } from "@opentf/web/server";\n` +
+    `${rImports}\n${mImports}\n` +
+    `export const apiHandler = createApiHandler(\n{\n${rMap}\n},\n{\n${mMap}\n},\n);\n`
+  );
+}
+
+/**
+ * Build the API handler bundle and import it. Returns `{ handler, cleanup }`
+ * where `handler(request)` resolves to a `Response` or `null` (no API route
+ * matched). Route modules are *plain server code* — bundled as ESM without the
+ * `otfwc` DOM transform. Bare (npm / node builtin) imports stay external and are
+ * resolved at runtime from the project's node_modules, so server deps and native
+ * modules aren't dragged into the bundle. Returns `null` when there are no routes.
+ */
+export async function buildApiBundle({ root, appDir, webEntry, exclude, tmpName = ".otfw-api" }) {
+  const discovered = discoverApiRoutes(appDir, exclude);
+  if (discovered.routes.length === 0) return null;
+
+  const tmp = join(root, tmpName);
+  mkdirSync(tmp, { recursive: true });
+  const entry = join(tmp, "api-entry.js");
+  writeFileSync(entry, apiEntrySource(discovered));
+
+  const serverApi = join(dirname(webEntry), "server", "index.js");
+  await build({
+    input: entry,
+    platform: "node",
+    resolve: {
+      alias: { "@opentf/web/server": serverApi, "@opentf/web": webEntry },
+      extensions: EXTENSIONS,
+    },
+    // Keep npm/node builtins external — server handlers resolve them at runtime.
+    external: (id) => !id.startsWith(".") && !id.startsWith("/") && !id.startsWith("@opentf/web"),
+    output: { dir: join(tmp, "out"), format: "esm", entryFileNames: "api.js" },
+    checks: { pluginTimings: false },
+  });
+
+  const mod = await import(pathToFileURL(join(tmp, "out", "api.js")).href);
+  return {
+    handler: mod.apiHandler,
+    routes: discovered.routes,
+    cleanup: () => rmSync(tmp, { recursive: true, force: true }),
+  };
+}
+
 /** The optional `app/routeGuard.{js,ts}` path, or null. */
 export function findGuard(appDir) {
   return [join(appDir, "routeGuard.js"), join(appDir, "routeGuard.ts")].find(
