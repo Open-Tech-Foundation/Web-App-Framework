@@ -52,7 +52,7 @@ export const capabilities = [
       { name: "Nested layouts", status: "supported", desc: "Persistent UI across route changes." },
       { name: "Route guards", status: "supported", desc: "Protect routes with custom logic + redirects." },
       { name: "Code splitting", status: "planned", desc: "Automatic per-route splitting and prefetch." },
-      { name: "Middleware", status: "planned", desc: "Request processing and transformations." },
+      { name: "API middleware", status: "supported", desc: "Nested _middleware for API routes: auth, validation, shared context." },
     ],
   },
   {
@@ -86,7 +86,7 @@ export const capabilities = [
     category: "Full-stack roadmap",
     items: [
       { name: "Reactive forms", status: "beta", desc: "@opentf/web-form — porting to the new runtime." },
-      { name: "API routes", status: "planned", desc: "Server endpoints in the same graph as the UI." },
+      { name: "API routes", status: "supported", desc: "File-based route.js / route.ts endpoints — standard Request/Response, dynamic params, middleware." },
       { name: "Data fetching", status: "planned", desc: "Loaders, queries, and actions." },
       { name: "Internationalization", status: "beta", desc: "@opentf/web-i18n — URL-prefix locale routing, ICU messages, and Intl formatters (Phase 1)." },
       { name: "Accessibility helpers", status: "planned", desc: "ARIA helpers and a11y defaults." },
