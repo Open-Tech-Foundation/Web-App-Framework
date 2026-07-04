@@ -143,3 +143,20 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}) {
     }
   };
 }
+
+/**
+ * Wrap an API handler (`(request) => Response | null`) into a total Fetch handler
+ * that always returns a `Response` — a `null` (no route matched) becomes the
+ * optional `fallback(request)` or a 404. Fetch-native runtimes (Bun, Cloudflare
+ * Workers, Deno) can export it directly:
+ *
+ *   import { apiHandler } from "./dist/server/api.js";
+ *   export default { fetch: createFetchHandler(apiHandler) };
+ */
+export function createFetchHandler(handler, { fallback } = {}) {
+  return async (request) => {
+    const res = await handler(request);
+    if (res) return res;
+    return fallback ? fallback(request) : new Response("Not Found", { status: 404 });
+  };
+}
