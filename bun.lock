@@ -160,13 +160,13 @@
     "website": {
       "name": "website",
       "dependencies": {
-        "@opentf/web": "^0.6.0",
-        "@opentf/web-docs": "^0.2.0",
-        "@opentf/web-form": "^1.1.0",
-        "@opentf/web-i18n": "^1.1.0",
+        "@opentf/web": "^0.7.0",
+        "@opentf/web-docs": "^0.3.0",
+        "@opentf/web-form": "^1.2.0",
+        "@opentf/web-i18n": "^1.2.0",
       },
       "devDependencies": {
-        "@opentf/web-cli": "^1.1.0",
+        "@opentf/web-cli": "^1.2.0",
       },
     },
   },
@@ -890,9 +890,5 @@
     "parse5/entities": ["entities@6.0.1", "", {}, "sha512-aN97NXWF6AWBTahfVOIrB/NShkzi5H7F9r1s9mD3cDj4Ko5f2qhhVoYMibXF7GlLveb/D2ioWay8lxI97Ven3g=="],
 
     "sharp/semver": ["semver@7.7.4", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA=="],
-
-    "website/@opentf/web": ["@opentf/web@0.6.0", "", {}, "sha512-e4IYKEnLvuJVz4nmzlqx5a5uqFzBMWuDx/fUAd39sM66djr/TviLnvkOQtOCbvm4geTTZv1J0pyrYuhhr/JYPQ=="],
-
-    "website/@opentf/web-docs": ["@opentf/web-docs@0.2.0", "", { "dependencies": { "pagefind": "^1.5.2" }, "peerDependencies": { "@opentf/web": "*" } }, "sha512-Sr8NtaW5amAr316KEsAPAHJZBaLvymJgQetNqa3KAXW2hmCpENyuepzXkWQNgbnn1E7lkQIHkrpb9oDrOny3sw=="],
   }
 }
