@@ -28,7 +28,7 @@ import {
   existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +57,8 @@ const MIME = {
   ".ico": "image/x-icon", ".txt": "text/plain", ".map": "application/json",
   ".woff2": "font/woff2",
 };
+const HOME_ENGINES = ["otfw", "react", "solid", "svelte"];
+const HOME_REPORT_PATH = join(HERE, "..", "website", "app", "benchmark-report.json");
 
 // Resolve the list of cases to run.
 let cases;
@@ -84,7 +86,12 @@ for (const c of cases) {
 }
 
 if (collected.length === 0) process.exit(1);
-if (collected.length > 1) reportComparison(collected);
+if (collected.length > 1) {
+  const comparisonFile = reportComparison(collected);
+  // The full standard comparison also refreshes the website's benchmark report
+  // (app/benchmark-report.json), which the homepage table imports directly.
+  if (hasHomeComparison(collected)) writeHomeReport(collected, comparisonFile);
+}
 process.exit(0);
 
 // --- per-case orchestration -------------------------------------------------
@@ -151,6 +158,42 @@ function serveStatic(dist) {
       });
     },
   });
+}
+
+function hasHomeComparison(results) {
+  if (results.length !== HOME_ENGINES.length) return false;
+  const engines = new Set(results.map((r) => r.engine));
+  return HOME_ENGINES.every((engine) => engines.has(engine));
+}
+
+function writeHomeReport(results, comparisonFile) {
+  const ordered = HOME_ENGINES.map((engine) => results.find((r) => r.engine === engine));
+  const caseLabels = ordered[0]?.cases.map((c) => c.label) ?? [];
+  const generatedAt = new Date().toISOString();
+  const rows = caseLabels.map((label) => {
+    const values = Object.fromEntries(
+      ordered.map((result) => [result.engine, result.cases.find((c) => c.label === label)?.median ?? null]),
+    );
+    const ranked = HOME_ENGINES
+      .map((engine) => ({ engine, value: values[engine] }))
+      .filter((entry) => typeof entry.value === "number")
+      .sort((a, b) => a.value - b.value);
+    const best = ranked.length >= 2 && ranked[1].value - ranked[0].value > RESOLUTION_MS ? ranked[0].engine : null;
+    return { label, values, best };
+  });
+  const report = {
+    generatedAt,
+    // The raw comparison this report was projected from (the file reportComparison
+    // actually wrote — not a re-derived stamp, which could drift by a tick).
+    source: `benchmarks/results/${basename(comparisonFile)}`,
+    engines: HOME_ENGINES,
+    highlightEngine: "otfw",
+    resolutionMs: RESOLUTION_MS,
+    rows,
+  };
+  mkdirSync(dirname(HOME_REPORT_PATH), { recursive: true });
+  writeFileSync(HOME_REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`);
+  console.log(`• updated website benchmark report → ${HOME_REPORT_PATH}`);
 }
 
 // --- CDP driver -------------------------------------------------------------
@@ -294,6 +337,7 @@ function reportComparison(all) {
   const out = join(outDir, `comparison-${stamp}.json`);
   writeFileSync(out, JSON.stringify({ engines, results: all }, null, 2));
   console.log(`\n→ ${out}`);
+  return out;
 }
 
 // --- misc -------------------------------------------------------------------
