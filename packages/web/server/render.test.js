@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { registerRoutes, routes } from "../runtime/router.js";
+import { registerRoutes, router, routes } from "../runtime/router.js";
 import { defineSSG, ssgComponent } from "./ssg-runtime.js";
 import { collectRoutePaths, renderRoute, renderToString } from "./render.js";
 
@@ -91,6 +91,22 @@ describe("server render (SSG, string-based)", () => {
   test("renderRoute returns null when there is no match and no 404 page", async () => {
     registerRoutes({ "/app/page.jsx": page("<h1>Home</h1>") });
     expect(await renderRoute("/missing")).toBe(null);
+  });
+
+  test("renderRoute exposes options.data to the page as router.data", async () => {
+    registerRoutes({
+      "/app/todos/page.jsx": page(() => `<ul>${router.data.items.join(",")}</ul>`),
+    });
+    const result = await renderRoute("/todos", null, "", { data: { items: ["a", "b"] } });
+    expect(result.html).toBe("<ul>a,b</ul>");
+  });
+
+  test("a render without data resets router.data (no stale carry-over)", async () => {
+    registerRoutes({
+      "/app/todos/page.jsx": page(() => `<i>${String(router.data)}</i>`),
+    });
+    await renderRoute("/todos", null, "", { data: { x: 1 } });
+    expect(await renderToString("/todos")).toBe("<i>undefined</i>");
   });
 
   test("collectRoutePaths returns {path, params}; skips param routes without getStaticPaths", async () => {

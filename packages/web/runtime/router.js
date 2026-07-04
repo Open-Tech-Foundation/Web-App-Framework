@@ -11,12 +11,14 @@
 // NOTE: passing route params to a page via its `props` argument
 // (`function Page(props) { props.params.id }`) and layout `props.children`
 // composition both require signal-free page props, which the compiler does not
-// emit yet — for now pages read params via the reactive `router.params`.
+// emit yet — for now pages read params via the reactive `router.params`, and a
+// route loader's data via the reactive `router.data` (docs/DATA.md).
 
 import { clearError, reportError } from "../core/errors.js";
 import { signal } from "../core/signals.js";
 import { beginHydration, cursor, endHydration } from "./hydrate.js";
 import { runCleanup, runMount } from "./mount.js";
+import { fetchRouteData, readInlineRouteData } from "./route-data.js";
 
 const isBrowser = typeof window !== "undefined";
 
@@ -34,9 +36,10 @@ const state = {
   searchParams: signal(new URLSearchParams(isBrowser ? window.location.search : "")),
   params: signal({}),
   locale: signal(null),
+  data: signal(undefined),
 };
 
-export const routes = { pages: {}, layouts: {}, notFound: null };
+export const routes = { pages: {}, layouts: {}, notFound: null, loaderRoutes: new Set() };
 let guard = null;
 let rootEl = null;
 
@@ -135,6 +138,9 @@ export const router = {
   get locale() {
     return state.locale.value;
   },
+  get data() {
+    return state.data.value;
+  },
   push: (path) => navigate(path),
   replace: (path) => navigate(path, true),
 };
@@ -162,6 +168,22 @@ export function registerRoutes(modules) {
     else if (/\/layout\.(jsx|tsx)$/.test(file)) routes.layouts[routeFromPath(file)] = entry;
     else routes.pages[routeFromPath(file)] = entry;
   }
+}
+
+/**
+ * Register which route *patterns* (`"/todos"`, `"/items/[id]"`) have a server
+ * loader (docs/DATA.md) — the toolchain discovers `loader.{js,ts}` files and
+ * passes the list via `mountApp({ loaders })`. `navigate` only fetches
+ * `<path>/__data.json` for routes in this set; `matchRoute` returns the same
+ * pattern string, so membership is a plain Set lookup.
+ */
+export function registerLoaderRoutes(paths) {
+  routes.loaderRoutes = new Set(paths || []);
+}
+
+/** Set the reactive `router.data` directly (server render and tests). */
+export function setRouteData(data) {
+  state.data.value = data;
 }
 
 /** Layout entries that wrap `route`, outermost (root) first. */
@@ -257,11 +279,14 @@ async function resolveModule(entry) {
  * so a page reading `router.pathname`/`params`/`query` resolves to the route being
  * pre-rendered. The client uses `navigate` instead.
  */
-export function setRouteState({ pathname = "/", search = "", params = {}, locale } = {}) {
+export function setRouteState({ pathname = "/", search = "", params = {}, locale, data } = {}) {
   state.pathname.value = normalizePath(pathname);
   state.searchParams.value = new URLSearchParams(search);
   state.params.value = params;
   state.locale.value = locale !== undefined ? locale : resolveLocale(pathname).locale;
+  // Always assigned (even when the caller passed none) so a loader-less render
+  // never shows a previous route's stale data.
+  state.data.value = data;
 }
 
 /**
@@ -294,12 +319,20 @@ export function matchRoute(pathname) {
   return null;
 }
 
+// Monotonic navigation sequence: a navigation that awaited its loader-data fetch
+// commits only if no newer navigation started meanwhile (stale data must never
+// win over a later click).
+let navSeq = 0;
+
 /**
- * Navigate to `path`. Runs an optional route guard, swaps the rendered page
- * (tearing down the previous one's lifecycle), and updates window.history.
+ * Navigate to `path`. Runs an optional route guard, fetches the route's loader
+ * data when it has any (docs/DATA.md — fetch *then* commit, like the guard),
+ * swaps the rendered page (tearing down the previous one's lifecycle), and
+ * updates window.history.
  */
 export async function navigate(path, replace = false, isPop = false, hydrate = false) {
   if (!path || !rootEl) return;
+  const seq = ++navSeq;
   const url = new URL(path, window.location.origin);
 
   if (guard) {
@@ -332,10 +365,30 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
     matchRoute(url.pathname) ||
     (routes.notFound ? { entry: routes.notFound, params: {}, route: null } : null);
 
+  // Loader data (docs/DATA.md): resolved before any state write / history push /
+  // DOM swap, mirroring the guard's "settle before commit" flow. First paint over
+  // server HTML reads the inlined payload; every other navigation (SPA nav, dev/CSR
+  // first load, popstate) fetches the `<path>/__data.json` endpoint. A failed fetch
+  // is reported and the navigation commits with `data === undefined`.
+  let data;
+  if (match && match.route && routes.loaderRoutes.has(match.route)) {
+    if (hydrate) {
+      data = readInlineRouteData();
+    } else {
+      try {
+        data = await fetchRouteData(url.pathname, url.search);
+      } catch (e) {
+        reportError(e, { phase: "data", path: url.pathname });
+      }
+      if (seq !== navSeq) return; // a newer navigation superseded this one
+    }
+  }
+
   state.pathname.value = normalizePath(url.pathname);
   state.searchParams.value = url.searchParams;
   state.params.value = match ? match.params : {};
   state.locale.value = resolveLocale(url.pathname).locale;
+  state.data.value = data;
 
   if (!isPop) {
     if (replace) window.history.replaceState({}, "", path);
@@ -421,12 +474,15 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
  * @param {Function} [opts.guard]  optional `(to, tools) => …` route guard.
  * @param {"spa"|"mpa"} [opts.nav]  navigation mode (default "spa"); "mpa" disables
  *   client-side link interception so every navigation is a full page load.
+ * @param {string[]} [opts.loaders]  route patterns that have a server loader
+ *   (docs/DATA.md) — navigation fetches `<path>/__data.json` for these.
  */
-export function mountApp({ pages, target, guard: g, i18n, nav } = {}) {
+export function mountApp({ pages, target, guard: g, i18n, nav, loaders } = {}) {
   rootEl = target || (isBrowser ? document.getElementById("app") : null);
   navMode = nav === "mpa" ? "mpa" : "spa";
   if (i18n) configureI18n(i18n);
   if (pages) registerRoutes(pages);
+  if (loaders) registerLoaderRoutes(loaders);
   guard = g || null;
   // In MPA mode the browser owns navigation (full loads push real history entries),
   // so there is no client-side history to react to — only wire popstate for SPA.

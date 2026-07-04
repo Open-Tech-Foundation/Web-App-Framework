@@ -15,6 +15,7 @@ export function renderRoute(
   pathname: string,
   params?: Record<string, unknown> | null,
   search?: string,
+  options?: { data?: unknown },
 ): Promise<RenderResult | null>;
 export function renderToString(pathname: string, search?: string): Promise<string>;
 export function collectRoutePaths(): Promise<string[]>;
@@ -32,6 +33,50 @@ export function localeAlternateLinks(
   cfg?: { locales?: string[]; defaultLocale?: string },
   localize?: (path: string, locale: string) => string,
 ): Array<Record<string, string>>;
+
+// ── Route loaders (loader.js) ───────────────────────────────────────────────────
+import type { RouteParams } from "./api.js";
+
+/** The context a route loader receives (docs/DATA.md). `request` is the live
+ *  Request under serve/dev and undefined at SSG prerender; `locals` is reserved. */
+export interface LoaderContext {
+  params: RouteParams;
+  query: Record<string, string>;
+  request?: Request;
+  locale: string | null;
+  locals: Record<string, unknown>;
+}
+
+/** A route loader — the default (or named `loader`) export of a `loader.{js,ts}`
+ *  file. Returns the page's JSON-serializable data. */
+export type Loader = (context: LoaderContext) => unknown | Promise<unknown>;
+
+export interface LoaderMatch {
+  route: string;
+  params: RouteParams;
+  locale: string | null;
+}
+
+export interface LoaderRegistry {
+  routes: string[];
+  match(pathname: string): LoaderMatch | null;
+  load(m: LoaderMatch, ctx?: { request?: Request; query?: Record<string, string> }): Promise<unknown>;
+  loadSerialized(
+    m: LoaderMatch,
+    ctx?: { request?: Request; query?: Record<string, string> },
+  ): Promise<{ data: unknown; json: string }>;
+  handle(request: Request): Promise<Response | null>;
+}
+
+export function createLoaderRegistry(
+  loaderModules?: Record<string, { default?: Loader; loader?: Loader }>,
+  options?: { appDir?: string; i18n?: { locales?: string[]; defaultLocale?: string } },
+): LoaderRegistry;
+export function loaderRouteFromPath(filePath: string, appDir?: string): string;
+/** Throw "this page does not exist" from inside a loader (404 semantics). */
+export function notFound(message?: string): never;
+export function isNotFound(e: unknown): boolean;
+export function serializeRouteData(value: unknown): string;
 
 // ── SSG string-builder helpers (ssg-runtime.js) ─────────────────────────────────
 export function defineSSG(tag: string, render: (...args: any[]) => string): void;

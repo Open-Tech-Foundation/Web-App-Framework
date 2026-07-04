@@ -4,6 +4,27 @@
 
 ### Added
 
+- **Route loaders — client half** (docs/DATA.md): the reactive `router.data` exposes a
+  route's server-loader result to pages (like `router.params`); `mountApp({ loaders })` /
+  `registerLoaderRoutes` register which route patterns have one. `navigate` resolves the
+  data *before* committing (the inline `#__otfw_data` payload on first paint, a
+  `<path>/__data.json` fetch on SPA navigation), discards a superseded navigation's late
+  data via a sequence token, and reports a failed fetch (`phase: "data"`) while still
+  committing with `router.data` undefined. `renderRoute` accepts a `{ data }` option
+  (back-compatible) so the server render exposes the same value.
+- **Route loaders — server half** (`@opentf/web/server`, docs/DATA.md):
+  `createLoaderRegistry` turns discovered `loader.{js,ts}` modules into a matcher/runner
+  (`[param]`/`[...rest]` + i18n locale-prefix stripping — the API handler's conventions)
+  and the `<path>/__data.json` HTTP endpoint (`handle`); `notFound()`/`isNotFound`
+  (property-marked, safe across bundle boundaries) give loaders 404 semantics;
+  `serializeRouteData` escapes payloads for inline embedding. Typed in `server/index.d.ts`
+  (`Loader`, `LoaderContext`, `LoaderRegistry`, …).
+- **`resource()`** — the client-side async-data primitive (SPEC §7.4): wraps a fetcher in
+  signals as reactive `{ data, loading, error, refetch }`; an optional reactive source
+  re-fetches on change (`null`/`false` pauses); each run aborts the previous one
+  (`AbortController` handed to the fetcher as `{ signal }`) and out-of-order resolutions
+  are discarded; a rejection keeps the last good `data`. On the server nothing fetches and
+  `loading` stays `true`, so SSG renders the loading branch and hydration stays aligned.
 - **API routes runtime** (`@opentf/web/server`): `createApiHandler` dispatches file-based
   `Request → Response` endpoints — method-named handlers (`GET`/`POST`/…), `[param]` /
   `[...rest]` matching (shared with the page router), auto `HEAD`/`OPTIONS`, `405` + `Allow`,

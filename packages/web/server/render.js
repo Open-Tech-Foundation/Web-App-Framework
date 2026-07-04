@@ -24,17 +24,19 @@ import { beginHydrationCollect, endHydrationCollect } from "./ssg-runtime.js";
  * server uses it; SSG ignores it), and `hydration` — the JSON island-props payload the
  * toolchain embeds so the client resumes from rich data (`""` when nothing needs it).
  * `params` (from `getStaticPaths`) override the matched route's params for dynamic
- * routes. Returns `null` if there's no match and no 404 page.
+ * routes. `options.data` is the route's loader result (run by the caller — serve /
+ * prerender own the loader bundle) and is exposed to the page as `router.data`.
+ * Returns `null` if there's no match and no 404 page.
  */
-export async function renderRoute(pathname, params = null, search = "") {
+export async function renderRoute(pathname, params = null, search = "", { data } = {}) {
   const real = matchRoute(pathname);
   const match =
     real || (routes.notFound ? { entry: routes.notFound, params: {}, route: null } : null);
   if (!match) return null;
   if (params) match.params = params;
 
-  // Let a page reading `router.params`/`pathname`/`query` resolve to this route.
-  setRouteState({ pathname, search, params: match.params });
+  // Let a page reading `router.params`/`pathname`/`query`/`data` resolve to this route.
+  setRouteState({ pathname, search, params: match.params, data });
 
   const query = Object.fromEntries(new URLSearchParams(search));
   const props = { params: match.params, query };

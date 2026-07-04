@@ -6,4 +6,5 @@ export * from "./ssg-runtime.js";
 export * from "./head.js";
 export * from "./render.js";
 export * from "./api.js";
+export * from "./loader.js";
 import "./builtins.js";
