@@ -52,6 +52,7 @@ export async function POST(request, { params }) {
 - `HEAD` is derived from `GET` automatically; `OPTIONS` is answered automatically.
 - An unhandled method on a matched path returns `405` with an `Allow` header.
 - A handler may **throw a `Response`** to short-circuit.
+- Params arrive percent-decoded: `/api/users/John%20Doe` gives `params.id === "John Doe"`.
 
 ## Middleware
 
