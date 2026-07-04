@@ -20,6 +20,7 @@ import {
   EXTENSIONS,
   cssPlugin,
   discoverPages,
+  emitApiBundle,
   entrySource,
   injectBeforeBody,
   loadConfig,
@@ -189,6 +190,12 @@ export async function runBuild(options = {}) {
         (ssg.skipped.length ? ` · ${ssg.skipped.length} dynamic route(s) skipped` : ""),
     );
   }
+
+  // API routes (SPEC §11/§13): emit the server handler bundle to dist/server/api.js
+  // so a deploy adapter (Bun/Node/CF Workers) can serve /api/* in production.
+  const apiStep = step("Bundling API routes");
+  const api = await emitApiBundle({ root, appDir, webEntry, exclude, outDir: join(outDir, "server") });
+  apiStep.done(api ? `API routes — ${api.routes.length} → dist/server/api.js` : "API routes — none");
 
   // Copy the public/ directory (static assets served at the root), if present.
   const publicDir = join(root, "public");

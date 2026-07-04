@@ -26,12 +26,13 @@
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { runBuild } from "./build.js";
 import {
   MIME,
-  buildApiBundle,
   buildServerBundle,
+  discoverApiRoutes,
   discoverPages,
   injectHead,
   injectHydrationData,
@@ -151,16 +152,19 @@ export async function runServe() {
 
   const { mod, cleanup } = await buildServerBundle({ root, pages, webEntry, otfwc, docsPlugins, i18n });
 
-  // API routes (SPEC §11): file-based `Request → Response` handlers under app/api/.
-  // Built once and held live; `apiHandler(req)` returns a Response or null (no match).
-  const api = await buildApiBundle({ root, appDir, webEntry, exclude });
+  // API routes (SPEC §11): the client build already emitted the handler bundle to
+  // dist/server/api.js (build.js `emitApiBundle`). Import it and hold it live;
+  // `apiHandler(req)` returns a Response or null (no route matched).
+  const apiFile = join(distDir, "server", "api.js");
+  let api = null;
+  if (existsSync(apiFile)) {
+    const apiMod = await import(pathToFileURL(apiFile).href);
+    api = { handler: apiMod.apiHandler, routes: discoverApiRoutes(appDir, exclude).routes };
+  }
 
   const cleanupAll = () => {
     try {
       cleanup();
-    } catch {}
-    try {
-      api?.cleanup();
     } catch {}
   };
   const shutdown = () => {

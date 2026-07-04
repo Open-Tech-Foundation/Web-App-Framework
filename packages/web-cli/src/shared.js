@@ -501,6 +501,38 @@ export async function buildApiBundle({ root, appDir, webEntry, exclude, tmpName 
   };
 }
 
+/**
+ * Emit the API handler bundle to `outDir/api.js` for production/deploy (SPEC §13,
+ * `dist/server/`). Unlike `buildApiBundle` (which bundles to a temp dir and imports
+ * it for `dev`/`serve`), this writes a persistent, self-contained ESM module that
+ * exports `apiHandler` — the runtime dispatcher (`createApiHandler`) is bundled in;
+ * npm/node deps stay external and resolve at the deploy target. A deploy adapter
+ * (`server/adapters/`) imports this file and hands requests to `apiHandler`.
+ * Returns `{ routes }`, or `null` when the project has no API routes.
+ */
+export async function emitApiBundle({ root, appDir, webEntry, exclude, outDir }) {
+  const discovered = discoverApiRoutes(appDir, exclude);
+  if (discovered.routes.length === 0) return null;
+
+  const tmp = join(root, ".otfw-api-build");
+  mkdirSync(tmp, { recursive: true });
+  const entry = join(tmp, "api-entry.js");
+  writeFileSync(entry, apiEntrySource(discovered));
+
+  const serverApi = join(dirname(webEntry), "server", "index.js");
+  mkdirSync(outDir, { recursive: true });
+  await build({
+    input: entry,
+    platform: "node",
+    resolve: { alias: { "@opentf/web/server": serverApi, "@opentf/web": webEntry }, extensions: EXTENSIONS },
+    external: (id) => !id.startsWith(".") && !id.startsWith("/") && !id.startsWith("@opentf/web"),
+    output: { dir: outDir, format: "esm", entryFileNames: "api.js" },
+    checks: { pluginTimings: false },
+  });
+  rmSync(tmp, { recursive: true, force: true });
+  return { routes: discovered.routes };
+}
+
 /** The optional `app/routeGuard.{js,ts}` path, or null. */
 export function findGuard(appDir) {
   return [join(appDir, "routeGuard.js"), join(appDir, "routeGuard.ts")].find(
