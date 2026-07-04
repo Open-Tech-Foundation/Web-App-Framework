@@ -1,4 +1,5 @@
 import { Link } from "@opentf/web";
+import BenchmarkTable from "./components/BenchmarkTable.jsx";
 import InstallPill from "./components/InstallPill.jsx";
 import ReactiveTrace from "./components/ReactiveTrace.jsx";
 import { benchmark, capabilities } from "./home-data.js";
@@ -33,6 +34,9 @@ export default function HomePage() {
   const caps = capabilities.flatMap((g) =>
     g.items.map((i) => ({ ...i, category: g.category })),
   );
+  // The tie threshold shown in the footnote comes from the generated report, so it
+  // stays in lockstep with the rule the runner actually applied.
+  const resolutionMs = benchmark.resolutionMs.toFixed(1);
 
   return (
     <div className="flex-1 max-w-6xl mx-auto px-8 w-full pb-24">
@@ -95,33 +99,10 @@ export default function HomePage() {
         </div>
 
         <div className="max-w-3xl mx-auto bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-sm">
-              <thead>
-                <tr className="bg-[var(--bg-surface)] border-b border-[var(--border)]">
-                  <th className="px-6 py-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Operation</th>
-                  <th className="px-4 py-3 text-xs font-bold text-[var(--accent)] uppercase tracking-widest text-right">otfw</th>
-                  <th className="px-4 py-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest text-right">react</th>
-                  <th className="px-4 py-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest text-right">solid</th>
-                  <th className="px-4 py-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest text-right">svelte</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)]">
-                {benchmark.rows.map((row) => (
-                  <tr>
-                    <td className="px-6 py-3 font-medium text-[var(--text-main)]">{row.op}</td>
-                    <td className={row.best === 0 ? "px-4 py-3 text-right font-mono font-bold text-[var(--accent)]" : "px-4 py-3 text-right font-mono text-[var(--text-main)]"}>{row.values[0]}</td>
-                    <td className={row.best === 1 ? "px-4 py-3 text-right font-mono font-bold text-[var(--text-main)]" : "px-4 py-3 text-right font-mono text-[var(--text-muted)]"}>{row.values[1]}</td>
-                    <td className={row.best === 2 ? "px-4 py-3 text-right font-mono font-bold text-[var(--text-main)]" : "px-4 py-3 text-right font-mono text-[var(--text-muted)]"}>{row.values[2]}</td>
-                    <td className={row.best === 3 ? "px-4 py-3 text-right font-mono font-bold text-[var(--text-main)]" : "px-4 py-3 text-right font-mono text-[var(--text-muted)]"}>{row.values[3]}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <BenchmarkTable report={benchmark} />
         </div>
         <p className="text-center text-xs text-[var(--text-muted)]">
-          Bold marks a winner only when the margin beats the ~8.3&nbsp;ms timing resolution — anything closer is a tie.
+          Bold marks a winner only when the margin beats the ~{resolutionMs}&nbsp;ms timing resolution — anything closer is a tie.
           Indicative, not a head-to-head. Run it yourself: <span className="mono">bun run bench all</span>.
         </p>
       </section>
