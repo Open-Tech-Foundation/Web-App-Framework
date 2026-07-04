@@ -65,7 +65,7 @@ export const capabilities = [
     items: [
       { name: "Reactive forms", status: "beta", desc: "@opentf/web-form — porting to the new runtime." },
       { name: "API routes", status: "supported", desc: "File-based route.js / route.ts endpoints — standard Request/Response, dynamic params, middleware." },
-      { name: "Data fetching", status: "planned", desc: "Loaders, queries, and actions." },
+      { name: "Data fetching", status: "supported", desc: "Route loaders (loader.js → router.data across SSR/SSG/SPA) + client-side resource(); queries and actions planned." },
       { name: "Internationalization", status: "beta", desc: "@opentf/web-i18n — URL-prefix locale routing, ICU messages, and Intl formatters (Phase 1)." },
       { name: "Accessibility helpers", status: "planned", desc: "ARIA helpers and a11y defaults." },
     ],

@@ -6,6 +6,7 @@ export default {
   "getting-started": "Getting Started",
   "core-concepts": "Core Concepts",
   routing: "Routing",
+  "data-fetching": "Data Fetching",
   configuration: "Configuration",
   packages: "Packages",
   deployment: "Deployment",

@@ -133,9 +133,14 @@ createServer(toNodeListener(apiHandler)).listen(3000);
 Server-only secrets in `.env` are available to handlers via `process.env`. Only
 `PUBLIC_`-prefixed variables are ever exposed to the client bundle (SPEC §14).
 
-## 7. Phase B (planned)
+## 8. Phase B (planned)
 
-Typed **server functions** and page **loaders/actions** callable from components —
-the compiler (Metadata + Server IR, ARCHITECTURE §4.4) splits the client/server
-boundary and generates the client-side `fetch`. This turns the Server IR
-placeholder into real lowering and is tracked separately from Phase A.
+Typed **server functions** and **actions** callable from components — the compiler
+(Metadata + Server IR, ARCHITECTURE §4.4) splits the client/server boundary and
+generates the client-side `fetch`. This turns the Server IR placeholder into real
+lowering and is tracked separately from Phase A.
+
+Page **loaders** shipped ahead of Phase B in runtime/toolchain form — a
+`loader.{js,ts}` file sibling to a page, feeding the reactive `router.data`
+(see [docs/DATA.md](DATA.md)). Phase B adds the co-located `export loader`
+spelling on top of the same wire format and runtime API.

@@ -1,0 +1,137 @@
+---
+title: Data Fetching
+description: Route loaders — server data for pages via loader.js and router.data — and the client-side resource() primitive.
+---
+
+# Data Fetching
+
+Two primitives, one per side of the network:
+
+- **Route loaders** — a server-only `loader.{js,ts}` file next to a page runs
+  *before* the page renders (at build time, per request, or on navigation) and
+  its result reaches the page as the reactive `router.data`.
+- **`resource()`** — a client-side primitive that wraps a fetcher in signals:
+  `{ data, loading, error, refetch }`, with abort and stale-response handling.
+
+Rule of thumb: content the server should render (SEO, first paint) → a loader;
+per-user or interaction-driven data → `resource()`.
+
+## Route loaders
+
+A loader is the data analogue of an [API route](/docs/routing/api-routes): a
+**plain server module** sibling to the `page.*` it feeds. It never ships to the
+browser, so database drivers and secrets are safe to import.
+
+```
+app/todos/page.jsx        → the page
+app/todos/loader.js       → its loader
+app/items/[id]/loader.ts  → dynamic params work like pages
+```
+
+```js
+// app/todos/loader.js
+export default async function loader({ params, query, request, locale }) {
+  return db.todos.list(); // any JSON-serializable value
+}
+```
+
+The page reads the reactive **`router.data`**, exactly like `router.params`:
+
+```jsx
+// app/todos/page.jsx
+import { router } from "@opentf/web";
+
+export default function Todos() {
+  return (
+    <ul>
+      {(router.data ? router.data.items : []).map((t) => (
+        <li>{t.title}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### The loader context
+
+| Field | What it is |
+| --- | --- |
+| `params` | Route params from `[param]` / `[...rest]` segments, percent-decoded (catch-alls as arrays). |
+| `query` | Parsed query-string object. Empty at SSG time. |
+| `request` | The live `Request` under `otfw serve` / `otfw dev`; `undefined` at SSG prerender. |
+| `locale` | The active locale (path-prefix i18n), or `null`. |
+| `locals` | Reserved (`{}`). |
+
+### Where it runs
+
+- **`otfw dev`** — on demand, with hot reload on `loader.*` edits.
+- **`otfw serve`** — per request, before the page renders (SSR).
+- **`otfw build --ssg`** — at build time: the data is baked into the prerendered
+  HTML **and** written as a static `<path>/__data.json` file next to each page,
+  so client-side navigation works on a purely static host — no server needed.
+
+On first paint the data arrives inline with the server HTML (no extra request);
+on SPA navigation the router fetches `<path>/__data.json` **before** committing
+the navigation, so the page never renders with missing data and stale responses
+from superseded navigations are discarded. `__data.json` is a reserved filename.
+
+### Not found & errors
+
+```js
+import { notFound } from "@opentf/web/server";
+
+export default function loader({ params }) {
+  const post = db.posts.find(params.id);
+  if (!post) notFound(); // → the 404 page, with HTTP 404
+  return post;
+}
+```
+
+Any other thrown error is a 500. On the client, a failed data fetch is reported
+(`phase: "data"`) and the navigation still commits with `router.data`
+undefined — pages should treat "no data" as a valid state.
+
+### Current limits
+
+- Loaders are **page-level** (no layout loaders yet).
+- A query-dependent loader needs `otfw serve` — static `__data.json` files are
+  rendered with an empty query.
+- Redirects from loaders, streaming, and actions are future work (see the
+  [roadmap](https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/docs/roadmap.md)).
+- A `loader.*` without a sibling `page.*` is a build error.
+- Dynamic routes still need `getStaticPaths` on the page to prerender.
+
+## `resource()`
+
+For client-side async data, `resource()` formalizes the fetch-into-signals
+pattern — components stay synchronous, and the view renders the resource's
+reactive states:
+
+```jsx
+import { resource, router } from "@opentf/web";
+
+export default function UserProfile() {
+  const user = resource(
+    () => router.params.id, // reactive source — re-fetches when it changes
+    (id, { signal }) => fetch(`/api/users/${id}`, { signal }).then((r) => r.json()),
+  );
+
+  return (
+    <div>
+      {user.error ? <p>Failed: {user.error.message}</p> :
+       user.loading ? <p>Loading…</p> :
+       <h1>{user.data.name}</h1>}
+    </div>
+  );
+}
+```
+
+- `resource(fetcher)` fetches once; `resource(source, fetcher)` re-fetches when
+  the reactive `source` changes; `{ initial }` seeds `data`.
+- Each run aborts the previous run's `AbortController` (the fetcher receives
+  `{ signal }`) and late, out-of-order resolutions are discarded.
+- A rejection sets `error` and keeps the last good `data`; the next success
+  clears it. `refetch()` re-runs manually.
+- A `source` returning `null`/`false` pauses fetching (conditional resources).
+- During SSG/SSR nothing fetches and `loading` stays `true`, so the prerendered
+  HTML shows your loading branch and hydration stays aligned.

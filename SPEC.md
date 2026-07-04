@@ -777,35 +777,36 @@ OTF Web does **not** use VDOM-style Error Boundaries (`<ErrorBoundary>`). Instea
 - **Global Handler**: The framework provides `OpenTFWeb.setErrorHandler((error, context) => {...})` to globally catch uncaught effect failures.
 - **Local Recovery**: Developers can use the `$onError(err => {...})` macro (transformed to a try/catch inside effects) to gracefully catch local effect failures without crashing the application.
 
-### 7.4 Async Data Loading (Resource Pattern)
-Because component functions must be strictly synchronous, top-level `await` is forbidden. The official pattern for data fetching is the **Resource Pattern**:
-1. Initialize a `$state` signal for the data (e.g., `let data = $state(null)`).
-2. Trigger the async operation inside an `$effect` (for reactive re-fetching) or directly in the component body (for one-time initialization).
-3. Render conditionally based on the signal value.
+### 7.4 Async Data Loading (`resource()`)
+Because component functions must be strictly synchronous, top-level `await` is forbidden. Client-side async data uses the **`resource()`** primitive (`@opentf/web`), which formalizes the fetch-into-signals Resource Pattern:
 
-**Example**:
 ```jsx
-export function UserProfile({ id }) {
-  let user = $state(null);
-  let error = $state(null);
+import { resource } from "@opentf/web";
 
-  // Reactive data fetching
-  $effect(() => {
-    fetch(`/api/users/${id}`)
-      .then(res => res.json())
-      .then(data => user = data)
-      .catch(err => error = err.message);
-  });
+export function UserProfile({ id }) {
+  const user = resource(
+    () => id,                                   // reactive source — re-fetches when it changes
+    (id, { signal }) => fetch(`/api/users/${id}`, { signal }).then((r) => r.json()),
+  );
 
   return (
     <div>
-      {error ? <p>Error: {error}</p> : 
-       user ? <h1>{user.name}</h1> : 
-       <p>Loading...</p>}
+      {user.error ? <p>Error: {user.error.message}</p> :
+       user.loading ? <p>Loading...</p> :
+       <h1>{user.data.name}</h1>}
     </div>
   );
 }
 ```
+
+- **Shapes**: `resource(fetcher, options?)` fetches once; `resource(source, fetcher, options?)` re-fetches whenever the reactive `source` changes. `options.initial` seeds `data`.
+- **State**: `{ data, loading, error, refetch }` — reactive getters backed by signals; read them in bindings/effects to subscribe. A rejection sets `error` and keeps the last good `data`.
+- **Staleness**: each run aborts the previous run's `AbortController` (passed to the fetcher as `{ signal }`) and out-of-order resolutions are discarded, so late responses never overwrite newer data.
+- **Conditional fetching**: a `source` returning `null`/`false` pauses the resource.
+- **Server (SSG/SSR)**: nothing fetches and `loading` stays `true`, so pre-rendered HTML shows the loading branch — exactly what the client's first paint renders before its own fetch resolves, keeping hydration aligned.
+- For data a page needs **at render time on the server**, use a route loader instead (Section 8.7).
+
+The underlying pattern (a `$state` signal filled from a `fetch` inside `$effect`, rendered conditionally) remains valid for hand-rolled cases; `resource()` packages it with staleness, abort, and error handling.
 
 ---
 
@@ -850,6 +851,29 @@ export function middleware(request) {
   }
 }
 ```
+
+### 8.7 Route Loaders (`loader.{js,ts}`)
+A page gets server data from a **route loader** — a plain server module sibling to its `page.*` (the data analogue of a `route.*` API endpoint; see docs/DATA.md for the full design):
+
+```
+app/todos/page.jsx      → the page
+app/todos/loader.js     → its server loader
+```
+
+```js
+// app/todos/loader.js — never shipped to the client; DB/server imports are safe.
+export default async function loader({ params, query, request, locale, locals }) {
+  return db.todos.list();          // any JSON-serializable value
+}
+```
+
+- **Signature**: default export (or named `loader`). `params` follows the `[param]`/`[...rest]` conventions (percent-decoded, catch-alls as arrays); `query` is the parsed query string (empty at SSG time); `request` is the live `Request` under `otfw serve`/dev and `undefined` at SSG prerender; `locale` is the active locale; `locals` is reserved.
+- **Where it runs**: at build time under `otfw build --ssg`, per request under `otfw serve`, and on demand under `otfw dev` — never in the browser.
+- **Reading the data**: the page reads the reactive **`router.data`**, like `router.params`. It is `undefined` when the route has no loader (or the loader 404'd).
+- **The wire format**: first paint inlines the data as `<script type="application/json" id="__otfw_data">`; SPA navigation fetches `GET <path>/__data.json` (the same URL `--ssg` writes as a literal file next to each page's `index.html`, so static hosts serve it with no server). `__data.json` is a **reserved filename**.
+- **Errors**: `notFound()` (from `@opentf/web/server`) renders the 404 page with HTTP 404 (and 404s the data endpoint); any other throw is a 500. The client treats a failed/404 data fetch as `data === undefined` and still commits the navigation.
+- **Constraints (MVP)**: page-level only (no layout loaders); loaders do not run API `_middleware.*`; redirects and streaming are future work; a query-dependent loader needs `otfw serve` (static `__data.json` files are rendered with an empty query). A `loader.*` without a sibling `page.*` is a build error.
+- **`getStaticPaths`** stays on the page module; a dynamic route with a loader still needs it to prerender.
 
 ---
 

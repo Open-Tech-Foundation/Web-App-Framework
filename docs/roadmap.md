@@ -24,6 +24,10 @@
 * [x] Phase A: file-based `app/api/**` `Request→Response` handlers, method exports, `[param]`/`[...rest]`, nested `_middleware`, `otfw dev`/`serve`/`build` (`dist/server/api.js`), Node/Fetch adapters.
 * [ ] Phase B (compiler): typed server functions / loaders + actions via the Server IR, splitting the client/server boundary.
 
+## Data Fetching — see [docs/DATA.md](DATA.md)
+* [x] Phase A.5 (runtime/toolchain): route loaders (`loader.{js,ts}` → `router.data`; inline payload + `<path>/__data.json` across dev/serve/SSG/SPA-nav) and the client-side `resource()` primitive.
+* [ ] Phase B (compiler): co-located `export loader` stripped by the compiler, queries/actions — same wire format and runtime API.
+
 ## Internationalization (i18n) — see [docs/I18N.md](I18N.md)
 * [x] Phase 1 (runtime): locale path-prefix routing, ICU messages (`t()`), `Intl` formatters, per-locale SSG/SSR. `@opentf/web-i18n`.
 * [ ] Phase 2 (compiler): `otfwc` message extraction, key validation, tree-shaking, per-locale inlining.
