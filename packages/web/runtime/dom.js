@@ -147,6 +147,26 @@ export function setAttr(el, name, value) {
  * component picks it up from `getAttribute` when it upgrades.
  */
 export function setProp(el, name, value) {
+  // A component prop must land as a *property* (carrying the rich value), never a
+  // stringified attribute. A server-parsed custom element that a parent's adopt walk
+  // reaches while it is still inert — its own `customElements.define`-driven upgrade
+  // hasn't run yet (synchronous upgrades fire in document order, so a parent upgrades
+  // and runs this before its later-in-DOM children) — has no accessors, so `name in el`
+  // is false. Falling back to `setAttr` would stringify an object to "[object Object]"
+  // and, via `attributeChangedCallback`, clobber the child's payload-hydrated signal —
+  // flipping conditional branches and desyncing the adopt walk. Force the pending upgrade
+  // first so the property setter exists; it's a no-op for already-upgraded or non-custom
+  // elements. (A client CSR build creates already-upgraded instances, so this never fires
+  // there.)
+  if (
+    !(name in el) &&
+    el.tagName &&
+    el.tagName.includes("-") &&
+    typeof customElements !== "undefined" &&
+    customElements.get(el.tagName.toLowerCase())
+  ) {
+    customElements.upgrade(el);
+  }
   if (name in el) el[name] = value;
   else setAttr(el, name, value);
 }

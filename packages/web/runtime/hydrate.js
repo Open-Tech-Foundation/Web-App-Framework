@@ -58,7 +58,24 @@ export class HydrationMismatch extends Error {
 // `firstChild`, so the structural test alone can't tell "adopt the server DOM" from
 // "build and slot these children" (it mis-adopts on plain SPA navigation). The flag is
 // the unambiguous signal — it is only ever set during the one-shot first-paint pass.
-let _hydrating = false;
+//
+// Why it initializes from the DOM sentinel, not `false`: a custom element upgrades — and
+// its `connectedCallback` runs the build-vs-adopt switch — the instant its class is
+// `customElements.define`d. Framework components imported *eagerly* by the app entry
+// (e.g. `<Link>` from `@opentf/web`) are therefore defined and upgraded during the entry
+// bundle's evaluation, **before** `mountApp` runs `beginHydration()`. If the flag were
+// still `false` then, every server-rendered `<web-link>` would take the *build* arm —
+// re-wrapping the server subtree it should have adopted (a silent `<a><a>` double-build)
+// — long before the router ever starts hydrating. So the flag is seeded synchronously
+// at module load from the server sentinel (`[data-otfw-hydrate]`, stamped only when the
+// page shipped adoptable server markup): the deferred entry module evaluates after the
+// HTML is parsed, so the sentinel is present, and this module is a transitive dependency
+// of every component (via the runtime), so it evaluates before any component's `define`.
+// `mountApp` still brackets the pass with `beginHydration`/`endHydration`, and clears the
+// flag when it decides *not* to hydrate (no sentinel / empty root), so a CSR mount and
+// every subsequent SPA navigation build fresh.
+let _hydrating =
+  typeof document !== "undefined" && !!document.querySelector("[data-otfw-hydrate]");
 
 /** Is the client mid-hydration right now? */
 export function isHydrating() {

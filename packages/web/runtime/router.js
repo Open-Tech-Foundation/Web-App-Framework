@@ -504,6 +504,12 @@ export function mountApp({ pages, target, guard: g, i18n, nav, loaders } = {}) {
     typeof rootEl.hasAttribute === "function" &&
     rootEl.hasAttribute("data-otfw-hydrate")
   );
+  // The flag is seeded `true` from the sentinel at module load (so eagerly-defined
+  // framework components adopt on upgrade — see hydrate.js). If this mount is NOT
+  // hydrating after all (no sentinel, or an empty root), clear it now so the CSR build
+  // below — and every later navigation — builds fresh. The hydrate path clears it itself
+  // (via `endHydration` in `navigate`'s `finally`) once first paint is adopted.
+  if (!hydrate) endHydration();
   return navigate(
     window.location.pathname + window.location.search + window.location.hash,
     true,

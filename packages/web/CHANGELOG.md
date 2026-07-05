@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Hydration: eagerly-defined components no longer double-build the server DOM.** The
+  build-vs-adopt flag (`isHydrating()`) was only set inside `mountApp` (`beginHydration`),
+  but a custom element upgrades — and runs its build/adopt switch — the moment its class is
+  `customElements.define`d. Framework components imported eagerly by the app entry (notably
+  `<Link>`) are defined during the entry bundle's evaluation, *before* `mountApp` runs, so
+  every server-rendered `<web-link>` took the build arm — capturing the server subtree as
+  `children` and re-wrapping it (`<a><a>`), silently, on every page. The flag now initializes
+  synchronously at module load from the server sentinel (`[data-otfw-hydrate]`), before any
+  component defines; `mountApp` clears it when a mount isn't hydrating. First paint adopts;
+  CSR mounts and SPA navigations build fresh.
+- **Hydration: a parent adopt walk no longer clobbers a child island's rich props.** In a
+  list/tree of components (e.g. a recursive sidebar), a parent's `connectedCallback` runs
+  before its later-in-DOM children upgrade, so `setProp(childHost, "item", obj)` found the
+  child still inert (`"item" in el` false) and fell back to `setAttr` — stringifying the
+  object to `"[object Object]"` and, via `attributeChangedCallback`, overwriting the child's
+  correct payload-hydrated signal. That flipped conditional branches (`item.path` became
+  undefined) and threw `HydrationMismatch`. `setProp` now forces the pending upgrade so a
+  component prop always lands as a property (rich value), never a stringified attribute.
+
 ## [0.8.0] - 2026-07-05
 
 ### Added
