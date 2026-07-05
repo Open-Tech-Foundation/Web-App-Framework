@@ -21,10 +21,13 @@ export default async function routeGuard(to, { next, redirect }) {
 
 | Argument | Description |
 | --- | --- |
-| `to` | The target route (`pathname`, `params`, `query`). |
+| `to` | The target route: `pathname`, `fullPath` (pathname + query + hash), `params`, and `query`. |
 | `next()` | Allow the navigation. |
 | `redirect(path)` | Cancel and navigate elsewhere. |
 | `replace(path)` | Redirect without adding a history entry. |
+
+`to.fullPath` is handy for redirect-then-return flows — e.g.
+`redirect("/login?next=" + encodeURIComponent(to.fullPath))`.
 
 <Callout type="warning" title="Always resolve">
   Return one of `next`, `redirect`, or `replace` from every path so navigation never

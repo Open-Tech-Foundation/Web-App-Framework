@@ -338,7 +338,13 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
   if (guard) {
     let redirected = false;
     const to = {
+      // `pathname` is the documented, platform-standard field (matches the URL API
+      // and `router.pathname`); `path` is kept as a back-compat alias. `fullPath`
+      // is the whole relative URL (pathname + query + hash), for guards that need to
+      // preserve or inspect the query/hash (e.g. redirect back after login).
+      pathname: url.pathname,
       path: url.pathname,
+      fullPath: url.pathname + url.search + url.hash,
       params: matchRoute(url.pathname)?.params || {},
       query: Object.fromEntries(url.searchParams),
     };

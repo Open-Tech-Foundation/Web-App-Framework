@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Route guard `to` object** now exposes `pathname` (the documented, platform-standard
+  field, matching `router.pathname`) and `fullPath` (pathname + query + hash). `path` is kept
+  as a back-compat alias. Guards can inspect the query/hash and build redirect-then-return
+  flows (`redirect("/login?next=" + encodeURIComponent(to.fullPath))`).
+
 ## [0.9.0] - 2026-07-05
 
 ### Added

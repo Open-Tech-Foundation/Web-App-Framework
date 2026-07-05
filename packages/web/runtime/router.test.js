@@ -64,6 +64,35 @@ describe("router", () => {
     expect(router.query.q).toBe("1");
   });
 
+  test("route guard receives pathname, fullPath, params, and query", async () => {
+    const app = document.createElement("div");
+    document.body.appendChild(app);
+
+    const pages = {
+      "/proj/app/page.jsx": { default: page("home") },
+      "/proj/app/post/[id]/page.jsx": { default: page("post") },
+    };
+
+    const seen = [];
+    const guard = (to, { next }) => {
+      seen.push(to);
+      next();
+    };
+
+    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
+    window.history.replaceState({}, "", "/");
+    mountApp({ pages, target: app, guard });
+    await tick();
+
+    await navigate("/post/42?q=1#frag");
+    const to = seen.at(-1);
+    expect(to.pathname).toBe("/post/42");
+    expect(to.path).toBe("/post/42"); // back-compat alias
+    expect(to.fullPath).toBe("/post/42?q=1#frag");
+    expect(to.params.id).toBe("42");
+    expect(to.query.q).toBe("1");
+  });
+
   test("composes layouts and passes params/children", async () => {
     const app = document.createElement("div");
     document.body.appendChild(app);
