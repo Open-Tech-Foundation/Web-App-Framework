@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A component whose **root is a conditional** (e.g. `cond ? <a/> : <Link/>`) — or any
+  multi-node/fragment root — now *adopts* its server DOM on hydration instead of falling
+  back to a destroy-and-rebuild. Such a root lowers to a `Fragment`, which the adopt walk
+  didn't handle ("fragment / multi-node root not supported"), so the component discarded
+  its server subtree and rebuilt via CSR during first paint. That wiped the server DOM of
+  any child islands nested in the branches (e.g. a `<Link>` → `<web-link>`), racing with
+  their own adopt and emitting per-component `HydrationMismatch`es (a visible flash). The
+  walk now flattens a fragment root, adopting each child off the host cursor — so a
+  conditional root claims its rendered branch via `hydrateChild`. Fixes the navbar-link
+  hydration flash on every page of the docs site.
+
 ## [0.3.0] - 2026-07-05
 
 ### Fixed

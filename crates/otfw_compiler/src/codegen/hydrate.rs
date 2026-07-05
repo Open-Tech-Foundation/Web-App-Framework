@@ -362,7 +362,7 @@ impl<'a> Emitter<'a> {
         let cur = self.fresh("__c");
         self.uses.cursor = true;
         self.line(format!("const {cur} = cursor(this);"));
-        self.emit_node(&cur, &lowered.ir.view);
+        self.emit_root_view(&cur, &lowered.ir.view);
 
         // Effects + `$expose` + `onCleanup`. `onMount` is emitted by csr *inside* this
         // adopt branch (and inside `__build`) — not here — because its callbacks close over
@@ -452,6 +452,23 @@ impl<'a> Emitter<'a> {
 
     /// Claim `node` from cursor `cur` (advancing it) and return the variable holding
     /// the claimed node. Recurses into element children with a fresh child cursor.
+    /// Adopt a *component's* root view off the shared cursor `cur`. A component whose root
+    /// is a conditional or a multi-node expression lowers to a `Fragment`, whose children the
+    /// server renders as consecutive siblings directly under the host (CSR flattens the same
+    /// nodes out of a `DocumentFragment`). Adopt each in sequence; a single-node root
+    /// (element / component / list / conditional) is adopted directly. Scoped to the root
+    /// walk — a `Fragment` nested as a conditional *branch* still needs a single returned
+    /// node, so it stays unsupported (a safe rebuild fallback) in `emit_node`.
+    fn emit_root_view(&mut self, cur: &str, view: &ViewNode) {
+        if let ViewNode::Fragment(children) = view {
+            for child in children {
+                self.emit_node(cur, child);
+            }
+        } else {
+            self.emit_node(cur, view);
+        }
+    }
+
     fn emit_node(&mut self, cur: &str, node: &ViewNode) -> String {
         match node {
             ViewNode::Element { tag, props, children } => {
@@ -907,6 +924,29 @@ mod tests {
             "remover collected:\n{}",
             hyd
         );
+    }
+
+    #[test]
+    fn component_with_a_conditional_root_adopts_via_hydrate_child() {
+        // Regression: a component whose root is a conditional (or any multi-node expression)
+        // lowers to a `Fragment`. The adopt walk must flatten that fragment root — adopt each
+        // child off the host cursor — instead of erroring ("fragment / multi-node root") and
+        // forcing a destroy-and-rebuild. That rebuild during hydration wiped the server DOM
+        // of child islands nested in the branches (e.g. a `<Link>`/`<web-link>`), racing with
+        // their own adopt and producing per-component `HydrationMismatch`es.
+        let m = emit_component(
+            "export default function C(props){ const link = props.link || {}; \
+             return link.external ? <a href={link.href}>{link.label}</a> : <b>{link.label}</b>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // Adopts (not RebuildIfServerChildren): the dual switch + a shared build closure.
+        assert!(m.code.contains("const __build = () => {"), "shared build closure:\n{}", m.code);
+        assert!(m.code.contains("if (isHydrating() && this.firstChild) {"), "dual switch:\n{}", m.code);
+        // The root conditional is claimed via `hydrateChild` off the host's cursor.
+        assert!(m.code.contains("const __c0 = cursor(this);"), "cursor over host:\n{}", m.code);
+        assert!(m.code.contains("hydrateChild(__c0,"), "root conditional adopts via hydrateChild:\n{}", m.code);
+        // It did NOT fall back to the discard-and-rebuild view.
+        assert!(!m.code.contains("if (this.firstChild) this.replaceChildren();"), "no rebuild fallback:\n{}", m.code);
     }
 
     #[test]
