@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-05
+
 ### Added
 
 - The scaffolder now resolves every `@opentf/*` dependency in the generated `package.json`
