@@ -63,6 +63,11 @@ struct Uses {
     is_hydrating: bool,
     hydration_mismatch: bool,
     report_error: bool,
+    /// A build path that can run mid-hydration (`RebuildIfServerChildren`, or the `__build`
+    /// recovery of a dual `Adopt` component) brackets its DOM construction in `runBuild` so
+    /// the fresh subtree's child islands build (not adopt) — the flag tracks server DOM, and
+    /// what we just `createElement`'d isn't server DOM.
+    run_build: bool,
     /// The constructor reads rich island props from the serialized payload (hydrate
     /// target only; a CSR `Build` component reads attributes as before).
     hydration_props: bool,
@@ -86,6 +91,7 @@ impl Uses {
         self.is_hydrating |= o.is_hydrating;
         self.hydration_mismatch |= o.hydration_mismatch;
         self.report_error |= o.report_error;
+        self.run_build |= o.run_build;
         self.hydration_props |= o.hydration_props;
     }
 }
@@ -133,6 +139,9 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
     }
     if uses.is_hydrating {
         names.push("isHydrating");
+    }
+    if uses.run_build {
+        names.push("runBuild");
     }
     if uses.hydration_mismatch {
         names.push("HydrationMismatch");
@@ -389,9 +398,15 @@ fn component_body_ex<'a>(
                 // hydration, or unused call-site children on navigation) before building.
                 code.push_str("    if (this.firstChild) this.replaceChildren();\n");
             }
+            // This build can run mid-hydration (the server DOM above wasn't adoptable), so
+            // bracket it in `runBuild`: the child islands it `createElement`s must build, not
+            // adopt a subtree that was never server-rendered (docs/HYDRATION.md §3.5).
+            e.uses.run_build = true;
+            code.push_str("    runBuild(() => {\n");
             code.push_str(&body);
             code.push_str(&format!("    this.appendChild({root});\n"));
             code.push_str(&mounts);
+            code.push_str("    });\n");
         }
         ComponentView::Adopt(adopt_body) => {
             // Adopt the server DOM during the first-paint hydration pass; build fresh on a
@@ -403,7 +418,13 @@ fn component_body_ex<'a>(
             e.uses.is_hydrating = true;
             e.uses.hydration_mismatch = true;
             e.uses.report_error = true;
-            code.push_str("    const __build = () => {\n");
+            e.uses.run_build = true;
+            // The build closure runs on client navigation (flag already clear) and as
+            // mismatch recovery *during* hydration. In the latter case the flag is still set,
+            // so bracket the build in `runBuild`: the recovered subtree is freshly built, and
+            // its child islands must build too rather than re-adopt server DOM this component
+            // just tore down (docs/HYDRATION.md §3.5). On navigation `runBuild` is a no-op.
+            code.push_str("    const __build = () => runBuild(() => {\n");
             code.push_str(&body);
             code.push_str(&format!("    this.appendChild({root});\n"));
             // `onMount` runs after the view is in place. Both the build closure and the
@@ -411,7 +432,7 @@ fn component_body_ex<'a>(
             // callbacks — which close over those locals — must be emitted *inside* each
             // path, not hoisted after the switch (where the locals don't exist).
             code.push_str(&mounts);
-            code.push_str("    };\n");
+            code.push_str("    });\n");
             code.push_str("    if (isHydrating() && this.firstChild) {\n");
             code.push_str("      try {\n");
             code.push_str(adopt_body);

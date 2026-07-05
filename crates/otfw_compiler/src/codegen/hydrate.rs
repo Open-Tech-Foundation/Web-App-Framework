@@ -974,7 +974,7 @@ mod tests {
         );
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         // Adopts (not RebuildIfServerChildren): the dual switch + a shared build closure.
-        assert!(m.code.contains("const __build = () => {"), "shared build closure:\n{}", m.code);
+        assert!(m.code.contains("const __build = () => runBuild(() => {"), "shared build closure:\n{}", m.code);
         assert!(m.code.contains("if (isHydrating() && this.firstChild) {"), "dual switch:\n{}", m.code);
         // The root conditional is claimed via `hydrateChild` off the host's cursor.
         assert!(m.code.contains("const __c0 = cursor(this);"), "cursor over host:\n{}", m.code);
@@ -995,7 +995,7 @@ mod tests {
         // `this.firstChild` alone — a client-created host with call-site children also has
         // one), build otherwise. The CSR build is shared via a `__build` closure.
         assert!(m.code.contains("if (isHydrating() && this.firstChild) {"), "dual switch:\n{}", m.code);
-        assert!(m.code.contains("const __build = () => {"), "shared build closure:\n{}", m.code);
+        assert!(m.code.contains("const __build = () => runBuild(() => {"), "shared build closure:\n{}", m.code);
         assert!(m.code.contains("const __c0 = cursor(this);"), "adopt over this:\n{}", m.code);
         assert!(m.code.contains("claimElement(__c0, \"button\");"), "claim host child:\n{}", m.code);
         assert!(m.code.contains("} else {\n      __build();"), "build arm runs the closure:\n{}", m.code);
@@ -1008,12 +1008,43 @@ mod tests {
             m.code
         );
         assert!(
-            m.code.contains("import { signal, bindText, handleError, isHydrating, HydrationMismatch, reportError }"),
+            m.code.contains("import { signal, bindText, handleError, isHydrating, runBuild, HydrationMismatch, reportError }"),
             "hydration helpers imported:\n{}",
             m.code
         );
         // No standalone `hydrate` export — a component hydrates via its class, not a factory.
         assert!(!m.code.contains("export function hydrate"), "no page factory:\n{}", m.code);
+    }
+
+    #[test]
+    fn a_build_that_can_run_mid_hydration_is_wrapped_in_run_build() {
+        // Regression (docs/HYDRATION.md §3.5): a component the hydrate backend can't adopt —
+        // here because it binds JSX to a local (`const body = <jsx/>`), the docs-layout idiom
+        // that took down the whole site — falls to `RebuildIfServerChildren` and rebuilds on
+        // first paint. That build runs while `isHydrating()` is still set, so its fresh child
+        // islands must build, not adopt DOM this component just created. Codegen brackets the
+        // build in `runBuild(() => …)`, which clears the flag for the build's synchronous span.
+        let m = emit_component(
+            "export default function Panel({ framed, children }){ const body = <div class=\"b\">{children}</div>; \
+             return framed ? <section>{body}</section> : body; }",
+        );
+        // JSX-as-value is a *non-fatal* adopt error: it's reported (so the gap is visible) but
+        // the module still emits — with this component demoted to `RebuildIfServerChildren`.
+        assert!(
+            m.errors.iter().any(|e| e.contains("JSX-as-value")),
+            "the JSX-const makes it non-adoptable:\n{:?}",
+            m.errors,
+        );
+        // The RebuildIfServerChildren build is wrapped in runBuild.
+        assert!(m.code.contains("runBuild(() => {"), "build wrapped in runBuild:\n{}", m.code);
+        assert!(m.code.contains("runBuild"), "runBuild imported:\n{}", m.code);
+        // The server-DOM discard still gates on the *true* flag (outside the wrapper), so a
+        // client-nav build with call-site children doesn't wrongly clear them.
+        assert!(
+            m.code.contains("if (isHydrating() && this.firstChild) this.replaceChildren();"),
+            "server-DOM discard reads the real flag before the build:\n{}",
+            m.code,
+        );
     }
 
     #[test]
@@ -1033,9 +1064,9 @@ mod tests {
         assert_eq!(mounts, 2, "onMount emitted once per scoped path:\n{}", m.code);
         // And it must sit *before* the `};` that closes `__build` — i.e. inside the closure,
         // not after the `} else { __build(); }` switch at the connectedCallback top level.
-        let build_open = m.code.find("const __build = () => {").expect("build closure");
+        let build_open = m.code.find("const __build = () => runBuild(() => {").expect("build closure");
         let first_mount = m.code[build_open..].find("const __d =").expect("mount in build") + build_open;
-        let build_close = m.code[build_open..].find("\n    };\n").expect("build closes") + build_open;
+        let build_close = m.code[build_open..].find("\n    });\n").expect("build closes") + build_open;
         assert!(first_mount < build_close, "onMount inside __build closure:\n{}", m.code);
     }
 

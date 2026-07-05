@@ -280,6 +280,28 @@ disposers into a local `__disposers` and, if it throws partway, disposes them be
 rethrowing — so the router's fallback CSR rebuild doesn't leave the partial walk's
 `bindText`/`bindAttr`/`effect` subscriptions orphaned and double-subscribed.
 
+**A build during hydration must force its subtree to build (`runBuild`).** `isHydrating()`
+is one module-global flag, but the invariant it must encode is narrower: *it may be true
+only while the DOM being processed is the server's.* The moment a component builds fresh
+DOM — a `RebuildIfServerChildren` view (not adoptable), the `__build` recovery above, or
+any nested build — that subtree is **not** server-rendered. Its child islands are Custom
+Elements that upgrade *synchronously* during `appendChild` inside the build, and if they
+still read `isHydrating()` as true they take the **adopt** arm — trying to claim server
+markers in DOM their parent just `createElement`'d, which mismatches on the first node and
+recovers by rebuilding, whose *own* freshly-built children then do the same: a rebuild
+cascade down every island. (A single non-adoptable layout at the top — e.g. one using the
+`const body = <jsx/>` idiom the hydrate backend can't yet adopt — took down the whole docs
+site's nav + sidebar this way: dozens of `expected <a>, found …` mismatches, self-healing to
+correct DOM but flashing and error-spamming.) The fix is a scoped flag: codegen brackets
+every build path (`RebuildIfServerChildren`, and the `Adopt` view's `__build`) in
+`runBuild(() => …)`, which clears `isHydrating()` for the synchronous duration of the build
+and restores it after. The fresh subtree's islands then **build** — matching the DOM they're
+actually handed — instead of adopting a phantom. On client navigation the flag is already
+clear, so `runBuild` is a no-op. This makes the build/adopt boundary correct regardless of
+which views happen to be adoptable, so a non-adoptable component degrades to a clean local
+rebuild instead of a page-wide cascade. Regression-guarded by a deliberately non-adoptable
+`<Panel>` island (wrapping `<Tree>` → `<Link>`) in the real-browser e2e.
+
 ### 3.6 Data — loader data deferred to Phase 3; **island props hydrate now** (§3.7)
 
 Phase 2 has no *loaders*, so `$state` signals initialize from identical values on both

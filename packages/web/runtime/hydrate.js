@@ -82,6 +82,31 @@ export function isHydrating() {
   return _hydrating;
 }
 
+/**
+ * Run `fn` with the hydration flag *cleared*, restoring the prior value (nesting-safe).
+ *
+ * The build/adopt decision hangs on one module-global flag, but the invariant it must
+ * encode is narrower: `isHydrating()` may be true only while the DOM being processed is
+ * the server's. The moment a component builds fresh DOM — because its view isn't
+ * adoptable (`RebuildIfServerChildren`), or its adopt hit a mismatch and it's recovering,
+ * or it's a nested build — that fresh subtree is *not* server-rendered. Its child custom
+ * elements upgrade synchronously during `appendChild` inside this build, and if they still
+ * saw `isHydrating()` true they'd try to *adopt* content their parent just `createElement`'d
+ * → a guaranteed `HydrationMismatch` cascade (a non-adoptable layout would tear the whole
+ * page's islands into rebuild-storms). Bracketing every build path with this makes the
+ * children build too, matching the DOM they're actually handed. Synchronous only — builds
+ * never await — so a plain global save/restore is correct even when builds nest.
+ */
+export function runBuild(fn) {
+  const prev = _hydrating;
+  _hydrating = false;
+  try {
+    return fn();
+  } finally {
+    _hydrating = prev;
+  }
+}
+
 /** Run `fn` with the hydration flag set, restoring the prior value (nesting-safe).
  * Synchronous only — for the async first-paint pass use {@link beginHydration} /
  * {@link endHydration}, which span the route module's `import()`. */

@@ -2,8 +2,25 @@
 
 ## [Unreleased]
 
+### Added
+
+- `runBuild(fn)` — runs `fn` with the hydration flag (`isHydrating()`) cleared, restoring
+  the prior value after (nesting-safe, synchronous). Codegen brackets every build path that
+  can run mid-hydration with it, so a component that builds fresh DOM during first paint
+  forces its child islands to build too, rather than adopt a subtree that was never
+  server-rendered. See the `@opentf/web-compiler` note below and docs/HYDRATION.md §3.5.
+
 ### Fixed
 
+- **Hydration: a build during first paint no longer cascades mismatches into child islands.**
+  When a non-adoptable component (or a mismatch-recovery `__build`) built fresh DOM while
+  `isHydrating()` was still set, each child Custom Element it created upgraded synchronously
+  and took the *adopt* arm — claiming server markers in DOM that was just built, not
+  server-rendered — mismatching and rebuilding, whose children then did the same. One
+  non-adoptable layout could error-spam and flash a whole page's nested islands (nav, sidebar,
+  every `<Link>`). The generated build paths now run inside `runBuild` (above), which clears
+  the flag so the fresh subtree builds cleanly. The adopt path and true first-paint adoption
+  are unchanged.
 - **Hydration: eagerly-defined components no longer double-build the server DOM.** The
   build-vs-adopt flag (`isHydrating()`) was only set inside `mountApp` (`beginHydration`),
   but a custom element upgrades — and runs its build/adopt switch — the moment its class is

@@ -4,6 +4,24 @@
 
 ### Fixed
 
+- A component that **builds during the hydration pass no longer cascades
+  `HydrationMismatch`es through its child islands.** A view the hydrate backend can't adopt
+  (`RebuildIfServerChildren` — e.g. one binding JSX to a local, `const body = <div/>`) tears
+  down its server DOM and rebuilds via CSR on first paint. But that build ran while the
+  global `isHydrating()` flag was still set, so every child Custom Element it `createElement`d
+  — which upgrades *synchronously* on `appendChild` — took the *adopt* arm, trying to claim
+  server markers in DOM the parent had just built from scratch. The first mismatch recovered
+  by rebuilding, whose fresh children mismatched in turn: a rebuild cascade down every nested
+  island (a single non-adoptable layout spammed dozens of `expected <a>, found <span>` errors
+  and flashed the whole docs-site nav + sidebar, self-healing to correct DOM). Codegen now
+  brackets every build path — `RebuildIfServerChildren`, and the dual `Adopt` view's `__build`
+  recovery closure — in the new runtime `runBuild(() => …)`, which clears `isHydrating()` for
+  the synchronous span of the build. The fresh subtree's islands build (matching the DOM
+  they're handed) instead of adopting a phantom; on client navigation the flag is already
+  clear, so it's a no-op. The build/adopt boundary is now correct regardless of which views
+  are adoptable — a non-adoptable component degrades to a clean local rebuild, never a
+  page-wide cascade (docs/HYDRATION.md §3.5).
+
 - A hydrating component with a **`class` prop** no longer loses that prop to the host's
   styling-hook class. The prop shares the host's `class` attribute with the `web-<name>`
   hook, so a server-rendered host carries `class="web-<name>"`; on upgrade the Custom
