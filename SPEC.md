@@ -143,7 +143,7 @@ Macros are special function calls that the compiler transforms:
 - `$effect(callback)`: Compiler macro for side effects. 
     - **SSG Guard**: The compiler automatically wraps `$effect()` calls in an `if (!isSSG)` check to prevent build-time execution of client-side logic.
     - **Disposal**: The compiler automatically registers the effect's dispose function in the component's `_onCleanups` array.
-- `$ref()`: Transforms to `signal(null)`. Used in JSX: `<div ref={myRef}>`.
+- `$ref()`: Transforms to `signal(null)` — a fully reactive signal holding a DOM node (or `null` before mount). Used in JSX: `<div ref={myRef}>` (see §5.6). Read it in `$effect` (re-runs on node change), `onMount`, or `onCleanup`.
 - `$expose(obj)`: Transforms to `Object.assign(this, obj)` within the component class.
     - **Scoping**: The compiler rewrites the target of `Object.assign` to the component instance (`this`), exposing the object's properties as public properties of the Custom Element.
 
@@ -166,6 +166,7 @@ To maintain reactivity integrity and compiler predictability, the following patt
 6.  **Generator Functions**: `function* MyComp() { ... }` is unsupported.
 7.  **Class Components**: `class MyComp extends HTMLElement { ... }` is explicitly unsupported in the compiler pipeline. Use functional components.
 8.  **Dynamic Imports in Body**: `await import(...)` inside the component body breaks synchronous execution and is forbidden.
+9.  **Callback (function-valued) Refs**: A function passed to the `ref` attribute (`ref={(el) => …}`) is forbidden. `ref` takes a `$ref` signal; use `$ref` + `$effect`/`onMount`/`onCleanup` (or `$expose`) for node-attachment behavior (see §5.6).
 
 ### 3.5 $signal() Macro
 `$signal()` is the **explicit bridge** between external reactive objects and the OTF Web compiler. It tells the compiler: *"this object contains signals — track its reactive properties in JSX."* 
@@ -674,12 +675,37 @@ _effect(() => _setProperty(el0, "title", myTitle));
 ```
 
 ### 5.6 Ref Attribute
+The `ref` attribute takes a `$ref` **signal**. On construction the compiler assigns
+the element to that signal's `.value` — the expression is kept raw (no First-Access
+`.value` injection), since the ref *is* the container being written to.
+
 **JSX**: `<div ref={myRef}></div>`
 **Output**:
 ```javascript
 const el0 = document.createElement("div");
 myRef.value = el0; // Ref signal updated directly
 ```
+
+Because `$ref()` transforms to `signal(null)`, a ref is a fully reactive signal:
+reading it inside an `$effect` subscribes to it, so the effect re-runs whenever the
+node changes (e.g. a conditional swapping `<input>` for `<textarea>` reassigns the
+ref, re-running the effect with the new node).
+
+```jsx
+const el = $ref();
+$effect(() => { if (el) measure(el); }); // re-measures when the node changes
+onMount(() => el.focus());               // node exists after mount
+onCleanup(() => teardown(el));           // node teardown on unmount
+```
+
+**Callback refs are rejected.** A function-valued `ref` — `ref={(el) => …}`,
+React's "callback ref" — is **not supported** and is a compiler error (§3.4, item 9).
+The ref model assigns the node to a signal; a function there has no meaning and
+would emit invalid code. Every callback-ref use case is expressed with `$ref` plus
+the reactive/lifecycle primitives above, or by exposing an imperative handle to the
+parent with `$expose` (an API is a stronger boundary than handing out the raw node);
+a dynamic collection of refs is modeled as a per-item component that owns its own
+`$ref`. The diagnostic points authors to these patterns.
 
 ### 5.7 Void Elements
 Void elements are elements that cannot have children (e.g., `<input />`, `<br />`, `<img />`). They are transformed like standard elements but without an `appendChild` call for children.
