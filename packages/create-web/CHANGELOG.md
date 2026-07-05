@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-05
+
 ### Changed
 
 - App template (`@opentf/web@^0.8.0`, `@opentf/web-cli@^1.3.0`): scaffolded apps ship with route loaders, an API-route server runtime, and full `otfw serve` / `--ssg` toolchain support for the bundled `/api/hello` example.
