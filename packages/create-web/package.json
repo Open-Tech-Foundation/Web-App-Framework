@@ -5,6 +5,9 @@
   "bin": {
     "create-web": "./bin/index.js"
   },
+  "scripts": {
+    "test": "bun test tests/"
+  },
   "type": "module",
   "files": [
     "bin",

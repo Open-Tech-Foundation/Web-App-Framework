@@ -21,7 +21,7 @@
     "cf:build": "bun scripts/build-website-standalone.mjs",
     "website:dev": "bun run --cwd website dev",
     "website:build": "bun run build:web && bun run --cwd website build",
-    "test": "cargo build && cargo test && bun test packages/web/ packages/web-cli/tests/",
+    "test": "cargo build && cargo test && bun test packages/web/ packages/web-cli/tests/ packages/create-web/tests/",
     "deploy": "bun run website:build && wrangler deploy",
     "build:web": "bun run --cwd packages/web build"
   },

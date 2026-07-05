@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- The scaffolder now resolves every `@opentf/*` dependency in the generated `package.json`
+  to `^<latest>` from the npm registry before writing any project files; scaffolding
+  aborts atomically if npm is unreachable. Set `CREATE_WEB_SKIP_NPM=1` to skip resolution
+  (local dev only).
+- Isolated integration tests under `tests/scaffold.test.js` cover both templates, mock
+  registry pinning, unreachable-registry failure, and Tailwind styling.
+
 ## [0.11.0] - 2026-07-05
 
 ### Changed
