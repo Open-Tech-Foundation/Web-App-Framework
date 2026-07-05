@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import prompts from "prompts";
 import { cyan, green, red, reset, yellow, bold } from "kolorist";
-import { detectPackageManager, devCommand } from "./detect-pm.js";
+import { detectPackageManager, devCommand, testCommand } from "./detect-pm.js";
 import { installDependencies } from "./install-deps.js";
 import { scaffold } from "./scaffold.js";
 
@@ -57,6 +57,11 @@ async function init() {
               value: "docs",
               description: "A one-page MDX docs starter powered by @opentf/web-docs",
             },
+            {
+              title: cyan("Library"),
+              value: "library",
+              description: "A publishable component package with tests",
+            },
           ],
         },
         {
@@ -65,11 +70,11 @@ async function init() {
           message: reset("Select a language:"),
           initial: 0,
           choices: [
-            { title: reset("JavaScript"), value: "js", description: ".jsx pages and .js API routes" },
+            { title: reset("JavaScript"), value: "js", description: ".jsx source files" },
             {
               title: cyan("TypeScript"),
               value: "ts",
-              description: ".tsx pages, .ts API routes, and a tsconfig.json",
+              description: ".tsx source files and a tsconfig.json",
             },
           ],
         },
@@ -146,7 +151,7 @@ async function init() {
   if (process.env.CREATE_WEB_SKIP_INSTALL === "1") {
     console.log(`  ${cyan(`${pm} install`)}`);
   }
-  console.log(`  ${cyan(devCommand(pm))}\n`);
+  console.log(`  ${cyan(template === "library" ? testCommand(pm) : devCommand(pm))}\n`);
 }
 
 function emptyDir(dir) {

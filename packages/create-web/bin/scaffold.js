@@ -24,7 +24,7 @@ function copyDir(srcDir, destDir) {
  * Dependency resolution runs before any files are written so npm failures are atomic.
  *
  * @param {{
- *   template: "bare" | "docs",
+ *   template: "bare" | "docs" | "library",
  *   targetDir: string,
  *   styling?: "none" | "tailwind",
  *   typescript?: boolean,
@@ -73,7 +73,7 @@ export async function scaffold({
   }
 
   if (typescript) {
-    applyTypescript(targetDir, template);
+    applyTypescript(targetDir, template, pkg);
     fs.writeFileSync(
       path.join(targetDir, "package.json"),
       JSON.stringify(pkg, null, 2) + "\n",

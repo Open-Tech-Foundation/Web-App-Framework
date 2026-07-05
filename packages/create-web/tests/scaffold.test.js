@@ -9,7 +9,7 @@ import {
   listOpentfDeps,
   pinOpentfDeps,
 } from "../bin/resolve-deps.js";
-import { detectPackageManager, devCommand, installCommand } from "../bin/detect-pm.js";
+import { detectPackageManager, devCommand, installCommand, testCommand } from "../bin/detect-pm.js";
 import { scaffold } from "../bin/scaffold.js";
 
 const pkgRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -91,9 +91,11 @@ describe("detect-pm", () => {
     expect(detectPackageManager()).toBe("pnpm");
   });
 
-  test("installCommand and devCommand use the detected manager", () => {
+  test("installCommand, devCommand, and testCommand use the detected manager", () => {
     expect(installCommand("pnpm")).toBe("pnpm install");
     expect(devCommand("yarn")).toBe("yarn run dev");
+    expect(testCommand("npm")).toBe("npm test");
+    expect(testCommand("bun")).toBe("bun test");
   });
 });
 
@@ -242,6 +244,37 @@ describe("scaffold — docs template", () => {
 
     const tsconfig = JSON.parse(readFileSync(join(dir, "tsconfig.json"), "utf-8"));
     expect(tsconfig.include).toContain("otfw.config.js");
+  });
+});
+
+describe("scaffold — library template", () => {
+  test("writes a publishable package with Counter, tests, and npm-latest deps", async () => {
+    const dir = makeTmpDir("library");
+    const { packageJson } = await scaffold({ template: "library", targetDir: dir });
+
+    expect(existsSync(join(dir, "index.js"))).toBe(true);
+    expect(existsSync(join(dir, "src/Counter.jsx"))).toBe(true);
+    expect(existsSync(join(dir, "tests/counter.test.js"))).toBe(true);
+    expect(existsSync(join(dir, "bunfig.toml"))).toBe(true);
+    expect(existsSync(join(dir, "test-setup.js"))).toBe(true);
+    expect(readFileSync(join(dir, "bunfig.toml"), "utf-8")).toContain("./test-setup.js");
+    expect(packageJson.peerDependencies?.["@opentf/web"]).toMatch(/^\^/);
+    expect(packageJson.devDependencies?.["@opentf/web-test"]).toMatch(/^\^/);
+    expect(packageJson.devDependencies?.["@opentf/web-compiler"]).toMatch(/^\^/);
+    expect(packageJson.publishConfig?.access).toBe("public");
+  });
+
+  test("typescript option emits .tsx sources and index.ts export", async () => {
+    const dir = makeTmpDir("library-ts");
+    const { packageJson } = await scaffold({ template: "library", targetDir: dir, typescript: true });
+
+    expect(existsSync(join(dir, "index.ts"))).toBe(true);
+    expect(existsSync(join(dir, "src/Counter.tsx"))).toBe(true);
+    expect(existsSync(join(dir, "tests/counter.test.js"))).toBe(true);
+    expect(readFileSync(join(dir, "tests/counter.test.js"), "utf-8")).toContain(
+      "../src/Counter.tsx",
+    );
+    expect(packageJson.exports?.["."]).toBe("./index.ts");
   });
 });
 

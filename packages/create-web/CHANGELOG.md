@@ -8,11 +8,17 @@
   to `^<latest>` from the npm registry before writing any project files; scaffolding
   aborts atomically if npm is unreachable. Set `CREATE_WEB_SKIP_NPM=1` to skip resolution
   (local dev only).
-- Isolated integration tests under `tests/scaffold.test.js` cover both templates, mock
-  registry pinning, unreachable-registry failure, and Tailwind styling.
+- Isolated integration tests under `tests/scaffold.test.js` cover all templates, mock
+  registry pinning, unreachable-registry failure, Tailwind styling, and library JS/TS
+  scaffolding.
 - After scaffolding, the tool runs `<pm> install` automatically using the package manager
   that invoked it (`npm`/`pnpm`/`yarn`/`bun` via `npm_config_user_agent`). Set
   `CREATE_WEB_SKIP_INSTALL=1` to skip (local dev/tests).
+- **Library** project template: scaffolds a publishable component package that exports
+  source `.jsx` from `index.js` (apps compile it via their `otfw` toolchain), ships a
+  sample `Counter`, `bun test` with `@opentf/web-test`, and wires `otfwc` through
+  `test-setup.js` + `@opentf/web-compiler`. TypeScript mode emits `.tsx` sources and
+  `index.ts`. Next steps suggest `<pm> test` instead of `dev`.
 - TypeScript project option: choose TypeScript at the prompt to scaffold `.tsx` pages,
   `.ts` API routes, `tsconfig.json`, macro typings (`app/otfw-env.d.ts`), and a
   `typescript` devDependency. Docs sites keep `otfw.config.js` and `_meta.js` (the

@@ -27,3 +27,8 @@ export function installCommand(pm) {
 export function devCommand(pm) {
   return `${pm} run dev`;
 }
+
+/** @param {PackageManager} pm */
+export function testCommand(pm) {
+  return pm === "npm" ? "npm test" : `${pm} test`;
+}
