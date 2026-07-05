@@ -176,7 +176,18 @@ fn compile_module(
         return Err(msg);
     }
 
+    // A function-valued `ref` is unsupported — fail with actionable guidance rather
+    // than miscompiling it into `(fn).value = el`.
+    if let Some(msg) = otfw_compiler::lower::function_ref_diagnostic(&parsed.program) {
+        return Err(format!("{file}: {msg}"));
+    }
+
     let Some(lowered) = lower_module(file, &parsed.program, &source, !as_component) else {
+        // Prefer a targeted diagnostic for the common near-miss (JSX built but not
+        // returned as the view) over the generic "no component" message.
+        if let Some(hint) = otfw_compiler::lower::no_component_diagnostic(&parsed.program) {
+            return Err(format!("{file}: {hint}"));
+        }
         return Err(format!("no component (function returning JSX) found in {file}"));
     };
 

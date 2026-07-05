@@ -561,6 +561,110 @@ fn component_of<'a>(stmt: &'a Statement<'a>) -> Option<(String, Callable<'a>, Ex
     }
 }
 
+/// The declared name of a top-level function-like declaration (`function Foo`,
+/// `const Foo = () => …`, and their `export`/`export default` wrappers), or `None`
+/// if `stmt` is not a function-like declaration. Used only for diagnostics.
+fn fn_like_name(stmt: &Statement) -> Option<String> {
+    fn arrow_or_fn_var(vd: &VariableDeclaration) -> Option<String> {
+        let d = vd.declarations.first()?;
+        if matches!(
+            &d.init,
+            Some(Expression::ArrowFunctionExpression(_)) | Some(Expression::FunctionExpression(_))
+        ) {
+            if let BindingPattern::BindingIdentifier(bi) = &d.id {
+                return Some(bi.name.as_str().to_string());
+            }
+        }
+        None
+    }
+    match stmt {
+        Statement::FunctionDeclaration(f) => f.id.as_ref().map(|i| i.name.as_str().to_string()),
+        Statement::VariableDeclaration(vd) => arrow_or_fn_var(vd),
+        Statement::ExportNamedDeclaration(e) => match &e.declaration {
+            Some(Declaration::FunctionDeclaration(f)) => {
+                f.id.as_ref().map(|i| i.name.as_str().to_string())
+            }
+            Some(Declaration::VariableDeclaration(vd)) => arrow_or_fn_var(vd),
+            _ => None,
+        },
+        Statement::ExportDefaultDeclaration(e) => match &e.declaration {
+            ExportDefaultDeclarationKind::FunctionDeclaration(f) => {
+                Some(f.id.as_ref().map(|i| i.name.as_str().to_string()).unwrap_or_else(|| "default export".to_string()))
+            }
+            ExportDefaultDeclarationKind::ArrowFunctionExpression(_) => {
+                Some("default export".to_string())
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// When a module yields no component, explain the common near-miss: a function
+/// that *contains* JSX but does not **return** it as its view — e.g. it builds an
+/// array of elements imperatively (`parts.push(<li/>)`) and returns the array, a
+/// pattern that has no place to reactively track the loop. Returns a targeted,
+/// actionable message, or `None` if no such near-miss is present.
+pub fn no_component_diagnostic(program: &Program) -> Option<String> {
+    for stmt in &program.body {
+        // Recognized components are handled elsewhere; only near-misses matter here.
+        if component_of(stmt).is_some() {
+            continue;
+        }
+        let Some(name) = fn_like_name(stmt) else { continue };
+        let mut probe = JsxProbe { found: false };
+        probe.visit_statement(stmt);
+        if !probe.found {
+            continue;
+        }
+        return Some(format!(
+            "`{name}` contains JSX but never returns it as its view. A component must \
+             return its view as JSX directly. To render a list, map inside JSX \
+             (`return <>{{items.map((item) => <li>{{item}}</li>)}}</>`) rather than \
+             pushing elements into an array and returning the array (SPEC §2.1, §5.4.4)."
+        ));
+    }
+    None
+}
+
+/// A **function-valued (callback) ref** — `ref={(el) => …}` or `ref={function …}`
+/// — is not supported. The framework's ref model assigns the node to a `$ref`
+/// signal (`ref.value = el`, SPEC §5.6); a function there has no meaning and would
+/// miscompile. Returns an actionable diagnostic if any JSX `ref` in the module is a
+/// function, steering to the `$ref` + `$effect`/`onMount`/`onCleanup` (or `$expose`)
+/// patterns that express every callback-ref use case. `None` otherwise.
+pub fn function_ref_diagnostic(program: &Program) -> Option<String> {
+    struct Finder {
+        found: bool,
+    }
+    impl<'a> Visit<'a> for Finder {
+        fn visit_jsx_attribute(&mut self, attr: &JSXAttribute<'a>) {
+            if let JSXAttributeName::Identifier(id) = &attr.name
+                && id.name == "ref"
+                && let Some(JSXAttributeValue::ExpressionContainer(c)) = &attr.value
+                && matches!(
+                    c.expression,
+                    JSXExpression::ArrowFunctionExpression(_)
+                        | JSXExpression::FunctionExpression(_)
+                )
+            {
+                self.found = true;
+            }
+            walk::walk_jsx_attribute(self, attr);
+        }
+    }
+    let mut f = Finder { found: false };
+    f.visit_program(program);
+    f.found.then(|| {
+        "a function-valued `ref` (callback ref) is not supported. Assign the node to a \
+         `$ref` and drive behavior reactively instead: `let el = $ref(); <input ref={el} />`, \
+         then read `el.value` from an `$effect` (re-runs when the node changes), `onMount`, or \
+         `onCleanup` — or expose an imperative handle to the parent with `$expose`. \
+         See https://web.opentechf.org/docs/core-concepts/templating#refs."
+            .to_string()
+    })
+}
+
 /// Find the first component (function declaration or arrow) and its export name.
 /// `export default function` yields the export name `default`.
 fn find_component<'a>(program: &'a Program<'a>) -> Option<(String, Callable<'a>)> {
@@ -1775,7 +1879,9 @@ impl<'a, 'r> Lowerer<'a, 'r> {
                     };
                     // `ref={expr}`: keep the expression raw (no `.value` injection,
                     // SPEC §3.3) — codegen assigns the node to the ref signal
-                    // (`expr.value = el`, SPEC §5.6).
+                    // (`expr.value = el`, SPEC §5.6). A function-valued (callback) ref
+                    // is not supported and is rejected up front with an actionable
+                    // diagnostic — see `function_ref_diagnostic`.
                     if name == "ref" {
                         if let Some(JSXAttributeValue::ExpressionContainer(c)) = &attr.value
                             && !matches!(c.expression, JSXExpression::EmptyExpression(_))
