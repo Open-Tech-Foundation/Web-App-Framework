@@ -21,9 +21,10 @@ use std::collections::HashMap;
 use oxc::ast::ast::{
     Argument, ArrowFunctionExpression, BindingPattern, CallExpression, Declaration, Expression,
     ExportDefaultDeclarationKind, FormalParameters, Function, FunctionBody, IdentifierReference,
-    ImportDeclarationSpecifier, JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild,
-    JSXElement, JSXElementName, JSXExpression, JSXFragment, Program, StaticMemberExpression,
-    Statement, VariableDeclaration,
+    ImportDeclarationSpecifier, JSXAttribute, JSXAttributeItem, JSXAttributeName, JSXAttributeValue,
+    JSXChild,
+    JSXElement, JSXElementName, JSXExpression, JSXFragment, ObjectProperty, Program,
+    StaticMemberExpression, Statement, VariableDeclaration,
 };
 use oxc::ast_visit::{walk, Visit};
 use oxc::semantic::{Scoping, SymbolId};
@@ -1129,7 +1130,7 @@ struct RefCollector<'r> {
     scoping: &'r Scoping,
     signals: &'r HashMap<SymbolId, SignalId>,
     props_symbol: Option<SymbolId>,
-    ends: Vec<u32>,
+    inserts: Vec<Insert>,
     deps: Vec<SignalId>,
 }
 
@@ -1139,7 +1140,7 @@ impl<'a> Visit<'a> for RefCollector<'_> {
             && let Some(symbol) = self.scoping.get_reference(ref_id).symbol_id()
             && let Some(&sig) = self.signals.get(&symbol)
         {
-            self.ends.push(it.span.end);
+            self.inserts.push(value_at(it.span.end));
             if !self.deps.contains(&sig) {
                 self.deps.push(sig);
             }
@@ -1154,11 +1155,18 @@ impl<'a> Visit<'a> for RefCollector<'_> {
             // First-Access Rule: unwrap the first property after `props`, except
             // `props.children` (the slot), which stays as-is (SPEC §3.3).
             if it.property.name != "children" {
-                self.ends.push(it.property.span.end);
+                self.inserts.push(value_at(it.property.span.end));
             }
             return;
         }
         walk::walk_static_member_expression(self, it);
+    }
+
+    fn visit_object_property(&mut self, it: &ObjectProperty<'a>) {
+        if let Some(prefix) = shorthand_prefix(self.scoping, self.signals, it) {
+            self.inserts.push(prefix);
+        }
+        walk::walk_object_property(self, it);
     }
 }
 
@@ -1167,20 +1175,54 @@ fn new_collector<'r>(
     signals: &'r HashMap<SymbolId, SignalId>,
     props_symbol: Option<SymbolId>,
 ) -> RefCollector<'r> {
-    RefCollector { scoping, signals, props_symbol, ends: Vec::new(), deps: Vec::new() }
+    RefCollector { scoping, signals, props_symbol, inserts: Vec::new(), deps: Vec::new() }
 }
 
-/// Splice `.value` into `source[span]` at each collected reference end.
-fn splice(source: &str, span: Span, mut ends: Vec<u32>) -> String {
+/// A text insertion into the source slice: `(byte_offset, text)`. Used to weave
+/// `.value` (and shorthand-property expansions) into preserved expression source.
+type Insert = (u32, String);
+
+/// A zero-width `.value` insertion at `pos`.
+fn value_at(pos: u32) -> Insert {
+    (pos, ".value".to_string())
+}
+
+/// If `prop` is object-literal shorthand whose value is a signal (`{ count }`),
+/// return the prefix insertion that expands it to `{ count: count.value }` — the
+/// `.value` on the value identifier is added by the ordinary reference walk, but
+/// a bare `{ count.value }` is not valid object syntax, so the key must be
+/// written out explicitly. Returns `None` for non-shorthand or non-signal props.
+fn shorthand_prefix(
+    scoping: &Scoping,
+    signals: &HashMap<SymbolId, SignalId>,
+    prop: &ObjectProperty,
+) -> Option<Insert> {
+    if !prop.shorthand {
+        return None;
+    }
+    let Expression::Identifier(id) = &prop.value else { return None };
+    let ref_id = id.reference_id.get()?;
+    let symbol = scoping.get_reference(ref_id).symbol_id()?;
+    if !signals.contains_key(&symbol) {
+        return None;
+    }
+    // Shorthand key name equals the value identifier name; write it explicitly.
+    Some((id.span.start, format!("{}: ", id.name)))
+}
+
+/// Apply `inserts` (text weaved into `source[span]`) and return the rewritten
+/// slice. Insertions at the same offset keep their collection order (prefixes are
+/// collected before the `.value` at a reference's end, so both land correctly).
+fn splice(source: &str, span: Span, mut inserts: Vec<Insert>) -> String {
     let base = span.start as usize;
     let slice = &source[base..span.end as usize];
-    ends.sort_unstable();
-    let mut out = String::with_capacity(slice.len() + ends.len() * 6);
+    inserts.sort_by_key(|(pos, _)| *pos);
+    let mut out = String::with_capacity(slice.len() + inserts.len() * 6);
     let mut last = 0usize;
-    for end in ends {
-        let rel = end as usize - base;
+    for (pos, text) in inserts {
+        let rel = pos as usize - base;
         out.push_str(&slice[last..rel]);
-        out.push_str(".value");
+        out.push_str(&text);
         last = rel;
     }
     out.push_str(&slice[last..]);
@@ -1196,7 +1238,7 @@ fn inject_jsx(
 ) -> ExprInfo {
     let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_jsx_expression(expr);
-    ExprInfo { code: splice(source, expr.span(), rc.ends), deps: rc.deps }
+    ExprInfo { code: splice(source, expr.span(), rc.inserts), deps: rc.deps }
 }
 
 fn inject_arg(
@@ -1208,7 +1250,7 @@ fn inject_arg(
 ) -> ExprInfo {
     let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_argument(arg);
-    ExprInfo { code: splice(source, arg.span(), rc.ends), deps: rc.deps }
+    ExprInfo { code: splice(source, arg.span(), rc.inserts), deps: rc.deps }
 }
 
 fn inject_expr(
@@ -1220,7 +1262,7 @@ fn inject_expr(
 ) -> ExprInfo {
     let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_expression(expr);
-    ExprInfo { code: splice(source, expr.span(), rc.ends), deps: rc.deps }
+    ExprInfo { code: splice(source, expr.span(), rc.inserts), deps: rc.deps }
 }
 
 /// Preserve a whole body statement verbatim with `.value` injected on signal
@@ -1234,7 +1276,7 @@ fn inject_stmt(
 ) -> String {
     let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_statement(stmt);
-    splice(source, stmt.span(), rc.ends)
+    splice(source, stmt.span(), rc.inserts)
 }
 
 // ── Dynamic node regions (conditional / element-valued holes) ────────────────
@@ -1307,7 +1349,7 @@ struct NodeTemplater<'a, 'r> {
     scoping: &'r Scoping,
     signals: &'r HashMap<SymbolId, SignalId>,
     props_symbol: Option<SymbolId>,
-    ends: Vec<u32>,
+    inserts: Vec<Insert>,
     branches: Vec<JsxBranch<'a>>,
 }
 
@@ -1317,7 +1359,7 @@ impl<'a> Visit<'a> for NodeTemplater<'a, '_> {
             && let Some(symbol) = self.scoping.get_reference(ref_id).symbol_id()
             && self.signals.contains_key(&symbol)
         {
-            self.ends.push(it.span.end);
+            self.inserts.push(value_at(it.span.end));
         }
     }
     fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
@@ -1326,11 +1368,17 @@ impl<'a> Visit<'a> for NodeTemplater<'a, '_> {
             && resolves_to(self.scoping, obj, ps)
         {
             if it.property.name != "children" {
-                self.ends.push(it.property.span.end);
+                self.inserts.push(value_at(it.property.span.end));
             }
             return;
         }
         walk::walk_static_member_expression(self, it);
+    }
+    fn visit_object_property(&mut self, it: &ObjectProperty<'a>) {
+        if let Some(prefix) = shorthand_prefix(self.scoping, self.signals, it) {
+            self.inserts.push(prefix);
+        }
+        walk::walk_object_property(self, it);
     }
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
         // A `.map((item) => <JSX/>)` is a single list region, not independent JSX
@@ -1359,14 +1407,14 @@ fn branch_placeholder(i: usize) -> String {
 
 /// Build the dynamic-node template: the expression source with `.value` spliced
 /// at `ends` and each embedded JSX span replaced by its slot placeholder.
-fn build_template(source: &str, span: Span, ends: Vec<u32>, branches: &[JsxBranch]) -> String {
+fn build_template(source: &str, span: Span, inserts: Vec<Insert>, branches: &[JsxBranch]) -> String {
     let base = span.start as usize;
     let slice = &source[base..span.end as usize];
-    // Edits as (start, end, replacement); `.value` inserts are zero-width.
+    // Edits as (start, end, replacement); text insertions are zero-width.
     let mut edits: Vec<(usize, usize, String)> = Vec::new();
-    for e in ends {
-        let r = e as usize - base;
-        edits.push((r, r, ".value".to_string()));
+    for (pos, text) in inserts {
+        let r = pos as usize - base;
+        edits.push((r, r, text));
     }
     for (i, b) in branches.iter().enumerate() {
         let s = b.span();
@@ -1490,44 +1538,44 @@ impl<'a, 'r> Lowerer<'a, 'r> {
     /// Lower a JSX-bearing hole (`{cond && <p/>}`) into a `DynamicNode`: a
     /// templated expression plus a node-builder branch per embedded JSX.
     fn lower_dynamic_node(&mut self, expr: &JSXExpression<'a>, span: Span) -> ViewNode {
-        let (ends, branches) = {
+        let (inserts, branches) = {
             let mut t = NodeTemplater {
                 scoping: self.scoping,
                 signals: &self.signals,
                 props_symbol: self.props_symbol,
-                ends: Vec::new(),
+                inserts: Vec::new(),
                 branches: Vec::new(),
             };
             t.visit_jsx_expression(expr);
-            (t.ends, t.branches)
+            (t.inserts, t.branches)
         };
-        self.finish_dynamic_node(span, ends, branches)
+        self.finish_dynamic_node(span, inserts, branches)
     }
 
     /// As [`lower_dynamic_node`] but for a bare expression (a conditional root
     /// return, `return cond ? <a/> : <b/>`).
     fn lower_dynamic_node_expr(&mut self, expr: &Expression<'a>, span: Span) -> ViewNode {
-        let (ends, branches) = {
+        let (inserts, branches) = {
             let mut t = NodeTemplater {
                 scoping: self.scoping,
                 signals: &self.signals,
                 props_symbol: self.props_symbol,
-                ends: Vec::new(),
+                inserts: Vec::new(),
                 branches: Vec::new(),
             };
             t.visit_expression(expr);
-            (t.ends, t.branches)
+            (t.inserts, t.branches)
         };
-        self.finish_dynamic_node(span, ends, branches)
+        self.finish_dynamic_node(span, inserts, branches)
     }
 
     fn finish_dynamic_node(
         &mut self,
         span: Span,
-        ends: Vec<u32>,
+        inserts: Vec<Insert>,
         branches: Vec<JsxBranch<'a>>,
     ) -> ViewNode {
-        let template = build_template(self.source, span, ends, &branches);
+        let template = build_template(self.source, span, inserts, &branches);
         let branch_nodes = branches
             .into_iter()
             .map(|b| self.lower_branch(b))
@@ -1565,18 +1613,18 @@ impl<'a, 'r> Lowerer<'a, 'r> {
                 stmt,
             ));
         }
-        let (ends, branches) = {
+        let (inserts, branches) = {
             let mut t = NodeTemplater {
                 scoping: self.scoping,
                 signals: &self.signals,
                 props_symbol: self.props_symbol,
-                ends: Vec::new(),
+                inserts: Vec::new(),
                 branches: Vec::new(),
             };
             t.visit_statement(stmt);
-            (t.ends, t.branches)
+            (t.inserts, t.branches)
         };
-        let template = build_template(self.source, stmt.span(), ends, &branches);
+        let template = build_template(self.source, stmt.span(), inserts, &branches);
         let nodes = branches.into_iter().map(|b| self.lower_branch(b)).collect();
         BodyItem::Jsx { template, nodes }
     }
