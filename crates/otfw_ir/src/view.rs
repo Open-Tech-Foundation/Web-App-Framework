@@ -41,13 +41,17 @@ pub enum ViewNode {
     /// the data expression (the chain before `.map`, with `.value` injected on
     /// outer signals); `item` is the callback body rendered per element, with
     /// `item_param` reified as a per-item signal; `key` is an optional `key={…}`
-    /// expression evaluated against the plain item.
+    /// expression evaluated against the plain item. `preamble` holds locals
+    /// declared inside the callback before its returned JSX (`const h = item.x`,
+    /// with `.value` injected) — re-emitted at the top of the item builder so the
+    /// item view can reference them.
     List {
         source: ExpressionId,
         item_param: String,
         index_param: Option<String>,
         item: Box<ViewNode>,
         key: Option<ExpressionId>,
+        preamble: Vec<String>,
     },
     Fragment(Vec<ViewNode>),
 }

@@ -1328,6 +1328,46 @@ impl JsxBranch<'_> {
     }
 }
 
+/// A destructured `array.map(callback)` list callback, for both callback forms:
+/// arrow (`(item, i) => …`) and function expression (`function (item, i) {…}`).
+/// `preamble` holds the statements declared before the returned JSX (locals like
+/// `const h = item.x`), which the item builder must re-emit so the item view sees
+/// them; `jsx` is the returned JSX expression.
+struct MapCallback<'a> {
+    params: &'a FormalParameters<'a>,
+    preamble: Vec<&'a Statement<'a>>,
+    jsx: &'a Expression<'a>,
+}
+
+/// Destructure a `.map(cb)` callback argument (arrow or function expression) into
+/// its params, preamble locals, and returned JSX. Returns `None` when the argument
+/// is not a function or does not return JSX.
+fn map_callback<'a>(arg: &'a Argument<'a>) -> Option<MapCallback<'a>> {
+    let (params, body, expr_body) = match arg {
+        Argument::ArrowFunctionExpression(a) => (&a.params, &*a.body, a.expression),
+        Argument::FunctionExpression(f) => (&f.params, f.body.as_deref()?, false),
+        _ => return None,
+    };
+    // Expression-bodied arrow (`item => <jsx>`): the sole statement is the JSX.
+    if expr_body {
+        let Some(Statement::ExpressionStatement(es)) = body.statements.first() else {
+            return None;
+        };
+        let jsx = unwrap_paren(&es.expression);
+        return has_jsx_expr(jsx).then_some(MapCallback { params, preamble: Vec::new(), jsx });
+    }
+    // Block body: everything before the `return <jsx>` is preamble.
+    let mut preamble = Vec::new();
+    for stmt in &body.statements {
+        if let Statement::ReturnStatement(ret) = stmt {
+            let jsx = unwrap_paren(ret.argument.as_ref()?);
+            return has_jsx_expr(jsx).then_some(MapCallback { params, preamble, jsx });
+        }
+        preamble.push(stmt);
+    }
+    None
+}
+
 /// `arr.map((item[, i]) => <JSX/>)` — a list region that must lower to `bindList`
 /// rather than have its item JSX hoisted out of the callback (which drops `item`).
 fn is_jsx_map_call(call: &CallExpression) -> bool {
@@ -1335,10 +1375,7 @@ fn is_jsx_map_call(call: &CallExpression) -> bool {
     if member.property.name != "map" {
         return false;
     }
-    let Some(Argument::ArrowFunctionExpression(arrow)) = call.arguments.first() else {
-        return false;
-    };
-    arrow_jsx(arrow).is_some()
+    call.arguments.first().and_then(map_callback).is_some()
 }
 
 /// Collects, for a dynamic node region, the signal-reference ends for `.value`
@@ -1816,22 +1853,20 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         if member.property.name != "map" {
             return None;
         }
-        let Some(Argument::ArrowFunctionExpression(arrow)) = call.arguments.first() else {
-            return None;
-        };
+        let cb = map_callback(call.arguments.first()?)?;
         // Item parameter (required, simple identifier) + optional index parameter.
-        let item_bi = match arrow.params.items.first().map(|p| &p.pattern) {
+        let item_bi = match cb.params.items.first().map(|p| &p.pattern) {
             Some(BindingPattern::BindingIdentifier(bi)) => bi,
             _ => return None,
         };
         let item_param = item_bi.name.as_str().to_string();
         let item_symbol = item_bi.symbol_id.get();
-        let index_param = match arrow.params.items.get(1).map(|p| &p.pattern) {
+        let index_param = match cb.params.items.get(1).map(|p| &p.pattern) {
             Some(BindingPattern::BindingIdentifier(bi)) => Some(bi.name.as_str().to_string()),
             _ => None,
         };
 
-        let body_jsx = arrow_jsx(arrow)?;
+        let body_jsx = cb.jsx;
 
         // Source = the chain before `.map`, with outer signals `.value`-injected.
         let source_info =
@@ -1842,9 +1877,18 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         // parameter becomes a signal.
         let key = self.extract_key(body_jsx);
 
-        // Scope the item parameter in as a signal while lowering the item view.
+        // Scope the item parameter in as a signal while lowering the item view *and*
+        // the callback's preamble locals — both run inside the item builder where the
+        // item is a per-item signal (so references to it get `.value`).
         let restore = item_symbol.map(|s| (s, self.signals.insert(s, ITEM_PARAM_SIGNAL)));
-        let item = self.lower_root(body_jsx)?;
+        let preamble = cb
+            .preamble
+            .iter()
+            .map(|stmt| {
+                inject_stmt(self.source, self.scoping, &self.signals, self.props_symbol, stmt)
+            })
+            .collect();
+        let item = self.lower_root(body_jsx);
         if let Some((s, prev)) = restore {
             match prev {
                 Some(v) => self.signals.insert(s, v),
@@ -1856,8 +1900,9 @@ impl<'a, 'r> Lowerer<'a, 'r> {
             source,
             item_param,
             index_param,
-            item: Box::new(item),
+            item: Box::new(item?),
             key,
+            preamble,
         })
     }
 
@@ -2197,7 +2242,7 @@ mod tests {
             "export function L() { let items = $state([]); return <ul>{items.map(i => <li key={i.id}>{i.name}</li>)}</ul>; }",
         );
         let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
-        let ViewNode::List { source, item_param, index_param, item, key } = &children[0] else {
+        let ViewNode::List { source, item_param, index_param, item, key, .. } = &children[0] else {
             panic!("expected list, got {:?}", children[0]);
         };
         assert_eq!(item_param, "i");

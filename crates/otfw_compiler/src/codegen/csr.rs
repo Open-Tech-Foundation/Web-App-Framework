@@ -571,10 +571,11 @@ pub(crate) fn emit_build_item_fn(
     item: &ViewNode,
     item_param: &str,
     index_param: Option<&str>,
+    preamble: &[String],
 ) -> Vec<String> {
     let mut e = Emitter::new(lowered, Disposal::None);
     e.base = fn_name.to_string();
-    e.build_item_fn(fn_name, item, item_param, index_param);
+    e.build_item_fn(fn_name, item, item_param, index_param, preamble);
     e.lines
 }
 
@@ -587,7 +588,7 @@ pub(crate) fn emit_build_item_fn(
 pub(crate) fn emit_build_node_fn(lowered: &Lowered, fn_name: &str, node: &ViewNode) -> Vec<String> {
     let mut e = Emitter::new(lowered, Disposal::None);
     e.base = fn_name.to_string();
-    e.build_fn(fn_name, node, "");
+    e.build_fn(fn_name, node, "", &[]);
     e.lines
 }
 
@@ -955,11 +956,11 @@ impl<'a> Emitter<'a> {
                 self.emit_children_slot(&frag);
                 frag
             }
-            ViewNode::List { source, item_param, index_param, item, key } => {
+            ViewNode::List { source, item_param, index_param, item, key, preamble } => {
                 // A list as a node (e.g. a root list) lives in its own fragment.
                 let frag = self.fresh("frag");
                 self.line(format!("const {frag} = document.createDocumentFragment();"));
-                self.emit_list(&frag, *source, item_param, index_param.as_deref(), item, *key);
+                self.emit_list(&frag, *source, item_param, index_param.as_deref(), item, *key, preamble);
                 frag
             }
         }
@@ -975,10 +976,11 @@ impl<'a> Emitter<'a> {
         index_param: Option<&str>,
         item: &ViewNode,
         key: Option<ExpressionId>,
+        preamble: &[String],
     ) {
         let fn_name = format!("{}_item{}", self.base, self.list_counter);
         self.list_counter += 1;
-        self.build_item_fn(&fn_name, item, item_param, index_param);
+        self.build_item_fn(&fn_name, item, item_param, index_param, preamble);
 
         let source_code = self.lowered.exprs.code(source).unwrap_or("[]").to_string();
         let key_fn = match key {
@@ -993,23 +995,27 @@ impl<'a> Emitter<'a> {
     }
 
     /// Build a module-level `function {fn_name}(item, index) { … return root; }`
-    /// for a list item, accumulating it in `aux`.
+    /// for a list item, accumulating it in `aux`. `preamble` are the callback's
+    /// local declarations (`.value`-injected), emitted before the item view so it
+    /// can reference them.
     fn build_item_fn(
         &mut self,
         fn_name: &str,
         item: &ViewNode,
         item_param: &str,
         index_param: Option<&str>,
+        preamble: &[String],
     ) {
         let index = index_param.unwrap_or("_index");
-        self.build_fn(fn_name, item, &format!("{item_param}, {index}"));
+        self.build_fn(fn_name, item, &format!("{item_param}, {index}"), preamble);
     }
 
-    /// Emit a **local** `function {fn_name}({params}) { … return root; }` that
-    /// constructs `node`, into the current body so it closes over component
+    /// Emit a **local** `function {fn_name}({params}) { …preamble…; … return root; }`
+    /// that constructs `node`, into the current body so it closes over component
     /// signals/props. Inner effects are not collected (they live and die with the
-    /// produced node).
-    fn build_fn(&mut self, fn_name: &str, node: &ViewNode, params: &str) {
+    /// produced node). `preamble` lines (list-item locals) are emitted verbatim
+    /// before the constructed view.
+    fn build_fn(&mut self, fn_name: &str, node: &ViewNode, params: &str, preamble: &[String]) {
         let saved_lines = std::mem::take(&mut self.lines);
         let saved_counter = self.counter;
         let saved_disposal = self.disposal;
@@ -1023,6 +1029,9 @@ impl<'a> Emitter<'a> {
         self.disposal = saved_disposal;
 
         self.line(format!("function {fn_name}({params}) {{"));
+        for l in preamble {
+            self.line(format!("  {l}"));
+        }
         for l in &body_lines {
             self.line(format!("  {l}"));
         }
@@ -1042,7 +1051,7 @@ impl<'a> Emitter<'a> {
         for branch in branches {
             let fn_name = format!("{}_node{}", self.base, self.list_counter);
             self.list_counter += 1;
-            self.build_fn(&fn_name, branch, "");
+            self.build_fn(&fn_name, branch, "", &[]);
             calls.push(format!("{fn_name}()"));
         }
 
@@ -1060,7 +1069,7 @@ impl<'a> Emitter<'a> {
         for node in nodes {
             let fn_name = format!("{}_value{}", self.base, self.list_counter);
             self.list_counter += 1;
-            self.build_fn(&fn_name, node, "");
+            self.build_fn(&fn_name, node, "", &[]);
             calls.push(format!("{fn_name}()"));
         }
         self.line(substitute_branches(template, &calls));
@@ -1108,8 +1117,8 @@ impl<'a> Emitter<'a> {
                     js_string(text)
                 ));
             }
-            ViewNode::List { source, item_param, index_param, item, key } => {
-                self.emit_list(parent, *source, item_param, index_param.as_deref(), item, *key);
+            ViewNode::List { source, item_param, index_param, item, key, preamble } => {
+                self.emit_list(parent, *source, item_param, index_param.as_deref(), item, *key, preamble);
             }
             ViewNode::DynamicNode { expr, branches } => {
                 self.emit_dynamic_node(parent, *expr, branches);
@@ -1235,7 +1244,7 @@ impl<'a> Emitter<'a> {
                 for branch in branches {
                     let fn_name = format!("{}_value{}", self.base, self.list_counter);
                     self.list_counter += 1;
-                    self.build_fn(&fn_name, branch, "");
+                    self.build_fn(&fn_name, branch, "", &[]);
                     calls.push(format!("{fn_name}()"));
                 }
                 let template = self.lowered.exprs.code(*expr).unwrap_or("null").to_string();

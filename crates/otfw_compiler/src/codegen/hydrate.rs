@@ -535,8 +535,8 @@ impl<'a> Emitter<'a> {
             // brackets it with `<!--[-->…<!--]-->`. Adopt each item's server node, seed the
             // reconcile cache, then wire the same keyed-reconcile effect CSR uses — so later
             // data changes build/move/remove with no first-paint flash.
-            ViewNode::List { source, item_param, index_param, item, key } => {
-                self.emit_list(cur, *source, item_param, index_param.as_deref(), item, *key);
+            ViewNode::List { source, item_param, index_param, item, key, preamble } => {
+                self.emit_list(cur, *source, item_param, index_param.as_deref(), item, *key, preamble);
                 String::new()
             }
             // A conditional / dynamic-node region (`{cond ? <A/> : <B/>}`, `{cond && <X/>}`):
@@ -592,6 +592,7 @@ impl<'a> Emitter<'a> {
         index_param: Option<&str>,
         item: &ViewNode,
         key: Option<ExpressionId>,
+        preamble: &[String],
     ) {
         let n = self.list_counter;
         self.list_counter += 1;
@@ -599,10 +600,10 @@ impl<'a> Emitter<'a> {
         let build_fn = format!("{}_item{}", self.base, n);
 
         // The adopt-item walk (claims one server item subtree off the shared cursor).
-        self.emit_adopt_item_fn(&adopt_fn, item, item_param, index_param);
+        self.emit_adopt_item_fn(&adopt_fn, item, item_param, index_param, preamble);
         // The CSR build for items reconciled in *after* first paint — the same subtree the
         // component/page's own CSR arm builds, so no new helper imports are introduced.
-        for l in emit_build_item_fn(self.lowered, &build_fn, item, item_param, index_param) {
+        for l in emit_build_item_fn(self.lowered, &build_fn, item, item_param, index_param, preamble) {
             self.line(l);
         }
 
@@ -628,6 +629,7 @@ impl<'a> Emitter<'a> {
         item: &ViewNode,
         item_param: &str,
         index_param: Option<&str>,
+        preamble: &[String],
     ) {
         let saved_lines = std::mem::take(&mut self.lines);
         let saved_counter = self.counter;
@@ -643,6 +645,9 @@ impl<'a> Emitter<'a> {
 
         let index = index_param.unwrap_or("_index");
         self.line(format!("function {fn_name}(__ic, {item_param}, {index}) {{"));
+        for l in preamble {
+            self.line(format!("  {l}"));
+        }
         for l in &body {
             self.line(format!("  {l}"));
         }

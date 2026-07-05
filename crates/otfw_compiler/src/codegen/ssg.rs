@@ -340,8 +340,8 @@ impl<'a> Emitter<'a> {
                     "\"<!--c[-->\" + (__children ?? \"\") + \"<!--c]-->\"".to_string()
                 }
             }
-            ViewNode::List { source, item_param, index_param, item, key: _ } => {
-                self.list(*source, item_param, index_param.as_deref(), item)
+            ViewNode::List { source, item_param, index_param, item, key: _, preamble } => {
+                self.list(*source, item_param, index_param.as_deref(), item, preamble)
             }
             ViewNode::Fragment(children) => self.concat(children),
         }
@@ -438,6 +438,7 @@ impl<'a> Emitter<'a> {
         item_param: &str,
         index_param: Option<&str>,
         item: &ViewNode,
+        preamble: &[String],
     ) -> String {
         let n = self.fresh();
         let item_html = self.html_expr(item);
@@ -445,6 +446,13 @@ impl<'a> Emitter<'a> {
             Some(idx) => format!("const {idx} = __idx{n}; "),
             None => String::new(),
         };
+        // Callback locals (`.value`-injected) run before the item view, after the
+        // per-item signal shim, so the SSR item HTML can reference them.
+        let preamble_decl = preamble.iter().fold(String::new(), |mut acc, l| {
+            acc.push_str(l);
+            acc.push(' ');
+            acc
+        });
         self.server.insert("ssgList");
         // Bracket the list with region markers (docs/HYDRATION.md §3.1) so the client can
         // find the variable region's boundary to reconcile from N. The closing `<!--]-->`
@@ -452,12 +460,13 @@ impl<'a> Emitter<'a> {
         // comments. Each item renders to one root node (bare-text items keep their own
         // `<!--$-->…<!--/-->` markers), so no per-item separator is needed.
         format!(
-            "\"<!--[-->\" + ssgList({}, (__it{n}, __idx{n}) => {{ const {item_param} = {{ value: __it{n} }}; {idx_decl}return {item_html}; }}) + \"<!--]-->\"",
+            "\"<!--[-->\" + ssgList({}, (__it{n}, __idx{n}) => {{ const {item_param} = {{ value: __it{n} }}; {idx_decl}{preamble_decl}return {item_html}; }}) + \"<!--]-->\"",
             self.code(source),
             n = n,
             item_param = item_param,
             item_html = item_html,
             idx_decl = idx_decl,
+            preamble_decl = preamble_decl,
         )
     }
 
