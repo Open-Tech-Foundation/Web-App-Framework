@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-05
+
 ### Added
 
 - **Route loaders** (docs/DATA.md): a `loader.{js,ts}` sibling to a `page.*` runs on the
