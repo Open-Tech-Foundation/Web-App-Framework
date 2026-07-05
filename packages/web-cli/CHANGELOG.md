@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-05
+
 ### Tests
 
 - Real-browser hydration e2e (`tests/e2e/hydrate-browser.mjs`) now covers composed island
