@@ -5,36 +5,6 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ## [Unreleased]
 
-### Fixed
-
-- **Migration-review codegen bugs (valid JS/JSX that previously miscompiled).**
-  - `.map()` callback locals are preserved. Locals declared before the returned JSX in a
-    block-body callback (`.map((x) => { const h = …; return <li style={…}/>; })`) are now
-    re-emitted at the top of the item builder, so style/effect/handler bindings that
-    reference them resolve instead of throwing `ReferenceError` (`lower.rs`, `ViewNode::List`
-    gained a `preamble`; CSR/hydrate/SSG item builders emit it).
-  - **Function-expression map callbacks** (`.map(function (item, i) { return <…/>; })`) now
-    lower to a keyed list with the params in scope, matching the arrow form — previously the
-    item JSX was hoisted into a builder that couldn't see `item`/`i`.
-  - **Object-literal shorthand of a signal** expands correctly: `{ signal }` → `{ signal:
-    signal.value }` instead of the invalid `{ signal.value }` (the `.value` splice now emits
-    the key when a shorthand property's value is a signal).
-  - **Function-valued (callback) refs** (`ref={(el) => …}`) no longer miscompile to the
-    invalid `(fn).value = el`. They are unsupported by design — the ref model assigns the node
-    to a `$ref` signal — so a function-valued `ref` is now rejected up front with an actionable
-    diagnostic (`function_ref_diagnostic`) pointing at `$ref` + `$effect`/`onMount`/`onCleanup`
-    (or `$expose`), which express every callback-ref use case. Signal refs still assign
-    `ref.value = el`.
-  - **Named component exports from a `.jsx` module** are re-exported under their source name
-    (`export { IconElement as Icon }`), so a utility module can ship several icons and a
-    consumer's `import { Icon }` / `<Icon/>` resolves (previously `MISSING_EXPORT`).
-
-### Changed
-
-- A module that builds JSX imperatively and returns a non-JSX value (e.g. `parts.push(<li/>)`
-  in a loop, `return parts`) now gets a targeted diagnostic pointing at `.map()`/fragments,
-  instead of the cryptic "no component found" (`no_component_diagnostic`).
-
 ### Added
 
 - **Component (Custom Element) hydration** (`codegen/hydrate.rs` + `csr.rs`, Phase 2.0 —

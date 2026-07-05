@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`.map()` callback locals are preserved.** A local declared before the returned JSX in a
+  block-body callback (`items.map((x) => { const h = …; return <li style={…}/>; })`) no longer
+  throws `ReferenceError` at runtime — it is re-emitted inside the generated item builder.
+- **Function-expression `.map()` callbacks** (`items.map(function (item, i) { return <…/>; })`)
+  compile like arrow callbacks, with `item`/`i` in scope, instead of dropping them.
+- **Object-literal shorthand of a signal** compiles correctly: `{ count }` → `{ count: count.value }`
+  instead of the invalid `{ count.value }` (previously a build-time parse error).
+- **Named component exports from a `.jsx` module** resolve. A utility module can export several
+  components (`export function Icon…`) and a consumer's `import { Icon }` / `<Icon/>` now works
+  (previously `MISSING_EXPORT`).
+
+### Changed
+
+- **Function-valued (callback) refs are rejected with an actionable error.** `ref` takes a
+  `$ref` signal; a `ref={(el) => …}` used to miscompile to invalid code. It now fails the build
+  with guidance toward `$ref` + `$effect`/`onMount`/`onCleanup` (or `$expose`).
+- A component that builds JSX imperatively and returns a non-JSX value (`parts.push(<li/>)` in a
+  loop, `return parts`) now gets a clear diagnostic pointing at `.map()`/fragments instead of the
+  cryptic "no component found".
+
 ## [0.4.0] - 2026-07-05
 
 ### Fixed
