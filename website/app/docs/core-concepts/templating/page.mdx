@@ -50,3 +50,45 @@ export default function Field() {
   return <input ref={input} />;
 }
 ```
+
+A `$ref` is a **reactive signal** whose value is the element (or `null` before it
+mounts). Reading it inside `$effect` subscribes to it, so the effect re-runs whenever
+the node changes — e.g. when a conditional swaps `<input>` for `<textarea>`:
+
+```jsx
+const el = $ref();
+$effect(() => { if (el) measure(el); }); // re-measures when the node changes
+```
+
+### No callback refs — use `$ref` + lifecycle instead
+
+`ref` takes a `$ref`, **not a function**. A function-valued `ref` (`ref={(el) => …}`,
+React's "callback ref") is rejected by the compiler, because everything a callback ref
+does is expressed more directly with `$ref` plus effects, lifecycle, and `$expose`:
+
+| You want to… | Do this |
+| --- | --- |
+| Access / focus / scroll a node | `$ref` + `onMount` (or an event handler) |
+| Measure a node, re-measure when it changes | `$ref` read inside `$effect` |
+| Initialize a library on a node, tear it down | `onMount(() => { const x = init(el); return () => x.destroy(); })` |
+| Clean up when the element leaves | `onCleanup(() => …)` |
+| Give a parent an imperative handle | [`$expose`](/docs/core-concepts/components) — expose an API, not the raw node |
+| Manage a dynamic set of elements (focus/scroll item N) | Make each item its own component that owns its `$ref` and `$expose`s what the parent needs |
+
+```jsx
+// Initialize + tear down a third-party editor on the element:
+export default function Editor() {
+  const el = $ref();
+  onMount(() => {
+    const cm = new CodeMirror(el);
+    return () => cm.destroy();
+  });
+  return <div ref={el} />;
+}
+```
+
+<Callout type="note" title="Why not callback refs?">
+  A `$ref` is reactive and the framework has explicit lifecycle hooks, so a callback
+  ref adds no capability — only a second way to receive a node. Exposing an **API**
+  from a child (via `$expose`) is also a stronger boundary than handing out its DOM.
+</Callout>
