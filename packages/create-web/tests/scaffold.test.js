@@ -180,6 +180,26 @@ describe("scaffold — bare template", () => {
     const css = readFileSync(join(dir, "app/global.css"), "utf-8");
     expect(css.startsWith('@import "tailwindcss";\n\n')).toBe(true);
   });
+
+  test("typescript option emits .tsx pages, .ts API routes, and tsconfig", async () => {
+    const dir = makeTmpDir("bare-ts");
+    const { packageJson } = await scaffold({ template: "bare", targetDir: dir, typescript: true });
+
+    expect(existsSync(join(dir, "app/page.tsx"))).toBe(true);
+    expect(existsSync(join(dir, "app/layout.tsx"))).toBe(true);
+    expect(existsSync(join(dir, "app/api/hello/route.ts"))).toBe(true);
+    expect(existsSync(join(dir, "app/page.jsx"))).toBe(false);
+    expect(existsSync(join(dir, "tsconfig.json"))).toBe(true);
+    expect(existsSync(join(dir, "app/otfw-env.d.ts"))).toBe(true);
+    expect(packageJson.devDependencies?.typescript).toBe("^5.8.0");
+
+    const page = readFileSync(join(dir, "app/page.tsx"), "utf-8");
+    expect(page).toContain("app/page.tsx");
+    expect(page).toContain("app/api/hello/route.ts");
+
+    const layout = readFileSync(join(dir, "app/layout.tsx"), "utf-8");
+    expect(layout).toContain("children: unknown");
+  });
 });
 
 describe("scaffold — docs template", () => {
@@ -206,6 +226,22 @@ describe("scaffold — docs template", () => {
       const latest = await fetchLatestVersion(name);
       expect(generated[name]).toBe(`^${latest}`);
     }
+  });
+
+  test("typescript option emits .tsx layouts and keeps JS config/meta files", async () => {
+    const dir = makeTmpDir("docs-ts");
+    const { packageJson } = await scaffold({ template: "docs", targetDir: dir, typescript: true });
+
+    expect(existsSync(join(dir, "app/page.tsx"))).toBe(true);
+    expect(existsSync(join(dir, "app/layout.tsx"))).toBe(true);
+    expect(existsSync(join(dir, "app/docs/layout.tsx"))).toBe(true);
+    expect(existsSync(join(dir, "otfw.config.js"))).toBe(true);
+    expect(existsSync(join(dir, "app/docs/_meta.js"))).toBe(true);
+    expect(existsSync(join(dir, "tsconfig.json"))).toBe(true);
+    expect(packageJson.devDependencies?.typescript).toBe("^5.8.0");
+
+    const tsconfig = JSON.parse(readFileSync(join(dir, "tsconfig.json"), "utf-8"));
+    expect(tsconfig.include).toContain("otfw.config.js");
   });
 });
 

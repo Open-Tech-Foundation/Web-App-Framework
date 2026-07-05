@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { applyTypescript } from "./apply-typescript.js";
 import { pinOpentfDeps } from "./resolve-deps.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,6 +27,7 @@ function copyDir(srcDir, destDir) {
  *   template: "bare" | "docs",
  *   targetDir: string,
  *   styling?: "none" | "tailwind",
+ *   typescript?: boolean,
  *   templatesRoot?: string,
  *   onResolved?: (name: string, version: string) => void,
  * }} opts
@@ -34,6 +36,7 @@ export async function scaffold({
   template,
   targetDir,
   styling = "none",
+  typescript = false,
   templatesRoot = defaultTemplatesRoot,
   onResolved,
 }) {
@@ -46,6 +49,10 @@ export async function scaffold({
   const pkg = JSON.parse(fs.readFileSync(templatePkgPath, "utf-8"));
   pkg.name = path.basename(targetDir);
   await pinOpentfDeps(pkg, { onResolved });
+
+  if (typescript) {
+    pkg.devDependencies = { ...pkg.devDependencies, typescript: "^5.8.0" };
+  }
 
   fs.mkdirSync(targetDir, { recursive: true });
 
@@ -63,6 +70,14 @@ export async function scaffold({
     const cssPath = path.join(targetDir, "app", "global.css");
     const css = fs.readFileSync(cssPath, "utf-8");
     fs.writeFileSync(cssPath, `@import "tailwindcss";\n\n${css}`);
+  }
+
+  if (typescript) {
+    applyTypescript(targetDir, template);
+    fs.writeFileSync(
+      path.join(targetDir, "package.json"),
+      JSON.stringify(pkg, null, 2) + "\n",
+    );
   }
 
   return { packageJson: pkg };

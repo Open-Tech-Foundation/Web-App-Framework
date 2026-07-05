@@ -13,6 +13,10 @@
 - After scaffolding, the tool runs `<pm> install` automatically using the package manager
   that invoked it (`npm`/`pnpm`/`yarn`/`bun` via `npm_config_user_agent`). Set
   `CREATE_WEB_SKIP_INSTALL=1` to skip (local dev/tests).
+- TypeScript project option: choose TypeScript at the prompt to scaffold `.tsx` pages,
+  `.ts` API routes, `tsconfig.json`, macro typings (`app/otfw-env.d.ts`), and a
+  `typescript` devDependency. Docs sites keep `otfw.config.js` and `_meta.js` (the
+  toolchain reads those as JavaScript today).
 
 ## [0.11.0] - 2026-07-05
 

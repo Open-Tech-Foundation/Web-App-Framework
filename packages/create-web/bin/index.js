@@ -60,6 +60,20 @@ async function init() {
           ],
         },
         {
+          type: "select",
+          name: "language",
+          message: reset("Select a language:"),
+          initial: 0,
+          choices: [
+            { title: reset("JavaScript"), value: "js", description: ".jsx pages and .js API routes" },
+            {
+              title: cyan("TypeScript"),
+              value: "ts",
+              description: ".tsx pages, .ts API routes, and a tsconfig.json",
+            },
+          ],
+        },
+        {
           type: (_, { template } = {}) => (template === "docs" ? null : "select"),
           name: "styling",
           message: reset("Select a styling solution:"),
@@ -85,7 +99,7 @@ async function init() {
     return;
   }
 
-  const { styling, overwrite, template = "bare" } = result;
+  const { styling, overwrite, template = "bare", language = "js" } = result;
   const root = path.join(process.cwd(), targetDir);
 
   if (overwrite) emptyDir(root);
@@ -96,6 +110,7 @@ async function init() {
       template,
       targetDir: root,
       styling,
+      typescript: language === "ts",
       onResolved: (name, version) =>
         console.log(`  ${reset("Resolved")} ${cyan(name)} ${yellow(`^${version}`)}`),
     });
