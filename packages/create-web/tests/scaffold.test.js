@@ -9,6 +9,7 @@ import {
   listOpentfDeps,
   pinOpentfDeps,
 } from "../bin/resolve-deps.js";
+import { detectPackageManager, devCommand, installCommand } from "../bin/detect-pm.js";
 import { scaffold } from "../bin/scaffold.js";
 
 const pkgRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -16,6 +17,8 @@ const templatesRoot = join(pkgRoot, "templates");
 const tmpBase = join(tmpdir(), `create-web-test-${process.pid}`);
 const savedRegistry = process.env.CREATE_WEB_NPM_REGISTRY;
 const savedSkip = process.env.CREATE_WEB_SKIP_NPM;
+const savedPm = process.env.CREATE_WEB_PM;
+const savedUserAgent = process.env.npm_config_user_agent;
 
 /** @param {Record<string, unknown>} pkg */
 function opentfRanges(pkg) {
@@ -60,10 +63,38 @@ afterEach(() => {
   else process.env.CREATE_WEB_NPM_REGISTRY = savedRegistry;
   if (savedSkip === undefined) delete process.env.CREATE_WEB_SKIP_NPM;
   else process.env.CREATE_WEB_SKIP_NPM = savedSkip;
+  if (savedPm === undefined) delete process.env.CREATE_WEB_PM;
+  else process.env.CREATE_WEB_PM = savedPm;
+  if (savedUserAgent === undefined) delete process.env.npm_config_user_agent;
+  else process.env.npm_config_user_agent = savedUserAgent;
 });
 
 afterAll(() => {
   rmSync(tmpBase, { recursive: true, force: true });
+});
+
+describe("detect-pm", () => {
+  test("detects pnpm, yarn, bun, and npm from npm_config_user_agent", () => {
+    process.env.npm_config_user_agent = "pnpm/9.12.0 npm/? node/v22.0.0";
+    expect(detectPackageManager()).toBe("pnpm");
+    process.env.npm_config_user_agent = "yarn/4.5.0 npm/? node/v22.0.0";
+    expect(detectPackageManager()).toBe("yarn");
+    process.env.npm_config_user_agent = "bun/1.3.12";
+    expect(detectPackageManager()).toBe("bun");
+    process.env.npm_config_user_agent = "npm/10.9.0 node/v22.0.0";
+    expect(detectPackageManager()).toBe("npm");
+  });
+
+  test("CREATE_WEB_PM overrides detection for local testing", () => {
+    process.env.npm_config_user_agent = "npm/10.9.0 node/v22.0.0";
+    process.env.CREATE_WEB_PM = "pnpm";
+    expect(detectPackageManager()).toBe("pnpm");
+  });
+
+  test("installCommand and devCommand use the detected manager", () => {
+    expect(installCommand("pnpm")).toBe("pnpm install");
+    expect(devCommand("yarn")).toBe("yarn run dev");
+  });
 });
 
 describe("resolve-deps", () => {

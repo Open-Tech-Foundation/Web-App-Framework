@@ -10,6 +10,9 @@
   (local dev only).
 - Isolated integration tests under `tests/scaffold.test.js` cover both templates, mock
   registry pinning, unreachable-registry failure, and Tailwind styling.
+- After scaffolding, the tool runs `<pm> install` automatically using the package manager
+  that invoked it (`npm`/`pnpm`/`yarn`/`bun` via `npm_config_user_agent`). Set
+  `CREATE_WEB_SKIP_INSTALL=1` to skip (local dev/tests).
 
 ## [0.11.0] - 2026-07-05
 

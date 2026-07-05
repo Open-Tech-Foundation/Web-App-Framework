@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import prompts from "prompts";
 import { cyan, green, red, reset, yellow, bold } from "kolorist";
+import { detectPackageManager, devCommand } from "./detect-pm.js";
+import { installDependencies } from "./install-deps.js";
 import { scaffold } from "./scaffold.js";
 
 const orange = (str) => `\x1b[38;2;255;165;0m${str}${reset("")}`;
@@ -106,12 +108,30 @@ async function init() {
     );
   }
 
+  const pm = detectPackageManager();
+
+  if (process.env.CREATE_WEB_SKIP_INSTALL !== "1") {
+    console.log(`\n  ${reset("Installing dependencies with")} ${cyan(pm)}…\n`);
+    try {
+      installDependencies(root, pm);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `${red("✖")} ${pm} install failed — project files were created but dependencies are not installed.\n` +
+          `  ${detail}\n` +
+          `  Run ${cyan(`${pm} install`)} in the project directory and try again.`,
+      );
+    }
+  }
+
   const rel = path.relative(process.cwd(), root);
   console.log(`\n${green("✔")} ${bold(cyan("OTF Web"))} project created! 🚀\n`);
-  console.log(`  ${reset("Next steps (the toolchain runs on Bun):")}\n`);
+  console.log(`  ${reset("Next steps:")}\n`);
   if (rel) console.log(`  ${cyan(`cd ${rel}`)}`);
-  console.log(`  ${cyan("bun install")}`);
-  console.log(`  ${cyan("bun run dev")}\n`);
+  if (process.env.CREATE_WEB_SKIP_INSTALL === "1") {
+    console.log(`  ${cyan(`${pm} install`)}`);
+  }
+  console.log(`  ${cyan(devCommand(pm))}\n`);
 }
 
 function emptyDir(dir) {
