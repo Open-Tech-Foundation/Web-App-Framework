@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-05
+
 ### Fixed
 
 - A component that **builds during the hydration pass no longer cascades

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-05
+
 ### Added
 
 - `runBuild(fn)` — runs `fn` with the hydration flag (`isHydrating()`) cleared, restoring
