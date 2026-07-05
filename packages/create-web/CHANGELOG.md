@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- All templates now ship a `jsconfig.json` with `jsx: "preserve"` and
+  `jsxImportSource: "@opentf/web"` for editor JSX support. TypeScript projects get the
+  same options in `tsconfig.json` instead.
+
 ## [0.12.0] - 2026-07-05
 
 ### Added

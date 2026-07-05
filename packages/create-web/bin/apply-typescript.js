@@ -17,6 +17,7 @@ const TSCONFIG = {
     module: "ESNext",
     moduleResolution: "bundler",
     jsx: "preserve",
+    jsxImportSource: "@opentf/web",
     strict: true,
     skipLibCheck: true,
     noEmit: true,
@@ -142,6 +143,9 @@ export function applyTypescript(targetDir, template, pkg) {
     const { allowJs: _allowJs, ...rest } = tsconfig.compilerOptions;
     tsconfig.compilerOptions = rest;
   }
+
+  const jsconfigPath = path.join(targetDir, "jsconfig.json");
+  if (fs.existsSync(jsconfigPath)) fs.rmSync(jsconfigPath);
 
   fs.writeFileSync(path.join(targetDir, "tsconfig.json"), JSON.stringify(tsconfig, null, 2) + "\n");
 

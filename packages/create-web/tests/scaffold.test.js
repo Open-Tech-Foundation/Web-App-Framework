@@ -164,6 +164,10 @@ describe("scaffold — bare template", () => {
     expect(existsSync(join(dir, ".gitignore"))).toBe(true);
     expect(existsSync(join(dir, "app/page.jsx"))).toBe(true);
     expect(existsSync(join(dir, "app/api/hello/route.js"))).toBe(true);
+    expect(existsSync(join(dir, "jsconfig.json"))).toBe(true);
+    const jsconfig = JSON.parse(readFileSync(join(dir, "jsconfig.json"), "utf-8"));
+    expect(jsconfig.compilerOptions.jsx).toBe("preserve");
+    expect(jsconfig.compilerOptions.jsxImportSource).toBe("@opentf/web");
     expect(packageJson.name).toBe(dir.split("/").pop());
 
     const generated = opentfRanges(packageJson);
@@ -192,8 +196,13 @@ describe("scaffold — bare template", () => {
     expect(existsSync(join(dir, "app/api/hello/route.ts"))).toBe(true);
     expect(existsSync(join(dir, "app/page.jsx"))).toBe(false);
     expect(existsSync(join(dir, "tsconfig.json"))).toBe(true);
+    expect(existsSync(join(dir, "jsconfig.json"))).toBe(false);
     expect(existsSync(join(dir, "app/otfw-env.d.ts"))).toBe(true);
     expect(packageJson.devDependencies?.typescript).toBe("^5.8.0");
+
+    const tsconfig = JSON.parse(readFileSync(join(dir, "tsconfig.json"), "utf-8"));
+    expect(tsconfig.compilerOptions.jsx).toBe("preserve");
+    expect(tsconfig.compilerOptions.jsxImportSource).toBe("@opentf/web");
 
     const page = readFileSync(join(dir, "app/page.tsx"), "utf-8");
     expect(page).toContain("app/page.tsx");
@@ -257,6 +266,7 @@ describe("scaffold — library template", () => {
     expect(existsSync(join(dir, "tests/counter.test.js"))).toBe(true);
     expect(existsSync(join(dir, "bunfig.toml"))).toBe(true);
     expect(existsSync(join(dir, "test-setup.js"))).toBe(true);
+    expect(existsSync(join(dir, "jsconfig.json"))).toBe(true);
     expect(readFileSync(join(dir, "bunfig.toml"), "utf-8")).toContain("./test-setup.js");
     expect(packageJson.peerDependencies?.["@opentf/web"]).toMatch(/^\^/);
     expect(packageJson.devDependencies?.["@opentf/web-test"]).toMatch(/^\^/);
@@ -275,6 +285,9 @@ describe("scaffold — library template", () => {
       "../src/Counter.tsx",
     );
     expect(packageJson.exports?.["."]).toBe("./index.ts");
+    expect(existsSync(join(dir, "jsconfig.json"))).toBe(false);
+    const tsconfig = JSON.parse(readFileSync(join(dir, "tsconfig.json"), "utf-8"));
+    expect(tsconfig.compilerOptions.jsxImportSource).toBe("@opentf/web");
   });
 });
 
