@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-05
+
 ### Changed
 
 - App and docs templates (`@opentf/web-cli@^1.3.1`): scaffolded projects pick up the compiler fix for `onMount` inside SSG pages, so pre-rendered sites no longer crash on hydration.
