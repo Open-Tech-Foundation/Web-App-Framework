@@ -236,15 +236,31 @@ since those helpers already operate on existing nodes. Only acquisition (the cla
   serve protocol carries the target as a token (`csr`/`ssg`/`hydrate`), so the client
   build requests `--target=hydrate` and gets the dual module per route.
 - **`connectedCallback` branches on `isHydrating() && this.firstChild`** _(implemented)_ —
-  route chunks are code-split (`() => import(...)`), so a route's `customElements.define`
-  runs **during the router's `await import()`**, and every server-rendered `<web-*>` upgrades
-  synchronously *before* the page hydrate factory runs. The router therefore sets the flag
-  with `beginHydration()` **before** importing the route module and clears it in `finally`,
-  so those upgrading components observe it and adopt; the factory then claims the hosts and
-  passes props (components self-hydrate as islands bottom-up, then the page wires the rest).
-  On a later SPA navigation the flag is false, so the same class builds. (First-paint
-  hydration is a single sequential boot step, so the module-global flag needs no re-entrancy
+  a component upgrades — and runs this switch — the instant its class is
+  `customElements.define`d. Route chunks are code-split, so a *route's* components define
+  during the router's `await import()`; but **framework components imported eagerly by the
+  app entry — notably `<Link>`, which `@opentf/web`'s index bare-imports so its registration
+  survives tree-shaking — are defined while the entry bundle evaluates, before `mountApp`
+  runs.** So the flag cannot merely be turned on inside `mountApp`/`beginHydration`: those
+  eager hosts would already have upgraded with the flag off and taken the *build* arm,
+  silently re-wrapping the server DOM they should have adopted (`<a><a>`).
+
+  The flag therefore **initializes synchronously at `hydrate.js` module load from the server
+  sentinel** (`document.querySelector("[data-otfw-hydrate]")`, stamped only when the page
+  shipped adoptable markup). The deferred entry bundle evaluates after the HTML is parsed, so
+  the sentinel is present, and `hydrate.js` is a transitive dependency of every component (via
+  the runtime), so it evaluates **before any component's `define`** — every server host, eager
+  or lazy, observes the flag and adopts. `mountApp` still brackets the first-paint pass with
+  `beginHydration`/`endHydration` and **clears the flag when it decides not to hydrate** (no
+  sentinel / empty root), so a CSR mount and every later SPA navigation build fresh. (First
+  paint is a single sequential boot step, so the module-global flag needs no re-entrancy
   guard; `runHydration` remains for synchronous unit tests.)
+
+  > **Corrected assumption.** An earlier version of this section reasoned that "route chunks
+  > are lazy, so `define` runs during `await import()`, so setting the flag in `beginHydration`
+  > is early enough." That is false for eagerly-imported framework components (every `<Link>`
+  > on every page double-built), and was invisible because a double-build throws no mismatch —
+  > only a composition e2e that asserts *no `<a>` inside an `<a>`* catches it (§5).
 
 ### 3.5 Mismatch detection & recovery — per-component _(implemented)_
 
@@ -354,6 +370,17 @@ whitespace nodes, double mounts). The bar:
   button, and the e2e asserts the layout, the nested page, the card's own toggle, and the
   parent-owned slotted button all adopt with `removedServer === 0` (no rebuild anywhere).
 
+  **Composition coverage (the bugs isolation missed).** Each feature above passed alone while
+  real pages broke, because the failures live in *combinations*. The fixture now also composes:
+  an **eagerly-defined `<Link>`** island (guards the flag-timing double-build — asserted by
+  *no `<a>` nested in an `<a>`*, since a double-build throws no error), a **recursive `<Tree>`**
+  of per-node rich props (guards the parent-clobbers-child-prop bug — asserted by each leaf
+  adopting its own href and the right leaf/group branch), a **`<Link class=…>`** (guards the
+  host-hook-clobbers-`class` bug), and a **conditional-root `<Pill>`** (guards fragment-root
+  rebuild). And the suite now asserts a **clean console** (`[otfw:hydrate]`/mismatch count `0`):
+  a per-component mismatch is reported even when the DOM self-heals, so a correct *final* DOM
+  is necessary but not sufficient — silent adoption is the actual bar.
+
 ---
 
 ## 6. Sub-design decisions & open items
@@ -387,10 +414,30 @@ whitespace nodes, double mounts). The bar:
   markers; the component `skipSlot`s over its slot, the parent `hydrateSlot`s to locate it and
   adopt the slotted content's reactivity. Order-independent (adoption only wires nodes).
 
+**Prop-hydration ordering (fixed — regression-guarded by the composition e2e, §5):**
+
+- **The flag must be live before *eager* defines, not just before the route import** — seeded
+  from the sentinel at `hydrate.js` load (§3.4). Otherwise every eagerly-defined `<Link>`
+  double-builds its server `<a>`.
+- **A parent adopt walk must not stringify a child island's rich prop.** In a component
+  tree, a parent's `connectedCallback` runs before its later-in-DOM children upgrade, so a
+  `setProp(childHost, prop, obj)` found the child inert and fell back to `setAttr` —
+  serializing the object and, via `attributeChangedCallback`, clobbering the child's
+  payload-hydrated signal. `setProp` now forces the pending upgrade so a component prop
+  always lands as a property.
+- **A `class` prop must survive the host hook.** The server stamps the hook onto the host's
+  `class` attribute; the hydrate constructor latches `_stampingHostClass` so the upgrade-time
+  `attributeChangedCallback` for it doesn't overwrite the payload `class` value.
+
 **Open:**
 
-- **Fragment / multi-node route roots** — the adopt walk assumes a single claimed root node;
-  a page/component whose view root is a fragment falls back to a clean CSR build.
+- **Deeply-composed pages can still leave some islands rebuilt.** On a page with many nested
+  components (the docs route: eager navbar + docs layout + a recursive sidebar of `<Link>`s),
+  a subset of `<web-link>`s still rebuild rather than adopt (a first-paint flash + a reported
+  per-component mismatch; the final DOM self-heals). The isolated compositions all adopt
+  cleanly (§5); the residual is an ordering interaction at scale, under investigation.
+- **Fragment / multi-node *route* roots** — a page/layout whose view root is a fragment still
+  falls back to a clean CSR build (component fragment roots now adopt, §3.2).
 - MPA-only build optimization: when `nav: "mpa"`, components never client-build, so the
   build arm is dead and `hydrate.rs` could emit pure-adopt components (smaller bundle).
 
