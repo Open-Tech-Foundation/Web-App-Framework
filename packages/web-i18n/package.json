@@ -1,6 +1,6 @@
 {
   "name": "@opentf/web-i18n",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Internationalization for OTF Web — ICU messages, Intl formatters, and a reactive t() that pairs with the core's URL-prefix locale routing.",
   "main": "index.js",
   "module": "index.js",

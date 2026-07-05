@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-05
+
 ### Fixed
 
 - **Route guard `to` object** now exposes `pathname` (the documented, platform-standard

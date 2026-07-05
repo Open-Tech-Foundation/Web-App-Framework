@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-07-05
+
 ### Added
 
 - All templates now ship a `jsconfig.json` with `jsx: "preserve"` and
