@@ -132,16 +132,29 @@ async function evalJS(client, expression) {
 // tag every server node as the parser inserts it, and count any tagged node that is
 // later removed. A CSR rebuild would replaceChildren() — tearing the tagged subtree
 // out — so a non-zero removal count (or a live node missing its tag) proves a rebuild.
+//
+// One island (<Panel>, class .web-panel) is *deliberately* non-adoptable (a `const x =
+// <jsx>` value used in a conditional root → RebuildIfServerChildren), so it legitimately
+// rebuilds its own subtree on first paint. That's the exact case the `runBuild` guard
+// protects: the rebuild must not cascade HydrationMismatches into its child islands. So
+// removals *within* .web-panel are expected and counted separately (`__removedInPanel`);
+// `__removedServer` stays the strict "nothing outside a known-non-adoptable island was
+// torn out" invariant for the whole rest of the page.
 const OBSERVER = `
   window.__removedServer = 0;
+  window.__removedInPanel = 0;
   const tag = (n) => {
     if (n.nodeType === 1 || n.nodeType === 3) n.__server = true;
     if (n.querySelectorAll) for (const d of n.querySelectorAll('*')) d.__server = true;
   };
+  const inPanel = (parent) => !!(parent && parent.closest && parent.closest('.web-panel'));
   const mo = new MutationObserver((records) => {
     for (const rec of records) {
       for (const n of rec.addedNodes) tag(n);
-      for (const n of rec.removedNodes) if (n.__server) window.__removedServer++;
+      for (const n of rec.removedNodes) if (n.__server) {
+        if (inPanel(rec.target)) window.__removedInPanel++;
+        else window.__removedServer++;
+      }
     }
   });
   // Observe the document node itself: at document-start documentElement may not yet
@@ -166,6 +179,7 @@ const PROBE = `(() => {
     mainIsServer: !!(main && main.__server),
     incIsServer: !!(incBtn && incBtn.__server),
     removedServer: window.__removedServer,
+    removedInPanel: window.__removedInPanel,
     countText: norm(p),
     buttonCount: document.querySelectorAll('#app button').length,
     // component island
@@ -224,6 +238,18 @@ const PROBE = `(() => {
     // be adopted, not destroyed-and-rebuilt.
     pill: (() => { const b = document.querySelector('#app .pill-host b.pill-on'); return b ? { text: norm(b), server: !!b.__server } : null; })(),
     pillOff: !!document.querySelector('#app .pill-host i.pill-off'),
+    // A non-adoptable component (Panel — a const bound to JSX, used in a conditional root,
+    // so RebuildIfServerChildren) that wraps child islands (Tree then Link). On hydration it
+    // rebuilds; the runBuild guard must make its fresh Link islands BUILD, not adopt DOM
+    // Panel just created — otherwise a HydrationMismatch cascade (the docs-site regression).
+    // The panel's own tree must render its three leaf links correctly, with no double anchor.
+    panelTitle: norm(document.querySelector('#app .panel-framed .panel-title')),
+    panelLinks: Array.from(document.querySelectorAll('#app .panel-framed a.tree-link')).map((a) => ({
+      href: a.getAttribute('href'),
+      text: norm(a),
+      hasDot: !!a.querySelector('.tree-dot'),
+      innerAnchors: a.querySelectorAll('a').length,
+    })),
   };
 })()`;
 
@@ -291,8 +317,23 @@ async function run(port) {
     );
     assert(s.pill && s.pill.server && s.pill.text === "ON", "the conditional-root <Pill> adopted its rendered branch (<b>ON)");
     assert(!s.pillOff, "the untaken <Pill> branch (<i>OFF) is absent, as the server rendered");
-    // Nothing rebuilt anywhere during the whole first paint (islands, tree, pill included).
-    assert(s.removedServer === 0, "still no server node removed after the tree/pill islands adopted");
+    // The non-adoptable <Panel> (RebuildIfServerChildren) rebuilds its subtree — but the
+    // `runBuild` guard must make that rebuild's child islands (<Tree> → <Link>) build, not
+    // re-adopt torn-down DOM. So its links render correctly and NOTHING double-builds an <a>.
+    assert(s.panelTitle === "Panel", "the non-adoptable <Panel> rebuilt its own view (title present)");
+    assert(s.panelLinks.length === 3, "the Panel's nested tree rebuilt its three leaf links");
+    assert(
+      s.panelLinks.map((l) => l.href).join(",") === "/a,/b,/c" && s.panelLinks.every((l) => l.hasDot),
+      "the Panel's <Link> islands built correctly (hrefs + slotted dots), not a mismatch-mangled DOM",
+    );
+    assert(
+      s.panelLinks.every((l) => l.innerAnchors === 0),
+      "no Panel <Link> double-built its <a> — the rebuild's islands built once (runBuild cleared the flag)",
+    );
+    assert(s.removedInPanel > 0, "the non-adoptable <Panel> did rebuild its server subtree (the guarded path ran)");
+    // Nothing rebuilt anywhere OUTSIDE the deliberately-non-adoptable Panel (islands, tree,
+    // pill, list, layout chain all adopted in place).
+    assert(s.removedServer === 0, "no server node removed outside <Panel> — everything adoptable adopted");
     // A per-component mismatch would have been reported to the console even though the DOM
     // self-heals — the console must be clean for a genuinely correct hydration.
     const hydrationErrors = client.pageErrors.filter((e) => /otfw:(hydrate|render)|HydrationMismatch/.test(e));

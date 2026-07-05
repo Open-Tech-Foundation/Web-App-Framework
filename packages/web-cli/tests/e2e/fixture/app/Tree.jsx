@@ -1,4 +1,4 @@
-import { Link } from "@opentf/web";
+import { Link, router } from "@opentf/web";
 
 // A recursive sidebar-shaped island: each node is either a <Link> (a component with a
 // {children} slot, eagerly defined by @opentf/web) or a plain group <span>, plus an
@@ -12,7 +12,7 @@ export default function Tree({ node }) {
   return (
     <li class="tree-node">
       {item.path ? (
-        <Link href={item.path} class="tree-link">
+        <Link href={item.path} class={router.pathname === item.path ? "tree-link tree-active" : "tree-link"}>
           <span class="tree-dot"></span>
           {item.title}
         </Link>
