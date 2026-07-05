@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-05
+
 ### Added
 
 - The app template now scaffolds an example API route (`app/api/hello/route.js`, a

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-05
+
 ### Added
 
 - **Route loaders — client half** (docs/DATA.md): the reactive `router.data` exposes a
