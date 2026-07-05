@@ -18,26 +18,42 @@ export const scaffoldTabs = [
 
 ### Scaffold a project
 
-Create a new project with the initializer. It's interactive — it sets up the project
-and lets you pick a styling solution and optional modules. Use whichever package
+Create a new project with the initializer. It's interactive — pick a project type,
+language, and (for apps and libraries) a styling solution. Use whichever package
 manager you prefer:
 
 <Tabs tabs={scaffoldTabs} />
 
-### Install dependencies
+The scaffolder resolves every `@opentf/*` dependency to the latest published version
+on npm, writes the project files, then runs `<pm> install` with the package manager
+that invoked it (`npm`, `pnpm`, `yarn`, or `bun`).
+
+| Prompt | Options |
+| --- | --- |
+| **Project type** | **App** — minimal SPA starter · **Documentation site** — MDX docs with `@opentf/web-docs` · **Library** — publishable component package with tests |
+| **Language** | JavaScript (`.jsx`) or TypeScript (`.tsx` + `tsconfig.json`) |
+| **Styling** | Plain CSS or Tailwind CSS (App and Library only) |
+
+### Start developing
+
+For **App** and **Documentation site** projects, start the dev server:
 
 ```bash
 cd my-app
-bun install
-```
-
-### Start the dev server
-
-```bash
 bun run dev
 ```
 
 The dev server compiles on demand and hot-reloads on save.
+
+For **Library** projects, run the included test suite instead:
+
+```bash
+cd my-library
+bun test
+```
+
+See [Library template](/docs/getting-started/library-template) for how to publish and
+consume a component package.
 
 </Steps>
 
@@ -47,7 +63,7 @@ The dev server compiles on demand and hot-reloads on save.
 
 ## Production build
 
-Build a static bundle you can host anywhere:
+Build a static bundle you can host anywhere (App and Docs projects):
 
 ```bash
 bun run build
@@ -69,6 +85,9 @@ The compiler uses a custom JSX pipeline. Point your `jsconfig.json` (or
   }
 }
 ```
+
+TypeScript projects scaffolded with `create-web` already include a `tsconfig.json`
+and macro typings in `app/otfw-env.d.ts`.
 
 <Callout type="info" title="Why jsxImportSource">
   It tells your editor where JSX types come from, so autocomplete and type-checking

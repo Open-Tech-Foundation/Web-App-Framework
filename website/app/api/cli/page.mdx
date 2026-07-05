@@ -3,6 +3,8 @@ title: CLI
 description: The otfw command — dev server, production build, and static generation.
 ---
 
+import { Callout } from "@opentf/web-docs";
+
 # CLI
 
 The `otfw` command (from `@opentf/web-cli`) drives the toolchain. Projects expose it
@@ -30,7 +32,29 @@ Create a new project with the `create` initializer:
 
 ```bash
 bun create @opentf/web my-app
+npm create @opentf/web@latest my-app
+pnpm create @opentf/web my-app
+yarn create @opentf/web my-app
 ```
+
+The scaffolder (`@opentf/create-web`) is interactive:
+
+| Prompt | Options |
+| --- | --- |
+| **Project type** | **App** — SPA with routing, layouts, and an example API route · **Documentation site** — MDX docs powered by `@opentf/web-docs` · **Library** — publishable component package with `bun test` |
+| **Language** | JavaScript or TypeScript (`.tsx` pages, `.ts` API routes, `tsconfig.json`) |
+| **Styling** | Plain CSS or Tailwind CSS (App and Library only) |
+
+Before writing files, it resolves every `@opentf/*` dependency in the generated
+`package.json` to `^<latest>` from npm. Scaffolding aborts if the registry is
+unreachable. After the project is written, it runs `<pm> install` with the package
+manager that invoked the command.
+
+<Callout type="info" title="Next steps">
+  App and Docs projects suggest `bun run dev` (or the equivalent for your package
+  manager). Library projects suggest `bun test` — see
+  [Library template](/docs/getting-started/library-template).
+</Callout>
 
 ## Dev server notes
 

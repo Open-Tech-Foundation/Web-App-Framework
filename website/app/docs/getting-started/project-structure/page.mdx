@@ -3,9 +3,16 @@ title: Project Structure
 description: How an OTF Web project is laid out and which files have special meaning.
 ---
 
+import { Callout } from "@opentf/web-docs";
+
 # Project Structure
 
-A new project looks like this:
+`create-web` scaffolds three project types. **App** and **Documentation site** share
+the same routing layout; **Library** is a flat package for publishable components.
+
+## App
+
+A new app looks like this:
 
 ```text
 my-app/
@@ -23,7 +30,45 @@ my-app/
 └─ package.json
 ```
 
-## Special files
+## Documentation site
+
+Docs projects add an `otfw.config.js` and an `app/docs/` section for MDX content:
+
+```text
+my-docs/
+├─ app/
+│  ├─ page.jsx            # marketing landing page
+│  ├─ layout.jsx
+│  ├─ docs/
+│  │  ├─ layout.jsx       # docs shell (sidebar + TOC)
+│  │  ├─ _meta.js         # sidebar order
+│  │  └─ page.mdx         # /docs introduction
+│  └─ global.css
+├─ otfw.config.js         # @opentf/web-docs config
+├─ index.html
+└─ package.json
+```
+
+## Library
+
+Library projects export source components from the package root — no `app/` folder:
+
+```text
+my-lib/
+├─ index.js           # package entry
+├─ src/
+│  └─ Counter.jsx
+├─ tests/
+│  └─ counter.test.js
+├─ test-setup.js
+├─ bunfig.toml
+└─ package.json
+```
+
+See [Library template](/docs/getting-started/library-template) for publish and
+consumption details.
+
+## Special files (App & Docs)
 
 | File | Role |
 | --- | --- |
@@ -33,6 +78,7 @@ my-app/
 | `route.js` | An [API endpoint](/docs/routing/api-routes). The folder is the URL (`app/api/hello/route.js` → `/api/hello`); a folder holds a `page.*` or a `route.*`, never both. |
 | `_middleware.js` | [API middleware](/docs/routing/api-routes) for its folder and everything nested under it. |
 | `index.html` | The HTML shell. The toolchain mounts the app into `#app` and injects the bundle. |
+| `otfw.config.js` | Docs-site configuration (`@opentf/web-docs`). Present in Docs projects only. |
 
 Every other PascalCase `.jsx`/`.tsx` file is a reusable component — no registration
 needed (see [Components](/docs/core-concepts/components)).
@@ -42,3 +88,9 @@ needed (see [Components](/docs/core-concepts/components)).
 - `.jsx`/`.tsx` files must have a default export.
 - Components are PascalCase (`UserCard.jsx`).
 - You never import `$state`, `onMount`, etc. — the compiler injects them.
+
+<Callout type="info" title="TypeScript">
+  Choose TypeScript at the scaffold prompt to get `.tsx` pages, `.ts` API routes,
+  `tsconfig.json`, and macro typings (`app/otfw-env.d.ts`). Docs sites keep
+  `otfw.config.js` and `_meta.js` as JavaScript — the toolchain reads those today.
+</Callout>

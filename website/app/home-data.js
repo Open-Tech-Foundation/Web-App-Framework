@@ -45,11 +45,11 @@ export const capabilities = [
   {
     category: "Tooling & DX",
     items: [
-      { name: "create-web scaffolder", status: "supported", desc: "Start a project with one command." },
+      { name: "create-web scaffolder", status: "supported", desc: "App, Docs, or Library templates — JS/TS, auto-install, npm-pinned deps." },
       { name: "Dev server + live reload", status: "supported", desc: "Rebuild-on-save with a browser refresh." },
       { name: "Dev error overlay", status: "supported", desc: "In-browser error reporting during dev." },
       { name: "Testing library", status: "supported", desc: "Component testing utilities." },
-      { name: "TypeScript / TSX", status: "beta", desc: "TSX parses today; full type tooling in progress." },
+      { name: "TypeScript / TSX", status: "beta", desc: "Scaffold .tsx projects with tsconfig and macro typings; full editor tooling in progress." },
       { name: "Devtools extension", status: "planned", desc: "Component, state, and network inspection." },
     ],
   },

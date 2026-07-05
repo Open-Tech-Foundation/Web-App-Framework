@@ -1,0 +1,119 @@
+---
+title: Library Template
+description: Scaffold a publishable OTF Web component package with tests.
+---
+
+import { Callout, Steps } from "@opentf/web-docs";
+
+# Library Template
+
+The **Library** project type scaffolds a publishable component package. It ships source
+`.jsx` (or `.tsx`) from `index.js` — consumer apps compile those files through their
+own `otfw` toolchain. There is no separate build step in the library itself.
+
+## Scaffold
+
+```bash
+bun create @opentf/web my-lib
+```
+
+Choose **Library** at the project-type prompt, then pick JavaScript or TypeScript and
+a styling solution. Dependencies are installed automatically.
+
+## Project layout
+
+```text
+my-lib/
+├─ index.js           # package entry — re-exports components
+├─ src/
+│  └─ Counter.jsx     # sample component
+├─ tests/
+│  └─ counter.test.js
+├─ test-setup.js      # wires otfwc + @opentf/web-test/setup
+├─ bunfig.toml        # preloads test-setup.js
+└─ package.json
+```
+
+The entry file re-exports components:
+
+```js index.js
+export { default as Counter } from "./src/Counter.jsx";
+```
+
+## Sample component
+
+```jsx src/Counter.jsx
+export default function Counter({ initial = 0 }) {
+  let count = $state(initial);
+
+  return (
+    <button type="button" onclick={() => count++} data-testid="counter">
+      Count {count}
+    </button>
+  );
+}
+```
+
+## Testing
+
+The template includes `@opentf/web-test` and a `test-setup.js` preload that points
+`OTFWC_BIN` at `@opentf/web-compiler` before loading the web-test setup module:
+
+```js test-setup.js
+import { otfwcPath } from "@opentf/web-compiler";
+
+process.env.OTFWC_BIN ??= otfwcPath();
+await import("@opentf/web-test/setup");
+```
+
+<Steps>
+
+### Run tests
+
+```bash
+bun test
+```
+
+### Publish
+
+Bump `version` in `package.json`, then publish to npm:
+
+```bash
+npm publish
+```
+
+The `files` field includes `index.js` and `src/` — consumers receive source, not a
+pre-built bundle.
+
+</Steps>
+
+## Consuming in an app
+
+Install the package in an OTF Web app and import components normally:
+
+```bash
+bun add my-lib
+```
+
+```jsx app/page.jsx
+import { Counter } from "my-lib";
+
+export default function Home() {
+  return <Counter initial={5} />;
+}
+```
+
+The app's `otfw` dev server and build pipeline compile the library's `.jsx` sources
+just like local components. `@opentf/web` is a **peer dependency** of the library — the
+host app provides the runtime.
+
+<Callout type="tip" title="TypeScript libraries">
+  Choose TypeScript at the scaffold prompt to get `.tsx` sources, `index.ts`, and a
+  `tsconfig.json`. The consumption model is the same — apps compile the shipped
+  sources.
+</Callout>
+
+## Related
+
+- [web-test setup](/docs/packages/web-test/setup) — how the test preload works.
+- [Project structure](/docs/getting-started/project-structure) — App and Docs layouts.
