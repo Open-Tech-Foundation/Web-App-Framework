@@ -44,7 +44,7 @@ try {
   mkdirSync(bunTmp, { recursive: true });
   copyWebsite();
   run(["install"], tmpSite);
-  run(["run", "build"], tmpSite);
+  run(["run", "build:ssg"], tmpSite);
 
   rmSync(outDir, { recursive: true, force: true });
   cpSync(join(tmpSite, "dist"), outDir, { recursive: true });
