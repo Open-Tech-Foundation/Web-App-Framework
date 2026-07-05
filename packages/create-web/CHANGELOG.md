@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-05
+
 ### Changed
 
 - App template (`@opentf/web@^0.9.0`, `@opentf/web-cli@^1.4.0`): scaffolded apps ship with the hydration fixes — eager islands like `<Link>` adopt server DOM instead of double-wrapping it, and mid-hydration rebuilds no longer cascade mismatches through nested components.
