@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Tests
+
+- Real-browser hydration e2e (`tests/e2e/hydrate-browser.mjs`) now covers composed island
+  shapes end-to-end: a recursive `<Tree>` sidebar (eager `<Link>` islands with `{children}`
+  slots, conditional link/group branches, dynamic router-derived classes, and rich per-node
+  object props across recursion), a conditional-root `<Pill>`, and a deliberately
+  non-adoptable `<Panel>` (a JSX-const used in a conditional root → `RebuildIfServerChildren`)
+  that wraps those islands. The last proves a mid-hydration rebuild builds its children
+  cleanly instead of cascading `HydrationMismatch`es — the document-start MutationObserver
+  now separates Panel's legitimate rebuild from the strict "nothing else was torn out"
+  invariant for the rest of the page. 44 → 58 assertions.
+
 ## [1.3.1] - 2026-07-05
 
 _Dependency updates._
