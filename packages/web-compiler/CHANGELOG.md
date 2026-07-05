@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-05
+
 ### Fixed
 
 - **`.map()` callback locals are preserved.** A local declared before the returned JSX in a
