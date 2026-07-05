@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- App template (`@opentf/web@^0.9.0`, `@opentf/web-cli@^1.4.0`): scaffolded apps ship with the hydration fixes — eager islands like `<Link>` adopt server DOM instead of double-wrapping it, and mid-hydration rebuilds no longer cascade mismatches through nested components.
+- Docs template (`@opentf/web@^0.9.0`, `@opentf/web-docs@^0.5.0`, `@opentf/web-cli@^1.4.0`): scaffolded docs sites track the latest framework and docs packages, inheriting the same hydration improvements for SSG pages with nav, sidebar, and MDX content islands.
+
 ## [0.10.0] - 2026-07-05
 
 ### Changed
