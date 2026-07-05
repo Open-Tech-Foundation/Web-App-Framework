@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `onMount` no longer crashes pre-rendered (`--ssg`) pages on hydration. The hydrate
+  target factors a component's setup — and thus its local bindings — into a `__build`
+  closure and re-emits it inside the adopt branch, two separate scopes. The `onMount`
+  callbacks close over those locals, but were hoisted to the `connectedCallback` top
+  level, after the build/adopt switch, where the locals don't exist — a runtime
+  `ReferenceError` (e.g. `ready is not defined`) that broke every SSG page using
+  `onMount`. The mount blocks are now emitted inside each scoped path (end of `__build`
+  and end of the adopt try-block), preserving exactly-once semantics across the
+  navigation, successful-adopt, and mismatch-recovery paths. CSR/`Build` output is
+  unchanged (setup and mounts already share one scope).
+
 ## [0.2.0] - 2026-07-01
 
 ### Fixed

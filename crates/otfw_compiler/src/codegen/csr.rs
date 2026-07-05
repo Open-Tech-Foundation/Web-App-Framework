@@ -360,6 +360,7 @@ fn component_body_ex<'a>(
         ComponentView::Build => {
             code.push_str(&body);
             code.push_str(&format!("    this.appendChild({root});\n"));
+            code.push_str(&mounts);
         }
         ComponentView::RebuildIfServerChildren => {
             if lowered.children_local.is_some() {
@@ -378,6 +379,7 @@ fn component_body_ex<'a>(
             }
             code.push_str(&body);
             code.push_str(&format!("    this.appendChild({root});\n"));
+            code.push_str(&mounts);
         }
         ComponentView::Adopt(adopt_body) => {
             // Adopt the server DOM during the first-paint hydration pass; build fresh on a
@@ -392,10 +394,16 @@ fn component_body_ex<'a>(
             code.push_str("    const __build = () => {\n");
             code.push_str(&body);
             code.push_str(&format!("    this.appendChild({root});\n"));
+            // `onMount` runs after the view is in place. Both the build closure and the
+            // adopt branch declare the component's locals in their own scope, so the mount
+            // callbacks — which close over those locals — must be emitted *inside* each
+            // path, not hoisted after the switch (where the locals don't exist).
+            code.push_str(&mounts);
             code.push_str("    };\n");
             code.push_str("    if (isHydrating() && this.firstChild) {\n");
             code.push_str("      try {\n");
             code.push_str(adopt_body);
+            code.push_str(&mounts);
             code.push_str("      } catch (__e) {\n");
             code.push_str("        if (!(__e instanceof HydrationMismatch)) throw __e;\n");
             // Per-component recovery (docs/HYDRATION.md §3.5): report the mismatch (never
@@ -413,7 +421,6 @@ fn component_body_ex<'a>(
             code.push_str("    }\n");
         }
     }
-    code.push_str(&mounts);
     code.push_str("    } catch (e) {\n");
     code.push_str(&format!(
         "      handleError(this, e, {{ phase: \"render\", component: {} }});\n",

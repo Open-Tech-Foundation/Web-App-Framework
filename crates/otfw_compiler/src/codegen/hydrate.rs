@@ -364,8 +364,9 @@ impl<'a> Emitter<'a> {
         self.line(format!("const {cur} = cursor(this);"));
         self.emit_node(&cur, &lowered.ir.view);
 
-        // Effects + `$expose` + `onCleanup` (onMount is emitted by csr after the switch,
-        // so it runs for both the build and adopt paths — don't duplicate it here).
+        // Effects + `$expose` + `onCleanup`. `onMount` is emitted by csr *inside* this
+        // adopt branch (and inside `__build`) — not here — because its callbacks close over
+        // the component's locals, which live in each path's own scope.
         for cb in lowered.effects.clone() {
             self.bind(format!("effect({cb})"));
         }
@@ -939,6 +940,29 @@ mod tests {
         );
         // No standalone `hydrate` export — a component hydrates via its class, not a factory.
         assert!(!m.code.contains("export function hydrate"), "no page factory:\n{}", m.code);
+    }
+
+    #[test]
+    fn adopt_component_emits_on_mount_inside_each_scoped_path() {
+        // Regression: an Adopt component's setup (its locals) is emitted once inside the
+        // `__build` closure and again inside the adopt branch — two separate scopes. An
+        // `onMount` callback closes over those locals, so it must be emitted *inside* both
+        // paths, not hoisted after the switch (where the locals don't exist → a runtime
+        // `ReferenceError` that crashed every SSG page using `onMount`).
+        let m = emit_component(
+            "export default function C(){ let n=$state(0); onMount(() => { n.value; }); \
+             return <button onclick={() => n++}>Count {n}</button>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // The mount wrapper is duplicated: one copy per scoped path (build + adopt).
+        let mounts = m.code.matches("if (typeof __d === \"function\") this._cleanups.push(__d);").count();
+        assert_eq!(mounts, 2, "onMount emitted once per scoped path:\n{}", m.code);
+        // And it must sit *before* the `};` that closes `__build` — i.e. inside the closure,
+        // not after the `} else { __build(); }` switch at the connectedCallback top level.
+        let build_open = m.code.find("const __build = () => {").expect("build closure");
+        let first_mount = m.code[build_open..].find("const __d =").expect("mount in build") + build_open;
+        let build_close = m.code[build_open..].find("\n    };\n").expect("build closes") + build_open;
+        assert!(first_mount < build_close, "onMount inside __build closure:\n{}", m.code);
     }
 
     #[test]
