@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-05
+
 ### Fixed
 
 - `onMount` no longer crashes pre-rendered (`--ssg`) pages on hydration. The hydrate
