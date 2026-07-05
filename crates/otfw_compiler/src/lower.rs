@@ -155,6 +155,11 @@ pub struct Lowered {
     /// module its Custom Element class becomes the module's default export, so a
     /// page's `import Counter from "../components/Counter"` resolves.
     pub is_default_export: bool,
+    /// Whether this component was a **named** export (`export function Icon`,
+    /// `export const Icon = …`). The module re-exports the generated Custom Element
+    /// class under this name (`export { IconElement as Icon }`) so a consumer's
+    /// `import { Icon }` — and its `<Icon/>` tag reference — resolves.
+    pub is_named_export: bool,
     /// The component's function name (`function Counter` → `Counter`), used to
     /// derive the Custom Element tag/class even for `export default` — so a page's
     /// `<Counter/>` (tag from the JSX name) matches the registered `web-counter`.
@@ -253,7 +258,10 @@ pub fn lower_component<'a>(
     let scoping = resolved.semantic.scoping();
     let (imports, runtime_imports) = collect_imports(program, source);
     let (export, func) = find_component(program)?;
-    lower_one(module, &export, func, scoping, source, is_page, &imports, &runtime_imports, is_page, true)
+    lower_one(
+        module, &export, func, scoping, source, is_page, &imports, &runtime_imports, is_page, true,
+        false,
+    )
 }
 
 /// A whole `.jsx` module: every component it declares (the page factory plus any
@@ -289,11 +297,13 @@ pub fn lower_module<'a>(
     let mut components = Vec::new();
     let mut module_stmts = Vec::new();
     for stmt in &program.body {
-        if let Some((export, func, is_default)) = component_of(stmt) {
+        if let Some((export, func, export_kind)) = component_of(stmt) {
+            let is_default = export_kind == ExportKind::Default;
             let role = is_page_module && is_default;
-            if let Some(lowered) =
-                lower_one(module, &export, func, scoping, source, role, &imports, &runtime_imports, role, is_default)
-            {
+            if let Some(lowered) = lower_one(
+                module, &export, func, scoping, source, role, &imports, &runtime_imports, role,
+                is_default, export_kind == ExportKind::Named,
+            ) {
                 components.push(lowered);
             }
         } else if !matches!(stmt, Statement::ImportDeclaration(_)) {
@@ -326,6 +336,7 @@ pub fn module_shell(module: &str, exprs: ExprTable, body: Vec<BodyItem>) -> Lowe
         },
         is_page: false,
         is_default_export: false,
+        is_named_export: false,
         name: "module".to_string(),
         imports: Vec::new(),
         runtime_imports: Vec::new(),
@@ -361,6 +372,7 @@ fn lower_one<'a>(
     runtime_imports: &[String],
     is_page_role: bool,
     is_default_export: bool,
+    is_named_export: bool,
 ) -> Option<Lowered> {
     callable.body()?;
     let name = callable.id().unwrap_or_else(|| export.to_string());
@@ -440,6 +452,7 @@ fn lower_one<'a>(
         ir,
         is_page: is_page_role,
         is_default_export,
+        is_named_export,
         name,
         imports: imports.to_vec(),
         runtime_imports: runtime_imports.to_vec(),
@@ -501,32 +514,46 @@ fn collect_imports(program: &Program, source: &str) -> (Vec<String>, Vec<String>
     (imports, runtime_imports)
 }
 
+/// How a component appears in its module's export surface.
+#[derive(Clone, Copy, PartialEq)]
+enum ExportKind {
+    /// Not exported — an internal component only referenced as a same-module `<Foo/>`.
+    Internal,
+    /// A named export (`export function Icon`, `export const Icon = …`) — the module
+    /// must re-export the generated class under this name for cross-module imports.
+    Named,
+    /// The module's `export default` component.
+    Default,
+}
+
 /// If `stmt` declares a JSX-returning function component, return its export name,
-/// the function, and whether it is the default export.
-fn component_of<'a>(stmt: &'a Statement<'a>) -> Option<(String, Callable<'a>, bool)> {
+/// the function, and how it is exported.
+fn component_of<'a>(stmt: &'a Statement<'a>) -> Option<(String, Callable<'a>, ExportKind)> {
     match stmt {
         Statement::FunctionDeclaration(f) if has_jsx_return(f) => {
             let name = f.id.as_ref()?.name.as_str().to_string();
-            Some((name, Callable::Function(f), false))
+            Some((name, Callable::Function(f), ExportKind::Internal))
         }
         // `const Icon = () => <svg/>` (or a function expression).
-        Statement::VariableDeclaration(vd) => arrow_component_of(vd).map(|(n, c)| (n, c, false)),
+        Statement::VariableDeclaration(vd) => {
+            arrow_component_of(vd).map(|(n, c)| (n, c, ExportKind::Internal))
+        }
         Statement::ExportNamedDeclaration(e) => match &e.declaration {
             Some(Declaration::FunctionDeclaration(f)) if has_jsx_return(f) => {
                 let id = f.id.as_ref()?;
-                Some((id.name.as_str().to_string(), Callable::Function(f), false))
+                Some((id.name.as_str().to_string(), Callable::Function(f), ExportKind::Named))
             }
             Some(Declaration::VariableDeclaration(vd)) => {
-                arrow_component_of(vd).map(|(n, c)| (n, c, false))
+                arrow_component_of(vd).map(|(n, c)| (n, c, ExportKind::Named))
             }
             _ => None,
         },
         Statement::ExportDefaultDeclaration(e) => match &e.declaration {
             ExportDefaultDeclarationKind::FunctionDeclaration(f) if has_jsx_return(f) => {
-                Some(("default".to_string(), Callable::Function(f), true))
+                Some(("default".to_string(), Callable::Function(f), ExportKind::Default))
             }
             ExportDefaultDeclarationKind::ArrowFunctionExpression(a) if arrow_jsx(a).is_some() => {
-                Some(("default".to_string(), Callable::Arrow(a), true))
+                Some(("default".to_string(), Callable::Arrow(a), ExportKind::Default))
             }
             _ => None,
         },

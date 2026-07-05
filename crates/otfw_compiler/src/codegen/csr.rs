@@ -507,6 +507,14 @@ fn component_body_ex<'a>(
         // the import pulls the module in so its `define` runs).
         code.push_str(&format!("export default {class};\n"));
     }
+    if lowered.is_named_export && export != "default" {
+        // Re-export the class under the source's export name so a consumer's
+        // `import { Icon }` resolves and `<Icon/>` addresses it by `Icon.tag`
+        // (the class carries the module-namespaced tag). Importing it also pulls the
+        // module in so its `define` runs. Utility `.jsx` modules (icon sets) can thus
+        // ship several named components from one file.
+        code.push_str(&format!("export {{ {class} as {export} }};\n"));
+    }
 
     // Idempotent registration: a tag is reused when the same module is evaluated in
     // more than one chunk, and built-ins (`web-link`) may already be defined. Returned
