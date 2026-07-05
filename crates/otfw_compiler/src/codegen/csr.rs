@@ -306,7 +306,19 @@ fn component_body_ex<'a>(
             };
             code.push_str(&format!("      {}: signal({init}),\n", p.attr));
         }
-        code.push_str("    };\n  }\n");
+        code.push_str("    };\n");
+        // A `class` prop shares the host's `class` attribute with the styling hook. On a
+        // hydrating upgrade the server-rendered host already carries `class="web-<name>"`
+        // (the hook), so the Custom Elements spec fires `attributeChangedCallback("class",
+        // …)` for that pre-existing attribute *after* this constructor — which would
+        // overwrite the prop signal we just initialized from the rich payload with the hook
+        // string. Latch the same guard the runtime stamp uses so that upgrade-time callback
+        // is ignored; `connectedCallback` clears it after stamping the hook. (The consumer's
+        // real `class` rides the payload, not the attribute, so nothing is lost.)
+        if hydratable && props.iter().any(|p| p.attr == "class") {
+            code.push_str("    this._stampingHostClass = true;\n");
+        }
+        code.push_str("  }\n");
 
         // Property get/set bridge so `el.attr = x` updates the signal.
         for p in props {

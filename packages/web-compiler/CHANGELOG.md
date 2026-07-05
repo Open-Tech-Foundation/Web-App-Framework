@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- A hydrating component with a **`class` prop** no longer loses that prop to the host's
+  styling-hook class. The prop shares the host's `class` attribute with the `web-<name>`
+  hook, so a server-rendered host carries `class="web-<name>"`; on upgrade the Custom
+  Elements spec fires `attributeChangedCallback("class", …)` for that pre-existing
+  attribute *after* the constructor, overwriting the signal just initialized from the rich
+  payload (e.g. a `<Link class="nav-link">` rendered its `<a class="web-link">`). The
+  hydrate-target constructor now latches the same `_stampingHostClass` guard the runtime
+  stamp uses, so the upgrade-time callback is ignored and the payload value stands.
 - A component whose **root is a conditional** (e.g. `cond ? <a/> : <Link/>`) — or any
   multi-node/fragment root — now *adopts* its server DOM on hydration instead of falling
   back to a destroy-and-rebuild. Such a root lowers to a `Fragment`, which the adopt walk

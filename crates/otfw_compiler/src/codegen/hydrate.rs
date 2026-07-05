@@ -927,6 +927,40 @@ mod tests {
     }
 
     #[test]
+    fn hydratable_class_prop_component_latches_the_host_class_guard_in_the_constructor() {
+        // Regression: a `class` prop shares the host's `class` attribute with the styling
+        // hook. A hydrating upgrade fires `attributeChangedCallback("class", "web-…")` for
+        // the server-stamped hook attribute *after* the constructor, which would clobber the
+        // payload-hydrated prop signal. The constructor must latch `_stampingHostClass` so
+        // that upgrade-time callback is ignored (the value from the rich payload stands).
+        let m = emit_component(
+            "export default function Link({ href, class: c }){ return <a href={href} class={c}>x</a>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // The signal is initialized from the payload…
+        assert!(
+            m.code.contains("class: signal(__h && \"class\" in __h ? __h[\"class\"]"),
+            "class prop reads the payload:\n{}",
+            m.code,
+        );
+        // …and the guard is latched in the constructor, before the closing brace, so the
+        // upgrade-time attributeChangedCallback for the server hook attribute is skipped.
+        let ctor = m.code.split("constructor() {").nth(1).expect("constructor");
+        let ctor = &ctor[..ctor.find("\n  }").expect("constructor closes")];
+        assert!(
+            ctor.contains("this._stampingHostClass = true;"),
+            "constructor latches the host-class guard:\n{}",
+            m.code,
+        );
+        // The guard is honored by attributeChangedCallback.
+        assert!(
+            m.code.contains("if (this._stampingHostClass) return;"),
+            "attributeChangedCallback honors the guard:\n{}",
+            m.code,
+        );
+    }
+
+    #[test]
     fn component_with_a_conditional_root_adopts_via_hydrate_child() {
         // Regression: a component whose root is a conditional (or any multi-node expression)
         // lowers to a `Fragment`. The adopt walk must flatten that fragment root — adopt each
