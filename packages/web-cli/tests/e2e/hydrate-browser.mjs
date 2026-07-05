@@ -87,6 +87,10 @@ async function connectPage(port) {
   let id = 0;
   const pending = new Map();
   const waiters = [];
+  // Every console.error and uncaught exception the page logs. A silent hydration bug
+  // (a per-component mismatch → CSR rebuild) surfaces here as `[otfw:hydrate] …`, so the
+  // suite can assert the page hydrated with a clean console, not just a correct final DOM.
+  const pageErrors = [];
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.id && pending.has(msg.id)) {
@@ -94,8 +98,15 @@ async function connectPage(port) {
       pending.delete(msg.id);
       msg.error ? rej(new Error(msg.error.message)) : res(msg.result);
     } else if (msg.method) {
-      if (msg.method === "Runtime.consoleAPICalled" && msg.params.type === "error")
-        console.error("  [page error]", msg.params.args.map((a) => a.value || a.description).join(" "));
+      if (msg.method === "Runtime.consoleAPICalled" && msg.params.type === "error") {
+        const text = msg.params.args.map((a) => a.value || a.description).join(" ");
+        pageErrors.push(text);
+        console.error("  [page error]", text);
+      }
+      if (msg.method === "Runtime.exceptionThrown") {
+        const d = msg.params.exceptionDetails;
+        pageErrors.push(d?.exception?.description || d?.text || "exception");
+      }
       for (let i = waiters.length - 1; i >= 0; i--) {
         if (waiters[i].method === msg.method) waiters.splice(i, 1)[0].res(msg.params);
       }
@@ -108,7 +119,7 @@ async function connectPage(port) {
       ws.send(JSON.stringify({ id: m, method, params }));
     });
   const once = (method) => new Promise((res) => waiters.push({ method, res }));
-  return { send, once, close: () => ws.close() };
+  return { send, once, pageErrors, close: () => ws.close() };
 }
 
 async function evalJS(client, expression) {
@@ -193,6 +204,26 @@ const PROBE = `(() => {
     cardIsServer: (() => { const c = document.querySelector('#app .card'); return !!(c && c.__server); })(),
     cardToggleText: norm(document.querySelector('#app .card-toggle')),
     slotted: (() => { const b = document.querySelector('#app .slotted'); return b ? { text: norm(b), server: !!b.__server } : null; })(),
+    // Eagerly-defined Link island + a component children slot, under recursion (the
+    // sidebar shape). A web-link that built instead of adopting re-wraps its server
+    // anchor in a fresh one (an a-inside-an-a); a nested Tree whose rich node prop got
+    // clobbered renders the wrong branch (a group span where the server rendered a link).
+    // Probe both: the nested-anchor count and each rendered leaf/group.
+    nestedAnchors: document.querySelectorAll('#app a a').length,
+    treeLinks: Array.from(document.querySelectorAll('#app .tree a.tree-link')).map((a) => ({
+      href: a.getAttribute('href'),
+      text: norm(a),
+      hasDot: !!a.querySelector('.tree-dot'),
+      server: !!a.__server,
+    })),
+    treeGroups: Array.from(document.querySelectorAll('#app .tree .tree-group')).map((s) => ({
+      text: norm(s),
+      server: !!s.__server,
+    })),
+    // A component whose root is a conditional (Fragment root): the true branch <b>ON should
+    // be adopted, not destroyed-and-rebuilt.
+    pill: (() => { const b = document.querySelector('#app .pill-host b.pill-on'); return b ? { text: norm(b), server: !!b.__server } : null; })(),
+    pillOff: !!document.querySelector('#app .pill-host i.pill-off'),
   };
 })()`;
 
@@ -235,6 +266,40 @@ async function run(port) {
     assert(s.mainIsServer, "the live <main> is the server-rendered node (adopted)");
     assert(s.incIsServer, "the page's counter <button> is the server-rendered node (adopted)");
     assert(s.countText === "count 0", "the server-rendered count is preserved through hydrate");
+
+    // ── 1g. Eagerly-defined <Link> island + recursion + conditional root ────────
+    // These compositions regress-guard three foundation bugs the single-island fixture
+    // above never exercised (all silent — a correct-looking final DOM, no thrown error
+    // for the double-build): an eagerly-defined <Link> that builds instead of adopts, a
+    // recursive tree whose child rich-props get clobbered, and a conditional-root
+    // (Fragment) component that destroys-and-rebuilds.
+    assert(s.nestedAnchors === 0, "no <a> nested inside another <a> — no <web-link> double-built its server <a>");
+    assert(s.treeLinks.length === 3, "the tree rendered its three leaf links (Alpha, Bravo, Charlie)");
+    assert(
+      s.treeLinks.every((l) => l.server && l.hasDot),
+      "every tree link is a server node (adopted) and kept its slotted <span.tree-dot>",
+    );
+    assert(
+      s.treeLinks.map((l) => l.href).join(",") === "/a,/b,/c",
+      "each tree link adopted its own href — nested rich `node` props were not clobbered",
+    );
+    assert(
+      s.treeGroups.length === 2 &&
+        s.treeGroups.map((g) => g.text).sort().join(",") === "Group,Root" &&
+        s.treeGroups.every((g) => g.server),
+      "both group nodes (no path) adopted their <span.tree-group> — the conditional picked the right branch",
+    );
+    assert(s.pill && s.pill.server && s.pill.text === "ON", "the conditional-root <Pill> adopted its rendered branch (<b>ON)");
+    assert(!s.pillOff, "the untaken <Pill> branch (<i>OFF) is absent, as the server rendered");
+    // Nothing rebuilt anywhere during the whole first paint (islands, tree, pill included).
+    assert(s.removedServer === 0, "still no server node removed after the tree/pill islands adopted");
+    // A per-component mismatch would have been reported to the console even though the DOM
+    // self-heals — the console must be clean for a genuinely correct hydration.
+    const hydrationErrors = client.pageErrors.filter((e) => /otfw:(hydrate|render)|HydrationMismatch/.test(e));
+    assert(
+      hydrationErrors.length === 0,
+      `no hydration errors logged (found ${hydrationErrors.length}: ${hydrationErrors.slice(0, 3).join(" | ")})`,
+    );
 
     // ── 1b. The component island self-adopted (custom element) ──────────────────
     assert(s.stepperHostIsServer, "the <web-stepper> host is the server-rendered node (adopted)");
