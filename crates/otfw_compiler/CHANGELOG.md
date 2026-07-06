@@ -17,11 +17,15 @@ The `[Unreleased]` section is renamed to the new version number at release time.
   local or an alias is not flagged; read methods (`map`/`filter`/…) stay legal; and
   `$ref`/`$derived`/`$context` are excluded so DOM writes like `el.scrollTop = 0` on a
   `$ref` remain valid. Since the compiler runs no type checker, mutating *method*
-  names are gated by the shape inferred from the `$state(init)` initializer: array
-  mutators fire on an array/unknown shape, while `Map`/`Set` mutators fire only on a
-  statically-recognizable `new Map`/`new Set` — so a plain object with a `set`/`add`
-  method is not a false positive. Assignment/index/`++`/`delete` are shape-independent.
-  Covered by `tests/state_mutation.rs`.
+  names are gated by the value's inferred shape: array mutators fire on an
+  array/unknown shape, while `Map`/`Set` mutators fire only on a statically-known
+  `Map`/`Set` — so a plain object with a `set`/`add` method is not a false positive.
+  A **written TS type** (`$state<Map<…>>(…)` type argument or `const x: Map<…> =
+  $state(…)` annotation) is read syntactically and takes precedence over the
+  initializer heuristic — so `$state<Map<…>>(load())` is caught even when the
+  initializer is opaque. This is a syntactic read of the written annotation, not type
+  inference (oxc runs no type checker). Assignment/index/`++`/`delete` are
+  shape-independent. Covered by `tests/state_mutation.rs`.
 - **DOM lifecycle hooks** (`lower.rs` + `codegen/csr.rs`/`hydrate.rs`): three new
   compiler macros alongside `onMount`/`onCleanup` — `onResize(cb)` (ResizeObserver on
   the host/root element), `onVisibilityChange(cb)` (IntersectionObserver; `cb(isIntersecting,

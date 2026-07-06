@@ -196,6 +196,57 @@ fn rejects_array_mutator_on_unknown_shape() {
     );
 }
 
+// A written TS type argument upgrades an otherwise-unknown initializer: with
+// `$state<Map<…>>(makeStore())` the compiler knows it's a Map and flags `.set()`.
+#[test]
+fn rejects_collection_mutator_with_ts_type_arg() {
+    assert_rejected(
+        "export default function C() {\n\
+         \x20 const m = $state<Map<string, number>>(makeStore());\n\
+         \x20 const go = () => { m.set(\"k\", 1); };\n\
+         \x20 return <button onClick={go}>x</button>;\n\
+         }",
+    );
+}
+
+// A binding annotation does the same: `const m: Set<number> = $state(load())`.
+#[test]
+fn rejects_collection_mutator_with_ts_annotation() {
+    assert_rejected(
+        "export default function C() {\n\
+         \x20 const m: Set<number> = $state(load());\n\
+         \x20 const go = () => { m.add(1); };\n\
+         \x20 return <button onClick={go}>x</button>;\n\
+         }",
+    );
+}
+
+// A written type also *narrows away* a false positive: `$state<Store>()` where
+// `Store` is a custom object type keeps `.set()` legal even if the value is a Map at
+// runtime — the written type is what the author declared, so we honor it.
+#[test]
+fn allows_collection_mutator_with_custom_ts_type() {
+    assert_clean(
+        "export default function C() {\n\
+         \x20 const s = $state<Store>(makeStore());\n\
+         \x20 const go = () => { s.set(\"k\", 1); };\n\
+         \x20 return <button onClick={go}>x</button>;\n\
+         }",
+    );
+}
+
+// A written array type flags a mutator even when the initializer is opaque.
+#[test]
+fn rejects_array_mutator_with_ts_type() {
+    assert_rejected(
+        "export default function C() {\n\
+         \x20 const xs: string[] = $state(load());\n\
+         \x20 const go = () => { xs.push(\"x\"); };\n\
+         \x20 return <button onClick={go}>x</button>;\n\
+         }",
+    );
+}
+
 // The false-positive guard: `set`/`add`/`delete`/`clear` are common object method
 // names, so they are only flagged when the initializer is a real `Map`/`Set`. A
 // plain object exposing a `set` method is NOT flagged.

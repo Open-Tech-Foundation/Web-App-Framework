@@ -24,8 +24,8 @@ use oxc::ast::ast::{
     Function, FunctionBody, IdentifierReference, ImportDeclarationSpecifier, JSXAttribute,
     JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName,
     JSXExpression, JSXFragment, ObjectProperty, Program, SimpleAssignmentTarget,
-    StaticMemberExpression, Statement, UnaryExpression, UpdateExpression, VariableDeclaration,
-    VariableDeclarator,
+    StaticMemberExpression, Statement, TSType, TSTypeName, UnaryExpression, UpdateExpression,
+    VariableDeclaration, VariableDeclarator,
 };
 use oxc::syntax::operator::UnaryOperator;
 use oxc::ast_visit::{walk, Visit};
@@ -725,6 +725,45 @@ fn classify_state_init(arg: &Argument) -> StateShape {
     }
 }
 
+/// Classify a **written** TS type — `$state<Map<…>>(…)` or `const x: Map<…> =
+/// $state(…)`. oxc parses TS syntax but runs no type checker, so this reads the
+/// annotation *as written* (no inference through function returns or generics); an
+/// unrecognized or custom type is `Unknown`.
+fn classify_ts_type(ty: &TSType) -> StateShape {
+    match ty {
+        TSType::TSArrayType(_) | TSType::TSTupleType(_) => StateShape::Array,
+        TSType::TSTypeLiteral(_) => StateShape::Object,
+        TSType::TSTypeReference(r) => match &r.type_name {
+            TSTypeName::IdentifierReference(id) => match id.name.as_str() {
+                "Array" | "ReadonlyArray" => StateShape::Array,
+                "Map" | "WeakMap" | "ReadonlyMap" | "Set" | "WeakSet" | "ReadonlySet" => {
+                    StateShape::MapSet
+                }
+                "Record" => StateShape::Object,
+                _ => StateShape::Unknown,
+            },
+            _ => StateShape::Unknown,
+        },
+        _ => StateShape::Unknown,
+    }
+}
+
+/// The shape written explicitly for a `$state` binding — a `$state<T>(…)` type
+/// argument (preferred) or a `const x: T = $state(…)` annotation — or `None` when
+/// neither is present. `TSType` is read syntactically; no type inference.
+fn written_shape(call: &CallExpression, decl: &VariableDeclarator) -> Option<StateShape> {
+    let type_arg = call
+        .type_arguments
+        .as_ref()
+        .and_then(|ta| ta.params.first())
+        .map(classify_ts_type);
+    let annotation = decl
+        .type_annotation
+        .as_ref()
+        .map(|a| classify_ts_type(&a.type_annotation));
+    type_arg.or(annotation)
+}
+
 /// The value inside a `$state` signal is replaced, never mutated: reactivity fires
 /// on `signal.value = …`, not on mutating the object the value points at. Writing
 /// `list.push(x)`, `list[0] = x`, `list.length = 0`, `obj.a.b = x`, or `obj.n++` on
@@ -772,7 +811,15 @@ impl<'a> Visit<'a> for StateShapes {
             && let BindingPattern::BindingIdentifier(bi) = &it.id
             && let Some(sym) = bi.symbol_id.get()
         {
-            let shape = call.arguments.first().map_or(StateShape::Unknown, classify_state_init);
+            // A written TS type (`$state<Map<…>>()` or `const x: Map<…> = …`) is
+            // authoritative when it resolves to a concrete shape; otherwise fall back
+            // to the initializer literal heuristic.
+            let init_shape =
+                call.arguments.first().map_or(StateShape::Unknown, classify_state_init);
+            let shape = match written_shape(call, it) {
+                Some(s) if s != StateShape::Unknown => s,
+                _ => init_shape,
+            };
             self.shapes.insert(sym, shape);
         }
         walk::walk_variable_declarator(self, it);
