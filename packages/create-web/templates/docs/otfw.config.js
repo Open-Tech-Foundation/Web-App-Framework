@@ -10,5 +10,9 @@ export default defineDocsConfig({
     dir: "docs",
     nav: [{ label: "Docs", href: "/docs" }],
     footer: { text: "© 2026 My Project" },
+    // Per-page "Last updated" (from git) and "Edit this page" (GitHub). Set repoUrl to
+    // your repository root; links use <repoUrl>/edit/main/<source-path>.
+    repoUrl: null, // e.g. "https://github.com/you/your-repo"
+    lastUpdated: true,
   },
 });

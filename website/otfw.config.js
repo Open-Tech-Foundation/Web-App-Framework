@@ -14,7 +14,8 @@ export default defineDocsConfig({
     // last git commit (or a `lastUpdated` frontmatter override).
     lastUpdated: true,
     github: "https://github.com/Open-Tech-Foundation/Web-App-Framework",
-    // Source repo, used for per-page "Edit this page" links.
+    // Source repo root — with lastUpdated, enables per-page "Edit this page" links
+    // (`<repoUrl>/edit/main/<path>`) on every DocsLayout section (/docs, /api, …).
     repoUrl: "https://github.com/Open-Tech-Foundation/Web-App-Framework",
     nav: [
       { label: "Home", href: "/" },

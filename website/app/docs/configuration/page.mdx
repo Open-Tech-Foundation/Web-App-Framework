@@ -17,8 +17,13 @@ import { defineDocsConfig } from "@opentf/web-docs/config";
 
 export default defineDocsConfig({
   site: { url: "https://example.com" },
-  docs: { title: "My Project", dir: "docs" /* … */ },
-  blog: { dir: "blog" },
+  docs: {
+    title: "My Project",
+    dir: "docs",
+    repoUrl: "https://github.com/org/repo", // "Edit this page" links
+    lastUpdated: true,                       // "Last updated" line per page
+  },
+  blog: { dir: "blog", lastUpdated: true },
 });
 ```
 
@@ -65,7 +70,8 @@ The main documentation section. Common fields:
 | `nav` | array | Top navbar links: `{ label, href, icon?, external? }`. |
 | `footer` | object | `{ text, links }`. |
 | `search` | object | `{ provider: "pagefind" }` to enable static search. |
-| `lastUpdated` | boolean | Show a "Last updated" line per page (git/frontmatter). |
+| `lastUpdated` | boolean | Show a "Last updated" line per page (git/frontmatter). Requires the last-updated build plugin (set on `docs` or `blog`). |
+| `repoUrl` + `lastUpdated` | — | Together they enable **"Edit this page"** links (`<repoUrl>/edit/main/<source>`). `repoUrl` alone is not enough. |
 
 See [Packages → web-docs → Configuration](/docs/packages/web-docs/configuration) for the
 exhaustive field reference and per-folder `_meta.js` ordering.

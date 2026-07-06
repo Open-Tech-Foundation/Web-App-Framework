@@ -18,13 +18,17 @@ import { defineDocsConfig } from "@opentf/web-docs/config";
 export default defineDocsConfig({
   docs: {
     title: "OTF Web",
-    version: "v0.4.0",
+    version: "v0.10.0",
     logo: "/logo.png",
     github: "https://github.com/Open-Tech-Foundation/Web-App-Framework",
+    // Source repo — required for per-page "Edit this page" links (with lastUpdated on).
+    repoUrl: "https://github.com/Open-Tech-Foundation/Web-App-Framework",
     nav: [
       { label: "Home", href: "/" },
       { label: "Docs", href: "/docs" },
     ],
+    // Foot of every docs/API page: git-derived "Last updated" + GitHub edit link.
+    lastUpdated: true,
   },
 });
 ```
@@ -92,20 +96,30 @@ Per-page frontmatter controls how a page shows up:
 | `order` | Tie-breaks ordering among siblings. |
 | `lastUpdated` | Override the "Last updated" date, or `false` to hide it on this page. |
 
-## Last updated
+## Last updated & Edit this page
 
-Set `docs.lastUpdated: true` to show a "Last updated on …" line at the foot of each
-page. The date comes from the file's **last git commit** — no manual bookkeeping, and
-it reflects when the content actually changed:
+Turn on **`docs.lastUpdated: true`** to show a "Last updated on …" line at the foot of
+each page in every `DocsLayout` section (`/docs`, `/api`, and any other section folder).
+The date comes from the file's **last git commit** — no manual bookkeeping, and it
+reflects when the content actually changed.
+
+Pair it with **`docs.repoUrl`** (your GitHub repository root, not a specific file) to
+also render an **"Edit this page"** link beside the timestamp. The link targets
+`<repoUrl>/edit/main/<path-to-source>` for the current route's `page.mdx` / `page.jsx`.
 
 ```js
 export default defineDocsConfig({
   docs: {
     // …
+    repoUrl: "https://github.com/org/repo",
     lastUpdated: true,
   },
 });
 ```
+
+`repoUrl` alone is not enough — the last-updated build plugin must be active
+(`lastUpdated: true` on `docs` or `blog`) to emit the per-route source paths the edit
+link needs.
 
 The same SSG build also emits an Open Graph `article:modified_time` meta tag per page,
 so crawlers see the modification date.
