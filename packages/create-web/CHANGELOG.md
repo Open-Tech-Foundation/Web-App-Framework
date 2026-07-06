@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Docs template (`otfw.config.js`): enable `lastUpdated: true` by default and add a
+  `repoUrl` placeholder so new docs sites show per-page "Last updated" timestamps and
+  "Edit this page" links once the repository URL is set.
+
 ## [0.13.0] - 2026-07-05
 
 ### Added
