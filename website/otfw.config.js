@@ -8,7 +8,7 @@ export default defineDocsConfig({
   // `frame={false}` (sidebar · content · TOC only) — see app/docs/layout.jsx.
   docs: {
     title: "OTF Web",
-    version: "v0.9.0",
+    version: "v0.10.0",
     logo: "/logo.png",
     // Show a "Last updated" line per page (every section), sourced from each file's
     // last git commit (or a `lastUpdated` frontmatter override).
