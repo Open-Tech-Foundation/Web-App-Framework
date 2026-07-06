@@ -24,8 +24,10 @@ use oxc::ast::ast::{
     Function, FunctionBody, IdentifierReference, ImportDeclarationSpecifier, JSXAttribute,
     JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName,
     JSXExpression, JSXFragment, ObjectProperty, Program, SimpleAssignmentTarget,
-    StaticMemberExpression, Statement, UpdateExpression, VariableDeclaration, VariableDeclarator,
+    StaticMemberExpression, Statement, UnaryExpression, UpdateExpression, VariableDeclaration,
+    VariableDeclarator,
 };
+use oxc::syntax::operator::UnaryOperator;
 use oxc::ast_visit::{walk, Visit};
 use oxc::semantic::{Scoping, SymbolId};
 use oxc::span::{GetSpan, Span};
@@ -680,12 +682,16 @@ pub fn function_ref_diagnostic(program: &Program) -> Option<String> {
     })
 }
 
-/// In-place array mutators — calling one on a `$state` array reassigns nothing,
-/// so the backing signal never notifies (SPEC §3.4). Read methods (`map`,
-/// `filter`, …) are intentionally absent: those are how JSX and `_mapped()` read
-/// the list and must stay legal.
-const STATE_ARRAY_MUTATORS: &[&str] = &[
+/// In-place mutator methods — calling one on a `$state` value reassigns nothing,
+/// so the backing signal never notifies (SPEC §3.4). Covers array mutators and the
+/// `Map`/`Set` mutators (`set`/`add`/`delete`/`clear`). Read methods (`map`,
+/// `filter`, `get`, `has`, …) are intentionally absent: those are how JSX and
+/// `_mapped()` read a collection and must stay legal.
+const STATE_MUTATOR_METHODS: &[&str] = &[
+    // Array
     "push", "pop", "shift", "unshift", "splice", "reverse", "sort", "fill", "copyWithin",
+    // Map / Set
+    "set", "add", "delete", "clear",
 ];
 
 /// The value inside a `$state` signal is replaced, never mutated: reactivity fires
@@ -799,7 +805,7 @@ impl<'a> Visit<'a> for MutationFinder<'_> {
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
         if self.found.is_none()
             && let Expression::StaticMemberExpression(member) = &it.callee
-            && STATE_ARRAY_MUTATORS.contains(&member.property.name.as_str())
+            && STATE_MUTATOR_METHODS.contains(&member.property.name.as_str())
             && self.roots_at_state(&member.object)
         {
             self.flag(it.span);
@@ -831,6 +837,22 @@ impl<'a> Visit<'a> for MutationFinder<'_> {
             self.flag(it.span);
         }
         walk::walk_update_expression(self, it);
+    }
+
+    fn visit_unary_expression(&mut self, it: &UnaryExpression<'a>) {
+        // `delete state.obj.key` mutates the object in place — same silent no-op.
+        if it.operator == UnaryOperator::Delete
+            && let Expression::StaticMemberExpression(m) = &it.argument
+            && self.roots_at_state(&m.object)
+        {
+            self.flag(it.span);
+        } else if it.operator == UnaryOperator::Delete
+            && let Expression::ComputedMemberExpression(m) = &it.argument
+            && self.roots_at_state(&m.object)
+        {
+            self.flag(it.span);
+        }
+        walk::walk_unary_expression(self, it);
     }
 }
 

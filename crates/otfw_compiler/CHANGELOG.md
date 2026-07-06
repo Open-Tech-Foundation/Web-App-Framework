@@ -9,8 +9,9 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 - **`$state` in-place mutation is rejected** (`lower.rs` `state_mutation_diagnostic`,
   wired in `otfw_cli`): a `$state` signal's value is replaced, never mutated, so
-  `list.push(x)`, `list[0] = x`, `list.length = 0`, `obj.a.b = x`, and `obj.n++` update
-  the data but notify no effect — silently losing the update. `otfwc build` now fails
+  `list.push(x)`, `Map`/`Set` mutators (`set`/`add`/`delete`/`clear`), `list[0] = x`,
+  `list.length = 0`, `obj.a.b = x`, `obj.n++`, and `delete obj.key` update the data but
+  notify no effect — silently losing the update. `otfwc build` now fails
   with the immutable-update / `reactive()` fix instead of miscompiling into a no-op
   (SPEC §3.4 item 10). Detection is symbol-precise via the semantic model: a shadowing
   local or an alias is not flagged; read methods (`map`/`filter`/…) stay legal; and

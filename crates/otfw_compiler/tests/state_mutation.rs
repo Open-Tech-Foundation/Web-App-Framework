@@ -96,6 +96,35 @@ fn rejects_object_property_write() {
 }
 
 #[test]
+fn rejects_map_and_set_mutators() {
+    for (init, call) in [
+        ("new Map()", "m.set(\"k\", 1)"),
+        ("new Map([[\"k\", 1]])", "m.delete(\"k\")"),
+        ("new Set()", "m.add(1)"),
+        ("new Set([1])", "m.clear()"),
+    ] {
+        assert_rejected(&format!(
+            "export default function C() {{\n\
+             \x20 const m = $state({init});\n\
+             \x20 const go = () => {{ {call}; }};\n\
+             \x20 return <button onClick={{go}}>x</button>;\n\
+             }}"
+        ));
+    }
+}
+
+#[test]
+fn rejects_delete_operator() {
+    assert_rejected(
+        "export default function C() {\n\
+         \x20 const user = $state({ name: \"a\", tmp: 1 });\n\
+         \x20 const go = () => { delete user.tmp; };\n\
+         \x20 return <button onClick={go}>x</button>;\n\
+         }",
+    );
+}
+
+#[test]
 fn rejects_member_increment() {
     assert_rejected(
         "export default function C() {\n\
@@ -139,6 +168,17 @@ fn allows_read_methods() {
         "export default function List() {\n\
          \x20 const items = $state([1, 2, 3]);\n\
          \x20 return <ul>{items.filter((i) => i > 1).map((i) => <li>{i}</li>)}</ul>;\n\
+         }",
+    );
+}
+
+// Map/Set read methods (`get`, `has`, `size`) are reads, not mutations — legal.
+#[test]
+fn allows_map_read_methods() {
+    assert_clean(
+        "export default function C() {\n\
+         \x20 const m = $state(new Map([[\"k\", 1]]));\n\
+         \x20 return <span>{m.has(\"k\") ? m.get(\"k\") : 0}</span>;\n\
          }",
     );
 }
