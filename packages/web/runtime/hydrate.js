@@ -219,6 +219,15 @@ export function claimElement(cur, tag) {
  * to bind onto (created empty when the server rendered no value), and advance the
  * cursor past the closing marker. Wire reactivity with `bindText(node, fn)` from
  * dom.js — the binding logic is shared with CSR; only the node is adopted, not built.
+ *
+ * A text hole may hold a *node*, not text: `{expr}` whose value is a JSX element or an
+ * array of them (e.g. a code example stored in a data array and rendered `{ex.body}`).
+ * The compiler can't distinguish that statically, so it emits the text path for both; the
+ * SSG backend renders such a value's markup inline in the hole, and `bindText`'s node arm
+ * *rebuilds* it fresh on the client (dom.js) rather than adopting. So any element/comment
+ * left inside the hole is server content the client will not reuse — it must be removed
+ * here, or it lingers beside the rebuilt node as a duplicate (the whole example appears
+ * twice). Only a single text node is a genuine adopt target; strip everything else.
  */
 export function claimText(cur) {
   const start = cur.node;
@@ -227,13 +236,17 @@ export function claimText(cur) {
   }
   let node = start.nextSibling;
   let textNode = null;
+  const stray = []; // node-valued-hole server content bindText rebuilds — not adopted
   while (node && !(node.nodeType === COMMENT && node.data === HOLE_END)) {
+    const next = node.nextSibling;
     if (node.nodeType === TEXT && !textNode) textNode = node;
-    node = node.nextSibling;
+    else stray.push(node);
+    node = next;
   }
   const end = node; // the `<!--/-->` marker (or null if the markup is malformed)
+  for (const n of stray) if (n.parentNode) n.parentNode.removeChild(n);
   if (!textNode) {
-    // Empty hole (`<!--$--><!--/-->`): synthesize the anchor bindText will write into.
+    // Empty or node-valued hole: synthesize the anchor bindText will write into.
     textNode = document.createTextNode("");
     (start.parentNode || document).insertBefore(textNode, end);
   }

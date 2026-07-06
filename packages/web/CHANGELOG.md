@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Hydration no longer duplicates a node-valued text hole.** A `{expr}` hole whose value
+  is a JSX node (or array of them) stored in data — e.g. a code example rendered
+  `{EXAMPLES.find(...).body}` — is server-rendered as inline markup inside the hole, but the
+  client's `bindText` node arm *rebuilds* it rather than adopting. `claimText` used to leave
+  that server node in the hole, so the rebuilt copy landed beside it and the content rendered
+  twice. `claimText` now strips any non-text server content from the hole, keeping the single
+  adopt-able text anchor, so exactly one copy survives.
+
 ## [0.11.0] - 2026-07-06
 
 ### Added

@@ -393,4 +393,54 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     expect(serverInner.textContent).toBe("c 1");
     expect(container.querySelector("button.inner")).toBe(serverInner); // no rebuild
   });
+
+  // Regression (esrun landing CodeTabs): a text hole `{expr}` whose value is a *JSX node*
+  // stored in a data array — `{EXAMPLES.find(...).body}`. The compiler can't tell node from
+  // text statically, so it emits the text path; SSG renders the node's markup inline in the
+  // hole, and the client's `bindText` node arm *rebuilds* it. If hydration leaves the server
+  // node in the hole, the rebuilt copy lands beside it and the example renders twice
+  // ("AAAAAA"). claimText must strip the server node content so exactly one copy survives.
+  const nodeHoleSource =
+    'const EXAMPLES = [' +
+    ' { id: "a", body: <code class="ex"><span>AAA</span></code> },' +
+    ' { id: "b", body: <code class="ex"><span>BBB</span></code> } ];' +
+    " export default function P(){ let sel=$state(\"a\");" +
+    " return <div><div>{EXAMPLES.map((ex) => <button class=\"tab\" onclick={() => sel = ex.id}>{ex.id}</button>)}</div>" +
+    " <pre>{EXAMPLES.find((ex) => ex.id === sel).body}</pre></div>; }";
+
+  test("a node-valued text hole hydrates without duplicating the server-rendered node", () => {
+    // 1. Server render — the <pre> hole carries the selected example's node markup inline.
+    const ssg = loadModule(compile(nodeHoleSource, "ssg"), { signal, ssgText, ssgList }).default;
+    const html = ssg();
+    expect(html).toContain('<pre><!--$--><code class="ex"><span>AAA</span></code><!--/--></pre>');
+    expect(html).not.toContain("BBB"); // only the selected example is server-rendered
+
+    // 2. Put it in the DOM — exactly one code node before hydration.
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const pre = container.querySelector("pre");
+    expect(pre.querySelectorAll("code.ex").length).toBe(1);
+
+    // 3. Hydrate.
+    const mod = loadModule(compile(nodeHoleSource, "hydrate"), {
+      signal,
+      bindText,
+      bindList,
+      hydrateList,
+      cursor,
+      claimElement,
+      claimText,
+      skipNode,
+    });
+    mod.hydrate(container);
+
+    // 4. Regression: still exactly one <code>, showing its text once (was two → "AAAAAA").
+    expect(pre.querySelectorAll("code.ex").length).toBe(1);
+    expect(pre.textContent).toBe("AAA");
+
+    // 5. Reactivity still swaps the node in place when the selection changes.
+    container.querySelectorAll("button.tab")[1].click();
+    expect(pre.querySelectorAll("code.ex").length).toBe(1);
+    expect(pre.textContent).toBe("BBB");
+  });
 });
