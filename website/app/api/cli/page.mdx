@@ -13,7 +13,7 @@ through `package.json` scripts (`bun run dev`, `bun run build`).
 | Command | Description |
 | --- | --- |
 | `otfw dev` | Start the dev server with on-demand compile and hot reload. |
-| `otfw build` | Compile and bundle to a static `dist/`. |
+| `otfw build` | Compile and bundle to `dist/` — per-route lazy chunks under `assets/`. |
 | `otfw build --ssg` | Build and pre-render every route to static HTML. |
 | `otfw serve` | Build, then run the per-request SSR server (`--port` to override). |
 

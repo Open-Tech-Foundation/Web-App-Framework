@@ -29,6 +29,23 @@ dist/
 Routes are code-split: visiting a page loads only its chunk. Filenames are content-
 hashed, so they can be cached forever.
 
+## How route code splitting works
+
+`otfw build` generates a small entry bundle plus one lazy chunk per route (and shared
+chunks such as `layout.jsx`). The entry calls `mountApp` with a map of dynamic imports —
+each route is `() => import("…/page.jsx")` — and Rolldown emits separate hashed files
+under `dist/assets/`.
+
+On first navigation to a route, the browser fetches that route's chunk; other routes stay
+unloaded. In dev, the same model applies on demand: the first visit to a path compiles
+`/app/.../page.jsx` into a `/__route/<id>.js` module instead of bundling the whole app up
+front.
+
+<Callout type="info" title="Prefetch is not built yet">
+  Chunks load lazily on navigation today. Automatic prefetch (for example on link hover or
+  when a `<Link>` enters the viewport) is planned but not implemented in the router yet.
+</Callout>
+
 ## Single-page output
 
 A plain build emits one `index.html`; the client bundle renders every route. Configure
