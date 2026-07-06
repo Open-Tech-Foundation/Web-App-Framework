@@ -183,6 +183,46 @@ fn allows_map_read_methods() {
     );
 }
 
+// An array mutator on a `$state` of *unknown* shape (initializer isn't a literal)
+// is still flagged — `push`/`pop`/… are effectively array-specific.
+#[test]
+fn rejects_array_mutator_on_unknown_shape() {
+    assert_rejected(
+        "export default function C() {\n\
+         \x20 const xs = $state(makeList());\n\
+         \x20 const go = () => { xs.push(1); };\n\
+         \x20 return <button onClick={go}>x</button>;\n\
+         }",
+    );
+}
+
+// The false-positive guard: `set`/`add`/`delete`/`clear` are common object method
+// names, so they are only flagged when the initializer is a real `Map`/`Set`. A
+// plain object exposing a `set` method is NOT flagged.
+#[test]
+fn allows_object_method_named_like_collection_mutator() {
+    assert_clean(
+        "export default function C() {\n\
+         \x20 const store = $state({ set: (k, v) => k });\n\
+         \x20 const go = () => { store.set(\"k\", 1); };\n\
+         \x20 return <button onClick={go}>x</button>;\n\
+         }",
+    );
+}
+
+// Likewise, a collection mutator on an unknown-shape `$state` is not flagged —
+// the name is too ambiguous to assume Map/Set without a static hint.
+#[test]
+fn allows_collection_mutator_on_unknown_shape() {
+    assert_clean(
+        "export default function C() {\n\
+         \x20 const s = $state(makeStore());\n\
+         \x20 const go = () => { s.add(1); };\n\
+         \x20 return <button onClick={go}>x</button>;\n\
+         }",
+    );
+}
+
 // A plain local (not `$state`) may be mutated freely — e.g. building an array.
 #[test]
 fn allows_mutation_of_non_state_local() {

@@ -16,7 +16,7 @@
 //! - `$signal` external bridge and spreads are follow-ups. Member-expression
 //!   component names (`<Foo.Bar/>`) are unsupported by design (SPEC §4.0.1).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use oxc::ast::ast::{
     Argument, ArrowFunctionExpression, AssignmentExpression, AssignmentTarget, BindingPattern,
@@ -682,17 +682,48 @@ pub fn function_ref_diagnostic(program: &Program) -> Option<String> {
     })
 }
 
-/// In-place mutator methods — calling one on a `$state` value reassigns nothing,
-/// so the backing signal never notifies (SPEC §3.4). Covers array mutators and the
-/// `Map`/`Set` mutators (`set`/`add`/`delete`/`clear`). Read methods (`map`,
-/// `filter`, `get`, `has`, …) are intentionally absent: those are how JSX and
-/// `_mapped()` read a collection and must stay legal.
-const STATE_MUTATOR_METHODS: &[&str] = &[
-    // Array
+/// In-place **array** mutators. These names are effectively array-specific, so they
+/// are flagged whenever the `$state` root is an array *or* of unknown shape. Read
+/// methods (`map`, `filter`, …) are intentionally absent: those are how JSX and
+/// `_mapped()` read the list and must stay legal.
+const ARRAY_MUTATORS: &[&str] = &[
     "push", "pop", "shift", "unshift", "splice", "reverse", "sort", "fill", "copyWithin",
-    // Map / Set
-    "set", "add", "delete", "clear",
 ];
+
+/// In-place **`Map`/`Set`** mutators. Unlike the array names, `set`/`add`/`delete`/
+/// `clear` are common method names on ordinary objects, so they are flagged *only*
+/// when the `$state` initializer is a statically-recognizable `Map`/`Set` — never on
+/// an object or unknown shape, which would risk a false positive on a user method.
+const COLLECTION_MUTATORS: &[&str] = &["set", "add", "delete", "clear"];
+
+/// The statically-inferred shape of a `$state` value, read from its initializer
+/// literal/constructor. Used to gate ambiguous mutator names (§3.4). The compiler
+/// runs no type checker, so anything not a literal/`new` form is `Unknown`.
+#[derive(Clone, Copy, PartialEq)]
+enum StateShape {
+    Array,
+    MapSet,
+    Object,
+    Unknown,
+}
+
+/// Classify a `$state(init)` argument by its literal/constructor form. A call,
+/// identifier, `props` read, ternary, etc. carries no static type and is `Unknown`.
+fn classify_state_init(arg: &Argument) -> StateShape {
+    match arg {
+        Argument::ArrayExpression(_) => StateShape::Array,
+        Argument::ObjectExpression(_) => StateShape::Object,
+        Argument::NewExpression(n) => match &n.callee {
+            Expression::Identifier(id) => match id.name.as_str() {
+                "Array" => StateShape::Array,
+                "Map" | "Set" | "WeakMap" | "WeakSet" => StateShape::MapSet,
+                _ => StateShape::Unknown,
+            },
+            _ => StateShape::Unknown,
+        },
+        _ => StateShape::Unknown,
+    }
+}
 
 /// The value inside a `$state` signal is replaced, never mutated: reactivity fires
 /// on `signal.value = …`, not on mutating the object the value points at. Writing
@@ -711,17 +742,17 @@ pub fn state_mutation_diagnostic(program: &Program, source: &str) -> Option<Stri
     let resolved = crate::semantic::resolve(program);
     let scoping = resolved.semantic.scoping();
 
-    // Pass 1: the symbol of every `$state(...)` binding in the module.
-    let mut collector = StateSymbols { set: HashSet::new() };
+    // Pass 1: every `$state(...)` binding, keyed to its inferred shape.
+    let mut collector = StateShapes { shapes: HashMap::new() };
     collector.visit_program(program);
-    if collector.set.is_empty() {
+    if collector.shapes.is_empty() {
         return None;
     }
 
     // Pass 2: the first in-place mutation rooted at one of those symbols.
     let mut finder = MutationFinder {
         scoping,
-        state_symbols: &collector.set,
+        state_shapes: &collector.shapes,
         source,
         found: None,
     };
@@ -729,19 +760,20 @@ pub fn state_mutation_diagnostic(program: &Program, source: &str) -> Option<Stri
     finder.found
 }
 
-/// Collects the binding symbol of each `$state(...)` declarator.
-struct StateSymbols {
-    set: HashSet<SymbolId>,
+/// Collects the binding symbol of each `$state(...)` declarator and its shape.
+struct StateShapes {
+    shapes: HashMap<SymbolId, StateShape>,
 }
 
-impl<'a> Visit<'a> for StateSymbols {
+impl<'a> Visit<'a> for StateShapes {
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         if let Some(Expression::CallExpression(call)) = &it.init
             && matches!(macro_kind(call), Some(MacroKind::State))
             && let BindingPattern::BindingIdentifier(bi) = &it.id
             && let Some(sym) = bi.symbol_id.get()
         {
-            self.set.insert(sym);
+            let shape = call.arguments.first().map_or(StateShape::Unknown, classify_state_init);
+            self.shapes.insert(sym, shape);
         }
         walk::walk_variable_declarator(self, it);
     }
@@ -763,19 +795,21 @@ fn member_root<'a, 'b>(expr: &'b Expression<'a>) -> Option<&'b IdentifierReferen
 /// increment/decrement of a member target.
 struct MutationFinder<'r> {
     scoping: &'r Scoping,
-    state_symbols: &'r HashSet<SymbolId>,
+    state_shapes: &'r HashMap<SymbolId, StateShape>,
     source: &'r str,
     found: Option<String>,
 }
 
 impl<'r> MutationFinder<'r> {
-    fn roots_at_state(&self, obj: &Expression) -> bool {
-        member_root(obj).is_some_and(|id| {
-            id.reference_id
-                .get()
-                .and_then(|r| self.scoping.get_reference(r).symbol_id())
-                .is_some_and(|s| self.state_symbols.contains(&s))
-        })
+    /// The shape of the `$state` symbol a member chain is rooted at, or `None` when
+    /// the root is not a `$state` variable (a shadowing local, an alias, a prop, …).
+    fn state_shape(&self, obj: &Expression) -> Option<StateShape> {
+        let id = member_root(obj)?;
+        let sym = id
+            .reference_id
+            .get()
+            .and_then(|r| self.scoping.get_reference(r).symbol_id())?;
+        self.state_shapes.get(&sym).copied()
     }
 
     /// Record the first offense, keyed to the offending span, and stop looking.
@@ -803,22 +837,32 @@ impl<'r> MutationFinder<'r> {
 
 impl<'a> Visit<'a> for MutationFinder<'_> {
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
+        // A mutating method is a no-op only if the receiver's shape says so: array
+        // mutators on an array/unknown root, collection mutators on a Map/Set root.
+        // This keeps `set`/`add`/`delete`/`clear` from false-flagging a same-named
+        // method on a plain object.
         if self.found.is_none()
             && let Expression::StaticMemberExpression(member) = &it.callee
-            && STATE_MUTATOR_METHODS.contains(&member.property.name.as_str())
-            && self.roots_at_state(&member.object)
+            && let Some(shape) = self.state_shape(&member.object)
         {
-            self.flag(it.span);
+            let method = member.property.name.as_str();
+            let is_mutation = (ARRAY_MUTATORS.contains(&method)
+                && matches!(shape, StateShape::Array | StateShape::Unknown))
+                || (COLLECTION_MUTATORS.contains(&method) && shape == StateShape::MapSet);
+            if is_mutation {
+                self.flag(it.span);
+            }
         }
         walk::walk_call_expression(self, it);
     }
 
     fn visit_assignment_expression(&mut self, it: &AssignmentExpression<'a>) {
-        // A bare-identifier target (`list = …`) is the correct immutable update and
-        // stays legal; only writes *through* a `$state` root are mutations.
+        // Writing through a member target (`list[0] = …`, `user.name = …`) is a
+        // no-op on any shape — no method-name ambiguity. A bare-identifier target
+        // (`list = …`) is the correct immutable update and stays legal.
         let mutated = match &it.left {
-            AssignmentTarget::StaticMemberExpression(m) => self.roots_at_state(&m.object),
-            AssignmentTarget::ComputedMemberExpression(m) => self.roots_at_state(&m.object),
+            AssignmentTarget::StaticMemberExpression(m) => self.state_shape(&m.object).is_some(),
+            AssignmentTarget::ComputedMemberExpression(m) => self.state_shape(&m.object).is_some(),
             _ => false,
         };
         if mutated {
@@ -829,8 +873,10 @@ impl<'a> Visit<'a> for MutationFinder<'_> {
 
     fn visit_update_expression(&mut self, it: &UpdateExpression<'a>) {
         let mutated = match &it.argument {
-            SimpleAssignmentTarget::StaticMemberExpression(m) => self.roots_at_state(&m.object),
-            SimpleAssignmentTarget::ComputedMemberExpression(m) => self.roots_at_state(&m.object),
+            SimpleAssignmentTarget::StaticMemberExpression(m) => self.state_shape(&m.object).is_some(),
+            SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+                self.state_shape(&m.object).is_some()
+            }
             _ => false,
         };
         if mutated {
@@ -840,17 +886,19 @@ impl<'a> Visit<'a> for MutationFinder<'_> {
     }
 
     fn visit_unary_expression(&mut self, it: &UnaryExpression<'a>) {
-        // `delete state.obj.key` mutates the object in place — same silent no-op.
-        if it.operator == UnaryOperator::Delete
-            && let Expression::StaticMemberExpression(m) = &it.argument
-            && self.roots_at_state(&m.object)
-        {
-            self.flag(it.span);
-        } else if it.operator == UnaryOperator::Delete
-            && let Expression::ComputedMemberExpression(m) = &it.argument
-            && self.roots_at_state(&m.object)
-        {
-            self.flag(it.span);
+        // `delete state.obj.key` mutates the object in place — same silent no-op,
+        // and shape-independent (no method name involved).
+        if it.operator == UnaryOperator::Delete {
+            let target = match &it.argument {
+                Expression::StaticMemberExpression(m) => Some(&m.object),
+                Expression::ComputedMemberExpression(m) => Some(&m.object),
+                _ => None,
+            };
+            if let Some(obj) = target
+                && self.state_shape(obj).is_some()
+            {
+                self.flag(it.span);
+            }
         }
         walk::walk_unary_expression(self, it);
     }

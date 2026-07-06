@@ -16,7 +16,12 @@ The `[Unreleased]` section is renamed to the new version number at release time.
   (SPEC §3.4 item 10). Detection is symbol-precise via the semantic model: a shadowing
   local or an alias is not flagged; read methods (`map`/`filter`/…) stay legal; and
   `$ref`/`$derived`/`$context` are excluded so DOM writes like `el.scrollTop = 0` on a
-  `$ref` remain valid. Covered by `tests/state_mutation.rs`.
+  `$ref` remain valid. Since the compiler runs no type checker, mutating *method*
+  names are gated by the shape inferred from the `$state(init)` initializer: array
+  mutators fire on an array/unknown shape, while `Map`/`Set` mutators fire only on a
+  statically-recognizable `new Map`/`new Set` — so a plain object with a `set`/`add`
+  method is not a false positive. Assignment/index/`++`/`delete` are shape-independent.
+  Covered by `tests/state_mutation.rs`.
 - **DOM lifecycle hooks** (`lower.rs` + `codegen/csr.rs`/`hydrate.rs`): three new
   compiler macros alongside `onMount`/`onCleanup` — `onResize(cb)` (ResizeObserver on
   the host/root element), `onVisibilityChange(cb)` (IntersectionObserver; `cb(isIntersecting,
