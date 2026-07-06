@@ -7,6 +7,21 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Added
 
+- **DOM lifecycle hooks** (`lower.rs` + `codegen/csr.rs`/`hydrate.rs`): three new
+  compiler macros alongside `onMount`/`onCleanup` — `onResize(cb)` (ResizeObserver on
+  the host/root element), `onVisibilityChange(cb)` (IntersectionObserver; `cb(isIntersecting,
+  entry)`), and `onMediaQuery(query, cb)` (`matchMedia`; `cb(matches, e)` called once
+  synchronously at mount with the initial state, then on every change). Each desugars to a
+  mount-shaped closure returning its disposer, so teardown rides the existing
+  `_cleanups`/`runMount` path; SSG output stays free of them (dropped in lowering). A page
+  whose root is not a single element gets a warning for the two observer hooks and their
+  closures are skipped — emitting them would throw `observe(fragment)` at runtime
+  (`onMediaQuery` is allowed anywhere); components always observe their custom-element
+  host. `onMediaQuery` with wrong arity is a lowering diagnostic.
+- **Lowering diagnostics reach the CLI.** `Lowered.errors` (skipped unsupported
+  constructs, bad hook arity, …) are now merged into every backend module's errors
+  (`csr`/`hydrate`/`ssg`), so `otfwc build` prints them as `warning:` lines — previously
+  they were collected and silently dropped.
 - **Component (Custom Element) hydration** (`codegen/hydrate.rs` + `csr.rs`, Phase 2.0 —
   see `docs/HYDRATION.md` §0/§3.2): the hydrate target now emits a **dual component**.
   csr gained a hydration-agnostic `ComponentView` hook — it splices a caller-provided

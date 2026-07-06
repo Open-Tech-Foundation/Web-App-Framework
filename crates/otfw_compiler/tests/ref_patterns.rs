@@ -121,6 +121,57 @@ fn dynamic_item_refs_via_per_item_component() {
     );
 }
 
+// React: `useEffect(() => { const ro = new ResizeObserver(cb); ro.observe(ref.current);
+// return () => ro.disconnect(); })`. Framework: `onResize(cb)` — the compiler wires a
+// ResizeObserver on the host with automatic disconnect.
+#[test]
+fn measure_on_resize_via_hook() {
+    let code = compile_component(
+        "export default function Box() {\n  let w = $state(0);\n  onResize((entry) => w = entry.contentRect.width);\n  return <div>{w}</div>;\n}",
+    );
+    assert!(code.contains("new ResizeObserver("), "{code}");
+    assert!(code.contains("__ro.observe(this);"), "observes the host:\n{code}");
+    // The callback is `.value`-injected like any lifecycle callback.
+    assert!(code.contains("w.value = entry.contentRect.width"), "{code}");
+    // The disposer flows through the shared onMount-return path.
+    assert!(code.contains("return () => __ro.disconnect();"), "{code}");
+    assert!(code.contains("if (typeof __d === \"function\") this._cleanups.push(__d);"), "{code}");
+}
+
+// React: `useEffect` + `matchMedia` + manual initial call + listener removal.
+// Framework: `onMediaQuery(query, cb)` — initial state delivered synchronously at
+// mount, `change` listener removed on teardown.
+#[test]
+fn respond_to_media_query_via_hook() {
+    let code = compile_page(
+        "export default function Page() {\n  let compact = $state(false);\n  onMediaQuery(\"(max-width: 640px)\", (matches) => compact = matches);\n  return <main>{compact ? \"compact\" : \"wide\"}</main>;\n}",
+    );
+    assert!(code.contains("window.matchMedia((\"(max-width: 640px)\"));"), "{code}");
+    // Initial state is delivered synchronously at mount…
+    assert!(code.contains("__cb(__mql.matches, __mql);"), "{code}");
+    // …then on every change, with the listener removed on teardown.
+    assert!(code.contains("__mql.addEventListener(\"change\", __onchange);"), "{code}");
+    assert!(
+        code.contains("return () => __mql.removeEventListener(\"change\", __onchange);"),
+        "{code}"
+    );
+    assert!(code.contains("__lifecycle.mounts.push(() => { const __cb = ("), "{code}");
+}
+
+// React: `useEffect` + IntersectionObserver on a ref to react to viewport visibility.
+// Framework: `onVisibilityChange(cb)` — `cb(isIntersecting, entry)` on the host.
+#[test]
+fn react_to_viewport_visibility_via_hook() {
+    let code = compile_component(
+        "export default function Lazy() {\n  let seen = $state(false);\n  onVisibilityChange((visible) => { if (visible) seen = true; });\n  return <img data-seen={seen} />;\n}",
+    );
+    assert!(code.contains("new IntersectionObserver("), "{code}");
+    assert!(code.contains("__io.observe(this);"), "observes the host:\n{code}");
+    assert!(code.contains("__cb(__entry.isIntersecting, __entry);"), "{code}");
+    assert!(code.contains("if (visible) seen.value = true;"), "{code}");
+    assert!(code.contains("return () => __io.disconnect();"), "{code}");
+}
+
 // The one thing callback refs offer that the framework declines to mimic — a
 // function receiving the node during render — is rejected with actionable guidance.
 #[test]

@@ -42,10 +42,13 @@ Web App Framework supports all standard JS conditional patterns (ternaries, `&&`
 
 Components support global lifecycle hooks that do not require imports:
 
-*   **`onMount(() => { ... })`**: Runs when the component is added to the DOM.
+*   **`onMount(() => { ... })`**: Runs when the component is added to the DOM. A returned function runs as extra teardown on removal.
 *   **`onCleanup(() => { ... })`**: Runs when the component is removed from the DOM.
+*   **`onResize((entry) => { ... })`**: Observes the component's host element with a `ResizeObserver` (one initial entry after mount, then on every size change). Auto-disconnects on removal. Custom-element hosts are `display: inline` by default and inline boxes measure 0×0 — give the host a block display in CSS for meaningful sizes.
+*   **`onVisibilityChange((visible, entry) => { ... })`**: Observes the host element with an `IntersectionObserver` — fires when the component scrolls in or out of the viewport. Auto-disconnects on removal.
+*   **`onMediaQuery(query, (matches, e) => { ... })`**: Wires `window.matchMedia(query)` — called once immediately at mount with the current state, then on every change. The listener is removed automatically on removal.
 
-These hooks can be used anywhere, including inside your own custom utility functions or "hooks."
+These are compiler macros: they are recognized only as top-level statements of the component/page body (a call inside a helper function or conditional is a silent no-op). In a page or layout, `onResize`/`onVisibilityChange` require a single element root to observe.
 
 ---
 

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- **DOM lifecycle hooks**: `onResize(cb)`, `onVisibilityChange(cb)`, and
+  `onMediaQuery(query, cb)` compile like `onMount`/`onCleanup` — the compiler wires a
+  `ResizeObserver` / `IntersectionObserver` on the component's host element (a page's
+  root element) or a `matchMedia` listener, with automatic teardown on
+  disconnect/navigation. `onMediaQuery` delivers the initial match state synchronously at
+  mount. In a page/layout, `onResize`/`onVisibilityChange` require a single element root.
+
 ## [0.5.0] - 2026-07-05
 
 ### Fixed

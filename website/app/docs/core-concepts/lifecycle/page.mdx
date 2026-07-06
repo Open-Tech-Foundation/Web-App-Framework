@@ -1,11 +1,13 @@
 ---
 title: Lifecycle
-description: Run code when a component mounts and clean it up when it unmounts.
+description: Run code on mount and unmount, and react to resize, viewport visibility, and media queries — with automatic cleanup.
 ---
+
+import { Callout } from "@opentf/web-docs";
 
 # Lifecycle
 
-Two global hooks cover a component's life. Neither needs an import.
+Five global hooks cover a component's life. None needs an import.
 
 ## onMount
 
@@ -36,5 +38,86 @@ outlives a render:
 onCleanup(() => socket.close());
 ```
 
-Both hooks work inside your own helper functions, so you can build reusable
-"composables" around them.
+## onResize
+
+Watches the component's own element with a `ResizeObserver` and calls back with the
+[`ResizeObserverEntry`](https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserverEntry)
+on every size change. The observer is disconnected automatically on unmount — no
+manual teardown.
+
+```jsx
+export default function Chart() {
+  let width = $state(0);
+
+  onResize((entry) => {
+    width = entry.contentRect.width;
+  });
+
+  return <svg width={width} />;
+}
+```
+
+As with the platform API, one initial entry is delivered right after mount, then one
+per size change.
+
+<Callout type="warning" title="Give the host a size">
+  A component's host element is <code>display: inline</code> by default, and inline
+  boxes measure 0×0. Add a <code>display: block</code> (or similar) rule for the host
+  in your CSS to get meaningful measurements.
+</Callout>
+
+## onVisibilityChange
+
+Fires when the component scrolls into or out of the viewport, via an
+`IntersectionObserver` on the component's element. The callback receives
+`(isIntersecting, entry)`; the observer is disconnected automatically on unmount.
+
+```jsx
+export default function LazyImage({ src }) {
+  let visible = $state(false);
+
+  onVisibilityChange((isIntersecting) => {
+    if (isIntersecting) visible = true;
+  });
+
+  return <img src={visible ? src : undefined} loading="lazy" />;
+}
+```
+
+## onMediaQuery
+
+Wires `window.matchMedia(query)` and calls back with `(matches, event)` — **once
+immediately at mount** with the current state, then on every change. The listener is
+removed automatically on unmount.
+
+```jsx
+export default function Sidebar() {
+  let compact = $state(false);
+
+  onMediaQuery("(max-width: 700px)", (matches) => {
+    compact = matches;
+  });
+
+  return <nav class={compact ? "drawer" : "rail"}>…</nav>;
+}
+```
+
+The query expression is evaluated once at mount — a signal read inside it is a
+one-time snapshot, not reactive.
+
+## In pages and layouts
+
+All five hooks work in `page.jsx` / `layout.jsx` too: mount runs after the page is
+inserted, cleanup runs when the router navigates away. Because `onResize` and
+`onVisibilityChange` need an element to observe, a page using them must have a single
+element root — wrap fragment views in a container element (the compiler warns
+otherwise). `onMediaQuery` has no such constraint.
+
+## Rules
+
+- Hooks run in **FIFO order** per kind; `onMount` callbacks run before the observer
+  hooks are wired.
+- Hooks are compiler macros, recognized only as **top-level statements** of the
+  component or page body. A call inside a helper function, condition, or after an
+  `await` is a silent no-op.
+- During SSG/SSR none of them run — they exist only in the client output.

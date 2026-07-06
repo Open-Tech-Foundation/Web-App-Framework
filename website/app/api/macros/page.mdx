@@ -83,12 +83,23 @@ Guide with patterns: [Imperative API](/docs/core-concepts/imperative-api).
 
 ## Lifecycle hooks
 
-Also global — no import needed.
+Also global — no import needed. The DOM hooks clean up after themselves: the
+observer / listener is torn down automatically when the component unmounts (or the
+router navigates away from the page).
 
 | Hook | Runs |
 | --- | --- |
 | `onMount(fn)` | After the component connects to the DOM. Return a function to clean up. |
 | `onCleanup(fn)` | When the component is removed. |
+| `onResize(fn)` | `fn(entry)` per `ResizeObserver` entry for the component's element (one initial entry after mount). |
+| `onVisibilityChange(fn)` | `fn(isIntersecting, entry)` when the component's element enters/leaves the viewport (`IntersectionObserver`). |
+| `onMediaQuery(query, fn)` | `fn(matches, event)` once immediately at mount with the current `matchMedia(query)` state, then on every change. |
+
+In a page/layout, `onResize` / `onVisibilityChange` require a single element root to
+observe; `onMediaQuery` works anywhere. All hooks are recognized only as top-level
+statements of the component/page body.
+
+Guide with examples: [Lifecycle](/docs/core-concepts/lifecycle).
 
 <Callout type="info" title="Why no .value">
   The compiler tracks macro variables statically, so reads and writes are plain
@@ -96,6 +107,6 @@ Also global — no import needed.
 </Callout>
 
 <Callout type="note" title="Optional imports">
-  `@opentf/web` exports no-op `onMount` / `onCleanup` stubs for TypeScript and editors.
+  `@opentf/web` exports no-op stubs for all five hooks for TypeScript and editors.
   The real behavior is compiler-injected; macros themselves are never imported at runtime.
 </Callout>

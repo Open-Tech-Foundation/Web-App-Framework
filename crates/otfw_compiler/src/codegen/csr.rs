@@ -168,7 +168,9 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
 pub fn emit_page(lowered: &Lowered) -> CsrModule {
     let (e, body) = page_body(lowered);
     let code = format!("{}{}{}", e.user_imports(), e.imports(), body);
-    CsrModule { code, errors: e.errors }
+    let mut errors = lowered.errors.clone();
+    errors.extend(e.errors);
+    CsrModule { code, errors }
 }
 
 /// Build a page factory body (everything after the import header).
@@ -185,12 +187,22 @@ fn page_body(lowered: &Lowered) -> (Emitter<'_>, String) {
 
     // Lifecycle: a factory has no element to own teardown, so it attaches a
     // `__lifecycle` record to the root node. `mount` runs the `onMount` callbacks
-    // after insertion; the router runs `cleanups` when navigating away.
+    // after insertion; the router runs `cleanups` when navigating away. The DOM
+    // hooks (`onResize`/`onVisibilityChange`/`onMediaQuery`) desugar to mount
+    // closures returning their disposer, so they ride the same record. A non-element
+    // root can't host the observer hooks: warn and skip them (like `$expose`).
+    let hook_error = dom_hook_root_error(lowered);
+    if let Some(err) = &hook_error {
+        e.errors.push(err.clone());
+    }
     let mut lifecycle = String::new();
     if e.has_lifecycle() {
         lifecycle.push_str("  const __lifecycle = { mounts: [], cleanups: [] };\n");
         lifecycle.push_str(&e.render_stmts("  ", &e.on_cleanup_stmts("__lifecycle.cleanups")));
         lifecycle.push_str(&e.render_stmts("  ", &e.on_mount_stmts("__lifecycle.mounts")));
+        for closure in dom_hook_closures(lowered, &root, hook_error.is_none()) {
+            lifecycle.push_str(&format!("  __lifecycle.mounts.push({closure});\n"));
+        }
         lifecycle.push_str(&format!("  {root}.__lifecycle = __lifecycle;\n"));
     }
 
@@ -207,11 +219,59 @@ fn page_body(lowered: &Lowered) -> (Emitter<'_>, String) {
     (e, body)
 }
 
+/// Desugar the DOM lifecycle hooks (`onResize`/`onVisibilityChange`/`onMediaQuery`)
+/// into mount-shaped closures over `host` (a component's `this`, a page's root
+/// var). Each closure returns its disposer, so cleanup flows through the same
+/// path as an `onMount` return value (`_cleanups` / `runMount`). `observers: false`
+/// skips the two observer hooks — a page whose root isn't an Element has nothing
+/// to observe (the caller reports `dom_hook_root_error`; emitting the closure
+/// anyway would throw `observe(fragment)` at runtime).
+pub(crate) fn dom_hook_closures(lowered: &Lowered, host: &str, observers: bool) -> Vec<String> {
+    let mut closures = Vec::new();
+    if observers {
+        for cb in &lowered.on_resizes {
+            closures.push(format!(
+                "() => {{ const __cb = ({cb}); const __ro = new ResizeObserver((__entries) => {{ for (const __entry of __entries) __cb(__entry); }}); __ro.observe({host}); return () => __ro.disconnect(); }}"
+            ));
+        }
+        for cb in &lowered.on_visibility_changes {
+            closures.push(format!(
+                "() => {{ const __cb = ({cb}); const __io = new IntersectionObserver((__entries) => {{ for (const __entry of __entries) __cb(__entry.isIntersecting, __entry); }}); __io.observe({host}); return () => __io.disconnect(); }}"
+            ));
+        }
+    }
+    // The initial state is delivered synchronously at mount; the query expression
+    // is evaluated once (not reactive).
+    for (query, cb) in &lowered.on_media_queries {
+        closures.push(format!(
+            "() => {{ const __cb = ({cb}); const __mql = window.matchMedia(({query})); __cb(__mql.matches, __mql); const __onchange = (__e) => __cb(__e.matches, __e); __mql.addEventListener(\"change\", __onchange); return () => __mql.removeEventListener(\"change\", __onchange); }}"
+        ));
+    }
+    closures
+}
+
+/// The observer hooks need an Element to observe; a page whose root is a
+/// fragment/text/dynamic node has none (`onMediaQuery` never touches the root,
+/// so it stays allowed). Components always observe their custom-element host.
+pub(crate) fn dom_hook_root_error(lowered: &Lowered) -> Option<String> {
+    if lowered.on_resizes.is_empty() && lowered.on_visibility_changes.is_empty() {
+        return None;
+    }
+    match &lowered.ir.view {
+        ViewNode::Element { .. } | ViewNode::Component { .. } => None,
+        _ => Some(
+            "onResize/onVisibilityChange require a single element root — wrap the page view in a container element".into(),
+        ),
+    }
+}
+
 /// Emit a UI component as a Custom Element class + `customElements.define`.
 pub fn emit_component(lowered: &Lowered) -> CsrModule {
     let (e, body) = component_body(lowered);
     let code = format!("{}{}{}", e.user_imports(), e.imports(), body);
-    CsrModule { code, errors: e.errors }
+    let mut errors = lowered.errors.clone();
+    errors.extend(e.errors);
+    CsrModule { code, errors }
 }
 
 /// How a component's `connectedCallback` constructs its view. CSR always *builds*; the
@@ -272,9 +332,15 @@ fn component_body_ex<'a>(
     let tag = tags::def_tag(&export, &lowered.ir.id.module);
     let body = e.render("    ");
     // `onMount` callbacks run after the view is appended; a returned function is
-    // collected as additional teardown.
+    // collected as additional teardown. The DOM hooks desugar to closures that
+    // observe the host and return their disposer, so they share the wrapper.
     let mut mounts = String::new();
-    for cb in &lowered.on_mounts {
+    for cb in lowered
+        .on_mounts
+        .iter()
+        .cloned()
+        .chain(dom_hook_closures(lowered, "this", true))
+    {
         mounts.push_str(&format!(
             "    {{ const __d = ({cb})(); if (typeof __d === \"function\") this._cleanups.push(__d); }}\n"
         ));
@@ -618,6 +684,9 @@ fn emit_module_inner(
     let mut bodies = Vec::new();
     let mut defines = Vec::new();
     for (i, c) in components.iter().enumerate() {
+        // Lowering diagnostics (skipped unsupported constructs, bad hook arity, …)
+        // surface alongside codegen errors so the CLI's warning channel sees them.
+        errors.extend(c.errors.iter().cloned());
         if c.is_page {
             let (e, body) = page_body(c);
             combined.merge(&e.uses);
@@ -835,7 +904,11 @@ impl<'a> Emitter<'a> {
     }
 
     fn has_lifecycle(&self) -> bool {
-        !self.lowered.on_mounts.is_empty() || !self.lowered.on_cleanups.is_empty()
+        !self.lowered.on_mounts.is_empty()
+            || !self.lowered.on_cleanups.is_empty()
+            || !self.lowered.on_resizes.is_empty()
+            || !self.lowered.on_visibility_changes.is_empty()
+            || !self.lowered.on_media_queries.is_empty()
     }
 
     /// `onCleanup(cb)` teardown registrations targeting `sink` (pushed as-is; run
@@ -1958,6 +2031,89 @@ mod tests {
             m.code
         );
         assert!(m.code.contains("el0.__lifecycle = __lifecycle;"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn component_emits_dom_hooks() {
+        let m = emit_component(&lower(
+            "export function C() { let n = $state(0); onResize((entry) => console.log(n, entry)); onVisibilityChange((v) => n = v ? 1 : 0); onMediaQuery(\"(min-width: 768px)\", (matches) => console.log(matches)); return <p>{n}</p>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // Observers watch the custom-element host and run after the view is appended,
+        // their disposer collected through the shared `__d` wrapper.
+        let append = m.code.find("this.appendChild(el0);").expect("append");
+        for needle in [
+            "new ResizeObserver(",
+            "__ro.observe(this);",
+            "new IntersectionObserver(",
+            "__io.observe(this);",
+            "window.matchMedia((\"(min-width: 768px)\"));",
+        ] {
+            let at = m.code.find(needle).unwrap_or_else(|| panic!("missing {needle}:\n{}", m.code));
+            assert!(at > append, "{needle} must run after append:\n{}", m.code);
+        }
+        assert!(m.code.contains("(entry) => console.log(n.value, entry)"), "code: {}", m.code);
+        assert!(
+            m.code.contains("if (typeof __d === \"function\") this._cleanups.push(__d);"),
+            "code: {}",
+            m.code
+        );
+        // onMediaQuery delivers the initial state synchronously at mount.
+        assert!(m.code.contains("__cb(__mql.matches, __mql);"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn page_emits_dom_hooks() {
+        let m = emit_page(&lower(
+            "export function C() { onResize((entry) => console.log(entry)); onVisibilityChange((v) => console.log(v)); onMediaQuery(\"(min-width: 768px)\", (m) => console.log(m)); return <div>hi</div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // The desugared closures ride the page's `__lifecycle.mounts`, observing the root.
+        assert!(m.code.contains("__lifecycle.mounts.push(() => { const __cb = ("), "code: {}", m.code);
+        assert!(m.code.contains("__ro.observe(el0);"), "code: {}", m.code);
+        assert!(m.code.contains("__io.observe(el0);"), "code: {}", m.code);
+        assert!(m.code.contains("return () => __ro.disconnect();"), "code: {}", m.code);
+        assert!(m.code.contains("__mql.removeEventListener(\"change\", __onchange);"), "code: {}", m.code);
+        assert!(m.code.contains("el0.__lifecycle = __lifecycle;"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn page_dom_hooks_require_element_root() {
+        let m = emit_page(&lower(
+            "export function C() { onResize((entry) => console.log(entry)); return <><p>a</p><p>b</p></>; }",
+        ));
+        assert!(
+            m.errors.iter().any(|e| e.contains("require a single element root")),
+            "expected element-root error, got: {:?}",
+            m.errors
+        );
+        // The diagnostic is a warning in the pipeline (code still ships), so the
+        // observer closure must be skipped — emitting it would throw
+        // `observe(fragment)` at runtime.
+        assert!(!m.code.contains("new ResizeObserver"), "observer closure must be skipped:\n{}", m.code);
+    }
+
+    #[test]
+    fn media_query_arity_error_reaches_module_diagnostics() {
+        // Lowering diagnostics must surface on the emitted module so the CLI's
+        // warning channel reports them (they were previously dropped).
+        let m = emit_page(&lower(
+            "export function C() { onMediaQuery(() => {}); return <p>hi</p>; }",
+        ));
+        assert!(
+            m.errors.iter().any(|e| e.contains("onMediaQuery(query, callback)")),
+            "expected arity diagnostic on the module, got: {:?}",
+            m.errors
+        );
+    }
+
+    #[test]
+    fn page_media_query_allowed_on_fragment_root() {
+        let m = emit_page(&lower(
+            "export function C() { onMediaQuery(\"(min-width: 768px)\", (m) => console.log(m)); return <><p>a</p><p>b</p></>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("window.matchMedia("), "code: {}", m.code);
     }
 
     #[test]

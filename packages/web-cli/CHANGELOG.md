@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Tests
+
+- New real-browser e2e (`tests/e2e/lifecycle-hooks-browser.mjs`, in `test:e2e`) for the
+  DOM lifecycle hooks: an SSR-hydrated `/hooks` fixture route (page hooks + a
+  `<HookProbe>` component island) driven over CDP in headless Chromium — the
+  synchronous initial `onMediaQuery` state, real ResizeObserver entries on a
+  CSS-sized host, IntersectionObserver firing on real scroll, breakpoint flips via
+  viewport emulation, full teardown on SPA navigation (zero callbacks afterwards),
+  and fresh rewiring on return — with a clean console throughout.
+
 ## [1.5.0] - 2026-07-05
 
 _Dependency updates._

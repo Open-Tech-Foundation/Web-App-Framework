@@ -787,11 +787,15 @@ A scoping helper used during component initialization.
 ## 7. Lifecycle & Environment
 
 ### 7.1 Lifecycle Hooks
-- `onMount(cb)`: Associates `cb` with the current component instance. Executed once in `connectedCallback`.
-- `onCleanup(cb)`: Associates `cb` with the current component instance. Executed once in `disconnectedCallback`.
-- **Execution Order**: Multiple hooks of the same type within a component are executed in **FIFO (First-In, First-Out)** order.
-- **Mechanism**: These hooks rely on `getCurrentInstance()` (set via `withInstance`) to find the active component.
-- **Synchronous Constraint**: OTF Web component functions MUST be strictly synchronous. Using `async/await` in the component body breaks the `withInstance` context, causing lifecycle hooks called after an `await` to silently fail. Async logic should be placed inside `onMount` or `$effect` instead.
+- `onMount(cb)`: Executed once after the view is inserted (`connectedCallback` for components; post-insertion via the `__lifecycle` record for pages/layouts). A function returned by `cb` is collected as additional teardown.
+- `onCleanup(cb)`: Executed once on removal (`disconnectedCallback` for components; on navigation for pages/layouts).
+- `onResize(cb)`: Observes the component's host element (a page's root element) with a **`ResizeObserver`**; `cb(entry)` receives the `ResizeObserverEntry`. Per platform behavior the observer delivers one initial entry asynchronously after `observe()`, then on every size change. The observer is disconnected automatically on removal. Note: a custom-element host is `display: inline` by default, and ResizeObserver reports inline boxes as 0×0 — style the host (e.g. `:host`-equivalent tag selector or a `display:block` rule for the element) for meaningful measurements.
+- `onVisibilityChange(cb)`: Observes the host/root element with an **`IntersectionObserver`**; `cb(isIntersecting, entry)` fires when the element enters or leaves the viewport. Disconnected automatically on removal.
+- `onMediaQuery(query, cb)`: Wires `window.matchMedia(query)`; `cb(matches, mqlOrEvent)` is called **once synchronously at mount** with the initial state, then on every `change`. The listener is removed automatically on removal. The `query` expression is evaluated once at mount (a signal read inside it is a one-time `.value` read, not reactive).
+- **Execution Order**: Multiple hooks of the same type within a component are executed in **FIFO (First-In, First-Out)** order. The DOM hooks run after all `onMount` callbacks.
+- **Mechanism**: These hooks are **compiler macros**, not runtime functions — the compiler collects their callbacks from the top level of the component/page body and wires them into the generated connect/disconnect (or the page factory's `__lifecycle` record). The runtime exports are safe no-op stubs so imports resolve and stray calls (SSR, helper functions) do nothing. Consequently the hooks are only recognized as **top-level statements** of the component body; a call nested in a helper or conditional silently hits the no-op stub.
+- **Element-Root Constraint (pages)**: `onResize`/`onVisibilityChange` need an element to observe. In a page/layout whose root is a fragment (or other non-element), they are a compile error — wrap the view in a container element. `onMediaQuery` has no such constraint. Components always observe their custom-element host.
+- **Synchronous Constraint**: OTF Web component functions MUST be strictly synchronous. Using `async/await` in the component body means statements after an `await` are no longer top-level synchronous setup, so lifecycle hooks there silently fail. Async logic should be placed inside `onMount` or `$effect` instead.
 
 ### 7.2 Environment
 - `isSSG`: A boolean flag. When `true`, `$effect` macros are ignored, and certain DOM operations (like `_clearChildren`) are skipped to allow for hydration-friendly output.

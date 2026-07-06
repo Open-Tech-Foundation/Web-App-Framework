@@ -54,6 +54,8 @@ pub fn emit_module(
     let mut bodies = Vec::new();
 
     for c in components {
+        // Lowering diagnostics surface alongside codegen errors (CLI warnings).
+        errors.extend(c.errors.iter().cloned());
         let mut e = Emitter::new(c);
         let body = if c.is_page { e.page(c) } else { e.component(c) };
         server.extend(e.server);
@@ -585,6 +587,20 @@ mod tests {
         assert!(!m.code.contains("document."), "no DOM:\n{}", m.code);
         assert!(!m.code.contains("effect("), "no effects:\n{}", m.code);
         assert!(!m.code.contains("addEventListener"), "no events:\n{}", m.code);
+    }
+
+    #[test]
+    fn ssg_strips_dom_hooks() {
+        // `onResize`/`onVisibilityChange`/`onMediaQuery` are dropped in lowering
+        // (`is_lifecycle_stmt`), so nothing observer-shaped reaches SSG output.
+        let m = emit(
+            "export default function P(){ onResize((e) => console.log(e)); onVisibilityChange((v) => console.log(v)); onMediaQuery(\"(min-width: 768px)\", (q) => console.log(q)); return <div>hi</div>; }",
+            true,
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        for needle in ["ResizeObserver", "IntersectionObserver", "matchMedia", "onResize"] {
+            assert!(!m.code.contains(needle), "{needle} leaked into SSG:\n{}", m.code);
+        }
     }
 
     #[test]

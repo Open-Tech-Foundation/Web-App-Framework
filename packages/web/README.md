@@ -25,7 +25,8 @@ and drive it with [`@opentf/web-cli`](https://github.com/Open-Tech-Foundation/We
   `Portal`, `ErrorBoundary`, and event dispatch (`emit`).
 - **Compiler macros** — authored in your components, resolved at compile time:
   `$state`, `$derived`, `$ref`, `$context`, `$effect`, `$expose`, and the
-  `onMount` / `onCleanup` lifecycle hooks.
+  `onMount` / `onCleanup` / `onResize` / `onVisibilityChange` / `onMediaQuery`
+  lifecycle hooks.
 - **`<Link>`** — client-side navigation, shipped as JSX source and compiled by your
   app's pipeline.
 

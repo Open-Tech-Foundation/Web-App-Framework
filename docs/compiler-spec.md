@@ -7,7 +7,7 @@
 3. **Dynamic Children**: JSX expression containers in child positions are transformed into `renderDynamic(parent, () => expression)` calls.
 4. **Nested JSX Transformation**: JSX elements found inside expression containers (e.g. in ternaries) are recursively transformed into IIFEs that return imperative DOM nodes.
 5. **Macro Transformation**: `$state`, `$effect`, and `$derived` are replaced with `@preact/signals` primitives (`signal`, `effect`, `computed`) and imports are automatically added.
-6. **Lifecycle Transformation**: `onMount` and `onCleanup` are transformed into registrations that use the `withInstance` runtime wrapper.
+6. **Lifecycle Transformation**: `onMount` and `onCleanup` are collected from the top-level component/page body and wired into the generated `connectedCallback`/`disconnectedCallback` (components) or the page factory's `__lifecycle` record. The DOM hooks `onResize`, `onVisibilityChange`, and `onMediaQuery(query, cb)` are desugared to `ResizeObserver`/`IntersectionObserver`/`matchMedia` setup on the host element, with teardown (disconnect / listener removal) registered automatically.
 7. **Prop Transformation**: Destructured parameters in components are converted to `props` object access (e.g. `name` -> `props.name`) to maintain reactivity.
 
 ## Component Architecture

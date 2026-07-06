@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- SSR-safe no-op stubs for the new DOM lifecycle hooks — `onResize`, `onMediaQuery`,
+  `onVisibilityChange` — alongside `onMount`/`onCleanup` in `runtime/lifecycle.js`, so
+  source-level imports resolve and stray calls (SSR, outside a compiled component) are
+  harmless. The real behavior is compiler-emitted (see `@opentf/web-compiler`).
+- Real-browser end-to-end coverage for the DOM hooks lives in
+  `@opentf/web-cli`'s e2e suite (`tests/e2e/lifecycle-hooks-browser.mjs`) — actual
+  ResizeObserver/IntersectionObserver/matchMedia driven by real viewport, scroll,
+  and SPA-navigation changes against an SSR-hydrated page.
+
 ## [0.10.0] - 2026-07-05
 
 ### Fixed

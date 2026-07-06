@@ -4,6 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>E2E Fixture</title>
+    <!-- Custom-element hosts are display:inline by default; the lifecycle-hooks e2e
+         measures the HookProbe host with a real ResizeObserver, which reports inline
+         boxes as 0x0 - give it layout. -->
+    <style>
+      .web-hook-probe {
+        display: block;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

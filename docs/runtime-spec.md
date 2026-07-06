@@ -15,4 +15,4 @@ The `router` export is a reactive Proxy that wraps internal signals (`pathname`,
 * **Internal Consistency**: Framework logic uses the raw `routerSignals` object to avoid Proxy-related TypeErrors during state updates.
 
 ## Lifecycle (Compiler-only)
-There is no runtime lifecycle module. The `onMount` and `onCleanup` functions are syntax sugar that the compiler maps to the native Web Component lifecycle methods (`connectedCallback` and `disconnectedCallback`).
+There is no runtime lifecycle module. The `onMount` and `onCleanup` functions are syntax sugar that the compiler maps to the native Web Component lifecycle methods (`connectedCallback` and `disconnectedCallback`). The DOM hooks — `onResize`, `onVisibilityChange`, `onMediaQuery` — are likewise compiler-expanded, to `ResizeObserver`/`IntersectionObserver`/`matchMedia` setup on the host element with automatic teardown on disconnect. The `@opentf/web` exports of all five are SSR-safe no-op stubs.

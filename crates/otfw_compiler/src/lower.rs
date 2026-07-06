@@ -207,6 +207,15 @@ pub struct Lowered {
     /// Top-level `onCleanup(cb)` callbacks (`.value`-injected source); registered as
     /// teardown to run when the component/page is removed.
     pub on_cleanups: Vec<String>,
+    /// Top-level `onResize(cb)` callbacks (`.value`-injected source); observed via a
+    /// `ResizeObserver` on the host/root element, disconnected on teardown.
+    pub on_resizes: Vec<String>,
+    /// Top-level `onVisibilityChange(cb)` callbacks (`.value`-injected source);
+    /// observed via an `IntersectionObserver` on the host/root element.
+    pub on_visibility_changes: Vec<String>,
+    /// Top-level `onMediaQuery(query, cb)` calls as `(query, callback)` source pairs
+    /// (both `.value`-injected); wired to `matchMedia(query)` with an initial call.
+    pub on_media_queries: Vec<(String, String)>,
     /// The local binding name for the `children` slot, if the component
     /// destructures `children` (e.g. `"children"`). Drives child capture + the
     /// `Children` view node.
@@ -352,6 +361,9 @@ pub fn module_shell(module: &str, exprs: ExprTable, body: Vec<BodyItem>) -> Lowe
         exposes: Vec::new(),
         on_mounts: Vec::new(),
         on_cleanups: Vec::new(),
+        on_resizes: Vec::new(),
+        on_visibility_changes: Vec::new(),
+        on_media_queries: Vec::new(),
         children_local: None,
         needs_host: false,
         module_components: Vec::new(),
@@ -468,6 +480,9 @@ fn lower_one<'a>(
         exposes: classified.exposes,
         on_mounts: classified.on_mounts,
         on_cleanups: classified.on_cleanups,
+        on_resizes: classified.on_resizes,
+        on_visibility_changes: classified.on_visibility_changes,
+        on_media_queries: classified.on_media_queries,
         children_local,
         needs_host: classified.needs_host,
         module_components,
@@ -853,6 +868,9 @@ struct Classified {
     exposes: Vec<String>,
     on_mounts: Vec<String>,
     on_cleanups: Vec<String>,
+    on_resizes: Vec<String>,
+    on_visibility_changes: Vec<String>,
+    on_media_queries: Vec<(String, String)>,
     children: Option<ChildrenInfo>,
     needs_host: bool,
     errors: Vec<String>,
@@ -1040,6 +1058,9 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
     let mut expose_args: Vec<&Argument> = Vec::new();
     let mut mount_args: Vec<&Argument> = Vec::new();
     let mut cleanup_args: Vec<&Argument> = Vec::new();
+    let mut resize_args: Vec<&Argument> = Vec::new();
+    let mut visibility_args: Vec<&Argument> = Vec::new();
+    let mut media_args: Vec<(&Argument, &Argument)> = Vec::new();
     if let Some(body) = callable.body() {
         for stmt in &body.statements {
             match stmt {
@@ -1061,18 +1082,33 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
                     }
                 }
                 Statement::ExpressionStatement(es) => {
-                    if let Expression::CallExpression(call) = &es.expression
-                        && let Some(arg) = call.arguments.first()
-                        && !arg.is_spread()
-                    {
-                        if is_effect_call(call) {
-                            effect_args.push(arg);
-                        } else if is_expose_call(call) {
-                            expose_args.push(arg);
-                        } else if is_callee(call, "onMount") {
-                            mount_args.push(arg);
-                        } else if is_callee(call, "onCleanup") {
-                            cleanup_args.push(arg);
+                    if let Expression::CallExpression(call) = &es.expression {
+                        // `onMediaQuery` is the only two-argument hook (query, callback).
+                        if is_callee(call, "onMediaQuery") {
+                            match (call.arguments.first(), call.arguments.get(1)) {
+                                (Some(q), Some(cb)) if !q.is_spread() && !cb.is_spread() => {
+                                    media_args.push((q, cb));
+                                }
+                                _ => errors.push(
+                                    "onMediaQuery(query, callback) requires a query expression and a callback".into(),
+                                ),
+                            }
+                        } else if let Some(arg) = call.arguments.first()
+                            && !arg.is_spread()
+                        {
+                            if is_effect_call(call) {
+                                effect_args.push(arg);
+                            } else if is_expose_call(call) {
+                                expose_args.push(arg);
+                            } else if is_callee(call, "onMount") {
+                                mount_args.push(arg);
+                            } else if is_callee(call, "onCleanup") {
+                                cleanup_args.push(arg);
+                            } else if is_callee(call, "onResize") {
+                                resize_args.push(arg);
+                            } else if is_callee(call, "onVisibilityChange") {
+                                visibility_args.push(arg);
+                            }
                         }
                     }
                 }
@@ -1121,6 +1157,25 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         .into_iter()
         .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
         .collect();
+    let on_resizes = resize_args
+        .into_iter()
+        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
+        .collect();
+    let on_visibility_changes = visibility_args
+        .into_iter()
+        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
+        .collect();
+    // Both members injected: the query may read signals/props (a one-time `.value`
+    // read at mount — the query expression is not reactive).
+    let on_media_queries = media_args
+        .into_iter()
+        .map(|(q, cb)| {
+            (
+                inject_arg(source, scoping, &by_symbol, props_symbol, q).code,
+                inject_arg(source, scoping, &by_symbol, props_symbol, cb).code,
+            )
+        })
+        .collect();
 
     // A component (not a page — pages have no element) that reads `$context` needs
     // its connect bracketed so the resolver can find the host. Computed before the
@@ -1142,6 +1197,9 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         exposes,
         on_mounts,
         on_cleanups,
+        on_resizes,
+        on_visibility_changes,
+        on_media_queries,
         children,
         needs_host,
         errors,
@@ -1161,13 +1219,17 @@ fn is_macro_decl(vd: &oxc::ast::ast::VariableDeclaration) -> bool {
 }
 
 /// Whether an expression statement is a lifecycle/reactive macro call
-/// (`$effect`/`$expose`/`onMount`/`onCleanup`) — collected, not preserved raw.
+/// (`$effect`/`$expose`/`onMount`/`onCleanup`/`onResize`/`onMediaQuery`/
+/// `onVisibilityChange`) — collected, not preserved raw.
 fn is_lifecycle_stmt(es: &oxc::ast::ast::ExpressionStatement) -> bool {
     matches!(&es.expression, Expression::CallExpression(call)
         if is_effect_call(call)
             || is_expose_call(call)
             || is_callee(call, "onMount")
-            || is_callee(call, "onCleanup"))
+            || is_callee(call, "onCleanup")
+            || is_callee(call, "onResize")
+            || is_callee(call, "onMediaQuery")
+            || is_callee(call, "onVisibilityChange"))
 }
 
 fn is_expose_call(call: &CallExpression) -> bool {
@@ -2549,6 +2611,44 @@ mod tests {
         assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
         assert_eq!(lowered.on_mounts, ["() => console.log(n.value)"]);
         assert_eq!(lowered.on_cleanups, ["() => n.value++"]);
+    }
+
+    #[test]
+    fn lowers_dom_hooks_with_injection() {
+        let lowered = lower(
+            "export function C() { let n = $state(0); let q = $state(\"(min-width: 768px)\"); onResize((entry) => console.log(n, entry)); onVisibilityChange((visible) => n = visible ? 1 : 0); onMediaQuery(q, (matches) => console.log(n, matches)); return <p>{n}</p>; }",
+        );
+        assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
+        assert_eq!(lowered.on_resizes, ["(entry) => console.log(n.value, entry)"]);
+        assert_eq!(lowered.on_visibility_changes, ["(visible) => n.value = visible ? 1 : 0"]);
+        // Both members of the pair are injected: the query may read signals too.
+        assert_eq!(
+            lowered.on_media_queries,
+            [("q.value".to_string(), "(matches) => console.log(n.value, matches)".to_string())]
+        );
+        // The hook statements are collected, not preserved in the raw body.
+        for item in &lowered.body {
+            if let BodyItem::Raw(stmt) = item {
+                assert!(
+                    !stmt.contains("onResize")
+                        && !stmt.contains("onVisibilityChange")
+                        && !stmt.contains("onMediaQuery"),
+                    "hook statement leaked into body: {stmt}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn on_media_query_requires_two_arguments() {
+        let lowered =
+            lower("export function C() { onMediaQuery(() => {}); return <p>hi</p>; }");
+        assert!(lowered.on_media_queries.is_empty());
+        assert!(
+            lowered.errors.iter().any(|e| e.contains("onMediaQuery(query, callback)")),
+            "expected arity error, got: {:?}",
+            lowered.errors
+        );
     }
 
     #[test]

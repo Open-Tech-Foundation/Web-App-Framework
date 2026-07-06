@@ -303,13 +303,25 @@ impl<'a> Emitter<'a> {
 
         // Lifecycle: attach an `__lifecycle` record to the root so the router runs
         // onMount after adoption and onCleanup teardown on navigation (mirrors CSR).
-        if !lowered.on_mounts.is_empty() || !lowered.on_cleanups.is_empty() {
+        // The DOM hooks (`onResize`/`onVisibilityChange`/`onMediaQuery`) desugar to
+        // mount closures returning their disposer, riding the same record. A
+        // non-element root can't host the observer hooks — skip them like the CSR
+        // factory does, but do NOT push the error here: the dual module's csr part
+        // already reports it, and an error in this emitter would drop the page's
+        // hydrate factory entirely (falling back to a CSR rebuild) over a warning.
+        let dom_hooks =
+            csr::dom_hook_closures(lowered, &root, csr::dom_hook_root_error(lowered).is_none());
+        if !lowered.on_mounts.is_empty() || !lowered.on_cleanups.is_empty() || !dom_hooks.is_empty()
+        {
             self.line("const __lifecycle = { mounts: [], cleanups: [] };".into());
             for cb in &lowered.on_cleanups {
                 self.line(format!("__lifecycle.cleanups.push({cb});"));
             }
             for cb in &lowered.on_mounts {
                 self.line(format!("__lifecycle.mounts.push({cb});"));
+            }
+            for closure in dom_hooks {
+                self.line(format!("__lifecycle.mounts.push({closure});"));
             }
             self.line(format!("{root}.__lifecycle = __lifecycle;"));
         }
@@ -1073,6 +1085,40 @@ mod tests {
         let first_mount = m.code[build_open..].find("const __d =").expect("mount in build") + build_open;
         let build_close = m.code[build_open..].find("\n    });\n").expect("build closes") + build_open;
         assert!(first_mount < build_close, "onMount inside __build closure:\n{}", m.code);
+    }
+
+    #[test]
+    fn adopt_component_emits_dom_hooks_inside_each_scoped_path() {
+        // Like `onMount`, the desugared observer closures ride the mounts string csr
+        // splices into both the `__build` closure and the adopt branch.
+        let m = emit_component(
+            "export default function C(){ let n=$state(0); onResize((entry) => { n.value; }); \
+             return <button onclick={() => n++}>Count {n}</button>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert_eq!(
+            m.code.matches("new ResizeObserver(").count(),
+            2,
+            "observer setup emitted once per scoped path:\n{}",
+            m.code
+        );
+        let build_open = m.code.find("const __build = () => runBuild(() => {").expect("build closure");
+        let first_hook = m.code[build_open..].find("new ResizeObserver(").expect("hook in build") + build_open;
+        let build_close = m.code[build_open..].find("\n    });\n").expect("build closes") + build_open;
+        assert!(first_hook < build_close, "observer setup inside __build closure:\n{}", m.code);
+    }
+
+    #[test]
+    fn hydrate_page_emits_dom_hooks() {
+        let m = emit(
+            "export default function P(){ onVisibilityChange((v) => console.log(v)); onMediaQuery(\"(min-width: 768px)\", (q) => console.log(q)); return <div>hi</div>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        assert!(hyd.contains("__lifecycle.mounts.push(() => { const __cb = ("), "hydrate: {hyd}");
+        assert!(hyd.contains("new IntersectionObserver("), "hydrate: {hyd}");
+        assert!(hyd.contains("window.matchMedia((\"(min-width: 768px)\"));"), "hydrate: {hyd}");
+        assert!(hyd.contains(".__lifecycle = __lifecycle;"), "hydrate: {hyd}");
     }
 
     #[test]
