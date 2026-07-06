@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-06
+
 ### Changed
 
 - Docs template (`otfw.config.js`): enable `lastUpdated: true` by default and add a

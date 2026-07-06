@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-06
+
 ### Fixed
 
 - **Hydration no longer duplicates a node-valued text hole.** A `{expr}` hole whose value
