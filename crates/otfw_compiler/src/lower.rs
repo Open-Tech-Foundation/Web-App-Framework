@@ -16,15 +16,15 @@
 //! - `$signal` external bridge and spreads are follow-ups. Member-expression
 //!   component names (`<Foo.Bar/>`) are unsupported by design (SPEC §4.0.1).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use oxc::ast::ast::{
-    Argument, ArrowFunctionExpression, BindingPattern, CallExpression, Declaration, Expression,
-    ExportDefaultDeclarationKind, FormalParameters, Function, FunctionBody, IdentifierReference,
-    ImportDeclarationSpecifier, JSXAttribute, JSXAttributeItem, JSXAttributeName, JSXAttributeValue,
-    JSXChild,
-    JSXElement, JSXElementName, JSXExpression, JSXFragment, ObjectProperty, Program,
-    StaticMemberExpression, Statement, VariableDeclaration,
+    Argument, ArrowFunctionExpression, AssignmentExpression, AssignmentTarget, BindingPattern,
+    CallExpression, Declaration, Expression, ExportDefaultDeclarationKind, FormalParameters,
+    Function, FunctionBody, IdentifierReference, ImportDeclarationSpecifier, JSXAttribute,
+    JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName,
+    JSXExpression, JSXFragment, ObjectProperty, Program, SimpleAssignmentTarget,
+    StaticMemberExpression, Statement, UpdateExpression, VariableDeclaration, VariableDeclarator,
 };
 use oxc::ast_visit::{walk, Visit};
 use oxc::semantic::{Scoping, SymbolId};
@@ -678,6 +678,160 @@ pub fn function_ref_diagnostic(program: &Program) -> Option<String> {
          See https://web.opentechf.org/docs/core-concepts/templating#refs."
             .to_string()
     })
+}
+
+/// In-place array mutators — calling one on a `$state` array reassigns nothing,
+/// so the backing signal never notifies (SPEC §3.4). Read methods (`map`,
+/// `filter`, …) are intentionally absent: those are how JSX and `_mapped()` read
+/// the list and must stay legal.
+const STATE_ARRAY_MUTATORS: &[&str] = &[
+    "push", "pop", "shift", "unshift", "splice", "reverse", "sort", "fill", "copyWithin",
+];
+
+/// The value inside a `$state` signal is replaced, never mutated: reactivity fires
+/// on `signal.value = …`, not on mutating the object the value points at. Writing
+/// `list.push(x)`, `list[0] = x`, `list.length = 0`, `obj.a.b = x`, or `obj.n++` on
+/// a `$state` variable therefore updates the data but notifies no effect — the
+/// change is silently lost (SPEC §3.4). Returns an actionable diagnostic anchored
+/// at the first such mutation, steering to an immutable reassignment (`list =
+/// [...list, x]`) or the `reactive()` store; `None` when the module is clean.
+///
+/// Detection is symbol-precise (via the semantic model), so a local that shadows a
+/// `$state` name, or an alias taken with `const tmp = list`, is not flagged — those
+/// escape the signal and are out of scope here. Only bindings declared with
+/// `$state(...)` are considered; `$ref`/`$derived`/`$context` are excluded so DOM
+/// writes like `el.scrollTop = 0` on a `$ref` remain legal.
+pub fn state_mutation_diagnostic(program: &Program, source: &str) -> Option<String> {
+    let resolved = crate::semantic::resolve(program);
+    let scoping = resolved.semantic.scoping();
+
+    // Pass 1: the symbol of every `$state(...)` binding in the module.
+    let mut collector = StateSymbols { set: HashSet::new() };
+    collector.visit_program(program);
+    if collector.set.is_empty() {
+        return None;
+    }
+
+    // Pass 2: the first in-place mutation rooted at one of those symbols.
+    let mut finder = MutationFinder {
+        scoping,
+        state_symbols: &collector.set,
+        source,
+        found: None,
+    };
+    finder.visit_program(program);
+    finder.found
+}
+
+/// Collects the binding symbol of each `$state(...)` declarator.
+struct StateSymbols {
+    set: HashSet<SymbolId>,
+}
+
+impl<'a> Visit<'a> for StateSymbols {
+    fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
+        if let Some(Expression::CallExpression(call)) = &it.init
+            && matches!(macro_kind(call), Some(MacroKind::State))
+            && let BindingPattern::BindingIdentifier(bi) = &it.id
+            && let Some(sym) = bi.symbol_id.get()
+        {
+            self.set.insert(sym);
+        }
+        walk::walk_variable_declarator(self, it);
+    }
+}
+
+/// The root identifier a member chain is anchored on (`a` in `a.b[c].d`), or
+/// `None` if the chain does not bottom out in a plain identifier.
+fn member_root<'a, 'b>(expr: &'b Expression<'a>) -> Option<&'b IdentifierReference<'a>> {
+    match expr {
+        Expression::Identifier(id) => Some(id),
+        Expression::StaticMemberExpression(m) => member_root(&m.object),
+        Expression::ComputedMemberExpression(m) => member_root(&m.object),
+        _ => None,
+    }
+}
+
+/// Finds the first in-place mutation whose member chain is rooted at a `$state`
+/// symbol: a mutating array method call, an assignment to a member target, or an
+/// increment/decrement of a member target.
+struct MutationFinder<'r> {
+    scoping: &'r Scoping,
+    state_symbols: &'r HashSet<SymbolId>,
+    source: &'r str,
+    found: Option<String>,
+}
+
+impl<'r> MutationFinder<'r> {
+    fn roots_at_state(&self, obj: &Expression) -> bool {
+        member_root(obj).is_some_and(|id| {
+            id.reference_id
+                .get()
+                .and_then(|r| self.scoping.get_reference(r).symbol_id())
+                .is_some_and(|s| self.state_symbols.contains(&s))
+        })
+    }
+
+    /// Record the first offense, keyed to the offending span, and stop looking.
+    fn flag(&mut self, span: Span) {
+        if self.found.is_some() {
+            return;
+        }
+        let snippet = slice_span(self.source, span);
+        let snippet = snippet.split_whitespace().collect::<Vec<_>>().join(" ");
+        let shown = if snippet.chars().count() > 60 {
+            format!("{}…", snippet.chars().take(59).collect::<String>())
+        } else {
+            snippet
+        };
+        self.found = Some(format!(
+            "`{shown}` mutates a `$state` value in place, which does not trigger \
+             reactivity — the value inside a signal is replaced, never mutated, so \
+             the update is silently lost. Reassign the signal with an immutable \
+             update instead (e.g. `list = [...list, item]`, `list = list.filter(…)`, \
+             `list = list.toSorted(…)`), or hold the data in a `reactive()` store for \
+             direct mutation. See SPEC §3.4."
+        ));
+    }
+}
+
+impl<'a> Visit<'a> for MutationFinder<'_> {
+    fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
+        if self.found.is_none()
+            && let Expression::StaticMemberExpression(member) = &it.callee
+            && STATE_ARRAY_MUTATORS.contains(&member.property.name.as_str())
+            && self.roots_at_state(&member.object)
+        {
+            self.flag(it.span);
+        }
+        walk::walk_call_expression(self, it);
+    }
+
+    fn visit_assignment_expression(&mut self, it: &AssignmentExpression<'a>) {
+        // A bare-identifier target (`list = …`) is the correct immutable update and
+        // stays legal; only writes *through* a `$state` root are mutations.
+        let mutated = match &it.left {
+            AssignmentTarget::StaticMemberExpression(m) => self.roots_at_state(&m.object),
+            AssignmentTarget::ComputedMemberExpression(m) => self.roots_at_state(&m.object),
+            _ => false,
+        };
+        if mutated {
+            self.flag(it.span);
+        }
+        walk::walk_assignment_expression(self, it);
+    }
+
+    fn visit_update_expression(&mut self, it: &UpdateExpression<'a>) {
+        let mutated = match &it.argument {
+            SimpleAssignmentTarget::StaticMemberExpression(m) => self.roots_at_state(&m.object),
+            SimpleAssignmentTarget::ComputedMemberExpression(m) => self.roots_at_state(&m.object),
+            _ => false,
+        };
+        if mutated {
+            self.flag(it.span);
+        }
+        walk::walk_update_expression(self, it);
+    }
 }
 
 /// Find the first component (function declaration or arrow) and its export name.

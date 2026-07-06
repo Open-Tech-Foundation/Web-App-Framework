@@ -182,6 +182,13 @@ fn compile_module(
         return Err(format!("{file}: {msg}"));
     }
 
+    // Mutating a `$state` value in place (`list.push(x)`, `list[0] = x`, …) never
+    // notifies its signal — fail with the immutable-update fix rather than silently
+    // dropping the update.
+    if let Some(msg) = otfw_compiler::lower::state_mutation_diagnostic(&parsed.program, &source) {
+        return Err(format!("{file}: {msg}"));
+    }
+
     let Some(lowered) = lower_module(file, &parsed.program, &source, !as_component) else {
         // Prefer a targeted diagnostic for the common near-miss (JSX built but not
         // returned as the view) over the generic "no component" message.
