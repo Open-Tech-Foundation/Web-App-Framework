@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-06
+
 ### Added
 
 - **DOM lifecycle hooks**: `onResize(cb)`, `onVisibilityChange(cb)`, and
