@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-06
+
 ### Tests
 
 - New real-browser e2e (`tests/e2e/lifecycle-hooks-browser.mjs`, in `test:e2e`) for the

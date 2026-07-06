@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-06
+
 ### Added
 
 - SSR-safe no-op stubs for the new DOM lifecycle hooks — `onResize`, `onMediaQuery`,
