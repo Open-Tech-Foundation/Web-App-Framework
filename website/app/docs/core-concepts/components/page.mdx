@@ -47,6 +47,33 @@ function Card({ children }) {
 }
 ```
 
+## Imperative API
+
+When a parent needs to **command** a child — open a dialog, focus a field, scroll a row
+— use [`$expose`](/docs/core-concepts/imperative-api) to publish methods on the component
+instance. The parent holds a `$ref` to the child and calls those methods:
+
+```jsx
+export default function Modal() {
+  let open = $state(false);
+  $expose({ show: () => (open = true), hide: () => (open = false) });
+  return open ? <dialog open>…</dialog> : null;
+}
+
+export default function App() {
+  const modal = $ref();
+  return (
+    <>
+      <button onclick={() => modal.show()}>Open</button>
+      <Modal ref={modal} />
+    </>
+  );
+}
+```
+
+See the [Imperative API guide](/docs/core-concepts/imperative-api) for modal, focus,
+list-scroll, and media-control patterns.
+
 ## Native interop
 
 Because each component is a real `HTMLElement`, it works outside OTF Web too:

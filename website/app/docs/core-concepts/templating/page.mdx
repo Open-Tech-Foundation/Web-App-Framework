@@ -72,7 +72,7 @@ does is expressed more directly with `$ref` plus effects, lifecycle, and `$expos
 | Measure a node, re-measure when it changes | `$ref` read inside `$effect` |
 | Initialize a library on a node, tear it down | `onMount(() => { const x = init(el); return () => x.destroy(); })` |
 | Clean up when the element leaves | `onCleanup(() => …)` |
-| Give a parent an imperative handle | [`$expose`](/docs/core-concepts/components) — expose an API, not the raw node |
+| Give a parent an imperative handle | [`$expose`](/docs/core-concepts/imperative-api) — expose an API, not the raw node |
 | Manage a dynamic set of elements (focus/scroll item N) | Make each item its own component that owns its `$ref` and `$expose`s what the parent needs |
 
 ```jsx
@@ -91,4 +91,5 @@ export default function Editor() {
   A `$ref` is reactive and the framework has explicit lifecycle hooks, so a callback
   ref adds no capability — only a second way to receive a node. Exposing an **API**
   from a child (via `$expose`) is also a stronger boundary than handing out its DOM.
+  See the full [Imperative API guide](/docs/core-concepts/imperative-api).
 </Callout>

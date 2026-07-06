@@ -1,0 +1,292 @@
+---
+title: Imperative API
+description: Let a parent call into a child with $expose — publish methods on the component instance, then reach them through a $ref.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Imperative API (`$expose`)
+
+Sometimes a parent needs to **tell** a child what to do — open a dialog, focus a field,
+scroll a row into view — without re-rendering the whole tree through props. In React this
+is `useImperativeHandle`; in OTF Web it is **`$expose`**.
+
+A child publishes a small object of methods (and optionally getters). The parent holds a
+**`$ref`** to the child component and calls those methods directly. The parent gets an
+**API**, not the child's internal DOM.
+
+```jsx
+// Child — owns its state and DOM, exposes only what the parent needs
+export default function Modal(props) {
+  let open = $state(false);
+
+  $expose({
+    show: () => (open = true),
+    hide: () => (open = false),
+  });
+
+  return open ? (
+    <dialog open>
+      <h2>{props.title}</h2>
+      {props.children}
+    </dialog>
+  ) : null;
+}
+
+// Parent — triggers the child imperatively
+export default function App() {
+  const modal = $ref();
+
+  return (
+    <div>
+      <button onclick={() => modal.show()}>Open settings</button>
+      <Modal ref={modal} title="Settings">
+        <p>Dark mode, notifications, …</p>
+      </Modal>
+    </div>
+  );
+}
+```
+
+<Callout type="info" title="How it works">
+  `$expose({ … })` compiles to `Object.assign(this, { … })` on the Custom Element. A
+  `ref={modal}` on `<Modal>` stores that element in `modal`; calling `modal.show()` runs
+  the exposed method on the instance.
+</Callout>
+
+---
+
+## When to use `$expose` vs props
+
+| Approach | Best for |
+| --- | --- |
+| **Props** (`open={isOpen}`) | The parent owns the state; the child is mostly declarative. |
+| **`$expose`** | The child owns its state and internals; the parent only needs a few commands. |
+| **`$ref` on a native element** | You need the raw DOM node (`<input>`, `<canvas>`). Keep that inside the child. |
+
+Props keep data flow visible in JSX. `$expose` is for **commands** — `focus()`,
+`open()`, `scrollIntoView()`, `play()` — where pushing everything through props would
+force the parent to know too much about the child's implementation.
+
+---
+
+## Pattern 1 — Focus a field from outside
+
+Wrap the input, expose `focus()`, and let the parent trigger it (e.g. a "Jump to search"
+button):
+
+```jsx
+// SearchField.jsx
+export default function SearchField() {
+  const input = $ref();
+
+  $expose({
+    focus: () => input.focus(),
+  });
+
+  return <input ref={input} type="search" placeholder="Search…" />;
+}
+
+// Toolbar.jsx
+export default function Toolbar() {
+  const search = $ref();
+
+  return (
+    <header>
+      <button onclick={() => search.focus()}>Search</button>
+      <SearchField ref={search} />
+    </header>
+  );
+}
+```
+
+The parent never touches the `<input>` — only the method you chose to publish.
+
+---
+
+## Pattern 2 — Modal with animation
+
+The child can keep private refs and timers; the parent only sees `open` / `close`:
+
+```jsx
+// FancyModal.jsx
+export default function FancyModal(props) {
+  let visible = $state(false);
+  const panel = $ref();
+
+  const open = () => {
+    visible = true;
+    requestAnimationFrame(() => {
+      panel.style.opacity = "1";
+      panel.style.transform = "scale(1)";
+    });
+  };
+
+  const close = () => {
+    panel.style.opacity = "0";
+    panel.style.transform = "scale(0.95)";
+    setTimeout(() => (visible = false), 200);
+  };
+
+  $expose({ open, close });
+
+  return (
+    <div style={{ display: visible ? "flex" : "none" }} onclick={(e) => e.target === e.currentTarget && close()}>
+      <div ref={panel} style={{ opacity: 0, transform: "scale(0.95)" }}>
+        <h2>{props.title}</h2>
+        {props.children}
+        <button onclick={close}>Close</button>
+      </div>
+    </div>
+  );
+}
+```
+
+```jsx
+// Page.jsx
+export default function Page() {
+  const modal = $ref();
+
+  return (
+    <div>
+      <button onclick={() => modal.open()}>Show modal</button>
+      <FancyModal ref={modal} title="Hello">
+        <p>Content stays inside the modal component.</p>
+      </FancyModal>
+    </div>
+  );
+}
+```
+
+See the live version in the playground: **Ref & Expose** demo (`/ref-demo` in a scaffolded app).
+
+---
+
+## Pattern 3 — Scroll a list item into view
+
+For a dynamic list, give **each row its own component** with its own `$ref` and expose
+only `scrollIntoView()`. The parent keeps refs to row components, not a map of DOM nodes:
+
+```jsx
+// MessageRow.jsx
+export default function MessageRow(props) {
+  const row = $ref();
+
+  $expose({
+    scrollIntoView: () => row.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+  });
+
+  return <li ref={row}>{props.label}</li>;
+}
+
+// Inbox.jsx
+export default function Inbox() {
+  const rows = $state([
+    { id: 1, label: "Welcome" },
+    { id: 2, label: "Your order shipped" },
+    { id: 3, label: "Rate your purchase" },
+  ]);
+
+  // In real apps, collect refs per item (e.g. a Map keyed by id) as you render.
+  const third = $ref();
+
+  return (
+    <div>
+      <button onclick={() => third.scrollIntoView()}>Go to latest</button>
+      <ul>
+        {rows.map((r) =>
+          r.id === 3 ? (
+            <MessageRow key={r.id} ref={third} label={r.label} />
+          ) : (
+            <MessageRow key={r.id} label={r.label} />
+          )
+        )}
+      </ul>
+    </div>
+  );
+}
+```
+
+This replaces React's "callback ref collection" pattern with per-item components that
+own their lifecycle.
+
+---
+
+## Pattern 4 — Media controls
+
+Expose a minimal transport API; keep buffering, events, and the `<video>` element private:
+
+```jsx
+// Player.jsx
+export default function Player(props) {
+  const video = $ref();
+
+  $expose({
+    play: () => video.play(),
+    pause: () => video.pause(),
+    get paused() {
+      return video.paused;
+    },
+  });
+
+  return <video ref={video} src={props.src} />;
+}
+
+// Controls.jsx
+export default function Controls() {
+  const player = $ref();
+
+  return (
+    <div>
+      <button onclick={() => player.play()}>Play</button>
+      <button onclick={() => player.pause()}>Pause</button>
+      <Player ref={player} src="/clip.mp4" />
+    </div>
+  );
+}
+```
+
+---
+
+## Rules & limits
+
+### Components only
+
+`$expose` is valid in **components** (Custom Elements), not in **pages** or **layouts**
+— those compile to factory functions with no `this` to assign to. Use `onMount` /
+`onCleanup` on pages instead.
+
+### Call after the ref is set
+
+`ref={…}` runs when the child connects. Before that, the ref is empty. Guard optional
+calls or run them from user events / `onMount` where the child is already in the tree:
+
+```jsx
+onMount(() => search.focus()); // child is mounted — safe
+
+button.onclick = () => modal.open(); // user click — safe
+```
+
+### Keep the surface small
+
+Expose **verbs** (`open`, `focus`, `reset`), not entire state objects. The child stays
+free to refactor its markup; the parent's contract stays stable.
+
+### No callback refs
+
+`ref={(el) => …}` is rejected by the compiler. Use `$ref` on elements, `$expose` on
+components — see [Templating — Refs](/docs/core-concepts/templating#refs).
+
+<Callout type="warning" title="Synchronous component bodies">
+  Component functions must be synchronous. Define exposed methods in the component body;
+  put async work *inside* those methods (e.g. `await video.play()`), not before
+  `$expose` after an `await`.
+</Callout>
+
+---
+
+## Related
+
+- [Templating — Refs](/docs/core-concepts/templating#refs) — `$ref` on native elements
+- [Lifecycle](/docs/core-concepts/lifecycle) — `onMount` / `onCleanup` for setup and teardown
+- [Reactive Macros API](/api/macros#expose) — compiler signature and behavior

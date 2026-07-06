@@ -1,6 +1,6 @@
 ---
 title: Reactive Macros
-description: The compiler-provided globals — $state, $derived, $effect, $ref — and lifecycle hooks.
+description: The compiler-provided globals — $state, $derived, $effect, $ref, $expose — and lifecycle hooks.
 ---
 
 import { Callout } from "@opentf/web-docs";
@@ -15,7 +15,8 @@ injects the runtime.
 | `$state` | `$state(initial)` | Reactive state. Read/write the variable directly. |
 | `$derived` | `$derived(expr)` | Cached value recomputed when dependencies change. |
 | `$effect` | `$effect(() => {})` | Side effect that re-runs on dependency change. |
-| `$ref` | `$ref()` | A handle to a DOM node, bound with `ref={…}`. |
+| `$ref` | `$ref()` | A handle to a DOM node or component instance, bound with `ref={…}`. |
+| `$expose` | `$expose(obj)` | Publish methods on a component instance for the parent to call. |
 
 ```jsx
 let count = $state(0);
@@ -26,6 +27,59 @@ $effect(() => console.log(doubled));
 const box = $ref();
 <div ref={box} />;
 ```
+
+## `$ref`
+
+Creates a reactive signal that holds a DOM node or Custom Element instance.
+
+| Binding | `ref` receives |
+| --- | --- |
+| Native element (`<input ref={el} />`) | The `HTMLElement` |
+| Component (`<Modal ref={modal} />`) | The component's Custom Element (with anything `$expose`d on it) |
+
+The ref is `null` until the target mounts. Read it in `onMount`, `$effect`, or event
+handlers — not synchronously at the top of the parent before the child exists.
+
+**Compiler output:** `ref={expr}` → `expr.value = <createdElement>`.
+
+## `$expose`
+
+Publishes an object's properties onto the component's Custom Element instance so a
+parent can call them through a `$ref`.
+
+| | |
+| --- | --- |
+| **Signature** | `$expose(api)` — `api` is a plain object literal or variable holding methods/getters |
+| **Where** | Components only (not pages or layouts) |
+| **Compiler output** | `Object.assign(this, api)` inside `connectedCallback` |
+| **Consumption** | `<Child ref={child} />` then `child.methodName()` |
+
+```jsx
+// Child
+export default function Field() {
+  const input = $ref();
+  $expose({ focus: () => input.focus() });
+  return <input ref={input} />;
+}
+
+// Parent
+export default function Form() {
+  const email = $ref();
+  return (
+    <>
+      <button onclick={() => email.focus()}>Edit email</button>
+      <Field ref={email} />
+    </>
+  );
+}
+```
+
+**Typical `api` shape:** methods (`open`, `close`, `focus`, `reset`) and optionally
+getters. Avoid exposing large state blobs — keep the surface imperative and small.
+
+**Not supported:** `$expose` in `page.jsx` / layout factories (no `this` to assign to).
+
+Guide with patterns: [Imperative API](/docs/core-concepts/imperative-api).
 
 ## Lifecycle hooks
 
@@ -39,4 +93,9 @@ Also global — no import needed.
 <Callout type="info" title="Why no .value">
   The compiler tracks macro variables statically, so reads and writes are plain
   variable access — the reactivity is wired at build time.
+</Callout>
+
+<Callout type="note" title="Optional imports">
+  `@opentf/web` exports no-op `onMount` / `onCleanup` stubs for TypeScript and editors.
+  The real behavior is compiler-injected; macros themselves are never imported at runtime.
 </Callout>
