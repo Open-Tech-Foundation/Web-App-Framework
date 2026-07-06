@@ -21,12 +21,37 @@ count++;        // reassign
 count = 10;     // or set directly
 ```
 
-Objects and arrays are reactive too — reassign to trigger updates:
+### Objects and arrays: reassign, don't mutate
+
+A `$state` signal's value is **replaced, never mutated**. Reactivity fires when you
+reassign the variable (`signal.value = …` under the hood) — not when you mutate the
+object it points at. So reassign with a new value to trigger updates:
 
 ```js
 let todos = $state([]);
-todos = [...todos, { text: "Ship it" }];
+
+todos = [...todos, { text: "Ship it" }];   // ✅ new array → re-renders
+todos = todos.filter((t) => !t.done);      // ✅ reassign
 ```
+
+Mutating in place changes the data but notifies nothing — the update is silently lost:
+
+```js
+todos.push({ text: "Ship it" });   // ❌ no re-render
+todos[0].done = true;              // ❌ no re-render
+```
+
+To catch this, **the compiler rejects in-place mutation of `$state`** — array mutators
+(`push`, `splice`, `sort`, …), `Map`/`Set` mutators (`set`, `add`, `delete`, `clear`),
+index/property assignment (`todos[0] = …`, `user.name = …`), `++`/`--`, and `delete` —
+with an error pointing you at the immutable rewrite. Reach for `reactive()` (below) when
+you'd rather mutate directly.
+
+<Callout type="note" title="Why replace instead of mutate?">
+  Signals track by reference. `todos.push(x)` keeps the same array reference, so the
+  signal sees no change. `todos = [...todos, x]` is a new reference, so it notifies —
+  and list rendering still reconciles by key, patching only the one new row.
+</Callout>
 
 ## $derived
 
@@ -54,6 +79,41 @@ $effect(() => {
 <Callout type="warning" title="Keep state in signals">
   The compiler tracks values declared with `$state`. Mutating state held elsewhere
   won't be observed.
+</Callout>
+
+## reactive()
+
+When you'd rather **mutate directly** — deep trees, forms, or anything where the
+immutable-reassign dance is awkward — use `reactive()`. It returns a deep, fine-grained
+proxy over a plain object or array: reading a property inside an effect subscribes to
+just that path, and writing it notifies only the readers of that path.
+
+```js
+import { reactive } from "@opentf/web";
+
+const store = reactive({ todos: [], user: { name: "Ada" } });
+
+store.todos.push({ text: "Ship it" });   // ✅ re-renders — mutation is tracked
+store.user.name = "Grace";               // ✅ fine-grained: only name's readers update
+```
+
+Unlike `$state`, `reactive()` is a runtime primitive (no compiler macro), so you import
+it and read values directly — no `.value`, no reassignment ceremony. Use it in a
+component body, a module singleton (a shared store), or inside a library.
+
+Helpers that ship alongside it:
+
+| Function | Purpose |
+| --- | --- |
+| `reactive(init)` | Create a deep reactive store over a plain object/array. |
+| `isReactive(v)` | Whether `v` is a store created by `reactive()`. |
+| `toRawValue(v)` | The underlying plain object (live, not a copy); identity for non-stores. |
+| `snapshot(v)` | A plain, non-reactive deep copy — for submit payloads, validation, or persistence. |
+
+<Callout type="tip" title="$state or reactive()?">
+  Reach for `$state` for local component state you update by reassignment — it's the
+  lightest primitive. Reach for `reactive()` when direct mutation of nested data reads
+  more naturally, or when you need a store shared across components.
 </Callout>
 
 ## Single source of reactivity
