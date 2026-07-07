@@ -50,11 +50,18 @@
  * @property {boolean} [lastUpdated] Show a "Last updated" line on a post when it was
  *                            edited after its publish date (from git / frontmatter).
  *
+ * @typedef {Object.<string, string | { target: string }>} ProxyConfig
+ *   Dev-only request forwarding. Maps a path prefix to a target origin string (or
+ *   `{ target }`). Keys match longest-prefix-first.
+ *
  * @typedef {Object} SiteConfig
  * @property {{ url?: string }} [site]   Canonical site origin (required for production
  *                              docs/blog builds unless `--base-url` is passed).
  * @property {DocsConfig} [docs]         Documentation generator config.
  * @property {BlogConfig} [blog]         Blog generator config.
+ * @property {ProxyConfig} [proxy]       Dev-only: `otfw dev` forwards matched path prefixes
+ *                              to a separately-running backend (e.g. a local `wrangler dev`
+ *                              providing Cloudflare D1). No effect on `otfw build`.
  */
 
 /**
