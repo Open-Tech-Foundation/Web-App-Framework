@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Tests
+
+- The mobile-drawer browser e2e (`tests/e2e/mobile-drawer.mjs`) replaced fixed settle
+  `sleep()`s with a geometry/style probe polled to the drawer's open/close transition
+  end-state and the desktop media-query layout — no longer flakes on a slow CI runner.
+
 ## [0.9.0] - 2026-07-07
 
 _Dependency updates._

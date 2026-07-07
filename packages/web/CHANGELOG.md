@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Tests
+
+- Runtime tests that probe engine-fidelity paths (custom-element upgrade timing, the real
+  microtask/event loop, portal relocation, event delegation) moved from happy-dom to real
+  headless Chromium — `runtime/{dom,events,hydrate,context,portal,error-boundary}.test.js`
+  are now `*.browser.js` (out of the `bun test` glob), run by the `web-cli` browser e2e
+  orchestrator. happy-dom stays for fast logic + adequate-fidelity DOM units.
+- New table-driven hydration construct matrix (`runtime/hydrate.e2e.test.js`) drives one
+  source per JSX construct through the real compiler for both the ssg and hydrate targets
+  and asserts the three first-paint invariants (expected marker shape, no adopt-walk rebuild,
+  reactive change runs live on the adopted nodes). Adding a row is how a future hydration bug
+  should be reproduced then fixed.
+
 ## [0.13.0] - 2026-07-07
 
 ### Fixed

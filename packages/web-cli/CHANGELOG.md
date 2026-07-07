@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Tests
+
+- New real-browser runtime orchestrator (`tests/e2e/runtime-browser.mjs`, in `test:e2e`):
+  bundles the `web` runtime suite for the browser, loads it in headless Chromium, and
+  marshals results back over CDP (46 tests). Skips cleanly without Chromium (`CHROME_BIN`).
+- Real-browser hydrate e2e now covers the Portal-across-hydration upgrade-ordering path — a
+  `<Portal>`-wrapped modal with a reactive `class` binding (the docs search-modal shape):
+  asserts it adopts in place, relocates to `<body>` exactly once, and that clicking the
+  trigger opens it (class binding live on first paint). A genuine regression guard.
+- Browser e2e suites replaced fixed settle `sleep()`s with poll-until-condition waits, so
+  each suite proceeds the moment the awaited end-state is reached and only times out (loudly)
+  if it never happens — removing the CI-flake on slow runners.
+
 ## [1.8.0] - 2026-07-07
 
 _Dependency updates._

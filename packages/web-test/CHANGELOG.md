@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- `browser-runner.js` — a `bun:test`-compatible `describe`/`test`/`expect` shim
+  (`toBe`/`toEqual`/`toContain`/`toBeNull`/`toThrow`/`toBeDefined` + `.not`) that collects
+  tests in-page and runs them via `window.__run()`, so the hi-fi runtime suites can run
+  unchanged inside a real headless browser.
+
 ## [1.8.0] - 2026-07-07
 
 _Dependency updates._
