@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-07
+
 ### Fixed
 
 - **A list `key={index}` reads the real index binding instead of `undefined`.** For
