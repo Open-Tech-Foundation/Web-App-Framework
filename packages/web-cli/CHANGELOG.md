@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-07-07
+
 ### Tests
 
 - New real-browser runtime orchestrator (`tests/e2e/runtime-browser.mjs`, in `test:e2e`):
