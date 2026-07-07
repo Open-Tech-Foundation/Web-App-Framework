@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-07-07
+
 ### Added
 
 - **Server middleware governs every request under `otfw dev` and `otfw serve` — pages, API,
