@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { apiRouteFromPath, createApiHandler, middlewareScopeFromPath } from "./api.js";
+import { apiRouteFromPath, createApiHandler, createFetchHandler, middlewareScopeFromPath } from "./api.js";
 
 const req = (url, init) => new Request(`http://localhost${url}`, init);
 
@@ -222,5 +222,44 @@ describe("createApiHandler", () => {
     const res = await handle(req("/api/plain"));
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(await res.json()).toEqual({ hello: "world" });
+  });
+
+  test("threads the runtime env/ctx (Workers bindings) into context", async () => {
+    const handle = createApiHandler({
+      "/app/api/todos/route.js": {
+        GET: async (_r, { env, ctx }) => {
+          const rows = await env.DB.query();
+          ctx.waitUntil(Promise.resolve());
+          return Response.json(rows);
+        },
+      },
+    });
+    const env = { DB: { query: () => Promise.resolve([{ id: 1 }]) } };
+    const ctx = { waitUntil() {} };
+    const res = await handle(req("/api/todos"), env, ctx);
+    expect(await res.json()).toEqual([{ id: 1 }]);
+  });
+});
+
+describe("createFetchHandler", () => {
+  test("returns the handler Response when a route matches", async () => {
+    const handle = createApiHandler({ "/app/api/status/route.js": { GET: () => Response.json({ ok: true }) } });
+    const fetch = createFetchHandler(handle);
+    expect(await (await fetch(req("/api/status"))).json()).toEqual({ ok: true });
+  });
+
+  test("a miss falls through to the fallback, forwarding env (env.ASSETS)", async () => {
+    const handle = createApiHandler({ "/app/api/status/route.js": { GET: () => Response.json({ ok: true }) } });
+    const env = { ASSETS: { fetch: () => new Response("<!doctype html>", { headers: { "content-type": "text/html" } }) } };
+    const fetch = createFetchHandler(handle, { fallback: (r, e) => e.ASSETS.fetch(r) });
+    const res = await fetch(req("/some/spa/route"), env);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(await res.text()).toBe("<!doctype html>");
+  });
+
+  test("a miss with no fallback is a 404", async () => {
+    const handle = createApiHandler({});
+    const fetch = createFetchHandler(handle);
+    expect((await fetch(req("/anything"))).status).toBe(404);
   });
 });

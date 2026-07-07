@@ -27,6 +27,20 @@ export interface ApiContext {
    * or a validated body) and downstream middleware / the handler reads from it.
    */
   locals: Record<string, unknown>;
+  /**
+   * The platform environment / bindings — the second argument the runtime's
+   * `fetch` receives. On Cloudflare Workers this holds your bindings (`env.DB` for
+   * D1, KV namespaces, secrets); on Bun/Node it is `undefined` and environment
+   * variables are read from `process.env` instead. Type it per project with a
+   * generic, e.g. `context.env as Env`.
+   */
+  env?: unknown;
+  /**
+   * The execution context — the third `fetch` argument on Cloudflare Workers,
+   * exposing `waitUntil(promise)` for background work after the response is sent.
+   * `undefined` on runtimes that don't provide one.
+   */
+  ctx?: { waitUntil(promise: Promise<unknown>): void; passThroughOnException?(): void };
 }
 
 /**
@@ -52,7 +66,7 @@ export type Middleware = (request: Request, context: ApiContext, next: NextFn) =
  * `Response`, or `null` when no API route matched (so the caller can fall through
  * to SSR or a 404).
  */
-export type RequestHandler = (request: Request) => Promise<Response | null>;
+export type RequestHandler = (request: Request, env?: unknown, ctx?: unknown) => Promise<Response | null>;
 
 /** A discovered route module: its method-named handler exports, keyed by method. */
 export type RouteModule = Partial<Record<string, ApiHandler>>;
@@ -64,8 +78,12 @@ export interface MiddlewareModule {
 }
 
 export interface FetchHandlerOptions {
-  /** Response for requests that match no API route (default: a 404). */
-  fallback?: (request: Request) => MaybePromise<Response>;
+  /**
+   * Response for requests that match no API route (default: a 404). Receives the
+   * same `env`/`ctx` the runtime passed to `fetch`, so on Cloudflare Workers a
+   * static-asset fallback can call `env.ASSETS.fetch(request)`.
+   */
+  fallback?: (request: Request, env?: unknown, ctx?: unknown) => MaybePromise<Response>;
 }
 
 export interface ApiHandlerOptions {
@@ -103,4 +121,4 @@ export function createApiHandler(
 export function createFetchHandler(
   handler: RequestHandler,
   options?: FetchHandlerOptions,
-): (request: Request) => Promise<Response>;
+): (request: Request, env?: unknown, ctx?: unknown) => Promise<Response>;

@@ -115,7 +115,7 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}, { ap
   // Outermost (shortest scope) runs first, so `/api/_middleware` wraps `/api/users/_middleware`.
   middleware.sort((a, b) => a.scope.length - b.scope.length);
 
-  return async function handle(request) {
+  return async function handle(request, env, ctx) {
     const url = new URL(request.url);
     const pathname = normalize(url.pathname);
 
@@ -138,12 +138,17 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}, { ap
     if (!matched) return null; // no API route — fall through to SSR / 404
 
     // Shared per-request context. `locals` is the channel middleware uses to pass
-    // data (auth user, validated body) down to the handler.
+    // data (auth user, validated body) down to the handler. `env`/`ctx` are the
+    // platform's fetch arguments — on Cloudflare Workers `env` holds the bindings
+    // (D1, KV, secrets) and `ctx` the execution context (`waitUntil`); on Bun/Node
+    // they're absent and env vars are read from `process.env` instead.
     const context = {
       params,
       query: Object.fromEntries(url.searchParams),
       url,
       locals: {},
+      env,
+      ctx,
     };
 
     const dispatch = async (req) => {
@@ -193,16 +198,23 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}, { ap
 /**
  * Wrap an API handler (`(request) => Response | null`) into a total Fetch handler
  * that always returns a `Response` — a `null` (no route matched) becomes the
- * optional `fallback(request)` or a 404. Fetch-native runtimes (Bun, Cloudflare
- * Workers, Deno) can export it directly:
+ * optional `fallback(request, env, ctx)` or a 404. Fetch-native runtimes (Bun,
+ * Cloudflare Workers, Deno) can export it directly; the runtime's `fetch`
+ * arguments (`env`, `ctx`) are threaded through to handlers and the fallback, so
+ * on Workers your handlers reach the bindings via `context.env` and a static-asset
+ * fallback reaches `env.ASSETS`:
  *
  *   import { apiHandler } from "./dist/server/api.js";
- *   export default { fetch: createFetchHandler(apiHandler) };
+ *   export default {
+ *     fetch: createFetchHandler(apiHandler, {
+ *       fallback: (req, env) => env.ASSETS.fetch(req), // SPA / static assets
+ *     }),
+ *   };
  */
 export function createFetchHandler(handler, { fallback } = {}) {
-  return async (request) => {
-    const res = await handler(request);
+  return async (request, env, ctx) => {
+    const res = await handler(request, env, ctx);
     if (res) return res;
-    return fallback ? fallback(request) : new Response("Not Found", { status: 404 });
+    return fallback ? fallback(request, env, ctx) : new Response("Not Found", { status: 404 });
   };
 }
