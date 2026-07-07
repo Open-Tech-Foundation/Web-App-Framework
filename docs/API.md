@@ -41,7 +41,9 @@ errors on the conflict (as in Next.js's App Router).
 ## 3. Method handlers
 
 Export a named function per HTTP method. The second argument is a **context** with
-the resolved route params, parsed query, the `URL`, and a mutable `locals` bag.
+the resolved route params, parsed query, the `URL`, a mutable `locals` bag, and —
+on runtimes that pass them through `fetch` (Cloudflare Workers) — the platform
+`env` (bindings: `env.DB` for D1, KV, secrets) and `ctx` (`ctx.waitUntil`).
 
 ```js
 // app/api/users/[id]/route.js
@@ -110,13 +112,19 @@ export const GET: ApiHandler = (request, { params }) => Response.json({ id: para
 
 ### Adapters
 
-`apiHandler` is Fetch-native. Fetch runtimes use it directly:
+`apiHandler` is Fetch-native. Fetch runtimes use it directly; the runtime's `fetch`
+`env`/`ctx` are threaded to handlers (`context.env`/`context.ctx`) and to the
+`fallback`, so a Worker can serve static assets from its `env.ASSETS` binding:
 
 ```js
 // Cloudflare Workers / Bun / Deno
 import { apiHandler } from "./dist/server/api.js";
 import { createFetchHandler } from "@opentf/web/server";
-export default { fetch: createFetchHandler(apiHandler) };
+export default {
+  fetch: createFetchHandler(apiHandler, {
+    fallback: (request, env) => env.ASSETS.fetch(request), // static assets / SPA
+  }),
+};
 ```
 
 Node uses the `node:http` adapter:
@@ -127,6 +135,24 @@ import { apiHandler } from "./dist/server/api.js";
 import { toNodeListener } from "@opentf/web/server/adapters/node";
 createServer(toNodeListener(apiHandler)).listen(3000);
 ```
+
+For a full full-stack Cloudflare setup (Worker entry, `wrangler.jsonc`, D1, and the
+dev proxy), see the website's [Cloudflare Workers](https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/website/app/docs/deployment/cloudflare/page.mdx)
+deployment guide.
+
+### Development with bindings (D1) — the dev proxy
+
+Bindings like D1 exist only inside the Workers runtime, so in dev run the API on
+`wrangler dev` and forward `/api/*` to it from `otfw.config.js` — the same handler
+code runs in dev and production, against a real local D1:
+
+```js
+// otfw.config.js
+export default { proxy: { "/api": "http://localhost:8787" } };
+```
+
+`otfw dev` then serves the SPA (with HMR) and proxies matched prefixes to the
+upstream. The `proxy` config is **dev-only** — it has no effect on `otfw build`.
 
 ## 7. Environment variables
 

@@ -1,0 +1,186 @@
+---
+title: Cloudflare Workers
+description: Deploy a full-stack OTF Web app to Cloudflare Workers — SPA assets plus API routes backed by D1 — with a matching dev proxy.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Cloudflare Workers
+
+A full-stack OTF Web app on Cloudflare is a **single Worker**: the static SPA is served by
+the Workers **static-assets** binding, and your [API routes](/docs/routing/api-routes) run
+in the Worker's `fetch` handler — where they reach bindings like **D1**, KV, and secrets
+through `context.env`.
+
+Because handlers are standard `Request → Response` functions and the framework never
+imports a Cloudflare SDK, the exact same handler code runs in `otfw dev` and in production.
+The only Cloudflare-specific pieces are a tiny entry file and your `wrangler.jsonc` — both
+shown in full below.
+
+<Callout type="info" title="This guide, in one line">
+  In **dev**, run your API on `wrangler dev` and proxy `/api/*` to it. In **production**,
+  ship one Worker: `apiHandler` for `/api/*`, `env.ASSETS` for everything else.
+</Callout>
+
+## The production entry
+
+`otfw build` emits a self-contained **`dist/server/api.js`** exporting
+`apiHandler(request, env, ctx)`. Wrap it with `createFetchHandler` and fall back to the
+static assets binding for anything that isn't an API route:
+
+```js
+// worker.js
+import { apiHandler } from "./dist/server/api.js";
+import { createFetchHandler } from "@opentf/web/server";
+
+export default {
+  fetch: createFetchHandler(apiHandler, {
+    // Any request that matches no API route is a static asset or an SPA route —
+    // hand it to the assets binding (configured with SPA fallback below).
+    fallback: (request, env) => env.ASSETS.fetch(request),
+  }),
+};
+```
+
+That's the whole server. `createFetchHandler` threads the Worker's `env` and `ctx` through
+to your handlers **and** to the `fallback`, which is why `env.ASSETS` is available here.
+
+## `wrangler.jsonc`
+
+Point `main` at the entry, serve `dist/` through the assets binding with SPA fallback, and
+declare your D1 database:
+
+```jsonc
+{
+  "name": "my-app",
+  "main": "worker.js",
+  "compatibility_date": "2026-04-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "my-app-db", "database_id": "<your-id>" }
+  ]
+}
+```
+
+- `assets.binding: "ASSETS"` is what makes `env.ASSETS.fetch(request)` work in the entry.
+- `not_found_handling: "single-page-application"` serves `dist/index.html` for unknown
+  paths so client-side routes resolve. For a fully pre-rendered site (`otfw build --ssg`)
+  use `"404-page"` instead — every route already has its own HTML.
+- `d1_databases[].binding: "DB"` is what surfaces as `context.env.DB` in handlers.
+
+## Reading D1 in a handler
+
+Handlers receive the bindings on `context.env`. No import, no setup — it's the Worker's
+`env`:
+
+```js
+// app/api/todos/route.js
+export async function GET(request, { env }) {
+  const { results } = await env.DB.prepare("SELECT id, title FROM todos").all();
+  return Response.json(results);
+}
+
+export async function POST(request, { env }) {
+  const { title } = await request.json();
+  await env.DB.prepare("INSERT INTO todos (title) VALUES (?)").bind(title).run();
+  return Response.json({ ok: true }, { status: 201 });
+}
+```
+
+Authoring in TypeScript? Type the bindings once and cast `env`:
+
+```ts
+import type { ApiHandler } from "@opentf/web/server";
+
+interface Env { DB: D1Database }
+
+export const GET: ApiHandler = async (request, { env }) => {
+  const { results } = await (env as Env).DB.prepare("SELECT * FROM todos").all();
+  return Response.json(results);
+};
+```
+
+<Callout type="tip" title="waitUntil for background work">
+  Need to do work after the response is sent (logging, cache warming)? It's on
+  `context.ctx`: `ctx.waitUntil(logAsync())`.
+</Callout>
+
+## Development
+
+Bindings like D1 only exist inside the Workers runtime, so in dev you run **two
+processes** and let `otfw dev` proxy the API to the real runtime:
+
+**1. Run your API on `wrangler dev`** — Miniflare gives you a local D1 automatically:
+
+```bash
+wrangler dev
+# → http://localhost:8787  (serves worker.js, with a local D1 bound to env.DB)
+```
+
+**2. Proxy `/api/*` to it** from `otfw.config.js`:
+
+```js
+// otfw.config.js
+export default {
+  proxy: {
+    "/api": "http://localhost:8787",
+  },
+};
+```
+
+**3. Start the dev server** as usual:
+
+```bash
+otfw dev
+# → http://localhost:3000   (SPA + HMR)
+#   ↪ proxy /api → http://localhost:8787
+```
+
+Now the browser hits `http://localhost:3000`, the SPA loads with hot reload, and every
+`/api/*` request is forwarded to the worker — so your handlers run against a **real local
+D1**, exactly as they will in production. Edit a handler and `wrangler dev` reloads it;
+edit a component and `otfw dev` hot-reloads it.
+
+<Callout type="info" title="Local database setup">
+  Create the local schema with `wrangler d1 execute my-app-db --local --file=./schema.sql`.
+  Drop `--local` (add `--remote`) to run it against the deployed database.
+</Callout>
+
+## Deploy
+
+```bash
+otfw build          # → dist/ (SPA) + dist/server/api.js
+wrangler deploy     # uploads worker.js + dist/ assets
+```
+
+Wire it into `package.json` if you like:
+
+```json
+{
+  "scripts": {
+    "deploy": "otfw build && wrangler deploy"
+  }
+}
+```
+
+## How a request resolves
+
+Identical order in dev (via the proxy → `wrangler dev`) and production (in the Worker):
+
+| Request | Handled by |
+| --- | --- |
+| `/api/todos` | `apiHandler` → your `route.{js,ts}` (reads `env.DB`) |
+| `/assets/app-*.js`, `/favicon.ico` | `env.ASSETS` (a real file in `dist/`) |
+| `/`, `/dashboard`, any SPA route | `env.ASSETS` → `index.html` (SPA fallback) |
+
+<Callout type="tip" title="Provider-agnostic by design">
+  Nothing above is baked into the framework — it's your `worker.js`, your `wrangler.jsonc`,
+  and a config `proxy`. The same `dist/server/api.js` runs on Deno, Bun, or Node via a
+  different few-line entry. See [Server and API](/docs/deployment/server) for the other
+  runtimes.
+</Callout>

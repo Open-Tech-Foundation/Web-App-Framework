@@ -3,4 +3,5 @@ export default {
   build: "Production Build",
   "static-generation": "Static Generation",
   server: "Server and API",
+  cloudflare: "Cloudflare Workers",
 };

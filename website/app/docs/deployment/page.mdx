@@ -27,6 +27,9 @@ There are three ways to deploy:
 - **[Server and API](/docs/deployment/server)** — run a server for per-request SSR and
   [API routes](/docs/routing/api-routes), via `otfw serve` or a runtime adapter. Best for
   fullstack apps that need server logic.
+- **[Cloudflare Workers](/docs/deployment/cloudflare)** — a single Worker serving the SPA
+  assets plus API routes backed by **D1**, with a matching dev proxy. A worked, end-to-end
+  full-stack example.
 
 <Callout type="tip" title="Same bundle, more HTML">
   SSG doesn't change your app — it runs the same components through a string renderer at

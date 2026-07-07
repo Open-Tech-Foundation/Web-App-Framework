@@ -45,6 +45,7 @@ your editor full type hints.
 | `docs` | The documentation section (sidebar, navbar, search). |
 | `blog` | An optional blog section (post list, banners, feeds). |
 | `i18n` | Internationalization — locales for URL-prefix routing (`@opentf/web-i18n`). |
+| `proxy` | Dev-only request forwarding — send path prefixes to a separately-running backend (`otfw dev`). |
 
 ## `site`
 
@@ -131,6 +132,40 @@ i18n: {
 
 See [Packages → web-i18n → Locale Routing](/docs/packages/web-i18n/routing) for the full
 routing model and the message/formatting API.
+
+## `proxy`
+
+**Dev-only.** Forward matching request path prefixes to another origin instead of handling
+them inside `otfw dev`. This keeps the framework provider-agnostic: run your backend on its
+real runtime and proxy to it, while the dev server keeps serving the SPA with hot reload.
+The primary use is reaching platform bindings the dev server can't host itself — e.g. a
+local `wrangler dev` that provides Cloudflare **D1**, KV, and secrets.
+
+```js
+// otfw.config.js — forward /api/* to a locally running worker
+export default {
+  proxy: {
+    "/api": "http://localhost:8787",
+  },
+};
+```
+
+| Form | Meaning |
+| --- | --- |
+| `"/api": "http://localhost:8787"` | Prefix → target **origin**. The full path + query are preserved. |
+| `"/api": { target: "http://localhost:8787" }` | Object form (room for future options). |
+
+Keys are matched **longest-prefix-first**, so `"/api/admin"` can point elsewhere than
+`"/api"`. A matched prefix is forwarded before the in-process API handler runs, so proxied
+endpoints never also execute locally. `proxy` has **no effect on `otfw build` or a
+production deploy** — in production the backend runs for real (see
+[Cloudflare Workers](/docs/deployment/cloudflare)).
+
+<Callout type="info" title="Why proxy instead of running the API locally?">
+  Bindings like D1 only exist inside the Workers runtime. Running the API under
+  `wrangler dev` (which provides a local D1) and proxying `/api/*` to it means the same
+  handler code runs in dev and production — no mocks, no drift.
+</Callout>
 
 <Callout type="info" title="Framework vs. theme config">
   `otfw.config.js` is the project config. The `docs`/`api`/`blog` blocks are interpreted
