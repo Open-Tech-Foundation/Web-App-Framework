@@ -45,8 +45,16 @@ pub enum ViewNode {
     /// declared inside the callback before its returned JSX (`const h = item.x`,
     /// with `.value` injected) — re-emitted at the top of the item builder so the
     /// item view can reference them.
+    ///
+    /// `source_branches` are JSX sub-trees embedded in the data expression itself
+    /// (`[{ icon: <b/> }].map(…)`): like [`ViewNode::DynamicNode`], `source` carries
+    /// an indexed placeholder (`\u{0}i\u{0}`) per one, and each branch compiles to a
+    /// node-builder whose call replaces the placeholder — so a JSX value in data
+    /// position becomes a real DOM node rather than falling through to a host
+    /// `jsx-runtime`.
     List {
         source: ExpressionId,
+        source_branches: Vec<ViewNode>,
         item_param: String,
         index_param: Option<String>,
         item: Box<ViewNode>,

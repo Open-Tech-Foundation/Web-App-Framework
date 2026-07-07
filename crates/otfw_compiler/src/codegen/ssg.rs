@@ -342,8 +342,8 @@ impl<'a> Emitter<'a> {
                     "\"<!--c[-->\" + (__children ?? \"\") + \"<!--c]-->\"".to_string()
                 }
             }
-            ViewNode::List { source, item_param, index_param, item, key: _, preamble } => {
-                self.list(*source, item_param, index_param.as_deref(), item, preamble)
+            ViewNode::List { source, source_branches, item_param, index_param, item, key: _, preamble } => {
+                self.list(*source, source_branches, item_param, index_param.as_deref(), item, preamble)
             }
             ViewNode::Fragment(children) => self.concat(children),
         }
@@ -443,6 +443,7 @@ impl<'a> Emitter<'a> {
     fn list(
         &mut self,
         source: ExpressionId,
+        source_branches: &[ViewNode],
         item_param: &str,
         index_param: Option<&str>,
         item: &ViewNode,
@@ -450,6 +451,14 @@ impl<'a> Emitter<'a> {
     ) -> String {
         let n = self.fresh();
         let item_html = self.html_expr(item);
+        // JSX embedded in the data expression (`[{ icon: <b/> }].map(…)`) renders to an
+        // `{ __html }` marker in the data — `ssgText` splices it raw when an item reads it,
+        // mirroring how a JSX-valued prop crosses to the server (see `node_prop_code`).
+        let source_code = if source_branches.is_empty() {
+            self.code(source)
+        } else {
+            self.node_prop_code(source, source_branches)
+        };
         let idx_decl = match index_param {
             Some(idx) => format!("const {idx} = __idx{n}; "),
             None => String::new(),
@@ -469,7 +478,7 @@ impl<'a> Emitter<'a> {
         // `<!--$-->…<!--/-->` markers), so no per-item separator is needed.
         format!(
             "\"<!--[-->\" + ssgList({}, (__it{n}, __idx{n}) => {{ const {item_param} = {{ value: __it{n} }}; {idx_decl}{preamble_decl}return {item_html}; }}) + \"<!--]-->\"",
-            self.code(source),
+            source_code,
             n = n,
             item_param = item_param,
             item_html = item_html,
@@ -575,6 +584,24 @@ mod tests {
         let m = crate::lower::lower_module(path, &parsed.program, source, is_page)
             .expect("lowered module");
         emit_module(&m.components, &m.module_stmts, &m.module_exprs)
+    }
+
+    #[test]
+    fn data_position_jsx_in_list_source_renders_as_html_marker() {
+        // `[{ icon: <b/> }].map(…)`: JSX in the list's data expression crosses to the
+        // server as an `{ __html }` marker (like a JSX-valued prop), which `ssgText`
+        // splices raw when the item reads it — never a raw JSX literal.
+        let m = emit(
+            "export default function P(){ return <ul>{[{icon: <b>ICON</b>}].map((t) => <li>{t.icon}</li>)}</ul>; }",
+            true,
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(
+            m.code.contains("ssgList([{icon: { __html:"),
+            "source __html marker:\n{}",
+            m.code
+        );
+        assert!(m.code.contains("ssgText(t.value.icon)"), "item reads the marker:\n{}", m.code);
     }
 
     #[test]

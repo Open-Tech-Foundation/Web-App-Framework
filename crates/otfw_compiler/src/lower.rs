@@ -2076,13 +2076,42 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         inserts: Vec<Insert>,
         branches: Vec<JsxBranch<'a>>,
     ) -> ViewNode {
+        let (expr, branches) = self.finish_template(span, inserts, branches);
+        ViewNode::DynamicNode { expr, branches }
+    }
+
+    /// Build a templated expression + its lowered JSX branches: splice the inserts
+    /// and replace each embedded JSX span with an indexed placeholder, then lower
+    /// every branch to a node-builder view. Shared by dynamic-node holes and
+    /// data-position JSX (a list source, `[{ icon: <b/> }].map(…)`).
+    fn finish_template(
+        &mut self,
+        span: Span,
+        inserts: Vec<Insert>,
+        branches: Vec<JsxBranch<'a>>,
+    ) -> (ExpressionId, Vec<ViewNode>) {
         let template = build_template(self.source, span, inserts, &branches);
-        let branch_nodes = branches
-            .into_iter()
-            .map(|b| self.lower_branch(b))
-            .collect();
+        let branch_nodes = branches.into_iter().map(|b| self.lower_branch(b)).collect();
         let expr = self.exprs.intern(ExprInfo { code: template, deps: Vec::new() });
-        ViewNode::DynamicNode { expr, branches: branch_nodes }
+        (expr, branch_nodes)
+    }
+
+    /// Template a data-position expression that embeds JSX (a list source): each
+    /// outermost JSX becomes an indexed placeholder + a node-builder branch, with
+    /// outer signals `.value`-injected — mirroring how a JSX-valued prop is lowered.
+    fn lower_data_expr(&mut self, expr: &'a Expression<'a>, span: Span) -> (ExpressionId, Vec<ViewNode>) {
+        let (inserts, branches) = {
+            let mut t = NodeTemplater {
+                scoping: self.scoping,
+                signals: &self.signals,
+                props_symbol: self.props_symbol,
+                inserts: Vec::new(),
+                branches: Vec::new(),
+            };
+            t.visit_expression(expr);
+            (t.inserts, t.branches)
+        };
+        self.finish_template(span, inserts, branches)
     }
 
     /// Lower one embedded branch of a dynamic region. A `List` branch (`arr.map(…)`)
@@ -2339,9 +2368,21 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         let body_jsx = cb.jsx;
 
         // Source = the chain before `.map`, with outer signals `.value`-injected.
-        let source_info =
-            inject_expr(self.source, self.scoping, &self.signals, self.props_symbol, &member.object);
-        let source = self.exprs.intern(source_info);
+        // A source that embeds JSX in data position (`[{ icon: <b/> }].map(…)`) is
+        // templated so each JSX becomes a node-builder — evaluated here, in the outer
+        // scope, before the item parameter is reified as a per-item signal.
+        let (source, source_branches) = if has_jsx_expr(&member.object) {
+            self.lower_data_expr(&member.object, member.object.span())
+        } else {
+            let info = inject_expr(
+                self.source,
+                self.scoping,
+                &self.signals,
+                self.props_symbol,
+                &member.object,
+            );
+            (self.exprs.intern(info), Vec::new())
+        };
 
         // Key is evaluated against the *plain* item, so intern it before the item
         // parameter becomes a signal.
@@ -2368,6 +2409,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
 
         Some(ViewNode::List {
             source,
+            source_branches,
             item_param,
             index_param,
             item: Box::new(item?),
@@ -2726,6 +2768,24 @@ mod tests {
         assert_eq!(tag, "li");
         let ViewNode::Dynamic { expr } = &li[0] else { panic!() };
         assert_eq!(lowered.exprs.code(*expr), Some("i.value.name"));
+    }
+
+    #[test]
+    fn lowers_data_position_jsx_in_list_source() {
+        // JSX embedded in the list's data expression (`[{ icon: <b/> }].map(…)`) is
+        // templated: the source carries an indexed placeholder and the JSX becomes a
+        // `source_branches` node — so it lowers to a real node, not raw JSX.
+        let lowered = lower(
+            "export function L() { return <ul>{[{icon: <b>ICON</b>}].map(t => <li>{t.icon}</li>)}</ul>; }",
+        );
+        assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        let ViewNode::List { source, source_branches, .. } = &children[0] else {
+            panic!("expected list, got {:?}", children[0]);
+        };
+        assert_eq!(lowered.exprs.code(*source), Some("[{icon: \u{0}0\u{0}}]"));
+        assert_eq!(source_branches.len(), 1);
+        assert!(matches!(&source_branches[0], ViewNode::Element { tag, .. } if tag == "b"));
     }
 
     #[test]

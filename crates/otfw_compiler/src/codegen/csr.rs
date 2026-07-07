@@ -1037,11 +1037,11 @@ impl<'a> Emitter<'a> {
                 self.emit_children_slot(&frag);
                 frag
             }
-            ViewNode::List { source, item_param, index_param, item, key, preamble } => {
+            ViewNode::List { source, source_branches, item_param, index_param, item, key, preamble } => {
                 // A list as a node (e.g. a root list) lives in its own fragment.
                 let frag = self.fresh("frag");
                 self.line(format!("const {frag} = document.createDocumentFragment();"));
-                self.emit_list(&frag, *source, item_param, index_param.as_deref(), item, *key, preamble);
+                self.emit_list(&frag, *source, source_branches, item_param, index_param.as_deref(), item, *key, preamble);
                 frag
             }
         }
@@ -1053,6 +1053,7 @@ impl<'a> Emitter<'a> {
         &mut self,
         parent: &str,
         source: ExpressionId,
+        source_branches: &[ViewNode],
         item_param: &str,
         index_param: Option<&str>,
         item: &ViewNode,
@@ -1063,16 +1064,38 @@ impl<'a> Emitter<'a> {
         self.list_counter += 1;
         self.build_item_fn(&fn_name, item, item_param, index_param, preamble);
 
-        let source_code = self.lowered.exprs.code(source).unwrap_or("[]").to_string();
+        let source_code = self.list_source_code(source, source_branches);
+        // The key expression is interned verbatim, so it references the callback's
+        // real item/index names — the key fn's params must use those same names (not
+        // a synthetic `_index`), or a `key={index}` reads an undefined binding.
+        let idx = index_param.unwrap_or("_index");
         let key_fn = match key {
             Some(k) => {
                 let code = self.lowered.exprs.code(k).unwrap_or("_index").to_string();
-                format!("({item_param}, _index) => ({code})")
+                format!("({item_param}, {idx}) => ({code})")
             }
             None => "undefined".to_string(),
         };
         self.uses.bind_list = true;
         self.bind(format!("bindList({parent}, () => ({source_code}), {fn_name}, {key_fn})"));
+    }
+
+    /// The list's data expression, with any JSX embedded in it (`[{ icon: <b/> }]`)
+    /// replaced by a node-builder call — so a data-position element becomes a real
+    /// DOM node rather than falling through to a host `jsx-runtime`.
+    fn list_source_code(&mut self, source: ExpressionId, source_branches: &[ViewNode]) -> String {
+        let template = self.lowered.exprs.code(source).unwrap_or("[]").to_string();
+        if source_branches.is_empty() {
+            return template;
+        }
+        let mut calls = Vec::with_capacity(source_branches.len());
+        for branch in source_branches {
+            let fn_name = format!("{}_value{}", self.base, self.list_counter);
+            self.list_counter += 1;
+            self.build_fn(&fn_name, branch, "", &[]);
+            calls.push(format!("{fn_name}()"));
+        }
+        substitute_branches(&template, &calls)
     }
 
     /// Build a module-level `function {fn_name}(item, index) { … return root; }`
@@ -1198,8 +1221,8 @@ impl<'a> Emitter<'a> {
                     js_string(text)
                 ));
             }
-            ViewNode::List { source, item_param, index_param, item, key, preamble } => {
-                self.emit_list(parent, *source, item_param, index_param.as_deref(), item, *key, preamble);
+            ViewNode::List { source, source_branches, item_param, index_param, item, key, preamble } => {
+                self.emit_list(parent, *source, source_branches, item_param, index_param.as_deref(), item, *key, preamble);
             }
             ViewNode::DynamicNode { expr, branches } => {
                 self.emit_dynamic_node(parent, *expr, branches);
@@ -2294,6 +2317,36 @@ mod tests {
             "code: {}",
             m.code
         );
+    }
+
+    #[test]
+    fn index_key_fn_uses_the_real_index_param_name() {
+        // `key={idx}` where `idx` is the map's index param: the key fn's params must
+        // bind that same name, not a synthetic `_index`, or the key reads `undefined`.
+        let m = emit_page(&lower(
+            "export function L() { let items = $state([]); return <ul>{items.map((it, idx) => <li key={idx}>{it.name}</li>)}</ul>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("(it, idx) => (idx)"), "index key fn:\n{}", m.code);
+    }
+
+    #[test]
+    fn data_position_jsx_in_list_source_builds_a_node() {
+        // `[{ icon: <b/> }].map(…)`: JSX in the list's data expression must compile to
+        // a real DOM node-builder (not a host `jsx-runtime` call the item stringifies).
+        let m = emit_page(&lower(
+            "export function L() { return <ul>{[{icon: <b>ICON</b>}].map((t) => <li>{t.icon}</li>)}</ul>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // A node-builder is emitted for the embedded element and its call is spliced
+        // into the source data — no raw JSX survives into the output.
+        assert!(m.code.contains("function L_value1() {"), "source node builder:\n{}", m.code);
+        assert!(
+            m.code.contains("bindList(el0, () => ([{icon: L_value1()}]),"),
+            "source substitution:\n{}",
+            m.code
+        );
+        assert!(!m.code.contains("<b>"), "no raw JSX in output:\n{}", m.code);
     }
 
     #[test]

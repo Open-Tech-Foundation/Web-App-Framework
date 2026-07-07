@@ -547,8 +547,8 @@ impl<'a> Emitter<'a> {
             // brackets it with `<!--[-->…<!--]-->`. Adopt each item's server node, seed the
             // reconcile cache, then wire the same keyed-reconcile effect CSR uses — so later
             // data changes build/move/remove with no first-paint flash.
-            ViewNode::List { source, item_param, index_param, item, key, preamble } => {
-                self.emit_list(cur, *source, item_param, index_param.as_deref(), item, *key, preamble);
+            ViewNode::List { source, source_branches, item_param, index_param, item, key, preamble } => {
+                self.emit_list(cur, *source, source_branches, item_param, index_param.as_deref(), item, *key, preamble);
                 String::new()
             }
             // A conditional / dynamic-node region (`{cond ? <A/> : <B/>}`, `{cond && <X/>}`):
@@ -600,6 +600,7 @@ impl<'a> Emitter<'a> {
         &mut self,
         cur: &str,
         source: ExpressionId,
+        source_branches: &[ViewNode],
         item_param: &str,
         index_param: Option<&str>,
         item: &ViewNode,
@@ -619,15 +620,40 @@ impl<'a> Emitter<'a> {
             self.line(l);
         }
 
-        let source_code = self.code(source);
+        let source_code = self.list_source_code(source, source_branches);
+        // Key params must match the callback's real item/index names (mirrors csr) so
+        // a `key={index}` reads the actual index binding, not a synthetic `_index`.
+        let idx = index_param.unwrap_or("_index");
         let key_fn = match key {
-            Some(k) => format!("({item_param}, _index) => ({})", self.code(k)),
+            Some(k) => format!("({item_param}, {idx}) => ({})", self.code(k)),
             None => "undefined".to_string(),
         };
         self.uses.hydrate_list = true;
         self.bind(format!(
             "hydrateList({cur}, () => ({source_code}), {adopt_fn}, {build_fn}, {key_fn})"
         ));
+    }
+
+    /// The list's data expression, with any JSX embedded in it (`[{ icon: <b/> }]`)
+    /// replaced by a client node-builder call — the source is re-evaluated on the
+    /// client to seed reconciliation, so a data-position element must build a real
+    /// DOM node (the server's rendered copy is claimed by the adopt-item walk).
+    fn list_source_code(&mut self, source: ExpressionId, source_branches: &[ViewNode]) -> String {
+        let template = self.code(source);
+        if source_branches.is_empty() {
+            return template;
+        }
+        let mut calls = Vec::with_capacity(source_branches.len());
+        for branch in source_branches {
+            let n = self.list_counter;
+            self.list_counter += 1;
+            let build_fn = format!("{}_node{}", self.base, n);
+            for l in emit_build_node_fn(self.lowered, &build_fn, branch) {
+                self.line(l);
+            }
+            calls.push(format!("{build_fn}()"));
+        }
+        substitute_branches_pub(&template, &calls)
     }
 
     /// Emit a local `function {fn_name}(__ic, {item_param}, {index}) { …; return root; }`
@@ -862,6 +888,23 @@ mod tests {
         assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
         let m = lower_module("/app/page.tsx", &parsed.program, source, true).expect("lowered");
         emit_module(&m.components, &m.module_stmts, &m.module_exprs)
+    }
+
+    #[test]
+    fn data_position_jsx_in_list_source_builds_a_client_node() {
+        // `[{ icon: <b/> }].map(…)`: the source is re-evaluated on the client to seed
+        // reconciliation, so JSX in it must build a real DOM node (the server copy is
+        // dropped by the item's node-valued-hole adoption, then rebuilt by bindText).
+        let m = emit(
+            "export default function P(){ return <ul>{[{icon: <b>ICON</b>}].map((t) => <li>{t.icon}</li>)}</ul>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("function default_node1() {"), "source node builder:\n{}", m.code);
+        assert!(
+            m.code.contains("hydrateList(__c2, () => ([{icon: default_node1()}]),"),
+            "source substitution:\n{}",
+            m.code
+        );
     }
 
     /// Lower in **component** mode (the default export becomes a Custom Element class,
