@@ -78,6 +78,22 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
+- **A list `key={index}` reads the real index binding instead of `undefined`.** For
+  `arr.map((item, index) => <li key={index}>…)`, the emitted key function bound a
+  synthetic `_index` parameter while the interned key expression still referenced the
+  callback's own `index` name — so the key evaluated against an undefined variable and
+  keyed reconciliation broke. The key function now binds the callback's actual item/index
+  names (`(item, index) => (index)`), matching the item builder. Fixed in both the CSR and
+  hydrate backends (`codegen/csr.rs`, `codegen/hydrate.rs`).
+- **JSX in a list's data expression compiles to a real node instead of falling through to
+  a host `jsx-runtime`.** A JSX value embedded in the array a list maps over
+  (`[{ icon: <b/> }].map(t => <li>{t.icon}</li>)`) was interned verbatim into the list
+  source, so `<b/>` compiled to a `jsx-runtime` call — a framework-foreign element object
+  that the item's text hole then stringified to `[object Object]`. The source is now
+  templated like a JSX-valued prop: each embedded element becomes a node-builder (CSR /
+  hydrate) or an `{ __html }` marker (SSG), and `ViewNode::List` carries the extracted
+  `source_branches`. Previously only hoisting the array to a `const` worked; inline data
+  now compiles correctly across all backends.
 - Components survive a DOM move instead of going inert. A custom element's
   `disconnectedCallback` disposed its reactive effects, while `connectedCallback`'s
   `if (this._mounted) return` guard blocked re-initialization — so any element that was

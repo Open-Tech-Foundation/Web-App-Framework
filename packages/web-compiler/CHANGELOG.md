@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A list `key={index}` reads the real index binding instead of `undefined`.** For
+  `arr.map((item, index) => <li key={index}>…)`, the generated key function bound a
+  synthetic `_index` parameter while the key expression still referenced `index`, so keyed
+  reconciliation evaluated the key against an undefined variable. The key function now binds
+  the callback's actual item/index names across the CSR and hydrate backends.
+- **JSX in a list's data expression compiles to a real node instead of falling through to
+  a host `jsx-runtime`.** A JSX value inside the array a list maps over
+  (`[{ icon: <b/> }].map(t => <li>{t.icon}</li>)`) was emitted verbatim, so `<b/>` became a
+  `jsx-runtime` element object that the item's text hole stringified to `[object Object]`.
+  The list source is now templated like a JSX-valued prop — each embedded element builds a
+  real DOM node (CSR / hydrate) or an `{ __html }` marker (SSG). Previously only hoisting the
+  array to a `const` worked; inline data now compiles correctly across all backends.
+
 ## [0.7.0] - 2026-07-07
 
 ### Fixed
