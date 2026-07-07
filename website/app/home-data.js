@@ -19,8 +19,10 @@ export const capabilities = [
     items: [
       { name: "Client Rendering (CSR)", status: "supported", desc: "Compiler-driven SPA engine." },
       { name: "Zero-VDOM updates", status: "supported", desc: "Direct DOM operations, no diff." },
-      { name: "Reactive macros", status: "supported", desc: "$state, $derived, $effect on fine-grained signals." },
+      { name: "Reactive macros", status: "supported", desc: "$state, $derived, $effect, $context on fine-grained signals." },
       { name: "Refs & expose", status: "supported", desc: "$ref to elements; imperative $expose." },
+      { name: "Context API", status: "supported", desc: "Scoped DI with createContext, ContextProvider, and $context — no prop drilling." },
+      { name: "Portal", status: "supported", desc: "Render a subtree into another DOM target; context resolves across the boundary." },
     ],
   },
   {
