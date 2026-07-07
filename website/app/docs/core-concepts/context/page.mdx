@@ -125,9 +125,3 @@ Macro reference: [`$context`](/api/macros#context).
 - [Reactivity](/docs/core-concepts/reactivity) — `$state` for local state; `reactive()` for shared mutable stores.
 - [Components](/docs/core-concepts/components) — props vs children vs context.
 - [Runtime API](/api/core) — full `@opentf/web` exports.
-
-<Callout type="tip" title="Not $signal">
-  External reactive objects integrate with **`reactive()`** from `@opentf/web`, not a
-  `$signal` macro. Use context for scoped tree injection; use `reactive()` when you need
-  a shared store you mutate in place.
-</Callout>
