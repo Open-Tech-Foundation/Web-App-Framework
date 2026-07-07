@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "../../web-test/browser-runner.js";
 
 import { ErrorBoundary, handleError } from "./error-boundary.js";
 

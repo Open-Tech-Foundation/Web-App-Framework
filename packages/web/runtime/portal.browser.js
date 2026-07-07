@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "../../web-test/browser-runner.js";
 
 import { createContext, enterHost, exitHost, readContext } from "./context.js";
 import "./portal.js";

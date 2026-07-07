@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "../../web-test/browser-runner.js";
 
 import { signal } from "../core/signals.js";
 import { bindText } from "./dom.js";
