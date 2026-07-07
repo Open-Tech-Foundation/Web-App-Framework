@@ -1,6 +1,6 @@
 {
   "name": "@opentf/web-cli",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "OTF Web dev toolchain — the Rolldown-driven CSR dev server, production build, and SSG.",
   "type": "module",
   "bin": {
@@ -20,7 +20,7 @@
     "bun": ">=1.0.0"
   },
   "dependencies": {
-    "@opentf/web-compiler": "0.7.0",
+    "@opentf/web-compiler": "0.8.0",
     "@tailwindcss/node": "4.2.2",
     "@tailwindcss/oxide": "4.2.2",
     "rolldown": "1.0.0-rc.17",

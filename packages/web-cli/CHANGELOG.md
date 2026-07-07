@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-07-07
+
 ### Fixed
 
 - **Dev proxy: gzip double-decode.** When the proxied upstream sent a compressed response,
