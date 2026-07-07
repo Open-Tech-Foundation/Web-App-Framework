@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Tests
+
+- The serve e2e fixture middleware now exercises `@opentf/web/server`'s new cookie helpers
+  through the real bundle path — `getCookie` gates `/guarded`, the root middleware
+  `setCookie`s every response — with an assertion that the `Set-Cookie` header survives to
+  the client.
+
 ## [1.11.0] - 2026-07-07
 
 ### Added

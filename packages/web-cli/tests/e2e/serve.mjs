@@ -229,6 +229,13 @@ async function main() {
     const assetAgain = await fetch(`${base}${scriptMatch[1]}`);
     assert(assetAgain.headers.get("x-otfw-mw") === null, "static assets are served outside the middleware");
 
+    // The cookie helpers (setCookie in the root middleware, getCookie in the
+    // guard — already asserted above) work through the real server + bundling.
+    assert(
+      home.headers.get("set-cookie") === "mwSeen=1; Path=/; SameSite=Lax",
+      "setCookie's Set-Cookie header survives to the client",
+    );
+
     console.log(`\n✓ otfw serve e2e — ${passed} assertions passed\n`);
   } finally {
     proc.kill();

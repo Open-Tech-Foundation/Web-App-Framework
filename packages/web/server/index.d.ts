@@ -3,6 +3,7 @@
 // consumed by generated entry code — are declared with permissive signatures.
 
 export * from "./api.js";
+export * from "./cookies.js";
 
 // ── Render / route API (render.js) ─────────────────────────────────────────────
 export interface RenderResult {

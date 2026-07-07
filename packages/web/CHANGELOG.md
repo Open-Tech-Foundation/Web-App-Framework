@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Cookie helpers (`@opentf/web/server`)** — standards-based `Cookie` / `Set-Cookie`
+  wrappers for middleware, API handlers, and loaders, closing the ergonomics gap with
+  Next.js's `request.cookies`: `getCookie(source, name)` / `getCookies(source)` read from a
+  `Request`, `Headers`, or raw header string (percent-decoded; first duplicate wins per
+  RFC 6265); `setCookie(target, name, value, options)` appends a `Set-Cookie` to a
+  `Response`/`Headers` (appends, never overwrites — session + CSRF coexist);
+  `deleteCookie(target, name, { path, domain })` expires with `Max-Age=0`;
+  `serializeCookie` builds the raw header value. Values round-trip through percent-encoding;
+  `path` defaults to `"/"` (pass `path: null` to omit); invalid names/`maxAge`/`expires`/
+  `sameSite` throw, and `sameSite: "None"` without `secure: true` fails at write time
+  (browsers silently drop it otherwise). Fully typed (`CookieOptions`, `CookieSource`,
+  `CookieTarget`). See docs/MIDDLEWARE.md §3.
+
 ## [0.15.0] - 2026-07-07
 
 ### Added

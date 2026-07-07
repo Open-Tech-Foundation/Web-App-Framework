@@ -7,5 +7,6 @@ export * from "./head.js";
 export * from "./render.js";
 export * from "./api.js";
 export { createMiddleware } from "./middleware.js";
+export * from "./cookies.js";
 export * from "./loader.js";
 import "./builtins.js";

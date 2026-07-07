@@ -25,8 +25,10 @@ export (or named `middleware` export) has the signature `(request, context, next
 
 ```js
 // app/_middleware.js
+import { getCookie } from "@opentf/web/server";
+
 export default async function (request, context, next) {
-  const session = readSession(request.headers.get("cookie"));
+  const session = verify(getCookie(request, "session"));
   if (!session && new URL(request.url).pathname.startsWith("/dashboard")) {
     return new Response(null, { status: 302, headers: { location: "/login" } });
   }
@@ -65,7 +67,34 @@ no `params`/`query` — no route has matched yet:
 `locals` is the hand-off channel: stamp the authenticated user or a validated
 body once, read it in every `route.*` handler and `loader.*` downstream.
 
-## 3. Scope matching — the parts that keep you safe
+## 3. Cookies
+
+`@opentf/web/server` ships standards-based cookie helpers, so nothing hand-rolls
+`Cookie` / `Set-Cookie` header handling:
+
+```js
+import { getCookie, getCookies, setCookie, deleteCookie } from "@opentf/web/server";
+
+// read — works on a Request, a Headers, or the raw header string
+const theme = getCookie(request, "theme");        // string | undefined
+const all = getCookies(request);                  // { name: value }
+
+// write — appends Set-Cookie to a Response (or Headers); appends, never
+// overwrites, so session + CSRF cookies coexist on one response
+const res = Response.json({ ok: true });
+setCookie(res, "session", token, { httpOnly: true, secure: true, maxAge: 3600 });
+deleteCookie(res, "legacy");                      // Max-Age=0 + epoch Expires
+```
+
+Values percent-encode on write and decode on read, so any string round-trips.
+`path` defaults to `"/"` (the spec's request-path default is a footgun; pass
+`path: null` to opt out), and `sameSite: "None"` without `secure: true` throws at
+write time — browsers would silently drop the cookie otherwise. `serializeCookie`
+is exported too for building a `Set-Cookie` string by hand. To set cookies on a
+response coming *out* of `next()`, wrap it first (`new Response(res.body, res)`)
+— a fetched response's headers are immutable.
+
+## 4. Scope matching — the parts that keep you safe
 
 Two normalizations happen before a pathname is matched against folder scopes:
 
@@ -82,7 +111,7 @@ must not break the login page's stylesheet. A dotted path that is *not* a file
 (an `/api/v1.0` endpoint) goes through the pipeline like any other request. To
 protect downloadable files, serve them from a `route.*` handler instead.
 
-## 4. Where it runs
+## 5. Where it runs
 
 - **`otfw dev`** / **`otfw serve`** — the chain wraps API dispatch, the
   `__data.json` endpoint, and SSR / the app shell; rebuilt on edit in dev.
@@ -111,7 +140,7 @@ protect downloadable files, serve them from a `route.*` handler instead.
   server, so middleware cannot run there (same constraint as every framework).
   Pages that need guarding need `otfw serve` or a server/edge adapter.
 
-## 5. Middleware vs. the client route guard
+## 6. Middleware vs. the client route guard
 
 `app/routeGuard.{js,ts}` runs in the **browser** on SPA navigation — it's UX
 (spinners, optimistic redirects), not security: it never sees a first load, curl,
@@ -119,7 +148,7 @@ or a crawler. `_middleware.*` runs on the **server** for every request and is
 where auth belongs. They compose: the server guard is authoritative; the client
 guard keeps the SPA feel.
 
-## 6. TypeScript
+## 7. TypeScript
 
 ```ts
 // app/_middleware.ts
@@ -133,4 +162,5 @@ export default guard;
 ```
 
 `Middleware`, `MiddlewareContext`, `NextFn`, and `MiddlewareRunner` are exported
-from `@opentf/web/server`.
+from `@opentf/web/server`, as are the cookie types (`CookieOptions`,
+`CookieSource`, `CookieTarget`).

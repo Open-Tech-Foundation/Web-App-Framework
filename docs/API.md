@@ -91,6 +91,10 @@ Middleware runs **before routing**, so its context has no `params`/`query` —
 read those in the handler. Request validation (e.g. with `zod`) belongs here or
 at the top of a handler.
 
+Cookie handling is covered by the standards-based helpers `getCookie` /
+`getCookies` / `setCookie` / `deleteCookie` / `serializeCookie` from
+`@opentf/web/server` — see [`MIDDLEWARE.md`](./MIDDLEWARE.md) §3.
+
 ## 5. TypeScript
 
 Author handlers in `.ts` and annotate the exports:
