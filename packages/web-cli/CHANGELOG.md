@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Dev proxy (`otfw.config` `proxy`).** `otfw dev` can forward configured path prefixes to
+  a separately-running backend instead of handling them in-process — the provider-agnostic
+  way to reach bindings the dev server can't host itself (e.g. Cloudflare **D1**, which only
+  exists inside `wrangler dev`): `export default { proxy: { "/api": "http://localhost:8787" }
+  }`. Matched prefixes (longest-first) are forwarded before the in-process API handler, so
+  proxied endpoints never double-run; path/query/method/headers/body are preserved and an
+  unreachable upstream returns a 502. Dev-only — no effect on `otfw build`. See the
+  **Cloudflare Workers** deployment guide.
+
 ## [1.8.1] - 2026-07-07
 
 ### Tests

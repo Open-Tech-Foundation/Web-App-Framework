@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- **API handlers receive the runtime's `env`/`ctx` (platform bindings) on the context.**
+  `createApiHandler`'s handler is now `(request, env, ctx)` and threads them onto the
+  per-request context, so on Cloudflare Workers a handler reaches its bindings via
+  `context.env` (`env.DB` for D1, KV, secrets) and `context.ctx.waitUntil(...)` for
+  post-response work; Bun/Node leave them `undefined` (use `process.env`). `createFetchHandler`
+  forwards `env`/`ctx` to both the handler and the `fallback`, so a Worker entry can serve
+  static assets from `env.ASSETS`: `createFetchHandler(apiHandler, { fallback: (req, env) =>
+  env.ASSETS.fetch(req) })`. Types (`ApiContext.env`/`ctx`, `FetchHandlerOptions.fallback`)
+  updated. See the new **Cloudflare Workers** deployment guide.
+
 ### Fixed
 
 - **An array-valued dynamic hole renders each item instead of `[object Object]`.** A hole
