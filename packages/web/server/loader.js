@@ -103,7 +103,7 @@ export function serializeRouteData(value) {
  *             match: (pathname: string) => object | null,
  *             load: (m: object, ctx?: object) => Promise<unknown>,
  *             loadSerialized: (m: object, ctx?: object) => Promise<{ data: unknown, json: string }>,
- *             handle: (request: Request) => Promise<Response | null> }}
+ *             handle: (request: Request, extras?: { locals?: object }) => Promise<Response | null> }}
  */
 export function createLoaderRegistry(loaderModules = {}, { appDir, i18n } = {}) {
   const entries = [];
@@ -147,9 +147,10 @@ export function createLoaderRegistry(loaderModules = {}, { appDir, i18n } = {}) 
   }
 
   /** Run a matched loader. `request` is the live Request under serve/dev and
-   *  `undefined` at SSG prerender; `locals` is reserved (middleware is future work). */
-  async function load(m, { request, query = {} } = {}) {
-    return m.fn({ params: m.params, query, request, locale: m.locale, locals: {} });
+   *  `undefined` at SSG prerender; `locals` is the per-request bag pipeline
+   *  middleware stamped (middleware.js) — empty at prerender, where none runs. */
+  async function load(m, { request, query = {}, locals = {} } = {}) {
+    return m.fn({ params: m.params, query, request, locale: m.locale, locals });
   }
 
   /** {@link load}, plus the serialized form — escaping lives in one place. */
@@ -163,7 +164,7 @@ export function createLoaderRegistry(loaderModules = {}, { appDir, i18n } = {}) 
    * data URL — including 404 on a miss, so the reserved suffix never falls
    * through to SSR — or `null` for every other path.
    */
-  async function handle(request) {
+  async function handle(request, { locals } = {}) {
     const url = new URL(request.url);
     const pathname = normalize(url.pathname);
     let pagePath = null;
@@ -184,6 +185,7 @@ export function createLoaderRegistry(loaderModules = {}, { appDir, i18n } = {}) 
       const { json } = await loadSerialized(m, {
         request,
         query: Object.fromEntries(url.searchParams),
+        locals,
       });
       // `json || "null"` — an undefined loader result still yields valid JSON
       // (the client maps a 404 to undefined; a 200 must parse).

@@ -212,7 +212,14 @@ export async function runDev() {
   async function getApi() {
     if (!apiBuilt) {
       try {
-        apiBundle = await buildApiBundle({ root, appDir, webEntry, exclude, bust: ++apiVersion });
+        apiBundle = await buildApiBundle({
+          root,
+          appDir,
+          webEntry,
+          exclude,
+          i18n: config?.i18n,
+          bust: ++apiVersion,
+        });
       } catch (e) {
         console.error(`✗ API build failed: ${e?.message ?? e}`);
         apiBundle = await brokenApiStub(e);
@@ -221,23 +228,32 @@ export async function runDev() {
     }
     return apiBundle;
   }
-  // A failed API build must not silently serve the SPA shell for endpoint URLs:
-  // stand in with a handler that 500s exactly the discovered endpoints (real
-  // matching semantics via createApiHandler) until the next successful rebuild.
+  // A failed API/middleware build must not silently serve the SPA shell for
+  // endpoint URLs — or, worse, serve middleware-guarded paths unguarded: stand in
+  // with a handler that 500s exactly the discovered endpoints and a middleware
+  // that 500s exactly the governed scopes (real matching semantics via
+  // createApiHandler / createMiddleware) until the next successful rebuild.
   async function brokenApiStub(err) {
     try {
       const serverApi = pathToFileURL(join(dirname(webEntry), "server", "index.js")).href;
-      const { createApiHandler } = await import(serverApi);
+      const { createApiHandler, createMiddleware } = await import(serverApi);
       // Strip ANSI color codes — the bundler's terminal diagnostic goes into JSON here.
       const msg = String(err?.message ?? err).replace(/\u001b\[[0-9;]*m/g, "");
       const fail = () => Response.json({ error: `API routes failed to build: ${msg}` }, { status: 500 });
       const stub = Object.fromEntries(
         ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((m) => [m, fail]),
       );
-      const { routes } = discoverApiRoutes(appDir, exclude);
+      const { routes, middleware } = discoverApiRoutes(appDir, exclude);
+      const handler = createApiHandler(Object.fromEntries(routes.map((f) => [f, stub])), {}, { appDir });
       return {
-        handler: createApiHandler(Object.fromEntries(routes.map((f) => [f, stub])), {}, { appDir }),
+        handler,
+        apiRoutes: handler,
+        middleware: createMiddleware(Object.fromEntries(middleware.map((f) => [f, { default: fail }])), {
+          appDir,
+          i18n: config?.i18n,
+        }),
         routes,
+        middlewareFiles: middleware,
         cleanup: () => {},
       };
     } catch {
@@ -435,35 +451,56 @@ export async function runDev() {
         const target = matchProxyTarget(pathname, proxyRules);
         if (target) return proxyRequest(req, target);
       }
-      // API endpoints (route.* files, at any path — SPEC §11): a matched handler's
-      // Response wins; a miss falls through to static assets / the SPA shell, so pages
-      // and endpoints coexist. `getApi()` is O(1) after the first build (or a no-op
-      // when the app has no route.* files).
-      {
-        const api = await getApi();
-        const res = api ? await api.handler(req) : null;
-        if (res) return res;
-      }
-      // The route-loader data endpoint (docs/DATA.md): `<path>/__data.json` is a
-      // reserved suffix — answered here (SPA navigation fetches it) and never
-      // allowed to fall through to assets or the SPA shell, so a miss is a 404.
-      if (pathname === "/__data.json" || pathname.endsWith("/__data.json")) {
-        try {
-          const bundle = await getLoaders();
-          const res = bundle ? await bundle.loaders.handle(req) : null;
-          if (res) return res;
-        } catch (e) {
-          console.error(`✗ loader failed for ${pathname}: ${e?.message ?? e}`);
-          return Response.json({ error: "Internal Server Error" }, { status: 500 });
-        }
-        return Response.json(null, { status: 404 });
-      }
-      if (pathname !== "/") {
+      // Static assets that exist on disk are served directly, outside the
+      // middleware pipeline (a root auth guard must not break the login page's
+      // CSS); `__data.json` is excluded — loader data is governed by its page's
+      // middleware. Only dotted paths are fast-pathed, so an extensionless page
+      // route can never be shadowed and `/api/v1.0`-style endpoints (a dotted
+      // segment, no file) fall through into the pipeline.
+      if (/\.[a-z0-9]+$/i.test(pathname) && pathname !== "/" && !pathname.endsWith("/__data.json")) {
         const asset = await serveStatic(pathname);
         if (asset) return asset;
-        if (/\.[a-z0-9]+$/i.test(pathname)) return new Response("not found", { status: 404 });
       }
-      return new Response(buildHtml(), { headers: { "content-type": "text/html" } });
+      // The routed pipeline the middleware chain wraps (docs/MIDDLEWARE.md): API
+      // dispatch → loader data endpoint → assets → the SPA shell. It routes on the
+      // request the chain hands it (`next(new Request(...))` rewrites), and
+      // `context.locals` (stamped by middleware) reaches API handlers and loaders.
+      // `getApi()` is O(1) after the first build (or a no-op when the app has no
+      // route.* / _middleware.* files).
+      const api = await getApi();
+      const terminal = async (req2, context) => {
+        const path2 = new URL(req2.url).pathname;
+        // API endpoints (route.* files, at any path — SPEC §11): a matched handler's
+        // Response wins; a miss falls through to static assets / the SPA shell, so
+        // pages and endpoints coexist.
+        {
+          const res = api ? await (api.apiRoutes ?? api.handler)(req2, undefined, undefined, { locals: context.locals }) : null;
+          if (res) return res;
+        }
+        // The route-loader data endpoint (docs/DATA.md): `<path>/__data.json` is a
+        // reserved suffix — answered here (SPA navigation fetches it) and never
+        // allowed to fall through to assets or the SPA shell, so a miss is a 404.
+        if (path2 === "/__data.json" || path2.endsWith("/__data.json")) {
+          try {
+            const bundle = await getLoaders();
+            const res = bundle ? await bundle.loaders.handle(req2, { locals: context.locals }) : null;
+            if (res) return res;
+          } catch (e) {
+            console.error(`✗ loader failed for ${path2}: ${e?.message ?? e}`);
+            return Response.json({ error: "Internal Server Error" }, { status: 500 });
+          }
+          return Response.json(null, { status: 404 });
+        }
+        if (path2 !== "/") {
+          const asset = await serveStatic(path2);
+          if (asset) return asset;
+          if (/\.[a-z0-9]+$/i.test(path2)) return new Response("not found", { status: 404 });
+        }
+        return new Response(buildHtml(), { headers: { "content-type": "text/html" } });
+      };
+      const mw = api?.middleware;
+      if (mw && mw.size > 0) return mw.run(req, terminal);
+      return terminal(req, { url: new URL(req.url), locals: {} });
     },
   });
 

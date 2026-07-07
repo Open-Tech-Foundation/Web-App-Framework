@@ -153,14 +153,23 @@ export async function runServe() {
 
   const { mod, cleanup } = await buildServerBundle({ root, pages, webEntry, otfwc, docsPlugins, i18n });
 
-  // API routes (SPEC §11): the client build already emitted the handler bundle to
-  // dist/server/api.js (build.js `emitApiBundle`). Import it and hold it live;
-  // `apiHandler(req)` returns a Response or null (no route matched).
+  // API routes + request middleware (SPEC §11): the client build already emitted
+  // the server bundle to dist/server/api.js (build.js `emitApiBundle`). Import it
+  // and hold it live. `apiRoutes(req)` returns a Response or null (no route
+  // matched) — the routes-only dispatcher, because `middleware` runs here at
+  // pipeline level around the *whole* request (pages, endpoints, loader data —
+  // docs/MIDDLEWARE.md), so the composed `apiHandler` would run it twice.
   const apiFile = join(distDir, "server", "api.js");
   let api = null;
   if (existsSync(apiFile)) {
     const apiMod = await import(pathToFileURL(apiFile).href);
-    api = { handler: apiMod.apiHandler, routes: discoverApiRoutes(appDir, exclude).routes };
+    const discovered = discoverApiRoutes(appDir, exclude);
+    api = {
+      handler: apiMod.apiRoutes ?? apiMod.apiHandler,
+      middleware: apiMod.middleware,
+      routes: discovered.routes,
+      middlewareFiles: discovered.middleware,
+    };
   }
 
   // Route loaders (docs/DATA.md): the client build emitted the registry bundle to
@@ -205,9 +214,9 @@ export async function runServe() {
     return new Response(body, { status: 404, headers: { "content-type": "text/html" } });
   }
 
-  // SSR one navigation: run the route's loader (if any), render the markup +
-  // <head>, inject into the shell.
-  async function render(url, req) {
+  // SSR one navigation: run the route's loader (if any, with the middleware's
+  // `locals`), render the markup + <head>, inject into the shell.
+  async function render(url, req, locals = {}) {
     // Loader first — `notFound()` must resolve before anything renders. The check
     // is a property (`otfwNotFound`), not instanceof: the loader bundle is its own
     // module graph. On notFound, re-render as the unmatched sentinel path so the
@@ -221,9 +230,10 @@ export async function runServe() {
         ({ data, json: dataJson } = await loaders.loadSerialized(m, {
           request: req,
           query: Object.fromEntries(url.searchParams),
+          locals,
         }));
       } catch (e) {
-        if (e?.otfwNotFound === true) return render(new URL("/__otfw_404__", url), req);
+        if (e?.otfwNotFound === true) return render(new URL("/__otfw_404__", url), req, locals);
         throw e;
       }
     }
@@ -245,55 +255,76 @@ export async function runServe() {
     });
   }
 
+  // The routed pipeline the middleware chain wraps (docs/MIDDLEWARE.md): API
+  // dispatch → loader data endpoint → asset 404s → i18n redirect → SSR. It routes
+  // on the request the chain hands it (`next(new Request(...))` rewrites), and
+  // `context.locals` (stamped by middleware) reaches API handlers and loaders.
+  async function terminal(req, context) {
+    const url = new URL(req.url);
+    // API endpoints (route.* files, at any path — SPEC §11) are checked first —
+    // before the asset branch, matching `otfw dev` — so an endpoint path with a
+    // dotted segment (`/api/v1.0`) still resolves. A matched handler's Response
+    // wins; a miss falls through to assets / SSR, so pages and endpoints coexist.
+    if (api) {
+      const res = await api.handler(req, undefined, undefined, { locals: context.locals });
+      if (res) return res;
+    }
+    // The route-loader data endpoint (docs/DATA.md): `<path>/__data.json` is a
+    // reserved suffix, answered before the asset branch below would swallow it
+    // (it has a file extension) and never falling through to SSR (a catch-all
+    // page would happily match the suffix as a path segment) — a miss is a 404.
+    if (url.pathname === "/__data.json" || url.pathname.endsWith("/__data.json")) {
+      const res = loaders ? await loaders.handle(req, { locals: context.locals }) : null;
+      return res ?? Response.json(null, { status: 404 });
+    }
+    // A path with a file extension is an asset request; serve it from dist/. A
+    // miss on a real asset is a 404 (don't fall through to the SSR shell).
+    if (/\.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== "/") {
+      const asset = serveStatic(url.pathname);
+      return asset ?? new Response("not found", { status: 404 });
+    }
+    // Locale detection: a bare path (no locale prefix) whose visitor prefers a
+    // non-default locale is redirected to the prefixed URL. The default locale
+    // serves bare, so an `en` visitor is never redirected (no loop).
+    if (i18nOn && localeOf(url.pathname) === i18n.defaultLocale) {
+      const pref = detectLocale(req);
+      if (pref && pref !== i18n.defaultLocale) {
+        const target = localizeFor(stripLocale(url.pathname), pref) + url.search;
+        return new Response(null, { status: 302, headers: { location: target } });
+      }
+    }
+    try {
+      return await render(url, req, context.locals);
+    } catch (e) {
+      console.error(`✗ SSR failed for ${url.pathname}: ${e?.message ?? e}`);
+      return new Response(`<pre>SSR error: ${e?.message ?? e}</pre>`, {
+        status: 500,
+        headers: { "content-type": "text/html" },
+      });
+    }
+  }
+
   const server = serve(startPort, explicitPort, {
     async fetch(req) {
       const url = new URL(req.url);
-      // API endpoints (route.* files, at any path — SPEC §11) are checked first —
-      // before the asset branch, matching `otfw dev` — so an endpoint path with a
-      // dotted segment (`/api/v1.0`) still resolves. A matched handler's Response
-      // wins; a miss falls through to assets / SSR, so pages and endpoints coexist.
-      if (api) {
-        const res = await api.handler(req);
-        if (res) return res;
-      }
-      // The route-loader data endpoint (docs/DATA.md): `<path>/__data.json` is a
-      // reserved suffix, answered before the asset branch below would swallow it
-      // (it has a file extension) and never falling through to SSR (a catch-all
-      // page would happily match the suffix as a path segment) — a miss is a 404.
-      if (url.pathname === "/__data.json" || url.pathname.endsWith("/__data.json")) {
-        const res = loaders ? await loaders.handle(req) : null;
-        return res ?? Response.json(null, { status: 404 });
-      }
-      // A path with a file extension is an asset request; serve it from dist/. A
-      // miss on a real asset is a 404 (don't fall through to the SSR shell).
-      if (/\.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== "/") {
+      // Static assets that exist in dist/ are served directly, outside the
+      // middleware pipeline — a root auth guard must not break the login page's
+      // CSS. `__data.json` is excluded: loader data is governed by its page's
+      // middleware. Dotted paths that are *not* files (an `/api/v1.0` endpoint)
+      // fall through into the pipeline like any other request.
+      if (/\.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== "/" && !url.pathname.endsWith("/__data.json")) {
         const asset = serveStatic(url.pathname);
-        return asset ?? new Response("not found", { status: 404 });
+        if (asset) return asset;
       }
-      // Locale detection: a bare path (no locale prefix) whose visitor prefers a
-      // non-default locale is redirected to the prefixed URL. The default locale
-      // serves bare, so an `en` visitor is never redirected (no loop).
-      if (i18nOn && localeOf(url.pathname) === i18n.defaultLocale) {
-        const pref = detectLocale(req);
-        if (pref && pref !== i18n.defaultLocale) {
-          const target = localizeFor(stripLocale(url.pathname), pref) + url.search;
-          return new Response(null, { status: 302, headers: { location: target } });
-        }
-      }
-      try {
-        return await render(url, req);
-      } catch (e) {
-        console.error(`✗ SSR failed for ${url.pathname}: ${e?.message ?? e}`);
-        return new Response(`<pre>SSR error: ${e?.message ?? e}</pre>`, {
-          status: 500,
-          headers: { "content-type": "text/html" },
-        });
-      }
+      const mw = api?.middleware;
+      if (mw && mw.size > 0) return mw.run(req, terminal);
+      return terminal(req, { url, locals: {} });
     },
   });
 
   console.log(`\n  OTF Web SSR server`);
-  const apiNote = api ? `, ${api.routes.length} API routes` : "";
+  const mwNote = api?.middlewareFiles?.length ? `, ${api.middlewareFiles.length} middleware` : "";
+  const apiNote = api ? `, ${api.routes.length} API routes${mwNote}` : "";
   const loaderNote = loaders ? `, ${loaders.routes.length} loaders` : "";
   console.log(`  → http://localhost:${server.port}  (${pages.length} routes, server-rendered${apiNote}${loaderNote})`);
   console.log(`  ✓ ready in ${Date.now() - bootStart}ms\n`);

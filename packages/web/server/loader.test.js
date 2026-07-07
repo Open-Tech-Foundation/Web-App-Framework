@@ -112,6 +112,20 @@ describe("load context", () => {
     expect(seen.locals).toEqual({});
   });
 
+  test("middleware locals reach the loader (load and the data endpoint)", async () => {
+    let seen;
+    const registry = createLoaderRegistry(
+      { "/proj/app/todos/loader.js": mod((ctx) => (seen = ctx) && { user: ctx.locals.user }) },
+      { appDir: "/proj/app" },
+    );
+    const locals = { user: "ada" }; // stamped upstream by pipeline middleware
+    await registry.load(registry.match("/todos"), { locals });
+    expect(seen.locals).toBe(locals);
+
+    const res = await registry.handle(new Request("http://x/todos/__data.json"), { locals });
+    expect(await res.json()).toEqual({ user: "ada" });
+  });
+
   test("request is undefined when the caller has none (SSG prerender)", async () => {
     let seen;
     const registry = createLoaderRegistry(

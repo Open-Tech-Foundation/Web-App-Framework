@@ -67,11 +67,15 @@ export async function POST(request, { params }) {
 
 ## 4. Middleware
 
-A `_middleware.js` file applies to its folder and everything nested under it.
-Multiple middleware compose **outermost-first** (`app/api/_middleware.js` wraps
-`app/api/users/_middleware.js`). The signature is `(request, context, next)`; call
-`next()` to continue, or return a `Response` to short-circuit. Pass data to
-handlers via `context.locals`.
+A `_middleware.js` file applies to its folder and everything nested under it —
+and not just to API routes: middleware governs the **whole request pipeline**
+(pages, endpoints, loader data, 404s). The full contract lives in
+[`MIDDLEWARE.md`](./MIDDLEWARE.md); the short version:
+
+Multiple middleware compose **outermost-first** (`app/_middleware.js` wraps
+`app/api/_middleware.js`). The signature is `(request, context, next)`; call
+`next()` to continue (or `next(new Request(...))` to rewrite), or return a
+`Response` to short-circuit. Pass data to handlers via `context.locals`.
 
 ```js
 // app/api/_middleware.js
@@ -83,7 +87,9 @@ export default function (request, context, next) {
 }
 ```
 
-Request validation (e.g. with `zod`) belongs here or at the top of a handler.
+Middleware runs **before routing**, so its context has no `params`/`query` —
+read those in the handler. Request validation (e.g. with `zod`) belongs here or
+at the top of a handler.
 
 ## 5. TypeScript
 
@@ -106,22 +112,30 @@ export const GET: ApiHandler = (request, { params }) => Response.json({ id: para
 - **`otfw serve`** — the SSR server tries a matching `route.*` handler ahead of SSR;
   a request that matches no handler falls through to the page router, so pages and
   endpoints coexist (only a *same-folder* `page.*` + `route.*` is rejected).
-- **`otfw build`** — emits `dist/server/api.js`, a self-contained ESM module
-  exporting `apiHandler(request) => Response | null` (the runtime dispatcher is
-  bundled in; your npm/node deps stay external for the target).
+- **`otfw build`** — emits `dist/server/api.js`, a self-contained ESM module (the
+  runtime dispatchers are bundled in; your npm/node deps stay external for the
+  target) exporting three handlers:
+  - `apiRoutes(request) => Response | null` — routes only;
+  - `middleware` — the request-middleware runner (docs/MIDDLEWARE.md);
+  - `apiHandler(request) => Response | null` — routes with the middleware
+    composed in, for standalone use (don't pair it with `middleware`, or the
+    middleware runs twice).
 
 ### Adapters
 
-`apiHandler` is Fetch-native. Fetch runtimes use it directly; the runtime's `fetch`
-`env`/`ctx` are threaded to handlers (`context.env`/`context.ctx`) and to the
-`fallback`, so a Worker can serve static assets from its `env.ASSETS` binding:
+The handlers are Fetch-native. Fetch runtimes use them directly; the runtime's
+`fetch` `env`/`ctx` are threaded to middleware and handlers
+(`context.env`/`context.ctx`) and to the `fallback`, so a Worker can serve static
+assets from its `env.ASSETS` binding — with `middleware` wrapping the fallback
+too, so page URLs served from `ASSETS` are still guarded:
 
 ```js
 // Cloudflare Workers / Bun / Deno
-import { apiHandler } from "./dist/server/api.js";
+import { apiRoutes, middleware } from "./dist/server/api.js";
 import { createFetchHandler } from "@opentf/web/server";
 export default {
-  fetch: createFetchHandler(apiHandler, {
+  fetch: createFetchHandler(apiRoutes, {
+    middleware, // omit if the app has none
     fallback: (request, env) => env.ASSETS.fetch(request), // static assets / SPA
   }),
 };

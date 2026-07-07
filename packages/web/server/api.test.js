@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { apiRouteFromPath, createApiHandler, createFetchHandler, middlewareScopeFromPath } from "./api.js";
+import { createMiddleware } from "./middleware.js";
 
 const req = (url, init) => new Request(`http://localhost${url}`, init);
 
@@ -208,6 +209,30 @@ describe("createApiHandler", () => {
     expect(await (await handle(req("/api/x"))).json()).toEqual({ root: true });
   });
 
+  test("init.locals shares a pipeline-middleware locals bag with the handlers", async () => {
+    const handle = createApiHandler({
+      "/app/api/me/route.js": { GET: (_r, { locals }) => Response.json(locals) },
+    });
+    const locals = { user: "ada" }; // stamped upstream by pipeline middleware
+    const res = await handle(req("/api/me"), undefined, undefined, { locals });
+    expect(await res.json()).toEqual({ user: "ada" });
+  });
+
+  test("middleware next(rewrittenRequest) hands the handler the replacement Request", async () => {
+    const handle = createApiHandler(
+      { "/app/api/echo/route.js": { GET: (r) => Response.json(r.headers.get("x-added")) } },
+      {
+        "/app/api/_middleware.js": {
+          default: (r, _ctx, next) => {
+            const withHeader = new Request(r, { headers: { "x-added": "yes" } });
+            return next(withHeader);
+          },
+        },
+      },
+    );
+    expect(await (await handle(req("/api/echo"))).json()).toBe("yes");
+  });
+
   test("appDir option pins route derivation for app-prefixed folders", async () => {
     const handle = createApiHandler(
       { "/proj/app/api/appointments/route.js": { GET: () => Response.json("booked") } },
@@ -261,5 +286,28 @@ describe("createFetchHandler", () => {
     const handle = createApiHandler({});
     const fetch = createFetchHandler(handle);
     expect((await fetch(req("/anything"))).status).toBe(404);
+  });
+
+  test("a middleware runner wraps API dispatch and the fallback alike", async () => {
+    const routes = createApiHandler({
+      "/app/api/me/route.js": { GET: (_r, { locals }) => Response.json(locals) },
+    });
+    const middleware = createMiddleware({
+      "/app/_middleware.js": {
+        default: (r, ctx, next) => {
+          if (!r.headers.get("cookie")) return new Response(null, { status: 401 });
+          ctx.locals.user = "ada";
+          return next();
+        },
+      },
+    });
+    const fetch = createFetchHandler(routes, { middleware, fallback: () => new Response("shell") });
+    // gates the API route and the page fallback alike
+    expect((await fetch(req("/api/me"))).status).toBe(401);
+    expect((await fetch(req("/dashboard"))).status).toBe(401);
+    // authorized: locals stamped by middleware reach the API handler; pages pass
+    const authed = { headers: { cookie: "s=1" } };
+    expect(await (await fetch(req("/api/me", authed))).json()).toEqual({ user: "ada" });
+    expect(await (await fetch(req("/dashboard", authed))).text()).toBe("shell");
   });
 });

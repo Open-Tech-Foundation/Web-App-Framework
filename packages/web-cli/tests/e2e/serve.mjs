@@ -203,6 +203,32 @@ async function main() {
     assert(aboutAgain.status === 200, "loader-less /about still renders (regression)");
     assert(!(await aboutAgain.text()).includes("__otfw_data"), "no data payload injected for a loader-less page");
 
+    // ── 10. Request middleware (docs/MIDDLEWARE.md): pages + API + data alike ────
+    // The root app/_middleware.js wraps every response and stamps locals.
+    assert(home.headers.get("x-otfw-mw") === "root", "root middleware wraps a page response (header stamped)");
+    assert(status.headers.get("x-otfw-mw") === "root", "root middleware wraps an API response");
+    assert(data.headers.get("x-otfw-mw") === "root", "root middleware wraps a __data.json response");
+    assert(missing.headers.get("x-otfw-mw") === "root", "root middleware runs on a 404 too");
+    assert(JSON.parse(payload[1]).mw === "e2e", "middleware locals reach the SSR loader (inline payload)");
+    const todosData = await fetch(`${base}/todos/__data.json`);
+    assert((await todosData.json()).mw === "e2e", "middleware locals reach the loader on the data endpoint");
+
+    // app/guarded/_middleware.js gates its page — and the page's __data.json.
+    const guarded = await fetch(`${base}/guarded`, { redirect: "manual" });
+    assert(guarded.status === 302, "scoped middleware gates its page → 302");
+    assert(guarded.headers.get("location") === "/about", "the guard's redirect target is honored");
+    const guardedData = await fetch(`${base}/guarded/__data.json`, { redirect: "manual" });
+    assert(guardedData.status === 302, "the page's __data.json is gated by the same scope (no loader leak)");
+    const guardedOk = await fetch(`${base}/guarded`, { headers: { cookie: "auth=1" } });
+    assert(guardedOk.status === 200, "an authorized request passes the guard");
+    assert((await guardedOk.text()).includes("E2E_GUARDED"), "the guarded page renders for authorized requests");
+    const guardedDataOk = await fetch(`${base}/guarded/__data.json`, { headers: { cookie: "auth=1" } });
+    assert((await guardedDataOk.json()).secret === "classified", "the guarded loader serves authorized requests");
+
+    // Static assets bypass the middleware pipeline (a root guard must not break CSS).
+    const assetAgain = await fetch(`${base}${scriptMatch[1]}`);
+    assert(assetAgain.headers.get("x-otfw-mw") === null, "static assets are served outside the middleware");
+
     console.log(`\n✓ otfw serve e2e — ${passed} assertions passed\n`);
   } finally {
     proc.kill();

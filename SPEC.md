@@ -874,16 +874,21 @@ To enable client-side navigation, use the built-in `<Link>` component.
 - **Active State**: Automatically applies an `aria-current="page"` attribute and a `.active` class when the current route matches the `href`.
 
 ### 8.6 Route Guards & Redirects
-- **Guards**: Defined in `page.jsx` or `layout.jsx` via an exported `middleware` function.
-- **Redirects**: Handled by throwing a `Redirect(path)` object or returning a `Response.redirect()` in middleware.
+Guarding happens on two layers that compose:
+
+- **Server (authoritative)**: `_middleware.{js,ts}` files (Section 11.5, `docs/MIDDLEWARE.md`) gate any scope — pages, API routes, and loader data — on every request. Redirect by returning a `Response` with a `location` header (or throwing a `Response`):
 
 ```javascript
-export function middleware(request) {
-  if (!auth.isLoggedIn) {
-    throw Redirect("/login");
+// app/dashboard/_middleware.js
+export default function (request, context, next) {
+  if (!readSession(request)) {
+    return new Response(null, { status: 302, headers: { location: "/login" } });
   }
+  return next();
 }
 ```
+
+- **Client (UX)**: the optional `app/routeGuard.{js,ts}` default export runs in the browser before each SPA navigation (spinners, optimistic redirects). It is not a security boundary — it never sees a first load or a crawler; the server middleware is.
 
 ### 8.7 Route Loaders (`loader.{js,ts}`)
 A page gets server data from a **route loader** — a plain server module sibling to its `page.*` (the data analogue of a `route.*` API endpoint; see docs/DATA.md for the full design):
@@ -900,7 +905,7 @@ export default async function loader({ params, query, request, locale, locals })
 }
 ```
 
-- **Signature**: default export (or named `loader`). `params` follows the `[param]`/`[...rest]` conventions (percent-decoded, catch-alls as arrays); `query` is the parsed query string (empty at SSG time); `request` is the live `Request` under `otfw serve`/dev and `undefined` at SSG prerender; `locale` is the active locale; `locals` is reserved.
+- **Signature**: default export (or named `loader`). `params` follows the `[param]`/`[...rest]` conventions (percent-decoded, catch-alls as arrays); `query` is the parsed query string (empty at SSG time); `request` is the live `Request` under `otfw serve`/dev and `undefined` at SSG prerender; `locale` is the active locale; `locals` is the per-request bag stamped by `_middleware.*` (Section 11.5) — empty at SSG prerender, where no middleware runs.
 - **Where it runs**: at build time under `otfw build --ssg`, per request under `otfw serve`, and on demand under `otfw dev` — never in the browser.
 - **Reading the data**: the page reads the reactive **`router.data`**, like `router.params`. It is `undefined` when the route has no loader (or the loader 404'd).
 - **The wire format**: first paint inlines the data as `<script type="application/json" id="__otfw_data">`; SPA navigation fetches `GET <path>/__data.json` (the same URL `--ssg` writes as a literal file next to each page's `index.html`, so static hosts serve it with no server). `__data.json` is a **reserved filename**.
@@ -1035,7 +1040,9 @@ OTF Web provides its own high-performance **Regex Router** to ensure consistent 
 - **HTTP Server Utilization**: OTF Web utilizes the native HTTP server of the underlying runtime (e.g., `Bun.serve` or Node's `http` module) via specialized **Adapters**. These adapters translate the platform's native request/response into the standard `Request`/`Response` objects used by OTF Web handlers.
 
 ### 11.5 Middleware & Errors
-- **Shared Middleware**: Files named `_middleware.js` in the `app/api/` directory apply to all routes in that folder and subfolders.
+- **Shared Middleware**: Files named `_middleware.{js,ts}` anywhere under `app/` apply to their folder and subfolders — governing **all requests** in that scope equally: pages (SSR), API routes, route-loader `__data.json` requests, and 404s. `app/_middleware.js` is the global middleware. Middleware runs **before routing** (so it can also rewrite the request via `next(new Request(...))`); multiple files compose outermost-first. See `docs/MIDDLEWARE.md` for the full contract.
+- **Locals**: Middleware stamps `context.locals`; the same bag reaches API handlers (`context.locals`) and route loaders (`locals`).
+- **Scope Safety**: A page's `__data.json` data request is governed by the page's scope (no loader leak around a guard), and a non-default locale prefix is stripped before matching (`/fr/admin` is governed by `/admin` middleware). Static assets that exist on disk are served outside the middleware pipeline.
 - **Auth & Validation**: Cross-cutting concerns such as **Authentication**, **Authorization**, and **Request Validation** are handled exclusively via the middleware system.
 - **Error Responses**: OTF Web encourages standard JSON error bodies:
   ```javascript

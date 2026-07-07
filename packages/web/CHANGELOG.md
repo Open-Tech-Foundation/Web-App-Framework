@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Request middleware for the whole pipeline (`createMiddleware`) — pages, API, and loader
+  data alike, like Next.js middleware.** `_middleware.{js,ts}` files are no longer an
+  API-only construct: the new `createMiddleware(middlewareModules, { appDir, i18n })` builds
+  a scope-matched runner (`{ size, scopes, run(request, terminal, { env, ctx }) }`) the
+  servers wrap around their entire request pipeline, so `app/_middleware.js` gates SSR pages,
+  API endpoints, `__data.json` loader requests, and 404s equally. Middleware runs **before
+  routing**: it can short-circuit (return/throw a `Response`), rewrite the request
+  (`next(new Request(...))` re-routes downstream), decorate any outgoing response (wrap
+  `next()`), and stamp `context.locals`. Scope matching is security-aware — a page's
+  `__data.json` is governed by the page's scope (no loader-data leak around a guard) and a
+  non-default locale prefix is stripped (`/fr/admin` is governed by `/admin` middleware).
+  A forgotten `return next()` is a 500, not a hang. See the new **docs/MIDDLEWARE.md**.
+- **`locals` flows into route loaders.** `createLoaderRegistry`'s `load`/`loadSerialized`
+  accept `locals` and `handle` (the `__data.json` endpoint) takes `{ locals }`, so a loader
+  reads what middleware stamped (`loader({ locals })`) — the `locals: {}` placeholder is now
+  live. Empty at SSG prerender, where no middleware runs.
+- **`createApiHandler` accepts a pipeline `locals` bag.** The handler is now
+  `(request, env, ctx, init?)`; `init.locals` is shared by reference with handler contexts,
+  so pipeline middleware and API handlers see the same bag. API-internal middleware chains
+  also support `next(rewrittenRequest)`.
+- **`createFetchHandler({ middleware })`.** The adapter wrapper can wrap the whole request —
+  handler *and* fallback — in the middleware runner, so a Workers entry guards
+  `env.ASSETS`-served pages too: `createFetchHandler(apiRoutes, { middleware, fallback })`.
+  Pair it with the routes-only `apiRoutes` bundle export (the composed `apiHandler` would run
+  API-scoped middleware twice). Types for all of the above (`MiddlewareContext`, `NextFn`
+  with rewrite, `MiddlewareRunner`, `RequestHandler` `init`) added to `api.d.ts`.
+
+### Changed
+
+- `middlewareScopeFromPath` moved to `server/middleware.js` (still re-exported from
+  `@opentf/web/server` and `server/api.js` — no import changes needed).
+
 ## [0.14.0] - 2026-07-07
 
 ### Added

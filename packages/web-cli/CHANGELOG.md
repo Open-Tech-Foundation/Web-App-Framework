@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Server middleware governs every request under `otfw dev` and `otfw serve` — pages, API,
+  loader data, and 404s (docs/MIDDLEWARE.md).** Both servers now wrap their pipeline (API
+  dispatch → `__data.json` → SSR / app shell) in the `_middleware.*` chain, so
+  `app/_middleware.js` can gate a page server-side, redirect, rewrite the request, add
+  headers to any response, and stamp `context.locals` for API handlers and route loaders —
+  the server-side counterpart to the client `routeGuard`. Static assets that exist on disk
+  are served outside the pipeline (a root auth guard can't break the login page's CSS);
+  dotted paths that aren't files (`/api/v1.0`) still flow through. `otfw build`'s
+  `dist/server/api.js` now exports `apiRoutes` (routes only) and `middleware` (the pipeline
+  runner) alongside the composed `apiHandler`, and is emitted for middleware-only apps too
+  (previously skipped without `route.*` files). Middleware scope matching is i18n-aware
+  (the config's locales are threaded into the bundle).
+
+### Changed
+
+- **API `_middleware.*` now runs before route matching** (pipeline level) under dev/serve:
+  it also fires when no API route matches (e.g. gating a page under `/api`'s scope or a
+  404), and its context no longer carries `params`/`query` — read those in the handler.
+  A failed API/middleware build in dev now also 500s the governed middleware scopes instead
+  of serving them unguarded until the next successful rebuild.
+
 ## [1.10.0] - 2026-07-07
 
 ### Fixed

@@ -14,7 +14,9 @@ type MaybePromise<T> = T | Promise<T>;
  */
 export type RouteParams = Record<string, string | string[]>;
 
-/** Per-request context, passed as the second argument to handlers and middleware. */
+/** Per-request context, passed as the second argument to handlers and middleware.
+ *  Pipeline middleware (run before routing — see {@link createMiddleware}) receives
+ *  it without `params`/`query`: no route has matched yet. */
 export interface ApiContext {
   /** Dynamic route params resolved from the matched path. */
   params: RouteParams;
@@ -50,23 +52,54 @@ export interface ApiContext {
  */
 export type ApiHandler = (request: Request, context: ApiContext) => MaybePromise<Response>;
 
-/** Continue to the next middleware, or ultimately the route handler. */
-export type NextFn = () => Promise<Response>;
+/** Continue to the next middleware, or ultimately the route handler / terminal.
+ *  Pass a replacement `Request` to rewrite what downstream routes on. */
+export type NextFn = (rewrittenRequest?: Request) => Promise<Response>;
+
+/** The context pipeline middleware receives: pre-routing, so no `params`/`query`. */
+export type MiddlewareContext = Omit<ApiContext, "params" | "query">;
 
 /**
  * Folder middleware — the default export of a `_middleware.{js,ts}` file. Applies
- * to its folder and everything nested under it; multiple middleware compose
- * outermost-first. Call `next()` to continue, or return a `Response` to
- * short-circuit (e.g. an auth guard).
+ * to its folder and everything nested under it — pages, API endpoints, loader-data
+ * requests, and 404s alike; multiple middleware compose outermost-first. Call
+ * `next()` to continue (or `next(new Request(...))` to rewrite), or return a
+ * `Response` to short-circuit (e.g. an auth guard).
  */
-export type Middleware = (request: Request, context: ApiContext, next: NextFn) => MaybePromise<Response>;
+export type Middleware = (
+  request: Request,
+  context: MiddlewareContext & Partial<Pick<ApiContext, "params" | "query">>,
+  next: NextFn,
+) => MaybePromise<Response>;
 
 /**
  * The composed request handler produced by {@link createApiHandler}: resolves to a
  * `Response`, or `null` when no API route matched (so the caller can fall through
- * to SSR or a 404).
+ * to SSR or a 404). `init.locals` shares a pipeline-middleware `locals` bag with
+ * the handlers (same object, by reference).
  */
-export type RequestHandler = (request: Request, env?: unknown, ctx?: unknown) => Promise<Response | null>;
+export type RequestHandler = (
+  request: Request,
+  env?: unknown,
+  ctx?: unknown,
+  init?: { locals?: Record<string, unknown> },
+) => Promise<Response | null>;
+
+/**
+ * The runner produced by {@link createMiddleware}: `run` composes the applicable
+ * middleware chain (by folder scope) around a terminal for one request.
+ */
+export interface MiddlewareRunner {
+  /** Number of discovered middleware functions (0 → nothing will ever run). */
+  size: number;
+  /** The governed folder scopes, outermost first (e.g. `["/", "/api"]`). */
+  scopes: string[];
+  run(
+    request: Request,
+    terminal: (request: Request, context: MiddlewareContext) => MaybePromise<Response>,
+    extras?: { env?: unknown; ctx?: unknown },
+  ): Promise<Response>;
+}
 
 /** A discovered route module: its method-named handler exports, keyed by method. */
 export type RouteModule = Partial<Record<string, ApiHandler>>;
@@ -84,6 +117,13 @@ export interface FetchHandlerOptions {
    * static-asset fallback can call `env.ASSETS.fetch(request)`.
    */
   fallback?: (request: Request, env?: unknown, ctx?: unknown) => MaybePromise<Response>;
+  /**
+   * Request middleware (a {@link createMiddleware} runner) wrapped around the
+   * whole request — handler *and* fallback. Pair it with the routes-only
+   * `apiRoutes` bundle export, not the composed `apiHandler` (which would run the
+   * API-scoped middleware a second time).
+   */
+  middleware?: MiddlewareRunner;
 }
 
 export interface ApiHandlerOptions {
@@ -110,6 +150,17 @@ export function createApiHandler(
   middlewareModules?: Record<string, MiddlewareModule>,
   options?: ApiHandlerOptions,
 ): RequestHandler;
+
+/**
+ * Build the request-middleware runner from discovered `_middleware` modules (keyed
+ * by absolute file path so each scope is derived from the path). The optional
+ * `i18n` config lets scope matching strip a non-default locale prefix, and a
+ * `<path>/__data.json` request is always governed by its page's scope.
+ */
+export function createMiddleware(
+  middlewareModules?: Record<string, MiddlewareModule>,
+  options?: ApiHandlerOptions & { i18n?: { locales?: string[]; defaultLocale?: string } },
+): MiddlewareRunner;
 
 /**
  * Wrap a {@link RequestHandler} into a total Fetch handler that always returns a

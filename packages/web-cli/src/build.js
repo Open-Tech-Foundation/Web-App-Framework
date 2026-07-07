@@ -221,8 +221,18 @@ export async function runBuild(options = {}) {
   // API routes (SPEC §11/§13): emit the server handler bundle to dist/server/api.js
   // so a deploy adapter (Bun/Node/CF Workers) can serve /api/* in production.
   const apiStep = step("Bundling API routes");
-  const api = await emitApiBundle({ root, appDir, webEntry, exclude, outDir: join(outDir, "server") });
-  apiStep.done(api ? `API routes — ${api.routes.length} → dist/server/api.js` : "API routes — none");
+  const api = await emitApiBundle({
+    root,
+    appDir,
+    webEntry,
+    exclude,
+    i18n: config?.i18n,
+    outDir: join(outDir, "server"),
+  });
+  const apiNote = api
+    ? `API routes — ${api.routes.length}${api.middleware.length ? ` (+${api.middleware.length} middleware)` : ""} → dist/server/api.js`
+    : "API routes — none";
+  apiStep.done(apiNote);
 
   // Copy the public/ directory (static assets served at the root), if present.
   const publicDir = join(root, "public");

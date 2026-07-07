@@ -642,23 +642,39 @@ export function assertNoRouteConflicts(appDir, exclude = new Set()) {
 }
 
 /**
- * Entry source for the API handler bundle: statically import every route +
- * middleware module (keyed by absolute path so `createApiHandler` can derive the
- * route from the path), then export the composed `Request → Response | null`
- * handler. Mirrors `serverEntrySource` for the page/SSG bundle.
+ * Entry source for the API/middleware server bundle: statically import every
+ * route + middleware module (keyed by absolute path so scopes/routes derive from
+ * the path), then export three composed handlers. Mirrors `serverEntrySource`
+ * for the page/SSG bundle.
+ *
+ *   apiHandler  — routes with the API-scoped middleware composed in (standalone /
+ *                 legacy adapter use, where nothing else runs the middleware);
+ *   apiRoutes   — routes only, for servers that run `middleware` themselves at
+ *                 pipeline level (dev/serve) — middleware must not run twice;
+ *   middleware  — the `createMiddleware` runner governing the whole request
+ *                 pipeline (pages, endpoints, loader data — docs/MIDDLEWARE.md).
  */
-export function apiEntrySource({ routes, middleware }, appDir) {
+export function apiEntrySource({ routes, middleware }, appDir, i18n = null) {
   const rImports = routes.map((p, i) => `import * as r${i} from ${JSON.stringify(p)};`).join("\n");
   const mImports = middleware.map((p, i) => `import * as m${i} from ${JSON.stringify(p)};`).join("\n");
   const rMap = routes.map((p, i) => `  [${JSON.stringify(p)}]: r${i},`).join("\n");
   const mMap = middleware.map((p, i) => `  [${JSON.stringify(p)}]: m${i},`).join("\n");
   // `appDir` pins the exact prefix to strip from the keys — route derivation stays
   // correct for folders whose name starts with "app" and for nested app/app dirs.
-  const opts = appDir ? `\n{ appDir: ${JSON.stringify(appDir)} },\n` : "\n";
+  // `i18n` lets middleware scope matching strip a non-default locale prefix.
+  const i18nOpt =
+    i18n && Array.isArray(i18n.locales) && i18n.locales.length
+      ? `, i18n: ${JSON.stringify({ locales: i18n.locales, defaultLocale: i18n.defaultLocale })}`
+      : "";
+  const opts = appDir ? `{ appDir: ${JSON.stringify(appDir)}${i18nOpt} }` : `{${i18nOpt.replace(/^,\s*/, " ")} }`;
   return (
-    `import { createApiHandler } from "@opentf/web/server";\n` +
+    `import { createApiHandler, createMiddleware } from "@opentf/web/server";\n` +
     `${rImports}\n${mImports}\n` +
-    `export const apiHandler = createApiHandler(\n{\n${rMap}\n},\n{\n${mMap}\n},${opts});\n`
+    `const routeModules = {\n${rMap}\n};\n` +
+    `const middlewareModules = {\n${mMap}\n};\n` +
+    `export const apiHandler = createApiHandler(routeModules, middlewareModules, ${opts});\n` +
+    `export const apiRoutes = createApiHandler(routeModules, {}, ${opts});\n` +
+    `export const middleware = createMiddleware(middlewareModules, ${opts});\n`
   );
 }
 
@@ -668,16 +684,17 @@ export function apiEntrySource({ routes, middleware }, appDir) {
  * matched). Route modules are *plain server code* — bundled as ESM without the
  * `otfwc` DOM transform. Bare (npm / node builtin) imports stay external and are
  * resolved at runtime from the project's node_modules, so server deps and native
- * modules aren't dragged into the bundle. Returns `null` when there are no routes.
+ * modules aren't dragged into the bundle. Returns `null` when there are no routes
+ * and no middleware (a middleware-only app still needs the bundle for its pages).
  */
-export async function buildApiBundle({ root, appDir, webEntry, exclude, tmpName = ".otfw-api", bust }) {
+export async function buildApiBundle({ root, appDir, webEntry, exclude, i18n, tmpName = ".otfw-api", bust }) {
   const discovered = discoverApiRoutes(appDir, exclude);
-  if (discovered.routes.length === 0) return null;
+  if (discovered.routes.length === 0 && discovered.middleware.length === 0) return null;
 
   const tmp = join(root, tmpName);
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "api-entry.js");
-  writeFileSync(entry, apiEntrySource(discovered, appDir));
+  writeFileSync(entry, apiEntrySource(discovered, appDir, i18n));
 
   const serverApi = join(dirname(webEntry), "server", "index.js");
   // `bust` versions the emitted *filename* so `otfw dev` picks up handler edits on
@@ -700,7 +717,10 @@ export async function buildApiBundle({ root, appDir, webEntry, exclude, tmpName 
   const mod = await import(pathToFileURL(join(tmp, "out", outName)).href);
   return {
     handler: mod.apiHandler,
+    apiRoutes: mod.apiRoutes,
+    middleware: mod.middleware,
     routes: discovered.routes,
+    middlewareFiles: discovered.middleware,
     cleanup: () => rmSync(tmp, { recursive: true, force: true }),
   };
 }
@@ -709,19 +729,20 @@ export async function buildApiBundle({ root, appDir, webEntry, exclude, tmpName 
  * Emit the API handler bundle to `outDir/api.js` for production/deploy (SPEC §13,
  * `dist/server/`). Unlike `buildApiBundle` (which bundles to a temp dir and imports
  * it for `dev`/`serve`), this writes a persistent, self-contained ESM module that
- * exports `apiHandler` — the runtime dispatcher (`createApiHandler`) is bundled in;
- * npm/node deps stay external and resolve at the deploy target. A deploy adapter
- * (`server/adapters/`) imports this file and hands requests to `apiHandler`.
- * Returns `{ routes }`, or `null` when the project has no API routes.
+ * exports `apiHandler` / `apiRoutes` / `middleware` (see `apiEntrySource`) — the
+ * runtime dispatchers are bundled in; npm/node deps stay external and resolve at
+ * the deploy target. A deploy adapter (`server/adapters/`) imports this file and
+ * hands requests to the handlers. Returns `{ routes, middleware }`, or `null`
+ * when the project has neither API routes nor middleware.
  */
-export async function emitApiBundle({ root, appDir, webEntry, exclude, outDir }) {
+export async function emitApiBundle({ root, appDir, webEntry, exclude, i18n, outDir }) {
   const discovered = discoverApiRoutes(appDir, exclude);
-  if (discovered.routes.length === 0) return null;
+  if (discovered.routes.length === 0 && discovered.middleware.length === 0) return null;
 
   const tmp = join(root, ".otfw-api-build");
   mkdirSync(tmp, { recursive: true });
   const entry = join(tmp, "api-entry.js");
-  writeFileSync(entry, apiEntrySource(discovered, appDir));
+  writeFileSync(entry, apiEntrySource(discovered, appDir, i18n));
 
   const serverApi = join(dirname(webEntry), "server", "index.js");
   mkdirSync(outDir, { recursive: true });
@@ -734,7 +755,7 @@ export async function emitApiBundle({ root, appDir, webEntry, exclude, outDir })
     checks: { pluginTimings: false },
   });
   rmSync(tmp, { recursive: true, force: true });
-  return { routes: discovered.routes };
+  return { routes: discovered.routes, middleware: discovered.middleware };
 }
 
 /**

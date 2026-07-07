@@ -14,6 +14,12 @@
 // approach of the page router (runtime/router.js `matchRoute`) so behavior is
 // identical across pages and API and across every deployment target.
 
+import { middlewareScopeFromPath } from "./middleware.js";
+
+// Scope derivation lives in middleware.js now that middleware governs the whole
+// pipeline, not just API routes; re-exported here for backward compatibility.
+export { middlewareScopeFromPath };
+
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 /**
@@ -40,13 +46,6 @@ function stripAppDir(filePath, appDir) {
  */
 export function apiRouteFromPath(filePath, appDir) {
   const r = stripAppDir(filePath, appDir).replace(/\/route\.(jsx?|tsx?)$/, "");
-  return r === "" ? "/" : r;
-}
-
-/** The folder route a `_middleware.{js,ts}` file governs: `app/api/_middleware.js`
- *  → `/api` (applies to `/api` and everything nested under it). */
-export function middlewareScopeFromPath(filePath, appDir) {
-  const r = stripAppDir(filePath, appDir).replace(/\/_middleware\.(jsx?|tsx?)$/, "");
   return r === "" ? "/" : r;
 }
 
@@ -94,7 +93,9 @@ function allowedMethods(mod) {
  *        for `_middleware.{js,ts}` files; the middleware is the default export.
  * @param {{ appDir?: string }} [options]  `appDir` — the absolute app directory the
  *        module keys live under, for exact route derivation (the CLI passes it).
- * @returns {(request: Request) => Promise<Response | null>}
+ * @returns {(request: Request, env?: unknown, ctx?: unknown, init?: { locals?: object }) => Promise<Response | null>}
+ *        `init.locals` — a pre-existing `locals` bag from pipeline middleware
+ *        (middleware.js), shared by reference so its writes reach the handlers.
  */
 export function createApiHandler(routeModules = {}, middlewareModules = {}, { appDir } = {}) {
   const routes = [];
@@ -115,7 +116,7 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}, { ap
   // Outermost (shortest scope) runs first, so `/api/_middleware` wraps `/api/users/_middleware`.
   middleware.sort((a, b) => a.scope.length - b.scope.length);
 
-  return async function handle(request, env, ctx) {
+  return async function handle(request, env, ctx, init) {
     const url = new URL(request.url);
     const pathname = normalize(url.pathname);
 
@@ -146,7 +147,7 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}, { ap
       params,
       query: Object.fromEntries(url.searchParams),
       url,
-      locals: {},
+      locals: init?.locals ?? {},
       env,
       ctx,
     };
@@ -177,7 +178,9 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}, { ap
     for (let i = chain.length - 1; i >= 0; i--) {
       const { fn } = chain[i];
       const downstream = next;
-      next = (req) => fn(req, context, () => downstream(req));
+      // `next()` continues with the current request; `next(rewrittenRequest)`
+      // hands downstream a replacement (same contract as pipeline middleware).
+      next = (req) => fn(req, context, (nextReq) => downstream(nextReq instanceof Request ? nextReq : req));
     }
 
     try {
@@ -204,17 +207,27 @@ export function createApiHandler(routeModules = {}, middlewareModules = {}, { ap
  * on Workers your handlers reach the bindings via `context.env` and a static-asset
  * fallback reaches `env.ASSETS`:
  *
- *   import { apiHandler } from "./dist/server/api.js";
+ *   import { apiRoutes, middleware } from "./dist/server/api.js";
  *   export default {
- *     fetch: createFetchHandler(apiHandler, {
+ *     fetch: createFetchHandler(apiRoutes, {
+ *       middleware, // request middleware wraps API dispatch *and* the fallback
  *       fallback: (req, env) => env.ASSETS.fetch(req), // SPA / static assets
  *     }),
  *   };
+ *
+ * With `middleware` (a `createMiddleware` runner), the chain wraps the whole
+ * request — pass the *routes-only* `apiRoutes` handler then, not the composed
+ * `apiHandler`, or API middleware would run twice.
  */
-export function createFetchHandler(handler, { fallback } = {}) {
-  return async (request, env, ctx) => {
-    const res = await handler(request, env, ctx);
+export function createFetchHandler(handler, { fallback, middleware } = {}) {
+  const terminal = async (request, env, ctx, context) => {
+    const res = await handler(request, env, ctx, context ? { locals: context.locals } : undefined);
     if (res) return res;
     return fallback ? fallback(request, env, ctx) : new Response("Not Found", { status: 404 });
   };
+  if (middleware && middleware.size > 0) {
+    return (request, env, ctx) =>
+      middleware.run(request, (req, context) => terminal(req, env, ctx, context), { env, ctx });
+  }
+  return (request, env, ctx) => terminal(request, env, ctx);
 }

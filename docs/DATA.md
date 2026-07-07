@@ -44,9 +44,10 @@ export default async function loader({ params, query, request, locale, locals })
 
 A named `loader` export is also accepted — the spelling Phase B's co-located
 form will compile to. `request` is the live Fetch `Request` under `otfw serve`/
-`dev` and `undefined` at SSG prerender. `locals` is reserved (`{}`); loaders do
-not run API `_middleware.*` (future work). `getStaticPaths` stays on the page
-module — a dynamic route with a loader still needs it to prerender.
+`dev` and `undefined` at SSG prerender. `locals` is the per-request bag stamped
+by `_middleware.*` (docs/MIDDLEWARE.md) — empty (`{}`) at SSG prerender, where
+no middleware runs. `getStaticPaths` stays on the page module — a dynamic route
+with a loader still needs it to prerender.
 
 ### Where it runs (D2: a separate server bundle)
 
@@ -110,7 +111,6 @@ scope** until actions/Phase B.
 ### Known limits (MVP)
 
 - Page-level only; no layout loaders.
-- No `_middleware.*` composition (`locals` reserved).
 - Query-dependent loaders need `otfw serve` — static `__data.json` files are
   rendered with an empty query.
 - No streaming; the navigation waits for the data.
