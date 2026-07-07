@@ -75,6 +75,9 @@ Full pipeline, page guards, `__data.json` scoping, and deploy exports:
 
 Request validation (e.g. with `zod`) belongs in middleware or at the top of a handler.
 
+Cookies use the standards-based helpers from `@opentf/web/server` —
+`getCookie` / `setCookie` / `deleteCookie` — see [Server API](/api/server#cookies).
+
 ## TypeScript
 
 Handlers can be authored in `.ts`. Annotate the exports with the framework types:

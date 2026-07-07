@@ -67,6 +67,7 @@ export const capabilities = [
     category: "Full-stack",
     items: [
       { name: "Middleware", status: "supported", desc: "app/_middleware.js gates pages, API routes, loader data, and SSR — context.locals shared downstream." },
+      { name: "Cookie helpers", status: "supported", desc: "getCookie / setCookie / deleteCookie on @opentf/web/server — RFC 6265 helpers for middleware, API routes, and loaders." },
       { name: "Reactive forms", status: "beta", desc: "@opentf/web-form — porting to the new runtime." },
       { name: "API routes", status: "supported", desc: "File-based route.js / route.ts endpoints — standard Request/Response and dynamic params." },
       { name: "Data fetching", status: "supported", desc: "Route loaders (loader.js → router.data across SSR/SSG/SPA) + client-side resource(); queries and actions planned." },

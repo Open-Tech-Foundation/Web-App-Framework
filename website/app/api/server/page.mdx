@@ -1,6 +1,6 @@
 ---
 title: Server
-description: The @opentf/web/server surface — middleware, API routes, createFetchHandler, and runtime adapters.
+description: The @opentf/web/server surface — middleware, cookies, API routes, createFetchHandler, and runtime adapters.
 ---
 
 import { Callout } from "@opentf/web-docs";
@@ -91,6 +91,51 @@ See [Cloudflare Workers](/docs/deployment/cloudflare) for a full Workers setup.
 ### `middlewareScopeFromPath(filePath, appDir?)`
 
 Derives the folder route a `_middleware` file governs (`app/admin/_middleware.js` → `/admin`).
+
+## Cookies
+
+Standards-based `Cookie` / `Set-Cookie` helpers for [middleware](/docs/routing/middleware),
+[API routes](/docs/routing/api-routes), and [loaders](/docs/data-fetching). Shipped in
+`@opentf/web@0.16.0`.
+
+```js
+import {
+  getCookie,
+  getCookies,
+  setCookie,
+  deleteCookie,
+  serializeCookie,
+} from "@opentf/web/server";
+```
+
+```ts
+import type { CookieOptions, CookieSource, CookieTarget } from "@opentf/web/server";
+```
+
+| Function | Description |
+| --- | --- |
+| `getCookies(source)` | Parse into `{ name: value }` — `Request`, `Headers`, or raw header string. Percent-decoded; first duplicate wins (RFC 6265). |
+| `getCookie(source, name)` | One value, or `undefined`. |
+| `setCookie(target, name, value, options?)` | Append `Set-Cookie` to a `Response` or `Headers`; returns serialized value. |
+| `deleteCookie(target, name, { path?, domain? })` | Expire with `Max-Age=0` + epoch `Expires`. |
+| `serializeCookie(name, value, options?)` | Build a `Set-Cookie` header string without appending. |
+
+### `CookieOptions`
+
+| Option | Description |
+| --- | --- |
+| `path` | Defaults to `"/"`; pass `null` to omit. |
+| `domain` | Cookie domain attribute. |
+| `maxAge` | Lifetime in seconds. |
+| `expires` | `Date`, ISO string, or epoch ms. |
+| `httpOnly` / `secure` | Standard flags. |
+| `sameSite` | `"Strict"` \| `"Lax"` \| `"None"` — `"None"` requires `secure: true`. |
+| `partitioned` | CHIPS `Partitioned` attribute. |
+
+<Callout type="info" title="Immutable response headers">
+  A response returned from `fetch` or `next()` may have immutable headers. Wrap before
+  calling `setCookie`: `const wrapped = new Response(res.body, res)`.
+</Callout>
 
 ## Build output (`dist/server/api.js`)
 

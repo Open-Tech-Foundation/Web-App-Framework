@@ -35,20 +35,24 @@ The default export (or a named `middleware` export) is
 
 ```js
 // app/_middleware.js
+import { getCookie, setCookie } from "@opentf/web/server";
+
 export default async function (request, context, next) {
   const path = new URL(request.url).pathname;
+  const session = getCookie(request, "session");
 
-  if (path.startsWith("/dashboard") && !readSession(request)) {
+  if (path.startsWith("/dashboard") && !session) {
     return new Response(null, {
       status: 302,
       headers: { Location: "/login" },
     });
   }
 
-  context.locals.user = readSession(request)?.user; // API handlers + loaders read this
+  context.locals.user = session ? verify(session) : null; // API handlers + loaders read this
   const res = await next();
   const wrapped = new Response(res.body, res);
   wrapped.headers.set("x-frame-options", "DENY");
+  setCookie(wrapped, "visited", "1", { maxAge: 86400 });
   return wrapped;
 }
 ```
@@ -75,6 +79,30 @@ Middleware runs **before** a route is matched, so there is no `params` or `query
 
 Stamp auth or validation once in `locals`; read it in every `route.*` handler and
 `loader.*` downstream.
+
+## Cookies
+
+`@opentf/web/server` ships RFC 6265 helpers — no hand-rolled `Cookie` / `Set-Cookie` parsing:
+
+```js
+import { getCookie, getCookies, setCookie, deleteCookie } from "@opentf/web/server";
+
+const theme = getCookie(request, "theme"); // string | undefined
+const all = getCookies(request);         // { name: value }
+
+const res = Response.json({ ok: true });
+setCookie(res, "session", token, { httpOnly: true, secure: true, maxAge: 3600 });
+deleteCookie(res, "legacy"); // path/domain must match how it was set
+```
+
+Values percent-encode on write and decode on read. `setCookie` **appends** `Set-Cookie`
+headers so session and CSRF cookies coexist. `path` defaults to `"/"`; pass `path: null` to
+omit. `sameSite: "None"` without `secure: true` throws at write time.
+
+To set cookies on a response from `next()`, wrap it first (`new Response(res.body, res)`)
+— fetched responses have immutable headers.
+
+Full API: [Server](/api/server#cookies).
 
 ## Scope matching details
 
