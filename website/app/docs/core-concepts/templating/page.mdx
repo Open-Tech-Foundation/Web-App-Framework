@@ -1,6 +1,6 @@
 ---
 title: Templating
-description: Conditionals, lists, and element refs inside JSX.
+description: Conditionals, init-once vs reactive holes, lists, and element refs inside JSX.
 ---
 
 import { Callout } from "@opentf/web-docs";
@@ -12,12 +12,115 @@ expressions into surgical DOM updates anchored by hidden comment nodes.
 
 ## Conditionals
 
-Ternaries and `&&` work inline and stay reactive:
+Ternaries and `&&` work inline in JSX and stay reactive when they can produce DOM
+nodes:
 
 ```jsx
 {isLoading ? <Spinner /> : <Content />}
 {error && <p class="error">{error}</p>}
 ```
+
+The compiler wraps these **inline holes** in a dynamic region: a comment anchor plus a
+`bindChild` effect that swaps the rendered branch when the condition changes — without
+rebuilding the parent.
+
+## Init-once vs reactive conditionals
+
+A component body runs **once** when the element first connects (`connectedCallback`).
+Local variables, `if` statements, and JSX assigned to `const`/`let` are evaluated in that
+single pass. Only regions the compiler wires to signals — inline JSX holes, text
+holes, lists, props — keep updating afterward.
+
+Think of it as two layers:
+
+| Layer | When it runs | What updates later |
+| --- | --- | --- |
+| **Component body** | Once at first connect | Nothing — unless you read signals inside an `$effect` |
+| **Inline JSX holes** | Built once, then managed by effects | `{cond ? <A/> : <B/>}`, `{text}`, `{items.map(…)}` |
+
+### Reactive — use these for show/hide and layout switches
+
+Put the conditional **inside JSX** (or return a conditional expression whose branches
+are JSX). Signal reads in the expression subscribe the region:
+
+Root conditional with JSX branches:
+
+```jsx
+export default function Dashboard() {
+  let user = $state(null);
+  return user ? <MainApp user={user} /> : <Login />;
+}
+```
+
+Stable outer shell, reactive inner hole:
+
+```jsx
+export default function Dashboard() {
+  let user = $state(null);
+  return (
+    <div class="shell">
+      {user ? <MainApp user={user} /> : <Login />}
+    </div>
+  );
+}
+```
+
+`&&` short-circuit holes behave the same way — a falsy condition removes the branch;
+truthy mounts it again on the next change:
+
+```jsx
+{isAdmin && <AdminPanel />}
+```
+
+### Init-once — frozen at first connect
+
+These patterns read signals **once** during initialization. Changing the signal later does
+**not** swap the UI.
+
+Early return guard — frozen at first connect:
+
+```jsx
+export default function Dashboard() {
+  let user = $state(null);
+  if (!user) return <Login />; // ❌ never flips when user logs in
+  return <MainApp user={user} />;
+}
+```
+
+JSX cached in a local — builders run once, branch is fixed:
+
+```jsx
+export default function Dashboard() {
+  let user = $state(null);
+  const panel = user ? <MainApp user={user} /> : <Login />; // ❌ evaluated once
+  return <div>{panel}</div>; // `panel` is a plain value, not a reactive hole
+}
+```
+
+Separate top-level `return` paths — the compiler builds the view from a single return
+expression; guard `return`s in `if` blocks do not become a reactive switch:
+
+```jsx
+export default function Dashboard() {
+  let user = $state(null);
+  if (user) {
+    return <MainApp user={user} />; // ❌ not a reactive region
+  }
+  return <Login />;
+}
+```
+
+<Callout type="warning" title="Rule of thumb">
+  If the conditional must react to `$state`, write it as an **inline JSX hole** or as a
+  **single `return` whose branches are JSX** (`return cond ? <A/> : <B/>`). Do not guard
+  with `if (…) return …` or cache JSX in a variable.
+</Callout>
+
+<Callout type="tip" title="Stable root for layout chrome">
+  When a shell (header, nav) should stay put while an inner region swaps, keep the outer
+  nodes static and put the conditional on the inner hole:
+  `return <div class="shell">{page ? <Page /> : <Login />}</div>`.
+</Callout>
 
 ## Lists
 
