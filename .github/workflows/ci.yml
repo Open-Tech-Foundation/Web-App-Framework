@@ -28,3 +28,38 @@ jobs:
       # the new-runtime JS suite (scoped to packages/web/, so the not-yet-ported
       # web-form package isn't pulled in).
       - run: bun run test
+
+  # Real-browser tier: the e2e suites that drive `otfw serve`/`build` + headless Chrome over
+  # CDP (docs/HYDRATION.md §5) — including the hi-fi runtime unit suite (runtime-browser.mjs)
+  # moved off happy-dom. These probe engine-fidelity paths (custom-element upgrade timing, the
+  # real event loop, portal relocation) that the fast `bun test` tier can't. Separate job so it
+  # only pays the browser cost once and runs in parallel with the fast suite.
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: oven-sh/setup-bun@v2
+      # Pin a known-good Chrome and expose its path (ubuntu-latest ships one too, but pinning
+      # keeps the run reproducible across runner-image changes).
+      - id: chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+      - run: bun install
+      # The e2e drive the real toolchain, so the otfwc compiler binary must exist.
+      - run: cargo build
+      - name: Browser e2e (real headless Chrome)
+        env:
+          # A missing/incorrect binary makes the suites *skip* (exit 0), which would be a false
+          # green — so print the version first: a bad path fails the step loudly here.
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          OTFWC_BIN: ${{ github.workspace }}/target/debug/otfwc
+        run: |
+          echo "Chrome: $CHROME_BIN"
+          "$CHROME_BIN" --version
+          (cd packages/web-cli && bun run test:e2e)
+          bun packages/web-docs/tests/e2e/mobile-drawer.mjs
