@@ -14,6 +14,7 @@ import { describe, expect, test } from "bun:test";
 
 import { signal } from "../core/signals.js";
 import {
+  attr,
   beginHydrationCollect,
   defineSSG,
   endHydrationCollect,
@@ -28,6 +29,7 @@ import {
   __resetHydrationPayload,
   afterHydration,
   beginHydration,
+  bindAttr,
   bindChild,
   bindList,
   bindText,
@@ -530,4 +532,192 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     endHydration();
     expect(order).toEqual(["sync", "a", "b"]); // flushed in FIFO order
   });
+});
+
+// ── Hydration construct matrix ────────────────────────────────────────────────
+// Hydration correctness is combinatorial: every JSX construct emits a distinct SSG shape
+// (its own markers) that the compiled adopt walk must round-trip exactly. The bugs we keep
+// hitting live at *this seam* — SSG emits X, the walk expects Y — and the hand-written-HTML
+// unit tests can't catch them, because they never run the real compiler for both halves.
+//
+// This table drives one source per construct through the real otfwc for *both* targets and
+// asserts the three invariants that define correct first-paint hydration:
+//   (1) SSG emits the expected marker shape,
+//   (2) the adopt walk rebuilds NOTHING — every server element keeps its identity and the
+//       element count is unchanged (no duplication, no re-creation), and
+//   (3) a reactive change *after* adopt runs live on those same adopted nodes.
+//
+// To grow coverage, add a row. When a hydration bug is reported, the first step is to add the
+// row that reproduces it (it should go red), then fix the runtime/compiler until it goes green.
+describe.skipIf(!hasBin)("hydration construct matrix (ssg → hydrate, no rebuild)", () => {
+  // One binding bag covering every helper any compiled construct imports; extra params are
+  // harmless (loadModule injects by name, unused ones are just ignored).
+  const ALL = {
+    signal,
+    bindText,
+    bindAttr,
+    bindChild,
+    bindList,
+    hydrateList,
+    hydrateChild,
+    hydrateSlot,
+    cursor,
+    claimElement,
+    claimText,
+    claimRegionStart,
+    claimRegionEnd,
+    skipNode,
+    skipSlot,
+    ssgText,
+    ssgList,
+    ssgComponent,
+    defineSSG,
+    attr,
+  };
+
+  const elementsIn = (root) => Array.from(root.querySelectorAll("*"));
+
+  // SSG-render `source`, mount the server HTML, snapshot every server element, then adopt.
+  function roundTrip(source) {
+    const ssg = loadModule(compile(source, "ssg"), ALL).default;
+    const html = ssg();
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const serverEls = elementsIn(container); // detached → child components don't upgrade
+    const mod = loadModule(compile(source, "hydrate"), ALL);
+    mod.hydrate(container);
+    return { html, container, serverEls };
+  }
+
+  // The no-rebuild invariant: every server element still lives under the container (same node
+  // object), and the adopt walk added no elements beside them (adopt reuses, never duplicates).
+  function expectNoRebuild(serverEls, container) {
+    for (const el of serverEls) expect(container.contains(el)).toBe(true);
+    expect(elementsIn(container).length).toBe(serverEls.length);
+  }
+
+  // Each row: a source with a `.act` button whose click mutates state, then `check` asserts the
+  // reactive result landed on the adopted DOM. `ssg` fragments assert the marker shape.
+  const MATRIX = [
+    {
+      name: "text hole — updates the adopted text node in place",
+      source:
+        "export default function P(){ let n=$state(0);" +
+        ' return <div><button class="act" onclick={() => n++}>+</button>' +
+        ' <b class="probe">Count {n}</b></div>; }',
+      ssg: ['<b class="probe">Count <!--$-->0<!--/--></b>'],
+      check: (c) => {
+        c.querySelector(".act").click();
+        expect(c.querySelector(".probe").textContent).toBe("Count 1");
+      },
+    },
+    {
+      name: "two text holes in one element — both update independently",
+      source:
+        "export default function P(){ let a=$state(1), b=$state(2);" +
+        ' return <div><button class="act" onclick={() => { a++; b++; }}>+</button>' +
+        ' <p class="probe">{a} and {b}</p></div>; }',
+      ssg: ['<p class="probe"><!--$-->1<!--/--> and <!--$-->2<!--/--></p>'],
+      check: (c) => {
+        c.querySelector(".act").click();
+        expect(c.querySelector(".probe").textContent).toBe("2 and 3");
+      },
+    },
+    {
+      name: "reactive class binding — the Portal-search failure class, on the adopted element",
+      source:
+        "export default function P(){ let n=$state(0);" +
+        ' return <div><button class="act" onclick={() => n++}>+</button>' +
+        ' <b class={n > 0 ? "probe on" : "probe off"}>x</b></div>; }',
+      check: (c) => {
+        const probe = c.querySelector(".probe");
+        expect(probe.classList.contains("off")).toBe(true); // server value adopted
+        c.querySelector(".act").click();
+        expect(probe.classList.contains("on")).toBe(true); // binding live on the same node
+      },
+    },
+    {
+      name: "list region — adopts server items, reconciles keeping their identity",
+      source:
+        "export default function P(){ let a=$state([1, 2, 3]);" +
+        ' return <div><button class="act" onclick={() => a = [...a, 4]}>+</button>' +
+        ' <ul class="probe">{a.map((x) => <li>{x}</li>)}</ul></div>; }',
+      ssg: ["<!--[-->"], // region markers present
+      check: (c) => {
+        const before = Array.from(c.querySelectorAll("li"));
+        expect(before.length).toBe(3);
+        c.querySelector(".act").click();
+        const after = Array.from(c.querySelectorAll("li"));
+        expect(after.length).toBe(4); // reconciled, not rebuilt
+        expect(after.slice(0, 3)).toEqual(before); // the three adopted nodes kept identity
+        expect(after[3].textContent).toBe("4");
+      },
+    },
+    {
+      name: "conditional region — adopts the rendered branch, swaps on change",
+      source:
+        "export default function P(){ let f=$state(true);" +
+        ' return <div><button class="act" onclick={() => f = !f}>t</button>' +
+        ' <div class="probe">{f ? <p>Y</p> : <span>N</span>}</div></div>; }',
+      ssg: ["<p>Y</p>"],
+      checkHtml: (html) => expect(html).not.toContain("<span>N</span>"), // only active branch
+      check: (c) => {
+        const probe = c.querySelector(".probe");
+        expect(probe.querySelector("p").textContent).toBe("Y");
+        c.querySelector(".act").click();
+        expect(probe.querySelector("p")).toBeNull();
+        expect(probe.querySelector("span").textContent).toBe("N");
+      },
+    },
+    {
+      name: "component children slot — parent adopts the slotted content's reactivity",
+      source:
+        'function Card({ children }){ return <section class="card"><h1>C</h1>{children}</section>; }' +
+        " export default function P(){ let n=$state(0);" +
+        ' return <div><button class="act" onclick={() => n++}>+</button>' +
+        ' <Card><b class="probe">v {n}</b></Card></div>; }',
+      ssg: ["<!--c[-->"], // component slot markers
+      check: (c) => {
+        c.querySelector(".act").click();
+        expect(c.querySelector(".probe").textContent).toBe("v 1");
+      },
+    },
+    {
+      name: "passthrough built-in (ContextProvider) slot — the built-in-marker regression",
+      source:
+        'import { ContextProvider } from "@opentf/web";' +
+        " export default function P(){ let n=$state(0);" +
+        ' return <div><button class="act" onclick={() => n++}>+</button>' +
+        ' <ContextProvider><b class="probe">c {n}</b></ContextProvider></div>; }',
+      ssg: ["<web-internal-context-provider><!--c[-->"], // built-in emits slot markers now
+      check: (c) => {
+        c.querySelector(".act").click();
+        expect(c.querySelector(".probe").textContent).toBe("c 1");
+      },
+    },
+    {
+      name: "nested component slots — inner slot's reactivity survives two adopt hops",
+      source:
+        'function Outer({ children }){ return <div class="outer">{children}</div>; }' +
+        ' function Inner({ children }){ return <div class="inner">{children}</div>; }' +
+        " export default function P(){ let n=$state(0);" +
+        ' return <div><button class="act" onclick={() => n++}>+</button>' +
+        ' <Outer><Inner><b class="probe">n {n}</b></Inner></Outer></div>; }',
+      ssg: ["<!--c[-->"],
+      check: (c) => {
+        c.querySelector(".act").click();
+        expect(c.querySelector(".probe").textContent).toBe("n 1");
+      },
+    },
+  ];
+
+  for (const kase of MATRIX) {
+    test(`construct: ${kase.name}`, () => {
+      const { html, container, serverEls } = roundTrip(kase.source);
+      for (const frag of kase.ssg || []) expect(html).toContain(frag);
+      if (kase.checkHtml) kase.checkHtml(html);
+      expectNoRebuild(serverEls, container);
+      kase.check(container);
+    });
+  }
 });
