@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-07-07
+
 ### Fixed
 
 - **`<Portal>` (and other passthrough built-ins) hydrate their content on first paint.**
