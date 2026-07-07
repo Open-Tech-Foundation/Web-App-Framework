@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-07
+
 ### Added
 
 - **Cookie helpers (`@opentf/web/server`)** — standards-based `Cookie` / `Set-Cookie`

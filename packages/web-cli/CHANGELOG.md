@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-07-07
+
 ### Tests
 
 - The serve e2e fixture middleware now exercises `@opentf/web/server`'s new cookie helpers
