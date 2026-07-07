@@ -316,7 +316,18 @@ export function proxyRequest(req, target) {
     body: hasBody ? req.body : undefined,
     redirect: "manual",
     ...(hasBody ? { duplex: "half" } : {}),
-  }).catch(
+  }).then(
+    (res) => {
+      // fetch has already decompressed the body, but the upstream's
+      // Content-Encoding/Content-Length headers still describe the compressed
+      // bytes. Relaying them verbatim makes the browser decode the plain body
+      // a second time (ERR_CONTENT_DECODING_FAILED), so strip them.
+      if (!res.headers.has("content-encoding")) return res;
+      const h = new Headers(res.headers);
+      h.delete("content-encoding");
+      h.delete("content-length");
+      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+    },
     (e) =>
       new Response(
         `Bad Gateway: dev proxy could not reach ${target}\n` +

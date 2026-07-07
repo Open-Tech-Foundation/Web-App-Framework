@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Dev proxy: gzip double-decode.** When the proxied upstream sent a compressed response,
+  `fetch` had already decompressed the body but the upstream's `Content-Encoding`/
+  `Content-Length` headers were relayed verbatim, so the browser tried to decode the plain
+  body a second time (`ERR_CONTENT_DECODING_FAILED`). The proxy now strips those headers
+  from decompressed responses.
+
+### Tests
+
+- The missing-`site.url` build-gate test now resolves `cli.js` relative to the test file
+  instead of the runner's cwd, so it passes from both the repo root and the package dir
+  (the gate itself was always working).
+
 ## [1.9.0] - 2026-07-07
 
 ### Added

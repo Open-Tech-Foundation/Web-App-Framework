@@ -42,7 +42,9 @@ describe("production build validation", () => {
     const root = mkdtempSync(join(tmpdir(), "otfw-missing-site-url-"));
     try {
       writeFileSync(join(root, "otfw.config.json"), JSON.stringify({ site: { url: null }, docs: {} }));
-      const proc = Bun.spawnSync([process.execPath, resolve("packages/web-cli/src/cli.js"), "build"], {
+      // Anchor the CLI path to this test file, not the runner's cwd, so the
+      // test passes whether bun test runs from the repo root or the package.
+      const proc = Bun.spawnSync([process.execPath, resolve(import.meta.dir, "../src/cli.js"), "build"], {
         cwd: root,
         stdout: "pipe",
         stderr: "pipe",
