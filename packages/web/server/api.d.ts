@@ -95,7 +95,7 @@ export interface ApiHandlerOptions {
   appDir?: string;
 }
 
-/** Derive the route path from an `app/**/route.{js,ts}` file path (folder = URL). */
+/** Derive the route path from an `app/.../route.{js,ts}` file path (folder = URL). */
 export function apiRouteFromPath(filePath: string, appDir?: string): string;
 
 /** Derive the folder route a `_middleware` file governs from its file path. */

@@ -26,7 +26,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
-    "baseUrl": ".",
     "paths": {
       "@opentf/web": ["./packages/web/index.js"],
       "@opentf/web/compiler": ["./packages/web/compiler/index.js"],
@@ -34,5 +33,12 @@
       "@opentf/web-test": ["./packages/web-test/index.js"],
       "@opentf/web-test/*": ["./packages/web-test/*"]
     }
-  }
+  },
+  "exclude": [
+    "**/node_modules",
+    "**/dist",
+    "**/.dev",
+    "target",
+    "benchmarks/**/dist"
+  ]
 }
