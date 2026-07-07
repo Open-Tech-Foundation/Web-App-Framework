@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-07
+
 ### Fixed
 
 - **Valueless boolean props on components pass `true`, not `""`.** A valueless prop on a
