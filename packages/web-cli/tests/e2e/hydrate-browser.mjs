@@ -128,6 +128,18 @@ async function evalJS(client, expression) {
   return r.result.value;
 }
 
+// Poll an in-page boolean expression until it is truthy — a condition-wait that replaces
+// fixed settle sleeps (which flake on a slow CI runner). Throws with `label` on timeout; the
+// short interval is the poll cadence, not a blind wait.
+async function waitFor(client, expression, label, { timeout = 5000, interval = 25 } = {}) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    if (await evalJS(client, `!!(${expression})`)) return;
+    if (Date.now() > deadline) throw new Error(`timed out (${timeout}ms) waiting for ${label}`);
+    await sleep(interval);
+  }
+}
+
 // Installed at document-start (before any page script and before the body parses):
 // tag every server node as the parser inserts it, and count any tagged node that is
 // later removed. A CSR rebuild would replaceChildren() — tearing the tagged subtree
@@ -294,8 +306,14 @@ async function run(port) {
     // unrelated dev server on the same port on the other stack (`otfw serve` binds IPv4).
     await client.send("Page.navigate", { url: `http://127.0.0.1:${port}/` });
     await loaded;
-    // Deferred module scripts have executed by load; let the hydrate microtask settle.
-    await sleep(200);
+    // Wait for hydration to *finish* rather than guessing a settle time: the portal flushes
+    // its modal to <body> in the afterHydration queue at endHydration — the last thing the
+    // hydration pass does — so a modal under <body> is a definitive "hydration complete" signal.
+    await waitFor(
+      client,
+      `document.querySelector('body > .search-modal')`,
+      "hydration to finish (the portal flushed its modal to <body> at endHydration)",
+    );
 
     // ── 1. Adoption — the server DOM was claimed, not rebuilt ───────────────────
     const s = await evalJS(client, PROBE);
@@ -416,7 +434,12 @@ async function run(port) {
     await evalJS(client, `document.querySelector('#app .card-toggle').click()`); // the Card's own state
     await evalJS(client, `document.querySelector('#app .slotted').click()`); // parent's count via the slot
     await evalJS(client, `document.querySelector('#app .search-trigger').click()`); // opens the portaled modal
-    await sleep(50);
+    // Wait for the batch's last-settling effects: the shared count reaches 2 and the modal opens.
+    await waitFor(
+      client,
+      `document.querySelector('#app p')?.textContent.trim() === 'count 2' && document.querySelector('.search-modal')?.classList.contains('is-open')`,
+      "the click batch to apply (count 2 + modal open)",
+    );
     const after = await evalJS(client, PROBE);
     // The page counter and the slotted button share the page's `count` signal; clicking inc
     // and the slotted button each once brings it to 2, updating both bound text nodes.
@@ -447,7 +470,7 @@ async function run(port) {
 
     // ── 3. The conditional swaps on toggle (removing the adopted branch is correct here) ──
     await evalJS(client, `document.querySelector('#app button.toggle').click()`);
-    await sleep(50);
+    await waitFor(client, `document.querySelector('#app .cond span.no')`, "the conditional to swap to the false branch (<span>NO)");
     const swapped = await evalJS(client, PROBE);
     assert(swapped.condYes === null, "toggling removed the adopted `true` branch (<p>YES)");
     assert(swapped.condNo === "NO", "toggling swapped in the freshly-built `false` branch (<span>NO)");
@@ -458,7 +481,7 @@ async function run(port) {
     assert(swapped.removedServer === 1, "the swap removed only the adopted branch node, nothing else");
     // Toggling back rebuilds the first branch (freshly built now — no adopted node involved).
     await evalJS(client, `document.querySelector('#app button.toggle').click()`);
-    await sleep(50);
+    await waitFor(client, `document.querySelector('#app .cond p.yes')`, "the conditional to swap back to the true branch (<p>YES)");
     const back = await evalJS(client, PROBE);
     assert(back.condYes && back.condYes.text === "YES", "toggling back renders the first branch again");
     assert(back.condNo === null, "the false branch is gone after toggling back");
@@ -475,7 +498,13 @@ async function run(port) {
       client,
       `history.pushState({}, '', '/todos'); window.dispatchEvent(new PopStateEvent('popstate'))`,
     );
-    await sleep(300); // client nav: route chunk import + data fetch + swap
+    // Client nav = route chunk import + data fetch + swap; wait for it to commit (loader data
+    // rendered) rather than guessing how long the import + fetch take on this runner.
+    await waitFor(
+      client,
+      `location.pathname === '/todos' && (document.querySelector('#app')?.textContent || '').includes('todo alpha')`,
+      "the SPA navigation to /todos to commit (loader data rendered)",
+    );
     const nav = await evalJS(
       client,
       `(() => ({

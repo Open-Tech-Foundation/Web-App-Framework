@@ -128,6 +128,20 @@ async function evalJS(client, expression) {
   return r.result.value;
 }
 
+// Poll the geometry/style PROBE until `predicate(snapshot)` holds, then return that snapshot.
+// Replaces the fixed settle sleeps: an open/close CSS transition (and a viewport media-query
+// switch) advances over frames, so we wait for the *end state* the assertions check rather
+// than guessing the animation's duration — headless still advances the transition over time.
+async function waitForProbe(client, predicate, label, { timeout = 6000, interval = 40 } = {}) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const s = await evalJS(client, PROBE);
+    if (predicate(s)) return s;
+    if (Date.now() > deadline) throw new Error(`timed out (${timeout}ms) waiting for ${label}`);
+    await sleep(interval);
+  }
+}
+
 // Geometry/style probe for the three drawer pieces, read in-page.
 const PROBE = `(() => {
   const aside = document.querySelector('#otfw-sidebar');
@@ -171,13 +185,9 @@ async function run() {
   await client.send("Page.navigate", { url: origin + "/" });
   await loaded;
   // Wait for client JS to mount (the Sidebar flags the root on mount).
-  for (let i = 0; i < 50; i++) {
-    if ((await probe()).hasSidebar) break;
-    await sleep(100);
-  }
+  let s = await waitForProbe(client, (s) => s.hasSidebar, "the sidebar to mount (root flagged)");
 
   console.log("mobile (390px):");
-  let s = await probe();
   assert(s.hasSidebar, "sidebar mounted (root flagged)");
   assert(s.linkCount >= 2, "drawer rendered its nav tree");
   assert(s.burgerDisplay && s.burgerDisplay !== "none", "burger is visible on mobile");
@@ -191,8 +201,11 @@ async function run() {
 
   // Open via the burger.
   await evalJS(client, `document.querySelector('.otfw-navbar-burger').click()`);
-  await sleep(400);
-  s = await probe();
+  s = await waitForProbe(
+    client,
+    (s) => s.asideOpen === true && s.backdropOpacity === "1" && s.asideVisibility === "visible" && s.asideRect.left >= -1,
+    "the drawer to finish opening (slid in, backdrop faded up)",
+  );
   assert(s.asideOpen === true, "burger opens the drawer");
   assert(s.asideRect.left >= -1 && s.asideRect.width > 0, "drawer slid into view");
   assert(s.asideVisibility === "visible", "drawer is visible when open");
@@ -202,27 +215,41 @@ async function run() {
 
   // Backdrop click closes and releases the lock.
   await evalJS(client, `document.querySelector('.otfw-sidebar-backdrop').click()`);
-  await sleep(400);
-  s = await probe();
+  s = await waitForProbe(
+    client,
+    (s) => s.asideOpen === false && s.bodyOverflow !== "hidden" && s.burgerExpanded === "false",
+    "the drawer to close via the backdrop (scroll lock released)",
+  );
   assert(s.asideOpen === false, "backdrop click closes the drawer");
   assert(s.bodyOverflow !== "hidden", "scroll lock released after close");
   assert(s.burgerExpanded === "false", "burger aria-expanded back to false");
 
   // Re-open, then Escape closes.
   await evalJS(client, `document.querySelector('.otfw-navbar-burger').click()`);
-  await sleep(300);
+  await waitForProbe(client, (s) => s.asideOpen === true, "the drawer to re-open");
   assert((await probe()).asideOpen === true, "burger re-opens the drawer");
   await evalJS(client, `window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))`);
-  await sleep(400);
-  s = await probe();
+  s = await waitForProbe(
+    client,
+    (s) => s.asideOpen === false && s.backdropOpacity === "0",
+    "Escape to close the drawer (backdrop faded out)",
+  );
   assert(s.asideOpen === false, "Escape closes the drawer");
   assert(s.backdropOpacity === "0", "backdrop hidden again after Escape");
 
   // ── Desktop: sticky in-flow column, no burger ──────────────────────────────
   await setViewport(client, DESKTOP);
-  await sleep(300);
+  s = await waitForProbe(
+    client,
+    (s) =>
+      s.burgerDisplay === "none" &&
+      s.asideVisibility === "visible" &&
+      s.asidePosition === "sticky" &&
+      s.asideRect.left >= 0 &&
+      s.backdropDisplay === "none",
+    "the desktop layout to apply (burger hidden, sidebar a sticky in-flow column)",
+  );
   console.log("desktop (1280px):");
-  s = await probe();
   assert(s.burgerDisplay === "none", "burger is hidden on desktop");
   assert(s.asideVisibility === "visible", "sidebar is visible on desktop");
   assert(s.asidePosition === "sticky", "sidebar is a sticky column on desktop");
