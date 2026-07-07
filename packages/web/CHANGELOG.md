@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`<Portal>` (and other passthrough built-ins) hydrate their content on first paint.**
+  Reactive content wrapped in `<Portal>` — e.g. the docs navbar search modal — was dead until
+  a later CSR rebuild (it only "woke up" after an SPA navigation). Two coupled causes: the
+  hand-written SSG renderers for `web-internal-portal`/`-context-provider`/`-error-boundary`
+  omitted the `<!--c[-->…<!--c]-->` slot markers the compiled `hydrateSlot` walk needs to
+  locate the children, and the Portal relocated its children to `<body>` on connect *before*
+  the owning component's adopt walk ran — tearing the slot out from under `hydrateSlot`, so
+  the portaled bindings were never wired. The built-ins now emit the slot markers, and the
+  Portal defers its move until hydration finishes (new `afterHydration`/`endHydration` flush)
+  so the parent adopts the server nodes in place first, then relocates the now-live nodes.
+
 ## [0.12.0] - 2026-07-06
 
 ### Fixed

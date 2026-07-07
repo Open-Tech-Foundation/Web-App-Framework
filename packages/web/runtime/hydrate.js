@@ -134,9 +134,31 @@ export function beginHydration() {
   _hydrating = true;
 }
 
-/** End the first-paint hydration pass — subsequent client navigations build fresh. */
+/** End the first-paint hydration pass — subsequent client navigations build fresh.
+ * Also flushes any {@link afterHydration} callbacks queued during the pass. */
 export function endHydration() {
   _hydrating = false;
+  if (_postHydration) {
+    const queued = _postHydration;
+    _postHydration = null;
+    for (const fn of queued) fn();
+  }
+}
+
+// Work that must wait until first-paint hydration has *finished*. The motivating case is
+// `<Portal>`: it relocates its light-DOM children to a target (usually <body>) on connect,
+// but during hydration the portal upgrades — and would move — *before* the owning component
+// adopts those children in place. Moving first tears the slot out from under the parent's
+// `hydrateSlot` walk, so the portaled content never gets its reactivity wired (dead bindings
+// until a later CSR rebuild). Deferring the move until `endHydration` lets the parent adopt
+// the server nodes where they sit, then relocate the now-live nodes. See runtime/portal.js.
+let _postHydration = null;
+
+/** Run `fn` after first-paint hydration completes (at {@link endHydration}); run it
+ * synchronously when not hydrating (a CSR build / SPA navigation). */
+export function afterHydration(fn) {
+  if (_hydrating) (_postHydration ??= []).push(fn);
+  else fn();
 }
 
 // ── the serialized props payload (compiler-driven data hydration) ─────────────

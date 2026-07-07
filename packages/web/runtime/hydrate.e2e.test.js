@@ -21,8 +21,13 @@ import {
   ssgList,
   ssgText,
 } from "../server/ssg-runtime.js";
+// Side effect: registers the passthrough SSG renderers (web-internal-portal, …) into the
+// ssg-runtime registry, so `ssgComponent("web-internal-portal", …)` emits the slot markers.
+import "../server/builtins.js";
 import {
   __resetHydrationPayload,
+  afterHydration,
+  beginHydration,
   bindChild,
   bindList,
   bindText,
@@ -31,6 +36,7 @@ import {
   claimRegionStart,
   claimText,
   cursor,
+  endHydration,
   handleError,
   HydrationMismatch,
   hydrateChild,
@@ -41,6 +47,8 @@ import {
   skipNode,
   skipSlot,
 } from "./index.js";
+// Side effect: registers the real <web-internal-portal> custom element used by the Portal test.
+import "./portal.js";
 import { reportError } from "../core/errors.js";
 
 function findUp(name, from) {
@@ -442,5 +450,84 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     container.querySelectorAll("button.tab")[1].click();
     expect(pre.querySelectorAll("code.ex").length).toBe(1);
     expect(pre.textContent).toBe("BBB");
+  });
+
+  // Regression (web-docs navbar search on first paint): reactive content wrapped in
+  // <Portal> was dead on first-paint hydration. Two coupled bugs: (1) the passthrough
+  // built-ins' SSG omitted the <!--c[-->…<!--c]--> slot markers the compiled `hydrateSlot`
+  // needs to find the children, and (2) the Portal relocated its children to <body> on
+  // connect — *before* the owning component's adopt walk ran — tearing the slot out from
+  // under `hydrateSlot`, so the portaled content's bindings were never wired (they only came
+  // alive after a later CSR rebuild, e.g. an SPA navigation). The fix: emit the markers, and
+  // defer the Portal's move until `endHydration` (afterHydration). This proves both: the
+  // slotted button is adopted *in place* with live reactivity, then relocates exactly once.
+  const portalSource =
+    "export default function P(){ let n=$state(0);" +
+    ' return <main><Portal><button class="m" onclick={() => n++}>c {n}</button></Portal></main>; }';
+
+  test("a <Portal>'s slotted content hydrates in place before it relocates (Task 2)", () => {
+    // 1. SSG: the portal's children are bracketed by the <!--c[-->…<!--c]--> slot markers
+    //    (server/builtins.js) so the compiled `hydrateSlot` walk can locate and adopt them.
+    const ssg = loadModule(compile(portalSource, "ssg"), {
+      signal,
+      ssgText,
+      ssgComponent,
+      defineSSG,
+    }).default;
+    const html = ssg();
+    expect(html).toContain("<web-internal-portal><!--c[-->"); // slot opens inside the host
+    expect(html).toContain("<!--c]--></web-internal-portal>"); // …and closes inside it
+
+    // 2. Enter the first-paint pass, then connect the server DOM. The <web-internal-portal>
+    //    upgrades on connect and would relocate now — but `_hydrating` is set, so it *defers*.
+    beginHydration();
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const serverButton = container.querySelector("button.m");
+    document.body.appendChild(container); // connect → portal defers its move
+    expect(serverButton.closest("web-internal-portal")).not.toBeNull(); // still in the host
+
+    // 3. Run the page's adopt walk while the slot is still in place; `hydrateSlot` finds the
+    //    marker and wires the parent's `n` onto the server button (no rebuild).
+    const mod = loadModule(compile(portalSource, "hydrate"), {
+      signal,
+      bindText,
+      cursor,
+      claimElement,
+      claimText,
+      skipNode,
+      hydrateSlot,
+    });
+    mod.hydrate(container);
+    expect(container.querySelector("button.m")).toBe(serverButton); // adopted in place
+
+    // 4. End the pass → the deferred relocation flushes: the now-live button moves to <body>,
+    //    exactly once (no duplicate), carrying its wired binding.
+    endHydration();
+    expect(serverButton.parentNode).toBe(document.body); // relocated to the default target
+    expect(document.querySelectorAll("button.m").length).toBe(1); // moved, not copied
+
+    // 5. Reactivity is live on the adopted-then-relocated node — the search-open click works.
+    serverButton.click();
+    expect(serverButton.textContent).toBe("c 1");
+
+    // Cleanup: keep the shared document clean for sibling tests.
+    serverButton.remove();
+    container.remove();
+  });
+
+  // Guard the deferral primitive directly: `afterHydration` queues during a pass and flushes
+  // (in order) at `endHydration`; outside a pass it runs synchronously.
+  test("afterHydration defers during a pass and runs synchronously outside one", () => {
+    const order = [];
+    afterHydration(() => order.push("sync")); // not hydrating → immediate
+    expect(order).toEqual(["sync"]);
+
+    beginHydration();
+    afterHydration(() => order.push("a"));
+    afterHydration(() => order.push("b"));
+    expect(order).toEqual(["sync"]); // still queued mid-pass
+    endHydration();
+    expect(order).toEqual(["sync", "a", "b"]); // flushed in FIFO order
   });
 });
