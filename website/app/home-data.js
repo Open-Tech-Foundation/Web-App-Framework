@@ -33,7 +33,7 @@ export const capabilities = [
       { name: "Route guards", status: "supported", desc: "Protect routes with custom logic + redirects." },
       { name: "Code splitting", status: "supported", desc: "Per-route lazy chunks in `otfw build`; dev compiles a route on first visit." },
       { name: "Route prefetch", status: "planned", desc: "Preload route chunks on hover or when a link enters the viewport." },
-      { name: "API middleware", status: "supported", desc: "Nested _middleware for API routes: auth, validation, shared context." },
+      { name: "Request middleware", status: "supported", desc: "app/_middleware.js gates pages, API routes, loader data, and SSR — context.locals shared downstream." },
     ],
   },
   {

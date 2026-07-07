@@ -60,7 +60,7 @@ export default function Todos() {
 | `query` | Parsed query-string object. Empty at SSG time. |
 | `request` | The live `Request` under `otfw serve` / `otfw dev`; `undefined` at SSG prerender. |
 | `locale` | The active locale (path-prefix i18n), or `null`. |
-| `locals` | Reserved (`{}`). |
+| `locals` | Per-request bag from [request middleware](/docs/routing/middleware) (`context.locals`); `{}` when no middleware runs (e.g. SSG prerender). |
 
 ### Where it runs
 

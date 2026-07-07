@@ -56,23 +56,24 @@ export async function POST(request, { params }) {
 
 ## Middleware
 
-A `_middleware.js` file applies to its folder and everything nested under it.
-Multiple middleware compose outermost-first. The signature is
-`(request, context, next)` — call `next()` to continue, or return a `Response` to
-short-circuit. Pass data to handlers through `context.locals`.
+`_middleware.{js,ts}` can live in **any folder** under `app/` — not only `app/api/`.
+`app/_middleware.js` governs every request (pages, loader data, SSR); `app/api/_middleware.js`
+scopes to `/api/*` only. Multiple files compose outermost-first.
 
 ```js
-// app/api/_middleware.js
+// app/api/_middleware.js — API-only guard
 export default function (request, context, next) {
   const token = request.headers.get("authorization");
   if (!token) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  context.locals.user = verify(token); // handlers read context.locals.user
+  context.locals.user = verify(token);
   return next();
 }
 ```
 
-Request validation (e.g. with `zod`) belongs in middleware or at the top of a
-handler.
+Full pipeline, page guards, `__data.json` scoping, and deploy exports:
+[Request middleware](/docs/routing/middleware).
+
+Request validation (e.g. with `zod`) belongs in middleware or at the top of a handler.
 
 ## TypeScript
 

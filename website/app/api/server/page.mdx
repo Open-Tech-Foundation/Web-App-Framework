@@ -1,14 +1,16 @@
 ---
-title: Server (API Routes)
-description: The @opentf/web/server API-routes surface — handler types, createApiHandler, createFetchHandler, and runtime adapters.
+title: Server
+description: The @opentf/web/server surface — request middleware, API routes, createFetchHandler, and runtime adapters.
 ---
 
-# Server / API Routes
+import { Callout } from "@opentf/web-docs";
 
-The `@opentf/web/server` entry exposes the runtime that powers file-based
-[API routes](/docs/routing/api-routes). Most apps never call these directly — the
-toolchain wires them up — but they're the contract for authoring handlers in
-TypeScript and for deploying `dist/server/api.js` to a custom runtime.
+# Server
+
+The `@opentf/web/server` entry powers file-based [API routes](/docs/routing/api-routes)
+and [request middleware](/docs/routing/middleware). Most apps never call these directly —
+the toolchain wires them up — but they're the contract for TypeScript authoring and for
+deploying `dist/server/api.js` to a custom runtime.
 
 ## Types
 
@@ -16,72 +18,99 @@ TypeScript and for deploying `dist/server/api.js` to a custom runtime.
 import type {
   ApiHandler,
   Middleware,
+  MiddlewareContext,
+  MiddlewareRunner,
   ApiContext,
   RouteParams,
+  RequestHandler,
 } from "@opentf/web/server";
 ```
 
 | Type | Description |
 | --- | --- |
-| `ApiHandler` | `(request: Request, context: ApiContext) => MaybePromise<Response>` — an HTTP method export (`GET`, `POST`, …). |
-| `Middleware` | `(request: Request, context: ApiContext, next: NextFn) => MaybePromise<Response>` — a `_middleware` default export. |
-| `ApiContext` | `{ params, query, url, locals, env?, ctx? }` — the per-request context (second handler argument). |
-| `RouteParams` | `Record<string, string \| string[]>` — a `[...rest]` segment resolves to `string[]`. |
-| `RequestHandler` | `(request: Request, env?, ctx?) => Promise<Response \| null>` — the composed handler; `null` = no route matched. |
+| `ApiHandler` | `(request, context) => Response` — a `route.*` method export (`GET`, `POST`, …). |
+| `Middleware` | `(request, context, next) => Response` — a `_middleware` default export. |
+| `MiddlewareContext` | Pre-routing context: `url`, `locals`, `env?`, `ctx?` — no `params`/`query` yet. |
+| `MiddlewareRunner` | The `createMiddleware` runner — `run(request, terminal, extras?)`. |
+| `ApiContext` | `{ params, query, url, locals, env?, ctx? }` — handler context (post-routing). |
+| `RequestHandler` | `(request, env?, ctx?, init?) => Response \| null` — API dispatch; `null` = no match. |
 
-### `ApiContext`
+### `ApiContext` / `locals`
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `params` | `RouteParams` | Dynamic segments from the matched path. |
+| `params` | `RouteParams` | Dynamic segments (`[param]` → `string`, `[...rest]` → `string[]`). |
 | `query` | `Record<string, string>` | Parsed query string. |
-| `url` | `URL` | The parsed request URL. |
-| `locals` | `Record<string, unknown>` | Mutable bag; middleware writes, handlers read. |
-| `env` | `unknown` | The runtime's `fetch` env argument. On Cloudflare Workers, the bindings (`env.DB` for D1, KV, secrets); `undefined` on Bun/Node. |
-| `ctx` | `{ waitUntil }` | The execution context (Workers): `ctx.waitUntil(promise)` for post-response work. |
+| `url` | `URL` | Parsed request URL. |
+| `locals` | `Record<string, unknown>` | Mutable bag; pipeline middleware writes, handlers and [loaders](/docs/data-fetching) read. |
+| `env` | `unknown` | Workers bindings (`env.DB`, KV, secrets); `undefined` on Bun/Node. |
+| `ctx` | `{ waitUntil }` | Workers execution context. |
 
 ## Functions
 
+### `createMiddleware(middlewareModules?, options?)`
+
+Builds a **pipeline middleware runner** from discovered `_middleware` modules (keyed by
+absolute file path). Scope matching governs pages, API routes, `__data.json`, and SSR.
+Options: `appDir`, `i18n` (locale-prefix stripping).
+
+### `createApiHandler(routeModules?, middlewareModules?, options?)`
+
+Builds a **routes-only** `RequestHandler` for API `route.*` files. API-folder middleware
+is composed into this handler. For full-stack servers, prefer `apiRoutes` + pipeline
+`middleware` instead of `apiHandler` (see below).
+
 ### `createFetchHandler(handler, options?)`
 
-Wraps a `RequestHandler` into a total Fetch handler that always returns a
-`Response` — a `null` becomes `options.fallback` or a `404`. The runtime's `fetch`
-arguments (`env`, `ctx`) are forwarded to both the handler and the `fallback`, so
-`fallback` can reach the Workers assets binding (`env.ASSETS`). Use it on
-Fetch-native runtimes.
+Wraps a `RequestHandler` into a total Fetch handler. A `null` becomes `options.fallback` or
+404. Threads `env`/`ctx` to the handler and fallback.
+
+When `options.middleware` is set, the runner wraps **both** API dispatch and the fallback
+(SSR / static assets):
 
 ```js
-import { apiHandler } from "./dist/server/api.js";
+import { apiRoutes, middleware } from "./dist/server/api.js";
 import { createFetchHandler } from "@opentf/web/server";
 
-// Cloudflare Workers / Bun / Deno
 export default {
-  fetch: createFetchHandler(apiHandler, {
-    fallback: (request, env) => env.ASSETS.fetch(request), // static assets / SPA
+  fetch: createFetchHandler(apiRoutes, {
+    middleware,
+    fallback: (request, env) => env.ASSETS.fetch(request),
   }),
 };
 ```
 
-See [Cloudflare Workers](/docs/deployment/cloudflare) for the full full-stack setup
-(D1 bindings + dev proxy).
+<Callout type="warning" title="Don't double-wrap">
+  `dist/server/api.js` also exports `apiHandler` with API-scoped middleware already
+  composed. Use **either** `apiHandler` alone **or** `createFetchHandler(apiRoutes, { middleware })`
+  — not both, or middleware runs twice.
+</Callout>
 
-### `createApiHandler(routeModules?, middlewareModules?, options?)`
+See [Cloudflare Workers](/docs/deployment/cloudflare) for a full Workers setup.
 
-Builds a `RequestHandler` from discovered route + middleware modules (keyed by file
-path). `options.appDir` pins the app directory the keys live under, so routes derive
-exactly for any folder name. Called by the toolchain; you rarely call it yourself.
+### `middlewareScopeFromPath(filePath, appDir?)`
+
+Derives the folder route a `_middleware` file governs (`app/admin/_middleware.js` → `/admin`).
+
+## Build output (`dist/server/api.js`)
+
+| Export | Purpose |
+| --- | --- |
+| `middleware` | `createMiddleware` runner for the whole request pipeline |
+| `apiRoutes` | API dispatch only — pair with `middleware` in `createFetchHandler` |
+| `apiHandler` | Standalone composed handler (API routes + API-folder middleware) |
 
 ## Adapters
 
-`dist/server/api.js` exports `apiHandler` (a `RequestHandler`). Fetch-native
-runtimes use it via `createFetchHandler`. Node uses the `node:http` adapter:
+Fetch-native runtimes use `createFetchHandler` as above. Node uses the `node:http` adapter:
 
 ```js
 import { createServer } from "node:http";
-import { apiHandler } from "./dist/server/api.js";
-import { toNodeListener } from "@opentf/web/server/adapters/node";
+import { apiRoutes, middleware } from "./dist/server/api.js";
+import { createFetchHandler, toNodeListener } from "@opentf/web/server";
 
-createServer(toNodeListener(apiHandler)).listen(3000);
+const fetch = createFetchHandler(apiRoutes, { middleware });
+createServer(toNodeListener(fetch)).listen(3000);
 ```
 
 | Export | From | Purpose |

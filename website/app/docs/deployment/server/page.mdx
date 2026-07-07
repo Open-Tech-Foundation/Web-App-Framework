@@ -29,29 +29,31 @@ navigation. See [Data Fetching](/docs/data-fetching).
 This is the recommended target when you control the runtime (a VM, container, or any Bun host).
 
 <Callout type="info" title="How a request resolves">
-  A matching API handler wins first (same order as `otfw dev`). Then asset paths are
-  served from `dist/`, and everything else falls through to SSR — so pages and endpoints
-  coexist. Unmatched paths render your 404.
+  [Request middleware](/docs/routing/middleware) runs first, then a matching API handler,
+  then `<path>/__data.json` loader data, then static assets from `dist/`, and everything
+  else falls through to SSR — so pages and endpoints coexist. Unmatched paths render your 404.
 </Callout>
 
 ## Option 2 — deploy `dist/server/api.js` with an adapter
 
-`otfw build` emits a self-contained **`dist/server/api.js`** that exports
-`apiHandler(request) => Response | null` (the runtime dispatcher is bundled in; your npm
-deps stay external). Pair it with the static `dist/` — served by the platform's CDN /
-static layer — to run your API routes on any runtime.
+`otfw build` emits a self-contained **`dist/server/api.js`** exporting `middleware`,
+`apiRoutes`, and `apiHandler` (the runtime dispatcher is bundled in; your npm deps stay
+external). Pair it with the static `dist/` — served by the platform's CDN / static layer —
+to run your server on any runtime.
 
-**Fetch-native runtimes** (Cloudflare Workers, Bun, Deno) use it directly. The runtime's
-`fetch` arguments (`env`, `ctx`) are threaded into your handlers as `context.env` /
-`context.ctx` — so on Workers a handler reads bindings via `env.DB`, and a `fallback` can
-serve static assets from the platform's assets binding:
+**Fetch-native runtimes** (Cloudflare Workers, Bun, Deno) use `createFetchHandler` with
+the pipeline middleware runner and API dispatch. The runtime's `fetch` arguments (`env`,
+`ctx`) are threaded into middleware and handlers as `context.env` / `context.ctx` — so on
+Workers a handler reads bindings via `env.DB`, and a `fallback` can serve static assets
+from the platform's assets binding:
 
 ```js
-import { apiHandler } from "./dist/server/api.js";
+import { apiRoutes, middleware } from "./dist/server/api.js";
 import { createFetchHandler } from "@opentf/web/server";
 
 export default {
-  fetch: createFetchHandler(apiHandler, {
+  fetch: createFetchHandler(apiRoutes, {
+    middleware,
     fallback: (request, env) => env.ASSETS.fetch(request), // static assets / SPA
   }),
 };
@@ -64,10 +66,11 @@ see **[Cloudflare Workers](/docs/deployment/cloudflare)**.
 
 ```js
 import { createServer } from "node:http";
-import { apiHandler } from "./dist/server/api.js";
-import { toNodeListener } from "@opentf/web/server/adapters/node";
+import { apiRoutes, middleware } from "./dist/server/api.js";
+import { createFetchHandler, toNodeListener } from "@opentf/web/server";
 
-createServer(toNodeListener(apiHandler)).listen(3000);
+const fetch = createFetchHandler(apiRoutes, { middleware });
+createServer(toNodeListener(fetch)).listen(3000);
 ```
 
 See the [Server API reference](/api/server) for the full adapter surface.
@@ -132,10 +135,26 @@ for plain variables. See [Cloudflare Workers](/docs/deployment/cloudflare).
 | Per-request SSR (`otfw serve`) | ✅ |
 | Route loaders → `router.data` | ✅ |
 | First-paint hydration | ✅ |
-| File-based API routes + middleware | ✅ |
+| Request middleware (`_middleware.js`) | ✅ |
+| File-based API routes | ✅ |
 | Client `resource()` primitive | ✅ |
 | Compiler co-located `export loader` / queries / actions | 🔜 [roadmap](https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/docs/roadmap.md) |
 
-Until Phase B lands, keep server-only imports in `loader.*` and `route.*` files — not in
-components. Components reach the server through `router.data` (loader output), `resource()`,
-or `fetch` to API routes.
+Until Phase B lands, keep server-only imports in `loader.*`, `route.*`, and `_middleware.*`
+files — not in components. Components reach the server through `router.data` (loader output),
+`resource()`, or `fetch` to API routes.
+
+## Request middleware
+
+[Request middleware](/docs/routing/middleware) (`app/_middleware.js`) runs on every
+matching request before API dispatch, loader data, or SSR. Under `otfw serve` the pipeline is:
+
+```
+middleware → API route.* → __data.json → SSR
+```
+
+`context.locals` stamped in middleware reaches API handlers and route loaders. Static assets
+with file extensions bypass the chain so stylesheets still load on public pages.
+
+For client SPA navigation after hydration, pair middleware with
+[Route guards](/docs/routing/route-guards).

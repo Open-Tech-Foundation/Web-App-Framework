@@ -1,0 +1,146 @@
+---
+title: Request Middleware
+description: Server-side _middleware.js for every request — pages, API routes, loader data, and SSR — with context.locals shared downstream.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Request Middleware
+
+A **`_middleware.{js,ts}` file** applies to its folder and everything nested under it —
+the same scoping as pages and `route.*` endpoints. Middleware runs on the **server** for
+every matching request under `otfw dev`, `otfw serve`, and deploy adapters. It governs
+the whole pipeline: API dispatch, `<path>/__data.json` loader data, and SSR / the app shell.
+
+For client-side SPA navigation only, use [Route guards](/docs/routing/route-guards).
+Compose both: middleware is authoritative; the route guard keeps the SPA feel after hydration.
+
+## File scoping
+
+| File | Governs |
+| --- | --- |
+| `app/_middleware.js` | Every request |
+| `app/admin/_middleware.js` | `/admin` and everything under it |
+| `app/api/_middleware.js` | `/api` and everything under it |
+
+Multiple middleware compose **outermost-first**: `app/_middleware.js` wraps
+`app/admin/_middleware.js`, which wraps the route.
+
+Middleware files are **plain server modules** — never shipped to the client.
+
+## Handler signature
+
+The default export (or a named `middleware` export) is
+`(request, context, next)`:
+
+```js
+// app/_middleware.js
+export default async function (request, context, next) {
+  const path = new URL(request.url).pathname;
+
+  if (path.startsWith("/dashboard") && !readSession(request)) {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "/login" },
+    });
+  }
+
+  context.locals.user = readSession(request)?.user; // API handlers + loaders read this
+  const res = await next();
+  const wrapped = new Response(res.body, res);
+  wrapped.headers.set("x-frame-options", "DENY");
+  return wrapped;
+}
+```
+
+| Action | How |
+| --- | --- |
+| Allow the request through | `return next()` |
+| Short-circuit (auth, redirect) | `return new Response(…)` or throw a `Response` |
+| Rewrite the URL downstream sees | `return next(new Request(url, request))` |
+| Decorate any response | `const res = await next(); return new Response(res.body, res)` |
+
+Returning nothing (forgetting `return next()`) is a **500**, not a hang. Uncaught errors
+become a 500 JSON envelope.
+
+## Context (pre-routing)
+
+Middleware runs **before** a route is matched, so there is no `params` or `query` yet:
+
+| Field | Description |
+| --- | --- |
+| `context.url` | Parsed request `URL` |
+| `context.locals` | Mutable per-request bag — shared with API handlers and [loaders](/docs/data-fetching) |
+| `context.env` / `context.ctx` | Platform `fetch` extras (Workers bindings, `waitUntil`); `undefined` on Bun/Node |
+
+Stamp auth or validation once in `locals`; read it in every `route.*` handler and
+`loader.*` downstream.
+
+## Scope matching details
+
+- **`<path>/__data.json` uses the page's scope.** A guard on `/admin` also gates
+  `/admin/__data.json`, so protected loader data cannot be fetched around the middleware.
+- **Non-default locale prefixes are stripped** before matching (same as loaders): `/fr/admin`
+  is governed by `app/admin/_middleware.js`.
+- **Static assets bypass middleware.** A dotted path that resolves to a real file (bundles,
+  CSS, `public/` files) is served directly — a root auth guard must not break the login
+  page's stylesheet. Dotted paths that are *not* files (e.g. `/api/v1.0`) still enter the
+  pipeline.
+
+<Callout type="warning" title="Static hosting has no middleware">
+  A pure `otfw build` deployed to a static host has no server — middleware cannot run there.
+  Guarded pages need `otfw serve` or an edge/server adapter.
+</Callout>
+
+## Where it runs
+
+**`otfw dev`** and **`otfw serve`** wrap the pipeline:
+
+```
+middleware → API route.* → __data.json loaders → assets → SPA shell / SSR
+```
+
+Edits to `route.*` or `_middleware.*` rebuild the server bundle and refresh the browser tab
+(full-page reload — see [CLI dev notes](/api/cli#reload-on-save-not-module-hmr)).
+
+**`otfw build`** emits `dist/server/api.js` with three exports:
+
+| Export | Use when |
+| --- | --- |
+| `middleware` | You run the pipeline yourself (`createFetchHandler` + `apiRoutes`) |
+| `apiRoutes` | API dispatch only — pair with `middleware` at the pipeline level |
+| `apiHandler` | Standalone: API routes with API-scoped middleware composed in — **do not** also pass `middleware` or it runs twice |
+
+```js
+// Cloudflare Workers / Bun / Deno — full pipeline
+import { apiRoutes, middleware } from "./dist/server/api.js";
+import { createFetchHandler } from "@opentf/web/server";
+
+export default {
+  fetch: createFetchHandler(apiRoutes, {
+    middleware,
+    fallback: (request, env) => env.ASSETS.fetch(request),
+  }),
+};
+```
+
+See [Server API](/api/server) and [Cloudflare Workers](/docs/deployment/cloudflare).
+
+## TypeScript
+
+```ts
+import type { Middleware } from "@opentf/web/server";
+
+const guard: Middleware = (request, context, next) => {
+  context.locals.user = "ada";
+  return next();
+};
+export default guard;
+```
+
+## Related
+
+- [Route guards](/docs/routing/route-guards) — client SPA navigation (not a security boundary)
+- [API routes](/docs/routing/api-routes) — `route.{js,ts}` handlers inside the pipeline
+- [Data fetching](/docs/data-fetching) — loaders read `locals` from middleware
+- [Server and API](/docs/deployment/server) — `otfw serve` and adapters

@@ -7,8 +7,14 @@ import { Callout } from "@opentf/web-docs";
 
 # Route Guards
 
+Route guards run in the **browser** on SPA navigation. They improve UX (redirects,
+spinners) but are **not** a security boundary — they never see a first load, `curl`, or a
+crawler. For real auth on pages, API routes, and loader data, use
+[Request middleware](/docs/routing/middleware) (`app/_middleware.js`) on the server and
+compose a client guard for the SPA feel.
+
 Add `app/routeGuard.js` and it is discovered automatically. It runs before each
-navigation, so you can check sessions or pre-fetch data — and it can be async.
+client navigation and can be async.
 
 ```js
 export default async function routeGuard(to, { next, redirect }) {
@@ -32,4 +38,9 @@ export default async function routeGuard(to, { next, redirect }) {
 <Callout type="warning" title="Always resolve">
   Return one of `next`, `redirect`, or `replace` from every path so navigation never
   stalls.
+</Callout>
+
+<Callout type="info" title="Pair with server middleware">
+  Mirror the same rules in `app/_middleware.js` so direct URL hits and SSR are guarded
+  before HTML is sent. See [Request middleware](/docs/routing/middleware).
 </Callout>

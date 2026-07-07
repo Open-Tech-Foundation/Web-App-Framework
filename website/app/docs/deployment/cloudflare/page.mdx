@@ -19,22 +19,25 @@ shown in full below.
 
 <Callout type="info" title="This guide, in one line">
   In **dev**, run your API on `wrangler dev` and proxy `/api/*` to it. In **production**,
-  ship one Worker: `apiHandler` for `/api/*`, `env.ASSETS` for everything else.
+  ship one Worker: pipeline [middleware](/docs/routing/middleware) + `apiRoutes` for API and
+  guarded pages, `env.ASSETS` for static files and the SPA shell.
 </Callout>
 
 ## The production entry
 
-`otfw build` emits a self-contained **`dist/server/api.js`** exporting
-`apiHandler(request, env, ctx)`. Wrap it with `createFetchHandler` and fall back to the
-static assets binding for anything that isn't an API route:
+`otfw build` emits a self-contained **`dist/server/api.js`** exporting `middleware`,
+`apiRoutes`, and `apiHandler`. For a full-stack Worker — [request middleware](/docs/routing/middleware)
+on pages, loader data, and API routes — pair `apiRoutes` with the pipeline `middleware`
+runner and fall back to the static assets binding:
 
 ```js
 // worker.js
-import { apiHandler } from "./dist/server/api.js";
+import { apiRoutes, middleware } from "./dist/server/api.js";
 import { createFetchHandler } from "@opentf/web/server";
 
 export default {
-  fetch: createFetchHandler(apiHandler, {
+  fetch: createFetchHandler(apiRoutes, {
+    middleware,
     // Any request that matches no API route is a static asset or an SPA route —
     // hand it to the assets binding (configured with SPA fallback below).
     fallback: (request, env) => env.ASSETS.fetch(request),
@@ -43,7 +46,13 @@ export default {
 ```
 
 That's the whole server. `createFetchHandler` threads the Worker's `env` and `ctx` through
-to your handlers **and** to the `fallback`, which is why `env.ASSETS` is available here.
+middleware, handlers, **and** the `fallback`, which is why `env.ASSETS` is available here.
+
+<Callout type="warning" title="API-only deploys">
+  `apiHandler` bundles API-scoped middleware only — use it alone when you have no
+  `app/_middleware.js` outside `app/api/`. Do **not** pass `middleware` as well or the
+  chain runs twice. See [Server API](/api/server).
+</Callout>
 
 ## `wrangler.jsonc`
 
@@ -174,9 +183,11 @@ Identical order in dev (via the proxy → `wrangler dev`) and production (in the
 
 | Request | Handled by |
 | --- | --- |
-| `/api/todos` | `apiHandler` → your `route.{js,ts}` (reads `env.DB`) |
-| `/assets/app-*.js`, `/favicon.ico` | `env.ASSETS` (a real file in `dist/`) |
-| `/`, `/dashboard`, any SPA route | `env.ASSETS` → `index.html` (SPA fallback) |
+| `/api/todos` | `middleware` → `apiRoutes` → your `route.{js,ts}` (reads `env.DB`) |
+| `/dashboard` (guarded page) | `middleware` → redirect or `env.ASSETS` → `index.html` |
+| `/dashboard/__data.json` | `middleware` (same scope as `/dashboard`) → loader data |
+| `/assets/app-*.js`, `/favicon.ico` | `env.ASSETS` directly (static assets bypass middleware) |
+| `/`, any SPA route | `middleware` → `env.ASSETS` → `index.html` (SPA fallback) |
 
 <Callout type="tip" title="Provider-agnostic by design">
   Nothing above is baked into the framework — it's your `worker.js`, your `wrangler.jsonc`,
