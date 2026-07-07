@@ -122,9 +122,16 @@ export function attr(name, value) {
   return ` ${name}="${escapeAttr(String(value))}"`;
 }
 
-/** A dynamic hole's value → HTML: trusted `{__html}` raw, else escaped text. */
+/**
+ * A dynamic hole's value → HTML: trusted `{__html}` raw, else escaped text. An
+ * array (`{[<a/>, <b/>]}` or `{[1, 2, 3]}`) renders each item concatenated with no
+ * separator — mirroring CSR's `toNodes`/`bindText`, where an array value inserts one
+ * node per item. Without this an array would stringify to `[object Object]` (JSX) or
+ * a comma-joined string, diverging from the hydrated client render.
+ */
 export function ssgText(v) {
   if (v == null || v === false || v === true) return "";
+  if (Array.isArray(v)) return v.map(ssgText).join("");
   if (typeof v === "object" && v.__html != null) return v.__html;
   return escapeHtml(String(v));
 }

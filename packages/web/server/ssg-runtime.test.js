@@ -9,6 +9,7 @@ import {
   defineSSG,
   endHydrationCollect,
   ssgComponent,
+  ssgText,
 } from "./ssg-runtime.js";
 
 // A render fn as the SSG backend emits: props → inner HTML, with a stable host class.
@@ -89,5 +90,36 @@ describe("ssgComponent + hydration collector", () => {
     const html = ssgComponent(tag, cyclic, "");
     expect(html).not.toContain("data-h");
     expect(endHydrationCollect()).toBe("");
+  });
+});
+
+describe("ssgText", () => {
+  test("nullish / boolean holes render empty", () => {
+    for (const v of [null, undefined, false, true]) expect(ssgText(v)).toBe("");
+  });
+
+  test("escapes plain text but passes {__html} through raw", () => {
+    expect(ssgText("<b>hi</b>")).toBe("&lt;b&gt;hi&lt;/b&gt;");
+    expect(ssgText({ __html: "<b>hi</b>" })).toBe("<b>hi</b>");
+    expect(ssgText(42)).toBe("42");
+  });
+
+  // Regression: an inline array hole (`{[<a/>, <b/>]}` or `{[1,2,3]}`) used to fall
+  // through to `String(v)` → "[object Object]" / comma-joined text. It must render
+  // each item concatenated with no separator, mirroring CSR's toNodes/bindText so the
+  // hydrated client render matches the server HTML.
+  test("an array of JSX holes concatenates each item's HTML (no [object Object])", () => {
+    const out = ssgText([{ __html: "<span>A</span>" }, { __html: "<span>B</span>" }]);
+    expect(out).toBe("<span>A</span><span>B</span>");
+    expect(out).not.toContain("[object Object]");
+  });
+
+  test("an array of primitives concatenates with no separator (matches CSR)", () => {
+    expect(ssgText([1, 2, 3])).toBe("123");
+    expect(ssgText(["a", null, "b", false])).toBe("ab"); // nullish/false items drop out
+  });
+
+  test("nested arrays flatten and text items stay escaped", () => {
+    expect(ssgText([["<x>", { __html: "<i>ok</i>" }], "y"])).toBe("&lt;x&gt;<i>ok</i>y");
   });
 });

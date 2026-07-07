@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **An array-valued dynamic hole renders each item instead of `[object Object]`.** A hole
+  holding an array of JSX (`{[<a/>, <b/>]}`) or primitives (`{[1, 2, 3]}`) served through
+  `ssgText` fell through to `String(v)` — emitting `[object Object],[object Object]` (or a
+  comma-joined string) into the SSG/pre-rendered HTML, so first paint and no-JS/SEO output
+  were wrong until the client rebuilt. `ssgText` now flattens arrays and concatenates each
+  item with no separator, mirroring CSR's `toNodes`/`bindText` so the server HTML matches the
+  hydrated render. (Workaround was to hoist the array to a `const`.)
+
 ### Tests
 
 - Runtime tests that probe engine-fidelity paths (custom-element upgrade timing, the real
