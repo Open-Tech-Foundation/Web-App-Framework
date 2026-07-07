@@ -17,13 +17,11 @@
     "dev": "bun run --cwd playground dev",
     "bench": "bun benchmarks/run.mjs",
     "playground:build": "bun run --cwd playground build",
-    "preview": "bun run website:build && wrangler dev",
-    "cf:build": "bun scripts/build-website-standalone.mjs",
-    "website:dev": "bun run --cwd website dev",
-    "website:build": "bun run build:web && bun run --cwd website build",
     "test": "cargo build && cargo test && bun test packages/web/ packages/web-cli/tests/ packages/create-web/tests/",
-    "deploy": "bun run website:build && wrangler deploy",
-    "build:web": "bun run --cwd packages/web build"
+    "typecheck": "tsc --noEmit",
+    "cf:build": "bun scripts/build-website-standalone.mjs",
+    "preview": "bun run cf:build && wrangler dev",
+    "deploy": "bun run cf:build && wrangler deploy"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.33.1",
