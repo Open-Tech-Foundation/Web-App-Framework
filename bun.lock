@@ -75,7 +75,7 @@
         "otfw": "./src/cli.js",
       },
       "dependencies": {
-        "@opentf/web-compiler": "0.6.0",
+        "@opentf/web-compiler": "0.8.0",
         "@tailwindcss/node": "4.2.2",
         "@tailwindcss/oxide": "4.2.2",
         "rolldown": "1.0.0-rc.17",
@@ -160,13 +160,13 @@
     "website": {
       "name": "website",
       "dependencies": {
-        "@opentf/web": "^0.10.0",
-        "@opentf/web-docs": "^0.6.0",
-        "@opentf/web-form": "^1.5.0",
-        "@opentf/web-i18n": "^1.5.0",
+        "@opentf/web": "^0.16.0",
+        "@opentf/web-docs": "^0.12.0",
+        "@opentf/web-form": "^1.11.0",
+        "@opentf/web-i18n": "^1.11.0",
       },
       "devDependencies": {
-        "@opentf/web-cli": "^1.5.0",
+        "@opentf/web-cli": "^1.12.0",
       },
     },
   },
@@ -890,9 +890,5 @@
     "parse5/entities": ["entities@6.0.1", "", {}, "sha512-aN97NXWF6AWBTahfVOIrB/NShkzi5H7F9r1s9mD3cDj4Ko5f2qhhVoYMibXF7GlLveb/D2ioWay8lxI97Ven3g=="],
 
     "sharp/semver": ["semver@7.7.4", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA=="],
-
-    "website/@opentf/web": ["@opentf/web@0.10.0", "", {}, "sha512-G4yJyJkc8W8Rfv+mzzEeqqW2MlYcVrzubhXq6SE7C+Ng2S0O0j0S5Wu3C10Wo2z14OHlM+VPKlOJQxN9o+x2pQ=="],
-
-    "website/@opentf/web-docs": ["@opentf/web-docs@0.6.0", "", { "dependencies": { "pagefind": "^1.5.2" }, "peerDependencies": { "@opentf/web": "*" } }, "sha512-V+CQ1jRtL3gBmQpf8mg8GUpT3nXIOz9aAdpxRO0iOvJH9HJi93tr5IRjR8z8lM/MMOnqgsb2qbEA0znG7tSl8Q=="],
   }
 }
