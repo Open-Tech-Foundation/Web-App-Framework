@@ -1,6 +1,6 @@
 ---
 title: Reactive Macros
-description: The compiler-provided globals — $state, $derived, $effect, $ref, $expose — and lifecycle hooks.
+description: The compiler-provided globals — $state, $derived, $effect, $ref, $context, $expose — and lifecycle hooks.
 ---
 
 import { Callout } from "@opentf/web-docs";
@@ -16,6 +16,7 @@ injects the runtime.
 | `$derived` | `$derived(expr)` | Cached value recomputed when dependencies change. |
 | `$effect` | `$effect(() => {})` | Side effect that re-runs on dependency change. |
 | `$ref` | `$ref()` | A handle to a DOM node or component instance, bound with `ref={…}`. |
+| `$context` | `$context(ctx)` | Read the value from the nearest `<ContextProvider>` for `ctx`. |
 | `$expose` | `$expose(obj)` | Publish methods on a component instance for the parent to call. |
 
 ```jsx
@@ -41,6 +42,43 @@ The ref is `null` until the target mounts. Read it in `onMount`, `$effect`, or e
 handlers — not synchronously at the top of the parent before the child exists.
 
 **Compiler output:** `ref={expr}` → `expr.value = <createdElement>`.
+
+## `$context`
+
+Reads a value provided by the nearest ancestor `<ContextProvider>` for a context token
+created with `createContext`. No import — the compiler lowers it to `readContext(ctx)` and
+tracks the binding as a signal.
+
+| | |
+| --- | --- |
+| **Signature** | `$context(Ctx)` — `Ctx` is the token from `createContext(default)` |
+| **Provider** | `<ContextProvider context={Ctx} value={v}>…</ContextProvider>` (import `ContextProvider` from `@opentf/web`) |
+| **Default** | When no provider wraps the consumer, the context's `createContext` default is used |
+| **Overrides** | A nested provider replaces the value for its subtree only |
+
+```jsx
+import { ContextProvider, createContext } from "@opentf/web";
+
+const ThemeContext = createContext("dark");
+
+function Card() {
+  const theme = $context(ThemeContext);
+  return <div class={theme}>{theme}</div>;
+}
+
+export default function App() {
+  let theme = $state("dark");
+  return (
+    <ContextProvider context={ThemeContext} value={theme}>
+      <Card />
+    </ContextProvider>
+  );
+}
+```
+
+A reactive `value` (e.g. from `$state`) updates every consumer when it changes.
+
+Guide with a live demo: [Context](/docs/core-concepts/context).
 
 ## `$expose`
 

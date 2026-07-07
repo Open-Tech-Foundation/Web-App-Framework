@@ -37,6 +37,13 @@ function Greeting({ name = "world" }) {
   Destructuring defaults (`{ name = "world" }`) work as written.
 </Callout>
 
+## Context
+
+When many descendants need the same value — theme, locale, auth — pass it through
+[Context](/docs/core-concepts/context) instead of drilling props through every layer.
+A parent wraps the subtree in `<ContextProvider>`; nested components read it with
+`$context`.
+
 ## Children
 
 Render passed children with `props.children`:

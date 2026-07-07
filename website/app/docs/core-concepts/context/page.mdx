@@ -1,0 +1,133 @@
+---
+title: Context
+description: Scoped dependency injection with createContext, ContextProvider, and $context — share values down the tree without prop drilling.
+---
+
+import { Callout } from "@opentf/web-docs";
+import ContextDemo from "../../../components/ContextDemo.jsx";
+
+# Context
+
+Context passes a value to a **subtree** of components without threading it through every
+intermediate prop. A parent wraps descendants in `<ContextProvider>`, and any nested
+component reads the value with `$context`. A closer provider overrides an outer one —
+useful for themes, locale, feature flags, or shared UI state.
+
+Because OTF Web components compile to Custom Elements, the component tree **is** the DOM
+tree. The runtime resolves the nearest provider with DOM ancestry — no separate context
+graph to maintain.
+
+## When to use context
+
+| Approach | Best for |
+| --- | --- |
+| **Props** | Direct parent → child data, few levels |
+| **`$context`** | Values many descendants need (theme, auth session, layout mode) |
+| **`reactive()` store** | App-wide mutable state outside the tree (see [Reactivity](/docs/core-concepts/reactivity#reactive)) |
+
+Reach for context when the value is **scoped to a branch** of the UI. Reach for a module-level
+`reactive()` store when the whole app shares one object and subtree boundaries do not matter.
+
+## 1. Create a context token
+
+`define` a token with a default fallback. Export it from a module so providers and consumers
+share the same reference:
+
+```js
+import { createContext } from "@opentf/web";
+
+export const ThemeContext = createContext("dark");
+```
+
+The default is what `$context` returns when no provider wraps the consumer.
+
+## 2. Provide a value
+
+Wrap the subtree that should see the value. `value` can be plain data or reactive state
+from `$state` — the provider stores it as a signal, so consumers update when it changes:
+
+```jsx
+import { ContextProvider } from "@opentf/web";
+import { ThemeContext } from "./theme.js";
+
+export default function App() {
+  let theme = $state("dark");
+
+  return (
+    <ContextProvider context={ThemeContext} value={theme}>
+      <Toolbar />
+      <Main />
+    </ContextProvider>
+  );
+}
+```
+
+## 3. Consume with `$context`
+
+Inside any descendant component, read the nearest provider:
+
+```jsx
+import { ThemeContext } from "./theme.js";
+
+function ThemedCard(props) {
+  const theme = $context(ThemeContext);
+
+  return (
+    <div class={theme === "light" ? "card-light" : "card-dark"}>
+      {props.title} — {theme}
+    </div>
+  );
+}
+```
+
+`$context` is a compiler macro (like `$state`). You never import it. The compiler lowers
+it to `readContext(ThemeContext)` and tracks the binding as a signal, so JSX and effects
+react when the provider's `value` changes.
+
+<ContextDemo />
+
+Click **Cycle page theme** — both cards that inherit the page theme update together. The
+nested card stays on `high-contrast` because a closer provider overrides the outer one.
+
+## Nested overrides
+
+Providers compose like CSS inheritance: the **nearest** ancestor wins for its subtree.
+
+```jsx
+<ContextProvider context={ThemeContext} value={theme}>
+  <ThemedCard title="Uses page theme" />
+  <ContextProvider context={ThemeContext} value="high-contrast">
+    <ThemedCard title="Always high-contrast" />
+  </ContextProvider>
+</ContextProvider>
+```
+
+## Portals
+
+Content rendered through [`<Portal>`](/api/core) keeps context from the logical tree.
+A toast portaled to `document.body` still sees the provider that wrapped the portal in
+your JSX — the runtime hops across the portal boundary when resolving `$context`.
+
+## Runtime API
+
+Prefer the macro in components. Libraries and tests can call the runtime directly:
+
+| Export | Purpose |
+| --- | --- |
+| `createContext(default)` | Create a context token with a fallback signal. |
+| `ContextProvider` | JSX component — `<ContextProvider context={…} value={…}>`. |
+| `readContext(ctx)` | Returns the resolved **signal**; read `.value` outside compiled components. |
+
+Macro reference: [`$context`](/api/macros#context).
+
+## Related
+
+- [Reactivity](/docs/core-concepts/reactivity) — `$state` for local state; `reactive()` for shared mutable stores.
+- [Components](/docs/core-concepts/components) — props vs children vs context.
+- [Runtime API](/api/core) — full `@opentf/web` exports.
+
+<Callout type="tip" title="Not $signal">
+  External reactive objects integrate with **`reactive()`** from `@opentf/web`, not a
+  `$signal` macro. Use context for scoped tree injection; use `reactive()` when you need
+  a shared store you mutate in place.
+</Callout>

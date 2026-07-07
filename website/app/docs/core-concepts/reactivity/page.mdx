@@ -113,7 +113,9 @@ Helpers that ship alongside it:
 <Callout type="tip" title="$state or reactive()?">
   Reach for `$state` for local component state you update by reassignment — it's the
   lightest primitive. Reach for `reactive()` when direct mutation of nested data reads
-  more naturally, or when you need a store shared across components.
+  more naturally, or when you need a store shared across components. For values scoped
+  to a **subtree** (theme, layout mode), prefer [Context](/docs/core-concepts/context)
+  instead of a global store.
 </Callout>
 
 ## Single source of reactivity

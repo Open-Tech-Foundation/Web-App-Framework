@@ -16,6 +16,14 @@ compile to — prefer the macros in components.)
 | `computed(fn)` | Derived signal, cached. |
 | `effect(fn)` | Run a reactive side effect; returns a disposer. |
 | `batch(fn)` | Group writes into a single update. |
+| `reactive(init)` | Deep reactive store — mutate nested data in place. |
+| `isReactive(v)` | Whether `v` was created by `reactive()`. |
+| `toRawValue(v)` | Underlying plain object for a reactive store. |
+| `snapshot(v)` | Plain deep copy for submit payloads or persistence. |
+
+Prefer `$state` / `$derived` / `$effect` in components. Use `reactive()` for shared stores
+or nested data you update by mutation — not the legacy `$signal` bridge (removed from the
+public API).
 
 ## Routing
 
@@ -46,5 +54,7 @@ in [`@opentf/web-i18n`](/api/web-i18n).
 | `ErrorBoundary` | Catches render errors in its subtree and shows a fallback. |
 | `Portal` | Renders children into a different DOM location. |
 | `RawHtml` | Injects a trusted HTML string. |
-| `createContext(default)` / `readContext(ctx)` | Provide and consume context across the tree. |
+| `createContext(default)` | Context token with a fallback when no provider is found. |
+| `ContextProvider` | `<ContextProvider context={…} value={…}>` — publishes `value` to descendants. |
+| `readContext(ctx)` | Returns the resolved signal (`.value`); `$context` lowers to this in components. |
 | `mount(view, target)` | Imperatively mount a view into an element. |
