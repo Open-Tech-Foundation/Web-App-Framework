@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-07
+
 ### Added
 
 - **Dev proxy (`otfw.config` `proxy`).** `otfw dev` can forward configured path prefixes to

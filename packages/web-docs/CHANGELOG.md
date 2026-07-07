@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-07
+
 ### Tests
 
 - The mobile-drawer browser e2e (`tests/e2e/mobile-drawer.mjs`) replaced fixed settle

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-07
+
 ### Added
 
 - `browser-runner.js` — a `bun:test`-compatible `describe`/`test`/`expect` shim

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-07
+
 ### Added
 
 - **API handlers receive the runtime's `env`/`ctx` (platform bindings) on the context.**
