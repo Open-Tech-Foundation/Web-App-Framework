@@ -20,7 +20,9 @@ export default function App() {
 }
 ```
 
-`Badge.jsx` registers as `<web-badge>`, but you reference it by name.
+`Badge.jsx` compiles to a Custom Element registered under a **module-scoped tag** such as
+`web-badge-4e54f4d4` (the hash avoids collisions across files). In JSX you always write
+`<Badge>` — the compiler addresses `Badge.tag` for you.
 
 ## Props
 
@@ -83,8 +85,26 @@ list-scroll, and media-control patterns.
 
 ## Native interop
 
-Because each component is a real `HTMLElement`, it works outside OTF Web too:
+Because each component is a real `HTMLElement`, it works in plain HTML once your bundle
+has loaded and registered it. The **registry tag** includes a module hash — it is not the
+bare `web-<name>` you might guess from the component identifier:
 
 ```html
-<web-badge label="Beta"></web-badge>
+<!-- After your bundle registers Badge -->
+<web-badge-4e54f4d4 label="Beta"></web-badge-4e54f4d4>
 ```
+
+Read the exact tag from the exported class (`Badge.tag`) or from DevTools after a build.
+For **host styling**, the compiler also stamps a stable class hook on every instance
+(`web-badge` for `Badge`) so CSS does not need the hash:
+
+```css
+.web-badge {
+  display: inline-block;
+}
+```
+
+<Callout type="note" title="Compose with JSX in app code">
+  Inside OTF Web, always use `<Badge … />`. Embed the raw custom-element tag only when
+  dropping a pre-built component into a non-OTF page.
+</Callout>
