@@ -1,14 +1,14 @@
 ---
 title: Server
-description: The @opentf/web/server surface — request middleware, API routes, createFetchHandler, and runtime adapters.
+description: The @opentf/web/server surface — middleware, API routes, createFetchHandler, and runtime adapters.
 ---
 
 import { Callout } from "@opentf/web-docs";
 
 # Server
 
-The `@opentf/web/server` entry powers file-based [API routes](/docs/routing/api-routes)
-and [request middleware](/docs/routing/middleware). Most apps never call these directly —
+The `@opentf/web/server` entry powers [middleware](/docs/routing/middleware) and file-based
+[API routes](/docs/routing/api-routes). Most apps never call these directly —
 the toolchain wires them up — but they're the contract for TypeScript authoring and for
 deploying `dist/server/api.js` to a custom runtime.
 
@@ -97,8 +97,8 @@ Derives the folder route a `_middleware` file governs (`app/admin/_middleware.js
 | Export | Purpose |
 | --- | --- |
 | `middleware` | `createMiddleware` runner for the whole request pipeline |
-| `apiRoutes` | API dispatch only — pair with `middleware` in `createFetchHandler` |
-| `apiHandler` | Standalone composed handler (API routes + API-folder middleware) |
+| `apiRoutes` | `route.*` dispatch only — pair with pipeline `middleware` in `createFetchHandler` |
+| `apiHandler` | Standalone composed handler (`app/api/*` routes + `app/api/_middleware.js` only) |
 
 ## Adapters
 

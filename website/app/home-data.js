@@ -33,7 +33,6 @@ export const capabilities = [
       { name: "Route guards", status: "supported", desc: "Protect routes with custom logic + redirects." },
       { name: "Code splitting", status: "supported", desc: "Per-route lazy chunks in `otfw build`; dev compiles a route on first visit." },
       { name: "Route prefetch", status: "planned", desc: "Preload route chunks on hover or when a link enters the viewport." },
-      { name: "Request middleware", status: "supported", desc: "app/_middleware.js gates pages, API routes, loader data, and SSR — context.locals shared downstream." },
     ],
   },
   {
@@ -65,10 +64,11 @@ export const capabilities = [
     ],
   },
   {
-    category: "Full-stack roadmap",
+    category: "Full-stack",
     items: [
+      { name: "Middleware", status: "supported", desc: "app/_middleware.js gates pages, API routes, loader data, and SSR — context.locals shared downstream." },
       { name: "Reactive forms", status: "beta", desc: "@opentf/web-form — porting to the new runtime." },
-      { name: "API routes", status: "supported", desc: "File-based route.js / route.ts endpoints — standard Request/Response, dynamic params, middleware." },
+      { name: "API routes", status: "supported", desc: "File-based route.js / route.ts endpoints — standard Request/Response and dynamic params." },
       { name: "Data fetching", status: "supported", desc: "Route loaders (loader.js → router.data across SSR/SSG/SPA) + client-side resource(); queries and actions planned." },
       { name: "Internationalization", status: "beta", desc: "@opentf/web-i18n — URL-prefix locale routing, ICU messages, and Intl formatters (Phase 1)." },
       { name: "Accessibility helpers", status: "planned", desc: "ARIA helpers and a11y defaults." },

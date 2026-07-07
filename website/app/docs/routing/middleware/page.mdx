@@ -1,11 +1,11 @@
 ---
-title: Request Middleware
+title: Middleware
 description: Server-side _middleware.js for every request — pages, API routes, loader data, and SSR — with context.locals shared downstream.
 ---
 
 import { Callout } from "@opentf/web-docs";
 
-# Request Middleware
+# Middleware
 
 A **`_middleware.{js,ts}` file** applies to its folder and everything nested under it —
 the same scoping as pages and `route.*` endpoints. Middleware runs on the **server** for
@@ -108,8 +108,8 @@ Edits to `route.*` or `_middleware.*` rebuild the server bundle and refresh the 
 | Export | Use when |
 | --- | --- |
 | `middleware` | You run the pipeline yourself (`createFetchHandler` + `apiRoutes`) |
-| `apiRoutes` | API dispatch only — pair with `middleware` at the pipeline level |
-| `apiHandler` | Standalone: API routes with API-scoped middleware composed in — **do not** also pass `middleware` or it runs twice |
+| `apiRoutes` | `route.*` dispatch only — pair with pipeline `middleware` at the server level |
+| `apiHandler` | Standalone: `app/api/*` routes with `app/api/_middleware.js` composed in — **do not** also pass `middleware` or it runs twice |
 
 ```js
 // Cloudflare Workers / Bun / Deno — full pipeline
@@ -143,4 +143,4 @@ export default guard;
 - [Route guards](/docs/routing/route-guards) — client SPA navigation (not a security boundary)
 - [API routes](/docs/routing/api-routes) — `route.{js,ts}` handlers inside the pipeline
 - [Data fetching](/docs/data-fetching) — loaders read `locals` from middleware
-- [Server and API](/docs/deployment/server) — `otfw serve` and adapters
+- [Server](/docs/deployment/server) — `otfw serve` and adapters

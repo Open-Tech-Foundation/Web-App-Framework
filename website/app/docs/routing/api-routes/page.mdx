@@ -61,7 +61,7 @@ export async function POST(request, { params }) {
 scopes to `/api/*` only. Multiple files compose outermost-first.
 
 ```js
-// app/api/_middleware.js — API-only guard
+// app/api/_middleware.js — scoped to /api/*
 export default function (request, context, next) {
   const token = request.headers.get("authorization");
   if (!token) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -71,7 +71,7 @@ export default function (request, context, next) {
 ```
 
 Full pipeline, page guards, `__data.json` scoping, and deploy exports:
-[Request middleware](/docs/routing/middleware).
+[Middleware](/docs/routing/middleware).
 
 Request validation (e.g. with `zod`) belongs in middleware or at the top of a handler.
 

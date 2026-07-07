@@ -24,7 +24,7 @@ There are three ways to deploy:
 - **[Static Generation](/docs/deployment/static-generation)** — additionally
   pre-renders every route to its own `.html` file (`--ssg`). Best for content and
   marketing sites that need SEO and instant first paint.
-- **[Server and API](/docs/deployment/server)** — run a server for per-request SSR and
+- **[Server](/docs/deployment/server)** — run a server for per-request SSR and
   [API routes](/docs/routing/api-routes), via `otfw serve` or a runtime adapter. Best for
   fullstack apps that need server logic.
 - **[Cloudflare Workers](/docs/deployment/cloudflare)** — a single Worker serving the SPA
@@ -53,4 +53,4 @@ paths so client-side routes resolve. A fully **static-generated** site needs no 
 If your app uses SSR or [API routes](/docs/routing/api-routes), run a server instead of
 serving `dist/` statically — either `otfw serve` (Bun) or the emitted
 `dist/server/api.js` behind a runtime adapter (Bun, Node, Cloudflare Workers, Deno). See
-**[Server and API](/docs/deployment/server)** for both paths.
+**[Server](/docs/deployment/server)** for both paths.

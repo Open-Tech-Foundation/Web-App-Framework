@@ -2,7 +2,7 @@ export default {
   index: "Overview",
   core: "Core",
   macros: "Reactive Macros",
-  server: "Server (API Routes)",
+  server: "Server",
   cli: "CLI",
   "web-form": "web-form",
   "web-i18n": "web-i18n",

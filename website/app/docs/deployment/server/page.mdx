@@ -1,11 +1,11 @@
 ---
-title: Server and API
-description: Deploy per-request SSR, route loaders, and API routes with otfw serve or a runtime adapter.
+title: Server
+description: Deploy per-request SSR, middleware, route loaders, and API routes with otfw serve or a runtime adapter.
 ---
 
 import { Callout } from "@opentf/web-docs";
 
-# Server and API
+# Server
 
 A static `dist/` covers SPA and pre-rendered sites. When your app renders per request
 (SSR) or exposes [API routes](/docs/routing/api-routes), you run a **server** instead.
@@ -29,9 +29,9 @@ navigation. See [Data Fetching](/docs/data-fetching).
 This is the recommended target when you control the runtime (a VM, container, or any Bun host).
 
 <Callout type="info" title="How a request resolves">
-  [Request middleware](/docs/routing/middleware) runs first, then a matching API handler,
-  then `<path>/__data.json` loader data, then static assets from `dist/`, and everything
-  else falls through to SSR — so pages and endpoints coexist. Unmatched paths render your 404.
+  [Middleware](/docs/routing/middleware) runs first on pages, loader data, API routes, and
+  SSR alike. Then a matching API handler, then `<path>/__data.json`, then static assets from
+  `dist/`, and everything else falls through to SSR. Unmatched paths render your 404.
 </Callout>
 
 ## Option 2 — deploy `dist/server/api.js` with an adapter
@@ -77,8 +77,9 @@ See the [Server API reference](/api/server) for the full adapter surface.
 
 <Callout type="tip" title="Pair with static output">
   Build the client with `otfw build` (or `--ssg` for pre-rendered HTML) and let your host
-  serve `dist/` from its CDN, while the adapter above handles `/api/*`. This split — static
-  edge + API handler — deploys cleanly to Workers, serverless, and Node hosts alike.
+  serve `dist/` from its CDN, while the adapter above runs middleware and API dispatch.
+  This split — static edge + server handler — deploys cleanly to Workers, serverless, and
+  Node hosts alike.
 </Callout>
 
 ## Route loaders
@@ -135,7 +136,7 @@ for plain variables. See [Cloudflare Workers](/docs/deployment/cloudflare).
 | Per-request SSR (`otfw serve`) | ✅ |
 | Route loaders → `router.data` | ✅ |
 | First-paint hydration | ✅ |
-| Request middleware (`_middleware.js`) | ✅ |
+| Middleware (`_middleware.js`) | ✅ |
 | File-based API routes | ✅ |
 | Client `resource()` primitive | ✅ |
 | Compiler co-located `export loader` / queries / actions | 🔜 [roadmap](https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/docs/roadmap.md) |
@@ -144,17 +145,4 @@ Until Phase B lands, keep server-only imports in `loader.*`, `route.*`, and `_mi
 files — not in components. Components reach the server through `router.data` (loader output),
 `resource()`, or `fetch` to API routes.
 
-## Request middleware
-
-[Request middleware](/docs/routing/middleware) (`app/_middleware.js`) runs on every
-matching request before API dispatch, loader data, or SSR. Under `otfw serve` the pipeline is:
-
-```
-middleware → API route.* → __data.json → SSR
-```
-
-`context.locals` stamped in middleware reaches API handlers and route loaders. Static assets
-with file extensions bypass the chain so stylesheets still load on public pages.
-
-For client SPA navigation after hydration, pair middleware with
-[Route guards](/docs/routing/route-guards).
+Full middleware guide: [Middleware](/docs/routing/middleware).

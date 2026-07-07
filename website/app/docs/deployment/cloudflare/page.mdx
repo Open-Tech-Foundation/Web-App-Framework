@@ -26,7 +26,7 @@ shown in full below.
 ## The production entry
 
 `otfw build` emits a self-contained **`dist/server/api.js`** exporting `middleware`,
-`apiRoutes`, and `apiHandler`. For a full-stack Worker — [request middleware](/docs/routing/middleware)
+`apiRoutes`, and `apiHandler`. For a full-stack Worker — [middleware](/docs/routing/middleware)
 on pages, loader data, and API routes — pair `apiRoutes` with the pipeline `middleware`
 runner and fall back to the static assets binding:
 
@@ -48,10 +48,10 @@ export default {
 That's the whole server. `createFetchHandler` threads the Worker's `env` and `ctx` through
 middleware, handlers, **and** the `fallback`, which is why `env.ASSETS` is available here.
 
-<Callout type="warning" title="API-only deploys">
-  `apiHandler` bundles API-scoped middleware only — use it alone when you have no
-  `app/_middleware.js` outside `app/api/`. Do **not** pass `middleware` as well or the
-  chain runs twice. See [Server API](/api/server).
+<Callout type="warning" title="`/api` middleware only">
+  `apiHandler` composes `app/api/_middleware.js` only — use it when you have no
+  `app/_middleware.js` outside `app/api/`. Do **not** pass pipeline `middleware` as well or
+  the chain runs twice. See [Server](/api/server).
 </Callout>
 
 ## `wrangler.jsonc`
@@ -192,6 +192,6 @@ Identical order in dev (via the proxy → `wrangler dev`) and production (in the
 <Callout type="tip" title="Provider-agnostic by design">
   Nothing above is baked into the framework — it's your `worker.js`, your `wrangler.jsonc`,
   and a config `proxy`. The same `dist/server/api.js` runs on Deno, Bun, or Node via a
-  different few-line entry. See [Server and API](/docs/deployment/server) for the other
+  different few-line entry. See [Server](/docs/deployment/server) for the other
   runtimes.
 </Callout>
