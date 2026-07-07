@@ -260,6 +260,73 @@ export async function loadConfig(root) {
 }
 
 /**
+ * Normalize the optional `proxy` config into an ordered rule list. In dev, matched
+ * paths are forwarded to a target origin instead of being handled in-process — the
+ * provider-agnostic escape hatch for backends the dev server can't host itself
+ * (e.g. Cloudflare bindings like D1, which only exist inside `wrangler dev`). Config:
+ *
+ *   // otfw.config.js — forward /api/* to a locally running worker
+ *   export default { proxy: { "/api": "http://localhost:8787" } };
+ *
+ * The value is a target origin string, or `{ target }`. Rules are sorted
+ * longest-prefix-first so the most specific mapping wins.
+ */
+export function resolveProxyRules(config) {
+  const proxy = config?.proxy;
+  if (!proxy || typeof proxy !== "object") return [];
+  const rules = [];
+  for (const [prefix, value] of Object.entries(proxy)) {
+    const target = typeof value === "string" ? value : value?.target;
+    if (!target) continue;
+    rules.push({
+      prefix: prefix.replace(/\/+$/, "") || "/",
+      target: String(target).replace(/\/+$/, ""),
+    });
+  }
+  rules.sort((a, b) => b.prefix.length - a.prefix.length);
+  return rules;
+}
+
+/** The proxy target for a pathname, or `null` if no rule matches. A rule matches
+ *  its exact prefix path or anything nested under it (`/api` → `/api`, `/api/x`). */
+export function matchProxyTarget(pathname, rules) {
+  for (const r of rules) {
+    if (r.prefix === "/" || pathname === r.prefix || pathname.startsWith(r.prefix + "/")) {
+      return r.target;
+    }
+  }
+  return null;
+}
+
+/**
+ * Forward a request to a proxy `target` origin, preserving path, query, method,
+ * headers, and body. Used by `otfw dev` to bridge to a separately-running backend
+ * (e.g. `wrangler dev`). A connection failure becomes a 502 with a hint rather than
+ * crashing the dev server.
+ */
+export function proxyRequest(req, target) {
+  const url = new URL(req.url);
+  const dest = new URL(url.pathname + url.search, target);
+  const headers = new Headers(req.headers);
+  headers.delete("host"); // let fetch set the upstream Host from `dest`
+  const hasBody = req.method !== "GET" && req.method !== "HEAD";
+  return fetch(dest, {
+    method: req.method,
+    headers,
+    body: hasBody ? req.body : undefined,
+    redirect: "manual",
+    ...(hasBody ? { duplex: "half" } : {}),
+  }).catch(
+    (e) =>
+      new Response(
+        `Bad Gateway: dev proxy could not reach ${target}\n` +
+          `Is the upstream running? (e.g. \`wrangler dev\`)\n\n${e?.message ?? e}`,
+        { status: 502, headers: { "content-type": "text/plain" } },
+      ),
+  );
+}
+
+/**
  * The docs navigation Rolldown plugin, when the project opts into the docs
  * generator (a `docs` block in otfw.config). Resolved from `@opentf/web-docs`
  * (the app's own dependency); returns null when docs aren't configured or the

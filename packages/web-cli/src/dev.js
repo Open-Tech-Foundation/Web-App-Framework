@@ -39,9 +39,12 @@ import {
   loadConfig,
   loadDocsPlugins,
   loadProject,
+  matchProxyTarget,
   moduleGraph,
   otfwPlugin,
+  proxyRequest,
   readHtmlShell,
+  resolveProxyRules,
 } from "./shared.js";
 
 // Resolve the start port. An explicit `--port <n>` / `-p <n>` / `--port=<n>` is
@@ -108,6 +111,11 @@ export async function runDev() {
 
   const config = await loadConfig(root);
   const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
+  // Dev proxy (SPEC §11 / deployment): forward configured path prefixes to a
+  // separately-running backend instead of handling them in-process. This is how a
+  // provider-agnostic app reaches bindings the dev server can't host itself — e.g.
+  // `proxy: { "/api": "http://localhost:8787" }` to a local `wrangler dev` for D1.
+  const proxyRules = resolveProxyRules(config);
 
   const devDir = join(root, ".dev");
   mkdirSync(devDir, { recursive: true });
@@ -418,6 +426,15 @@ export async function runDev() {
       if (pathname.startsWith(ROUTE_PREFIX) && pathname.endsWith(".js")) {
         return js(await serveRoute(fromRouteUrl(pathname)));
       }
+      // Dev proxy: a configured path prefix is forwarded to its target origin
+      // (e.g. a local `wrangler dev`) instead of being handled here — so bindings
+      // like D1 resolve against the real runtime. Checked before the in-process API
+      // so proxied endpoints never also run locally. Dev-internal routes above are
+      // never proxied (they returned already).
+      if (proxyRules.length) {
+        const target = matchProxyTarget(pathname, proxyRules);
+        if (target) return proxyRequest(req, target);
+      }
       // API endpoints (route.* files, at any path — SPEC §11): a matched handler's
       // Response wins; a miss falls through to static assets / the SPA shell, so pages
       // and endpoints coexist. `getApi()` is O(1) after the first build (or a no-op
@@ -452,5 +469,6 @@ export async function runDev() {
 
   console.log(`\n  OTF Web dev server`);
   console.log(`  → http://localhost:${server.port}  (${pages.length} routes, on-demand)`);
+  for (const r of proxyRules) console.log(`  ↪ proxy ${r.prefix} → ${r.target}`);
   console.log(`  ✓ ready in ${Date.now() - bootStart}ms — routes compile on first visit\n`);
 }
