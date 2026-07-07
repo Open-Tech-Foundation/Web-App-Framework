@@ -143,16 +143,22 @@ async function evalJS(client, expression) {
 const OBSERVER = `
   window.__removedServer = 0;
   window.__removedInPanel = 0;
+  window.__movedByPortal = 0;
   const tag = (n) => {
     if (n.nodeType === 1 || n.nodeType === 3) n.__server = true;
     if (n.querySelectorAll) for (const d of n.querySelectorAll('*')) d.__server = true;
   };
   const inPanel = (parent) => !!(parent && parent.closest && parent.closest('.web-panel'));
+  // A <Portal> relocates its (adopted) children out of its host to <body> AFTER hydration —
+  // a legitimate move, not a rebuild. The removal record's target is the portal host, so a
+  // removal from inside a <web-internal-portal> is counted separately, never as a rebuild.
+  const inPortal = (parent) => !!(parent && parent.closest && parent.closest('web-internal-portal'));
   const mo = new MutationObserver((records) => {
     for (const rec of records) {
       for (const n of rec.addedNodes) tag(n);
       for (const n of rec.removedNodes) if (n.__server) {
         if (inPanel(rec.target)) window.__removedInPanel++;
+        else if (inPortal(rec.target)) window.__movedByPortal++;
         else window.__removedServer++;
       }
     }
@@ -250,6 +256,24 @@ const PROBE = `(() => {
       hasDot: !!a.querySelector('.tree-dot'),
       innerAnchors: a.querySelectorAll('a').length,
     })),
+    // Portal-across-hydration (the docs search-modal bug): the modal is <Portal>-wrapped, so
+    // its reactive class binding must be wired by the parent's adopt walk BEFORE the portal
+    // relocates it to <body>. Probe the modal wherever it lives (moved out of #app) + its state.
+    portal: (() => {
+      const host = document.querySelector('#app web-internal-portal');
+      const modal = document.querySelector('.search-modal'); // relocated to <body>
+      const body = document.querySelector('.search-body');
+      return {
+        modalPresent: !!modal,
+        modalServer: !!(modal && modal.__server),                    // moved, not rebuilt
+        modalInBody: !!(modal && modal.parentNode === document.body), // relocated to the target
+        modalStillInHost: !!(host && host.querySelector('.search-modal')), // should be false
+        isOpen: !!(modal && modal.classList.contains('is-open')),
+        bodyText: body ? body.textContent.replace(/\\s+/g, ' ').trim() : null,
+        modalCount: document.querySelectorAll('.search-modal').length, // exactly one (moved, not copied)
+        movedByPortal: window.__movedByPortal,
+      };
+    })(),
   };
 })()`;
 
@@ -276,7 +300,7 @@ async function run(port) {
     // ── 1. Adoption — the server DOM was claimed, not rebuilt ───────────────────
     const s = await evalJS(client, PROBE);
     assert(s.hasSentinel, "#app carries the data-otfw-hydrate sentinel (SSR shell)");
-    assert(s.buttonCount === 6, "six <button>s (counter + stepper + 'add' + 'toggle' + card-toggle + slotted) — nothing duplicated");
+    assert(s.buttonCount === 7, "seven <button>s (counter + stepper + 'add' + 'toggle' + card-toggle + slotted + search-trigger) — nothing duplicated");
 
     // ── 1e. The layout chain self-adopted (Phase 2.1c) ──────────────────────────
     assert(s.layoutIsServer, "the layout <div.layout> is a server node (adopted, not rebuilt)");
@@ -370,12 +394,28 @@ async function run(port) {
     assert(s.condYes.server, "the conditional branch <p> is a server node (adopted, not rebuilt)");
     assert(s.condNo === null, "the untaken branch (<span>NO) is absent, as the server rendered");
 
+    // ── 1h. A <Portal>-wrapped modal adopted in place, then relocated (the search bug) ──
+    // The only real-browser-only path: the <web-internal-portal> host upgrades on connect and
+    // would relocate its children immediately, but the runtime defers the move until hydration
+    // ends — so the parent adopts the modal (wiring its reactive `class` binding) first, then
+    // the *live* node relocates to <body>. Pre-fix, the binding was dead and the trigger inert.
+    assert(s.portal.modalPresent, "the portal's modal exists after hydration");
+    assert(s.portal.modalServer, "the modal is the server-rendered node (adopted, not rebuilt)");
+    assert(s.portal.modalInBody, "the modal was relocated to <body> (the portal's default target)");
+    assert(!s.portal.modalStillInHost, "the modal no longer sits in its <web-internal-portal> host (it moved)");
+    assert(s.portal.modalCount === 1, "exactly one modal — the portal moved the node, didn't copy it");
+    assert(s.portal.movedByPortal >= 1, "the observer saw the portal relocate a server node (a move, not a rebuild)");
+    assert(s.portal.bodyText === "modal CLOSED" && !s.portal.isOpen, "the modal adopted its server (closed) state");
+    // The relocation must NOT have registered as a rebuild anywhere on the page.
+    assert(s.removedServer === 0, "the portal relocation did not count as a server-node rebuild");
+
     // ── 2. Interactivity is live on every adopted island + the list ─────────────
     await evalJS(client, `document.querySelector('#app main > button').click()`);
     await evalJS(client, `document.querySelector('#app .stepper').click()`);
     await evalJS(client, `document.querySelector('#app button.add').click()`); // append a 4th item
     await evalJS(client, `document.querySelector('#app .card-toggle').click()`); // the Card's own state
     await evalJS(client, `document.querySelector('#app .slotted').click()`); // parent's count via the slot
+    await evalJS(client, `document.querySelector('#app .search-trigger').click()`); // opens the portaled modal
     await sleep(50);
     const after = await evalJS(client, PROBE);
     // The page counter and the slotted button share the page's `count` signal; clicking inc
@@ -398,6 +438,12 @@ async function run(port) {
     // A rebuild-on-reconcile would replaceChildren() the <ul>, tearing out the three tagged
     // server <li> (removedServer += 3). It stays 0 → the originals were kept, a 4th appended.
     assert(after.removedServer === 0, "reactivity updated in place — still no server node removed");
+    // The portaled modal's reactive class binding is LIVE on the adopted-then-relocated node —
+    // clicking the trigger flips `open`, so the <body>-relocated modal opens. This is the exact
+    // assertion that fails pre-fix: the trigger click did nothing because the binding was dead.
+    assert(after.portal.isOpen, "clicking the search trigger opened the portaled modal (binding live on first paint)");
+    assert(after.portal.bodyText === "modal OPEN", "the modal's reactive body text updated on the relocated node");
+    assert(after.portal.modalServer && after.portal.modalInBody, "the modal stayed the same adopted node in <body> through the update");
 
     // ── 3. The conditional swaps on toggle (removing the adopted branch is correct here) ──
     await evalJS(client, `document.querySelector('#app button.toggle').click()`);
