@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Valueless boolean props on components pass `true`, not `""`.** A valueless prop on a
+  component (`<Toggle disabled/>`) was lowered to an empty-string static, so the component
+  read a falsy `""` instead of the expected boolean. It now crosses as the JS boolean `true`
+  across all backends (CSR `setProp(el, "disabled", true)`, SSG payload `{ disabled: true }`,
+  and hydration reads it from that payload). DOM elements are unchanged — a valueless
+  attribute (`<input disabled/>`) stays the empty-string presence attribute.
+
 ## [0.6.0] - 2026-07-06
 
 ### Added

@@ -70,6 +70,12 @@ pub struct Prop {
 pub enum PropValue {
     /// A compile-time constant applied once.
     Static(String),
+    /// A valueless boolean prop (`<Foo disabled/>`): present, no written value. On
+    /// a DOM element this is the empty-string presence attribute; on a component it
+    /// must cross as the JS boolean `true` (an empty string would read falsy in the
+    /// component's props). Only produced for components — DOM valueless attributes
+    /// stay `Static("")`.
+    Boolean,
     /// A dynamic expression resolved via the Reactivity IR.
     Dynamic(ExpressionId),
     /// A dynamic expression that embeds JSX as value(s) — e.g. an array/object

@@ -1300,6 +1300,12 @@ impl<'a> Emitter<'a> {
             ));
             return;
         }
+        // Never produced for DOM elements (valueless attrs stay `Static("")`), but
+        // set the presence attribute if it ever reaches here.
+        if matches!(prop.value, PropValue::Boolean) {
+            self.line(format!("{el}.setAttribute({}, \"\");", js_string(&prop.name)));
+            return;
+        }
         let code = self.dynamic_prop_code(&prop.value);
         if is_listener(&prop.name) {
             self.emit_event_listener(el, &prop.name, &code);
@@ -1332,6 +1338,7 @@ impl<'a> Emitter<'a> {
                 substitute_branches(&template, &calls)
             }
             PropValue::Static(_) => unreachable!("static props are handled before this"),
+            PropValue::Boolean => unreachable!("boolean props are handled before this"),
         }
     }
 
@@ -1359,6 +1366,13 @@ impl<'a> Emitter<'a> {
                 js_string(&prop.name),
                 js_string(value)
             ));
+            return;
+        }
+        // Valueless boolean prop (`<Foo disabled/>`): pass the boolean `true` so the
+        // component reads a truthy value (an empty string would read falsy).
+        if matches!(prop.value, PropValue::Boolean) {
+            self.uses.set_prop = true;
+            self.line(format!("setProp({el}, {}, true);", js_string(&prop.name)));
             return;
         }
         let code = self.dynamic_prop_code(&prop.value);
@@ -1586,6 +1600,26 @@ mod tests {
             "code: {}",
             m.code
         );
+    }
+
+    #[test]
+    fn valueless_component_prop_passes_boolean_true() {
+        let m = emit_page(&lower(
+            "export function App() { return <Toggle disabled/>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // A valueless boolean prop must cross as `true`, not the (falsy) empty string.
+        assert!(m.code.contains("setProp(c0, \"disabled\", true);"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn valueless_element_attr_stays_empty_string() {
+        let m = emit_page(&lower(
+            "export function App() { return <input disabled/>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // DOM valueless attributes stay the empty-string presence attribute.
+        assert!(m.code.contains("setAttribute(\"disabled\", \"\")"), "code: {}", m.code);
     }
 
     #[test]

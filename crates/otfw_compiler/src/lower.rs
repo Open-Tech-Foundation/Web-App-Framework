@@ -2151,9 +2151,10 @@ impl<'a, 'r> Lowerer<'a, 'r> {
 
     fn lower_element(&mut self, el: &'a JSXElement<'a>) -> ViewNode {
         let name = self.element_name(&el.opening_element.name);
-        let props = self.lower_attrs(el);
+        let is_component = is_component_name(&name);
+        let props = self.lower_attrs(el, is_component);
         let children = self.lower_children(&el.children);
-        if is_component_name(&name) {
+        if is_component {
             ViewNode::Component { name, props, children }
         } else {
             ViewNode::Element { tag: name, props, children }
@@ -2199,7 +2200,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         }
     }
 
-    fn lower_attrs(&mut self, el: &'a JSXElement<'a>) -> Vec<Prop> {
+    fn lower_attrs(&mut self, el: &'a JSXElement<'a>, is_component: bool) -> Vec<Prop> {
         let mut props = Vec::new();
         for item in &el.opening_element.attributes {
             match item {
@@ -2231,6 +2232,9 @@ impl<'a, 'r> Lowerer<'a, 'r> {
                     }
                     let value = match &attr.value {
                         // Valueless attribute (`<input disabled />`): present, no value.
+                        // On a component it crosses as the boolean `true`; on a DOM
+                        // element it stays the empty-string presence attribute.
+                        None if is_component => PropValue::Boolean,
                         None => PropValue::Static(String::new()),
                         Some(JSXAttributeValue::StringLiteral(s)) => {
                             // Attribute values decode character references too

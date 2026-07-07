@@ -364,6 +364,9 @@ impl<'a> Emitter<'a> {
             }
             match &p.value {
                 PropValue::Static(v) => open.push_str(&format!(" {}=\"{}\"", p.name, escape_attr(v))),
+                // Never produced for DOM elements (valueless attrs stay `Static("")`),
+                // but render the presence attribute if it ever reaches here.
+                PropValue::Boolean => open.push_str(&format!(" {}=\"\"", p.name)),
                 PropValue::Dynamic(id) => {
                     self.server.insert("attr");
                     dyn_attrs.push(format!("attr({}, {})", js_string(&p.name), self.code(*id)));
@@ -409,6 +412,9 @@ impl<'a> Emitter<'a> {
             }
             let val = match &p.value {
                 PropValue::Static(v) => js_string(v),
+                // Valueless boolean prop (`<Foo disabled/>`): cross as JS `true`, not
+                // the empty string (which would read falsy in the component's props).
+                PropValue::Boolean => "true".to_string(),
                 PropValue::Dynamic(id) => format!("({})", self.code(*id)),
                 PropValue::DynamicNode { expr, branches } => {
                     format!("({})", self.node_prop_code(*expr, branches))
@@ -654,6 +660,21 @@ mod tests {
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         assert!(
             m.code.contains("ssgComponent(Counter.tag, { label: \"hi\" }"),
+            "compose:\n{}",
+            m.code
+        );
+    }
+
+    #[test]
+    fn valueless_component_prop_serializes_boolean_true() {
+        let m = emit(
+            "import Toggle from \"../components/Toggle\"; export default function P(){ return <div><Toggle disabled/></div>; }",
+            true,
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // A valueless boolean prop crosses to the component as `true`, not `""`.
+        assert!(
+            m.code.contains("ssgComponent(Toggle.tag, { disabled: true }"),
             "compose:\n{}",
             m.code
         );

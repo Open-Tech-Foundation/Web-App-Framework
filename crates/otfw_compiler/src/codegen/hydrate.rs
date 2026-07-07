@@ -761,7 +761,7 @@ impl<'a> Emitter<'a> {
             return;
         }
         match &prop.value {
-            PropValue::Static(_) => {} // already serialized into the server HTML
+            PropValue::Static(_) | PropValue::Boolean => {} // already serialized into the server HTML
             PropValue::Dynamic(expr) => {
                 let code = self.code(*expr);
                 if is_listener(&prop.name) {
@@ -800,7 +800,7 @@ impl<'a> Emitter<'a> {
             // upgrading component's constructor (rich value, no flash) — nothing to
             // re-apply during adoption. (`ssgComponent` reflects nothing onto the host tag;
             // the payload, not host attributes, is how declared props cross to the client.)
-            PropValue::Static(_) => {}
+            PropValue::Static(_) | PropValue::Boolean => {}
             PropValue::Dynamic(expr) => {
                 let code = self.code(*expr);
                 if is_listener(&prop.name) {
