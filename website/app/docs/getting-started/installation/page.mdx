@@ -43,7 +43,9 @@ cd my-app
 bun run dev
 ```
 
-The dev server compiles on demand and hot-reloads on save.
+The dev server compiles each route on first visit. Saving files under `app/` rebuilds
+affected chunks and **refreshes the browser tab** (full-page reload) — not module-level
+HMR yet. Restart the dev server after adding a new route folder or changing `otfw.config.js`.
 
 For **Library** projects, run the included test suite instead:
 

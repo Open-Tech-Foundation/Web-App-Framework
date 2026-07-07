@@ -93,7 +93,7 @@ export default auth;
 
 ## Running & deploying
 
-- **`otfw dev`** serves your endpoints with hot reload.
+- **`otfw dev`** serves your endpoints and rebuilds them on `route.*` / `_middleware.*` edits (full-page refresh).
 - **`otfw serve`** tries a matching `route.*` handler first, then SSR — so a request
   that matches no handler falls through to your pages (pages and endpoints coexist).
 - **`otfw build`** emits `dist/server/api.js`, a self-contained handler you deploy

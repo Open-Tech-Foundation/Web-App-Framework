@@ -12,7 +12,7 @@ import benchmarkReport from "./benchmark-report.json";
 export const benchmark = benchmarkReport;
 
 // --- Capabilities & roadmap (grouped; statuses verified against the codebase) -
-//     status: "supported" | "beta" | "planned"
+//     status: "supported" | "partial" | "beta" | "planned"
 export const capabilities = [
   {
     category: "Core",
@@ -49,7 +49,8 @@ export const capabilities = [
     category: "Tooling & DX",
     items: [
       { name: "create-web scaffolder", status: "supported", desc: "App, Docs, or Library templates — JS/TS, auto-install, npm-pinned deps." },
-      { name: "Dev server + live reload", status: "supported", desc: "Rebuild-on-save with a browser refresh." },
+      { name: "Dev server + reload on save", status: "partial", desc: "On-demand per-route compile. Edits under app/ rebuild and trigger a full-page refresh — not module-level HMR." },
+      { name: "Module-level HMR", status: "planned", desc: "Hot-swap changed modules in place without reloading the tab." },
       { name: "Dev error overlay", status: "supported", desc: "In-browser error reporting during dev." },
       { name: "Testing library", status: "supported", desc: "Component testing utilities." },
       { name: "TypeScript / TSX", status: "beta", desc: "Scaffold .tsx projects with tsconfig and macro typings; full editor tooling in progress." },

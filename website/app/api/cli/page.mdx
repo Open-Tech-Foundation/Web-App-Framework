@@ -12,7 +12,7 @@ through `package.json` scripts (`bun run dev`, `bun run build`).
 
 | Command | Description |
 | --- | --- |
-| `otfw dev` | Start the dev server with on-demand compile and hot reload. |
+| `otfw dev` | Start the dev server with on-demand compile and reload-on-save (full-page refresh). |
 | `otfw build` | Compile and bundle to `dist/` — per-route lazy chunks under `assets/`. |
 | `otfw build --ssg` | Build and pre-render every route to static HTML. |
 | `otfw serve` | Build, then run the per-request SSR server (`--port` to override). |
@@ -61,3 +61,17 @@ manager that invoked the command.
 - Serves your `public/` directory at the site root (e.g. `/logo.png`).
 - Compiles `.css` entries (including Tailwind) on request.
 - Surfaces compile errors in an overlay.
+
+### Reload on save (not module HMR)
+
+`otfw dev` watches `app/` and, on a supported file change, drops cached route chunks and
+signals the browser over `/__hmr` to **`location.reload()`** — a full tab refresh, not
+in-place hot module replacement.
+
+| Works on save | Limitations |
+| --- | --- |
+| `app/**/*.{jsx,tsx,mdx,md,css}` (existing routes) | New `page.*` in a **new folder** may need a dev-server restart |
+| Imported components, layouts, loaders | Plain `app/**/*.js` (e.g. `_meta.js`) is not watched |
+| `route.js` / `loader.js` API and data bundles | `otfw.config.js` and `index.html` need a restart |
+
+Module-level HMR (swap a changed module without reloading the page) is on the roadmap.
