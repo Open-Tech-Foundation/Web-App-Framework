@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-07
+
 ### Added
 
 - **Request middleware for the whole pipeline (`createMiddleware`) — pages, API, and loader
