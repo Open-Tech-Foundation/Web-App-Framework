@@ -32,6 +32,16 @@ export default function Layout(props) {
 
 Layouts nest: `app/layout.jsx` wraps `app/blog/layout.jsx` wraps `app/blog/page.jsx`.
 
+## Metadata
+
+Export `metadata` or `generateMetadata` from a page or layout to control `<title>`,
+descriptions, Open Graph tags, and canonical URLs. Layout defaults merge down the tree;
+pages override what they need. On SSG and SSR each route gets a full resolved `<head>`;
+on a plain CSR build only the **root layout's** site-wide fields (favicon, description,
+Open Graph site defaults) are injected into the shared `index.html` shell — per-page
+`title` and `canonical` require `--ssg` or `otfw serve`. See
+[Metadata & SEO](/docs/routing/metadata).
+
 ## Not found
 
 `app/404.jsx` renders when no route matches.

@@ -1,0 +1,180 @@
+---
+title: Troubleshooting
+description: Common OTF Web pitfalls — init-once JSX, signal mutation, hydration mismatches, compile errors, and the dev overlay.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Troubleshooting
+
+OTF Web components run **once** at connect (init-once), not on every state change. Most
+"my UI didn't update" reports trace back to that model, signal reassignment rules, or
+server/client render drift. This page collects the frequent cases and where to read more.
+
+## The UI does not update when state changes
+
+### Put conditionals inside JSX holes
+
+`if (cond) return <A />` and early-return guards are evaluated **once** at connect.
+They are not reactive regions — flipping a `$state` later does not swap the branch.
+
+```jsx
+// ❌ frozen at first connect
+if (!user) return <Login />;
+return <Main user={user} />;
+
+// ✅ reactive — inline hole or single return with JSX branches
+return user ? <Main user={user} /> : <Login />;
+return <div>{user ? <Main user={user} /> : <Login />}</div>;
+```
+
+Full walkthrough: [Templating → Init-once](/docs/core-concepts/templating#init-once--frozen-at-first-connect)
+and [JSX → Unsupported patterns](/docs/core-concepts/jsx#unsupported-patterns).
+
+### Do not cache JSX in a local variable
+
+JSX assigned to `const view = …` is built once. Embedding `{view}` later is a plain
+value hole, not a reactive switch:
+
+```jsx
+// ❌ branch fixed at connect
+const panel = user ? <Main /> : <Login />;
+return <div>{panel}</div>;
+
+// ✅ conditional inside the returned JSX
+return <div>{user ? <Main /> : <Login />}</div>;
+```
+
+### Reassign `$state`, do not mutate it
+
+Signals notify on **reassignment**, not in-place mutation. The compiler rejects common
+mutators (`push`, `splice`, property assignment, `++`) on `$state` variables with an
+error that points at the immutable rewrite.
+
+```jsx
+// ✅
+todos = [...todos, item];
+todos = todos.filter((t) => t.id !== id);
+
+// ❌ compile error or silent no-op
+todos.push(item);
+todos[0].done = true;
+```
+
+When nested objects need direct mutation, use `reactive()` instead — see
+[Reactivity](/docs/core-concepts/reactivity).
+
+## Compile errors
+
+| Error / pattern | Fix |
+| --- | --- |
+| `ref={(el) => …}` callback ref | Use `$ref()` + `onMount` / `$effect` / [`$expose`](/docs/core-concepts/imperative-api) |
+| `<Foo.Bar />` member component | Import `Bar` and render `<Bar />` |
+| `$state` mutation (`push`, `x.y = …`, `++`) | Reassign a new value, or switch to `reactive()` |
+| `{ [key]: val }` computed prop keys | Use static identifier keys in JSX attributes |
+| Lifecycle hook inside a helper / `if` / after `await` | Move `onMount`, `onCleanup`, etc. to **top-level** statements in the component body |
+
+Callback refs and member components are called out in the
+[JSX reference](/docs/core-concepts/jsx#unsupported-patterns).
+
+## Hydration mismatches
+
+With [SSG](/docs/deployment/static-generation) or [SSR](/docs/deployment/server), the
+client **adopts** the server HTML on first paint. If structure diverges, the runtime
+reports a **hydration mismatch** (visible in the dev overlay) and rebuilds that
+component via CSR. The rest of the page stays adopted.
+
+**Common causes:**
+
+- **Non-deterministic render** — `Date.now()`, `Math.random()`, or reading `window` /
+  `localStorage` during render. Gate client-only UI with `onMount` or a post-hydration
+  signal.
+- **Loader vs client fetch** — pre-rendered HTML should match what the client paints
+  before its own fetch completes. Use [route loaders](/docs/data-fetching) so SSG/SSR
+  inline the same data the client reads on hydration.
+- **Different branches server vs client** — avoid `user ? <Dashboard /> : <Login />`
+  when `user` is only known in the browser unless the server emits the same branch the
+  client will adopt first.
+
+Details: [Hydration](/docs/deployment/hydration).
+
+<Callout type="warning" title="Fragment route roots">
+  Multi-root fragment outputs (a page that returns `<>…</>` without a wrapper) are a
+  known gap on the adopt path — the subtree may fall back to CSR. Wrap the page in a
+  single element when you need reliable hydration.
+</Callout>
+
+## Lifecycle hooks on pages
+
+`onResize` and `onVisibilityChange` observe the **host element**. A page using them
+needs a **single element root** — not a bare fragment. The compiler warns when the root
+is a fragment.
+
+`onMediaQuery` has no element constraint. All lifecycle macros must be **top-level**
+statements; calls inside functions, conditions, or after `await` are silent no-ops.
+During SSG/SSR they do not run at all — only in the client bundle.
+
+See [Lifecycle](/docs/core-concepts/lifecycle).
+
+## Dev error overlay (`otfw dev`)
+
+The dev server injects an error overlay (Next.js-style) for:
+
+- **Compile errors** — pushed over the HMR WebSocket when a route fails to compile;
+  fixing the file and saving triggers a reload.
+- **Runtime errors** — uncaught exceptions, unhandled rejections, and `otfw:error`
+  events (render, effect, mount, route). A successful navigation sends
+  `otfw:error-clear` and dismisses the overlay.
+
+`<ErrorBoundary>` catches user-visible failures but still **reports** to the overlay
+before rendering fallback UI — boundaries contain crashes; they do not hide them from
+developers. See [Error boundaries](/docs/core-concepts/error-boundary).
+
+Press **Esc** or click outside the panel to dismiss; a clean rebuild or navigation also
+clears it.
+
+## SEO and metadata
+
+- **Per-route titles and share cards** need SSG or SSR — each URL must ship its own
+  `<title>`, `canonical`, and `generateMetadata` output. A plain CSR build serves one
+  shared `index.html` for every route; it injects only the **root layout's** site-wide
+  defaults (favicon, description, Open Graph site name) — not per-page head. See
+  [Metadata & SEO](/docs/routing/metadata).
+- **SPA navigation never updates `<head>`** — after first paint, `<Link>` navigations do
+  not re-run metadata. Crawlers and social previews use the document for the URL they
+  fetched, not the client-rendered view.
+- **Missing absolute URLs** — set `site.url` in `otfw.config.js` (or `--base-url` at
+  build) so canonicals, `og:image`, and the sitemap are absolute.
+- **Dynamic routes not in the sitemap** — export `getStaticPaths` when pre-rendering
+  with `--ssg`; otherwise those paths have no static HTML (but `otfw serve` / SSR still
+  resolves `generateMetadata` per request).
+
+## Quick decision tree
+
+```text
+UI stuck after setState?
+  ├─ conditional outside {…} in JSX?     → move into a JSX hole
+  ├─ JSX stored in const/let?            → inline the conditional
+  └─ mutating array/object in place?     → reassign or use reactive()
+
+Compile failed?
+  ├─ callback ref / <Foo.Bar />          → $ref / direct import
+  └─ $state.push or x.y = …             → immutable reassignment
+
+Flash or hydration warning on load?
+  ├─ Date.now / window during render?    → onMount or loader data
+  └─ fragment page root + observers?     → wrap in one element
+
+Wrong title in Slack/Google?
+  ├─ plain CSR only?                     → add --ssg or otfw serve for per-route <head>
+  └─ deep link works but in-app nav wrong? → expected: <head> is not updated on <Link>
+```
+
+## Related guides
+
+- [JSX](/docs/core-concepts/jsx) — supported patterns and pitfalls table
+- [Templating](/docs/core-concepts/templating) — reactive conditionals and lists
+- [Reactivity](/docs/core-concepts/reactivity) — `$state`, `reactive()`, `$effect`
+- [Hydration](/docs/deployment/hydration) — adopt path and mismatch recovery
+- [Metadata & SEO](/docs/routing/metadata) — titles, OG tags, `site.url`
+- [Data Fetching](/docs/data-fetching) — loaders aligned with pre-rendered HTML

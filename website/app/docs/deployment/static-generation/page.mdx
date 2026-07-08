@@ -31,3 +31,7 @@ CSS bundles. On load, the same components take over the static markup.
 Every `page.jsx`/`page.mdx` route is pre-rendered with its layout chain. Components
 that only run in the browser (those touching `window` during render) are skipped
 gracefully and filled in on the client.
+
+Each output `.html` file also gets a resolved `<head>` from the route's
+[metadata](/docs/routing/metadata) exports (title, description, Open Graph, canonical,
+and related tags).

@@ -60,7 +60,8 @@ location / {
 <Callout type="tip" title="Pre-render for SEO">
   Add `--ssg` to also emit a static `.html` for every route — see
   [Static Generation](/docs/deployment/static-generation). Crawlers then get full markup
-  without running your JS.
+  without running your JS. Per-route `<head>` tags come from
+  [Metadata & SEO](/docs/routing/metadata) exports on your pages and layouts.
 </Callout>
 
 ## Base URL

@@ -1,5 +1,6 @@
 export default {
   "pages-and-layouts": "Pages & Layouts",
+  metadata: "Metadata & SEO",
   "dynamic-routes": "Dynamic Routes",
   navigation: "Navigation",
   middleware: "Middleware",

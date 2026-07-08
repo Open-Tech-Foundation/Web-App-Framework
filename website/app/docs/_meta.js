@@ -10,4 +10,5 @@ export default {
   configuration: "Configuration",
   packages: "Packages",
   deployment: "Deployment",
+  troubleshooting: "Troubleshooting",
 };
