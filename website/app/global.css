@@ -479,7 +479,48 @@ body {
   font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
 }
 
-/* Hero install pill — command + a pill copy button that lights green when copied. */
+/* Hero install — chip tabs + command pill with copy feedback. */
+.install-tabs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  max-width: 100%;
+}
+.install-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--bg-surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.install-chip {
+  padding: 0.38rem 0.95rem;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.install-chip:hover {
+  color: var(--text-main);
+  background: var(--bg-main);
+}
+.install-chip.is-active {
+  color: var(--accent);
+  background: var(--bg-main);
+  border-color: var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
 .install-pill {
   display: inline-flex;
   align-items: center;
@@ -497,6 +538,12 @@ body {
 }
 .install-pill .install-cmd {
   white-space: nowrap;
+  overflow-x: auto;
+  max-width: min(72vw, 28rem);
+  scrollbar-width: none;
+}
+.install-pill .install-cmd::-webkit-scrollbar {
+  display: none;
 }
 .install-copy {
   display: inline-flex;

@@ -1,6 +1,6 @@
 import { Link } from "@opentf/web";
 import BenchmarkTable from "./components/BenchmarkTable.jsx";
-import InstallPill from "./components/InstallPill.jsx";
+import InstallTabs from "./components/InstallTabs.jsx";
 import ReactiveTrace from "./components/ReactiveTrace.jsx";
 import { benchmark, capabilities } from "./home-data.js";
 
@@ -75,7 +75,7 @@ export default function HomePage() {
         </div>
 
         <div className="flex justify-center pt-1">
-          <InstallPill command="bun create @opentf/web my-app" />
+          <InstallTabs />
         </div>
       </section>
 
