@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-08
+
 ### Fixed
 
 - **JSX written inside a loop or callback body captures that scope's locals.** JSX
