@@ -479,6 +479,24 @@ body {
   font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
 }
 
+/* Site footer — Open Tech Foundation org link */
+.otfw-footer-org-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.otfw-footer-org-link:hover {
+  color: var(--text-main);
+}
+.otfw-footer-org-logo {
+  display: block;
+  flex-shrink: 0;
+  opacity: 0.92;
+}
+
 /* Hero install — chip tabs + command pill with copy feedback. */
 .install-tabs {
   display: flex;
