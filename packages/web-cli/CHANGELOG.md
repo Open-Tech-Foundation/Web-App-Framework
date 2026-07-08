@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Plain CSR builds now carry the root layout's metadata in `index.html`.** A CSR SPA
+  (`otfw build`, no `--ssg`) serves one `index.html` shell for every route, and it
+  previously ignored `export const metadata` entirely — so a favicon or description
+  declared in the root `app/layout.jsx` never reached the document. The build now
+  resolves the root layout chain's *route-independent* metadata (favicon/other `links`,
+  site-wide `description`, Open Graph site defaults, `robots`, extra `meta`/`jsonLd`) and
+  injects it into the shell. Per-**page** `title`, `canonical`, and `generateMetadata`
+  remain route-specific and still require `--ssg` or `otfw serve`. Only the root layout is
+  compiled for this (not the whole app), so CSR build cost is unaffected.
+
 ## [1.13.1] - 2026-07-08
 
 _Dependency updates._

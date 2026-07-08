@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`metadata.links[].type` is now emitted in `<head>`.** A feed/alternate link such as
+  `{ rel: "alternate", type: "application/rss+xml", href: "/blog/rss.xml" }` previously
+  rendered without its `type` attribute, so crawlers couldn't tell the MIME type of the
+  linked resource. `renderHead` now emits `type` alongside `rel`/`href`/`hreflang`.
+
+### Added
+
+- **Route-independent head rendering (`renderHead(meta, { path: null })`).** Renders
+  site-wide metadata without stamping a route-specific `canonical` / `og:url` — a shared
+  document (e.g. a CSR SPA shell served for every route) no longer claims one route's URL
+  as canonical for all of them. An explicit `meta.canonical` is still honored. Backs the
+  new plain-CSR layout-metadata injection in `@opentf/web-cli`.
+
 ## [0.17.0] - 2026-07-08
 
 ### Fixed
