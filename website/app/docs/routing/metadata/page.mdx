@@ -1,0 +1,222 @@
+---
+title: Metadata & SEO
+description: Declare page titles, descriptions, Open Graph tags, and structured data on routes and layouts.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Metadata & SEO
+
+Pages and layouts export **metadata** — a plain-data object (or a `generateMetadata`
+function) that the toolchain turns into `<head>` tags during [Static Generation](/docs/deployment/static-generation)
+and [Server](/docs/deployment/server) rendering. Layout defaults merge down the folder
+tree; each page overrides what it needs.
+
+## Static metadata
+
+Export a `metadata` object from any `page.jsx`, `page.mdx`, or `layout.jsx`:
+
+```jsx
+export const metadata = {
+  title: "About",
+  description: "What we build and why.",
+  canonical: "/about",
+};
+```
+
+Site-wide defaults belong in the root `app/layout.jsx` so child routes inherit them:
+
+```jsx
+export const metadata = {
+  titleTemplate: "%s — My App",
+  description: "Default description when a page omits one.",
+  openGraph: { siteName: "My App", type: "website" },
+  links: [{ rel: "icon", href: "/favicon.svg" }],
+};
+```
+
+A page's `title` string is wrapped by an inherited `titleTemplate` (`"%s — My App"` →
+`About — My App`). To keep a bespoke title (for example on a homepage), use an absolute
+title:
+
+```jsx
+export const metadata = {
+  title: { absolute: "My App — native-first web apps" },
+};
+```
+
+## Dynamic metadata
+
+For routes with params or query strings, export `generateMetadata`. It receives
+`{ params, query }` and its return value wins over static `metadata` on the same file:
+
+```jsx
+export function getStaticPaths() {
+  return [{ params: { id: "1" } }, { params: { id: "2" } }];
+}
+
+export function generateMetadata({ params }) {
+  return {
+    title: `Post ${params.id}`,
+    description: `Article ${params.id}.`,
+    canonical: `/post/${params.id}`,
+  };
+}
+```
+
+Use `generateMetadata` on [dynamic routes](/docs/routing/dynamic-routes) when each path
+needs its own title, description, or share image. Pair it with `getStaticPaths` when you
+pre-render those paths with `otfw build --ssg`.
+
+A dynamic route **without** `getStaticPaths` produces no pre-rendered HTML, but
+`generateMetadata` still runs per request under `otfw serve` / SSR — so those pages get
+their `<head>` at request time, including query params.
+
+## Merge order
+
+Metadata resolves from least- to most-specific:
+
+1. Each layout in the chain (root → leaf): static `metadata`, then `generateMetadata`
+2. The page: static `metadata`, then `generateMetadata`
+
+Nested objects **`openGraph`**, **`twitter`**, and **`robots`** deep-merge one level —
+a page can set `openGraph.image` without dropping a layout's `openGraph.siteName`.
+
+## Fields
+
+| Field | Emits | Notes |
+| --- | --- | --- |
+| `title` | `<title>` | String (wrapped by `titleTemplate`) or `{ absolute: "…" }` |
+| `titleTemplate` | — | Layout-only pattern with `%s` (e.g. `"%s — Brand"`) |
+| `description` | `<meta name="description">` | Also feeds OG/Twitter when those omit their own |
+| `canonical` | `<link rel="canonical">` | Relative paths become absolute when `site.url` is set |
+| `robots` | `<meta name="robots">` | String (`"noindex, nofollow"`) or `{ index, follow, noarchive, … }` |
+| `openGraph` | `og:*` tags | `title`, `description`, `type`, `url`, `image`, `siteName` |
+| `twitter` | `twitter:*` tags | `card`, `title`, `description`, `image` — falls back to OG. `card` auto-upgrades to `summary_large_image` when an image exists and `card` is omitted |
+| `jsonLd` | `<script type="application/ld+json">` | Object or pre-serialized string |
+| `meta` | Extra `<meta>` tags | `[{ name \| property \| httpEquiv, content }]` |
+| `links` | `<link>` tags | `[{ rel, href, type?, hreflang? }]` — favicons, alternates, feeds, etc. |
+
+Open Graph and Twitter images are made absolute against `site.url` when the path is
+relative (`/og.png` → `https://example.com/og.png`).
+
+### Robots and JSON-LD
+
+```jsx
+export const metadata = {
+  robots: { index: false, follow: true },
+  jsonLd: {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "My App",
+  },
+};
+```
+
+### Escape hatch tags
+
+Anything not covered by the table above goes through `meta` and `links`:
+
+```jsx
+export const metadata = {
+  meta: [{ name: "theme-color", content: "#0a0a0a" }],
+  links: [
+    { rel: "alternate", type: "application/rss+xml", href: "/blog/rss.xml" },
+  ],
+};
+```
+
+## Site URL and absolute links
+
+Set the canonical origin in `otfw.config.js` (or pass `--base-url` at build time). In a
+plain SPA or fullstack project, export a plain config object:
+
+```js
+// otfw.config.js
+export default {
+  site: { url: "https://example.com" },
+};
+```
+
+In a `@opentf/web-docs` project, wrap it with `defineDocsConfig` instead:
+
+```js
+// otfw.config.js
+import { defineDocsConfig } from "@opentf/web-docs";
+
+export default defineDocsConfig({
+  site: { url: "https://example.com" },
+});
+```
+
+The SSG step uses `site.url` for canonical URLs, `og:url`, image absolutization, the
+sitemap, and blog feeds. See [Configuration](/docs/configuration) and
+[Production Build](/docs/deployment/build).
+
+When `site.url` is omitted, canonical and OG URLs stay relative — fine for local preview,
+not ideal for production SEO.
+
+## When metadata is applied
+
+| Mode | `<head>` behavior |
+| --- | --- |
+| `otfw build --ssg` | Each pre-rendered `.html` file gets a resolved `<head>` per route |
+| `otfw serve` / SSR adapters | `<head>` is rendered per request |
+| Plain CSR (`otfw build`) | `index.html` is the shell only — metadata exports are **ignored**. Put your `<title>` and favicon directly in `index.html`, or build with `--ssg` / serve with `otfw serve` to get per-route `<head>` |
+
+<Callout type="info" title="Client navigation does not rewrite &lt;head&gt;">
+  After first paint, SPA navigations via `<Link>` do not re-run metadata resolution.
+  Crawlers and social previews rely on the document you shipped for that URL — use SSG
+  or SSR when SEO and share cards matter.
+</Callout>
+
+## MDX and docs pages
+
+In `@opentf/web-docs` projects, MDX frontmatter sets sidebar labels and feeds the same
+metadata pipeline as `export const metadata`:
+
+```mdx
+---
+title: Installation
+description: Scaffold a project and start the dev server.
+---
+```
+
+For live JSX routes, prefer `export const metadata` or `generateMetadata` on the page
+module. See [web-docs → Markdown](/docs/packages/web-docs/markdown).
+
+## Example — layered defaults
+
+Root layout brands every page; the homepage opts out; a dynamic post sets its own
+canonical:
+
+```jsx
+// app/layout.jsx
+export const metadata = {
+  titleTemplate: "%s — OTF Web",
+  description: "A zero-VDOM framework.",
+  openGraph: { siteName: "OTF Web", type: "website" },
+};
+
+// app/page.jsx
+export const metadata = {
+  title: { absolute: "OTF Web — The native-first framework" },
+  canonical: "/",
+};
+
+// app/post/[id]/page.jsx
+export function generateMetadata({ params }) {
+  return {
+    title: `Post ${params.id}`,
+    canonical: `/post/${params.id}`,
+  };
+}
+```
+
+## Related
+
+- [Pages & Layouts](/docs/routing/pages-and-layouts) — where metadata exports live
+- [Dynamic Routes](/docs/routing/dynamic-routes) — `params` in `generateMetadata`
+- [Static Generation](/docs/deployment/static-generation) — pre-rendered HTML + head
+- [Configuration](/docs/configuration) — `site.url` and build plugins
+- [Troubleshooting](/docs/troubleshooting) — hydration and SEO alignment issues
