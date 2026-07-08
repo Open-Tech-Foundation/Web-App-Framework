@@ -159,8 +159,9 @@ export function renderHead(meta = {}, { path = "/", baseUrl = "" } = {}) {
   for (const l of Array.isArray(meta.links) ? meta.links : []) {
     const rel = l.rel ? ` rel="${escapeAttr(l.rel)}"` : "";
     const href = l.href ? ` href="${escapeAttr(absUrl(baseUrl, l.href))}"` : "";
+    const type = l.type ? ` type="${escapeAttr(l.type)}"` : "";
     const extra = l.hreflang ? ` hreflang="${escapeAttr(l.hreflang)}"` : "";
-    if (rel || href) push(`<link${rel}${href}${extra}>`);
+    if (rel || href) push(`<link${rel}${type}${href}${extra}>`);
   }
 
   // Structured data (JSON-LD) for rich results.
