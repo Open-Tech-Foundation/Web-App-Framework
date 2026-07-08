@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-07-08
+
 ### Fixed
 
 - **`metadata.links[].type` is now emitted in `<head>`.** A feed/alternate link such as
