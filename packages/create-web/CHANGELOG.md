@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Docs** template: interactive **“Include a sample blog?”** prompt (default: no). When
+  enabled, scaffolds `app/blog/` with a demo post, adds the `blog` block to
+  `otfw.config.js`, and links **Blog** in the top navbar alongside Docs.
+
 ## [0.15.0] - 2026-07-08
 
 ### Added
