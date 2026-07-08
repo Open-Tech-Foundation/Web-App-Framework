@@ -21,7 +21,7 @@ use otfw_ir::view::{Prop, PropValue, ViewNode};
 use otfw_ir::ExpressionId;
 
 use crate::codegen::tags;
-use crate::lower::{module_shell, BodyItem, ExprTable, Lowered, SignalDecl};
+use crate::lower::{module_shell, BodyItem, EffectCb, ExprTable, Lowered, SignalDecl};
 
 /// The SVG namespace; elements under `<svg>` are created with `createElementNS`
 /// (SPEC §5.8).
@@ -673,6 +673,15 @@ pub(crate) fn substitute_branches_pub(template: &str, calls: &[String]) -> Strin
     substitute_branches(template, calls)
 }
 
+/// A `$effect` callback's source with any embedded JSX substituted as inline CSR
+/// node-builder IIFEs — for the hydrate backend. Effects always *build* fresh
+/// nodes (SSG doesn't run effects, so there is nothing to adopt); helper imports
+/// are covered by the dual module's CSR arm, like [`emit_build_node_fn`].
+pub(crate) fn effect_code_pub(lowered: &Lowered, cb: &EffectCb) -> String {
+    let mut e = Emitter::new(lowered, Disposal::None);
+    e.effect_code(cb)
+}
+
 fn emit_module_inner(
     components: &[Lowered],
     module_stmts: &[BodyItem],
@@ -890,9 +899,24 @@ impl<'a> Emitter<'a> {
     /// effects can read refs assigned during the build.
     fn emit_effects(&mut self) {
         for cb in self.lowered.effects.clone() {
+            let code = self.effect_code(&cb);
             self.uses.effect = true;
-            self.bind(format!("effect({cb})"));
+            self.bind(format!("effect({code})"));
         }
+    }
+
+    /// A `$effect` callback's source, with any embedded JSX branch substituted as
+    /// an inline node-builder IIFE (see [`Self::inline_node_expr`]) so it evaluates
+    /// in the scope the JSX was written in (the callback's loop locals, params).
+    fn effect_code(&mut self, cb: &EffectCb) -> String {
+        if cb.nodes.is_empty() {
+            return cb.code.clone();
+        }
+        let mut calls = Vec::with_capacity(cb.nodes.len());
+        for node in &cb.nodes {
+            calls.push(self.inline_node_expr(node));
+        }
+        substitute_branches(&cb.code, &calls)
     }
 
     /// Emit `$expose(obj)` as `Object.assign(this, obj)`, publishing the object's
@@ -1582,6 +1606,41 @@ mod tests {
         assert!(m.code.contains("const current = offset.value + matchIndex;"), "current decl:\n{}", m.code);
         assert!(m.code.contains("el0.onclick = () => select(match, current);"), "handler captures locals:\n{}", m.code);
         assert!(m.code.contains("bindText(t1, () => (match.title))"), "text hole captures local:\n{}", m.code);
+    }
+
+    #[test]
+    fn jsx_in_effect_loop_body_captures_loop_locals() {
+        // The reported shape: a plain `for` loop directly inside a `$effect`
+        // callback, pushing JSX that reads loop locals. The callback must be
+        // templated (no raw JSX leaking into output) and the builder must be
+        // an inline IIFE inside the loop body.
+        let m = emit_page(&lower(
+            "export default function BoardSearch() {\n\
+               let searchResults = $state([]);\n\
+               let container = $ref();\n\
+               $effect(() => {\n\
+                 const groups = [];\n\
+                 for (let groupIndex = 0; groupIndex < searchResults.length; groupIndex++) {\n\
+                   const group = searchResults[groupIndex];\n\
+                   groups.push(<Child group={group} idx={groupIndex} />);\n\
+                 }\n\
+                 container.replaceChildren(...groups);\n\
+               });\n\
+               return <div ref={container}></div>;\n\
+             }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // No raw JSX leaked into the emitted module.
+        assert!(!m.code.contains("<Child"), "raw JSX leaked:\n{}", m.code);
+        assert!(!m.code.contains("function default_value"), "hoisted builder:\n{}", m.code);
+        // The inline builder sits at the push site, inside the loop body.
+        assert!(m.code.contains("groups.push((() => {"), "inline builder at push site:\n{}", m.code);
+        let loop_start = m.code.find("for (let groupIndex").unwrap();
+        let builder = m.code.find("groups.push((() => {").unwrap();
+        assert!(builder > loop_start, "builder inside loop:\n{}", m.code);
+        // The child prop effects read the loop locals directly.
+        assert!(m.code.contains("setProp(c0, \"group\", (group));"), "loop local prop:\n{}", m.code);
+        assert!(m.code.contains("setProp(c0, \"idx\", (groupIndex));"), "loop local prop:\n{}", m.code);
     }
 
     #[test]

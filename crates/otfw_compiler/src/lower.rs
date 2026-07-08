@@ -197,9 +197,9 @@ pub struct Lowered {
     pub rest: Option<RestProp>,
     /// One-time snapshots for nested destructuring patterns.
     pub prop_snapshots: Vec<PropSnapshot>,
-    /// Top-level `$effect(cb)` callbacks (`.value`-injected source), to run as
-    /// effects with their disposers collected for cleanup (SPEC §3.2).
-    pub effects: Vec<String>,
+    /// Top-level `$effect(cb)` callbacks, to run as effects with their disposers
+    /// collected for cleanup (SPEC §3.2).
+    pub effects: Vec<EffectCb>,
     /// Top-level `$expose(obj)` arguments (`.value`-injected source); each is
     /// `Object.assign`ed onto the element so its props become public (SPEC §3.2).
     pub exposes: Vec<String>,
@@ -233,6 +233,18 @@ pub struct Lowered {
     pub module_components: Vec<String>,
     /// Non-fatal lowering diagnostics (unsupported constructs that were skipped).
     pub errors: Vec<String>,
+}
+
+/// A top-level `$effect(cb)` callback. `code` is the callback source with
+/// `.value` injected. When the callback embeds JSX (`groups.push(<Child/>)`
+/// inside its body), `code` is a template with a placeholder per branch in
+/// `nodes` — lowered like a preserved JSX statement — which codegen substitutes
+/// with inline node-builders so the JSX evaluates in the scope it was written
+/// in (loop locals, callback params).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EffectCb {
+    pub code: String,
+    pub nodes: Vec<ViewNode>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -450,6 +462,28 @@ fn lower_one<'a>(
         }
     }
 
+    // `$effect` callbacks: `.value`-injected; a callback embedding JSX as a value
+    // (`groups.push(<Child/>)` in its body) is templated like a preserved JSX
+    // statement, so codegen builds the nodes inline where the JSX sits.
+    let effects = classified
+        .effect_args
+        .iter()
+        .map(|arg| match arg.as_expression() {
+            Some(expr) if has_jsx_expr(expr) => {
+                let (eid, nodes) = lowerer.lower_data_expr(expr, expr.span());
+                EffectCb {
+                    code: lowerer.exprs.code(eid).unwrap_or_default().to_string(),
+                    nodes,
+                }
+            }
+            _ => EffectCb {
+                code: inject_arg(source, scoping, &lowerer.signals, lowerer.props_symbol, arg)
+                    .code,
+                nodes: Vec::new(),
+            },
+        })
+        .collect();
+
     let mut errors = classified.errors;
     errors.extend(lowerer.errors);
 
@@ -478,7 +512,7 @@ fn lower_one<'a>(
         page_param: classified.page_param,
         rest: classified.rest,
         prop_snapshots: classified.prop_snapshots,
-        effects: classified.effects,
+        effects,
         exposes: classified.exposes,
         on_mounts: classified.on_mounts,
         on_cleanups: classified.on_cleanups,
@@ -1119,7 +1153,7 @@ struct PageAlias {
     default: Option<String>,
 }
 
-struct Classified {
+struct Classified<'a> {
     by_symbol: HashMap<SymbolId, SignalId>,
     infos: Vec<SignalInfo>,
     decls: Vec<SignalDecl>,
@@ -1135,7 +1169,9 @@ struct Classified {
     page_aliases: Vec<PageAlias>,
     rest: Option<RestProp>,
     prop_snapshots: Vec<PropSnapshot>,
-    effects: Vec<String>,
+    /// Raw `$effect(cb)` arguments — injected/templated in `lower_one`, where the
+    /// `Lowerer` exists (a callback embedding JSX lowers its branches to view nodes).
+    effect_args: Vec<&'a Argument<'a>>,
     exposes: Vec<String>,
     on_mounts: Vec<String>,
     on_cleanups: Vec<String>,
@@ -1153,7 +1189,7 @@ struct Classified {
 /// Two passes: first bind every signal's symbol → id (so a later initializer or
 /// the view can reference any of them), then build the declarations with
 /// `.value` injected into initializers/defaults.
-fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page: bool) -> Classified {
+fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page: bool) -> Classified<'a> {
     enum Detail<'a> {
         Prop { local: String, attr: String, default: Option<&'a Expression<'a>> },
         Macro { arg: Option<&'a Argument<'a>> },
@@ -1411,11 +1447,9 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         }
     }
 
-    // `$effect`/`$expose` arguments: inject `.value` now the symbol set is complete.
-    let effects = effect_args
-        .into_iter()
-        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
-        .collect();
+    // `$expose` arguments: inject `.value` now the symbol set is complete.
+    // (`$effect` arguments stay raw — `lower_one` injects/templates them through
+    // the `Lowerer` so an embedded JSX value gets node-builder branches.)
     let exposes = expose_args
         .into_iter()
         .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
@@ -1464,7 +1498,7 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         page_aliases,
         rest: rest_prop,
         prop_snapshots: snapshots,
-        effects,
+        effect_args,
         exposes,
         on_mounts,
         on_cleanups,
@@ -2935,7 +2969,9 @@ mod tests {
         );
         assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
         // The effect callback gets `.value` injected on signal references.
-        assert_eq!(lowered.effects, ["() => console.log(n.value)"]);
+        assert_eq!(lowered.effects.len(), 1);
+        assert_eq!(lowered.effects[0].code, "() => console.log(n.value)");
+        assert!(lowered.effects[0].nodes.is_empty());
     }
 
     #[test]

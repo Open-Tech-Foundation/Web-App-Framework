@@ -297,8 +297,10 @@ impl<'a> Emitter<'a> {
         let root = self.emit_node(&cur, &lowered.ir.view);
 
         // Top-level $effect callbacks run for the page's lifetime (page disposal: none).
+        // Embedded JSX substitutes as inline CSR builders (effects build fresh nodes).
         for cb in lowered.effects.clone() {
-            self.bind(format!("effect({cb})"));
+            let code = csr::effect_code_pub(lowered, &cb);
+            self.bind(format!("effect({code})"));
         }
 
         // Lifecycle: attach an `__lifecycle` record to the root so the router runs
@@ -380,7 +382,8 @@ impl<'a> Emitter<'a> {
         // adopt branch (and inside `__build`) — not here — because its callbacks close over
         // the component's locals, which live in each path's own scope.
         for cb in lowered.effects.clone() {
-            self.bind(format!("effect({cb})"));
+            let code = csr::effect_code_pub(lowered, &cb);
+            self.bind(format!("effect({code})"));
         }
         for obj in &lowered.exposes {
             self.line(format!("Object.assign(this, ({obj}));"));
@@ -905,6 +908,30 @@ mod tests {
             "source substitution:\n{}",
             m.code
         );
+    }
+
+    #[test]
+    fn jsx_in_effect_loop_body_is_templated_in_both_halves() {
+        // JSX inside a `$effect` loop body: effects always *build* fresh nodes
+        // (SSG doesn't run them, so there's nothing to adopt), and both the CSR
+        // factory and the adopt factory must emit the inline builder — never
+        // raw JSX or a builder hoisted out of the loop's scope.
+        let m = emit(
+            "export default function P(){\n\
+               let items = $state([]);\n\
+               let container = $ref();\n\
+               $effect(() => {\n\
+                 const groups = [];\n\
+                 for (const group of items) { groups.push(<Child group={group} />); }\n\
+                 container.replaceChildren(...groups);\n\
+               });\n\
+               return <div ref={container}></div>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(!m.code.contains("<Child"), "raw JSX leaked:\n{}", m.code);
+        let hyd = hydrate_fn(&m.code);
+        assert!(hyd.contains("groups.push((() => {"), "inline builder in adopt effect:\n{}", hyd);
+        assert!(hyd.contains("setProp(c0, \"group\", (group));"), "loop local prop:\n{}", hyd);
     }
 
     /// Lower in **component** mode (the default export becomes a Custom Element class,

@@ -78,6 +78,16 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
+- **JSX inside a `$effect` callback compiles instead of leaking raw JSX.** A `$effect`
+  body embedding JSX (`for (…) { groups.push(<Child group={group}/>); }` followed by
+  `container.replaceChildren(...groups)`) was injected verbatim — the callback was never
+  probed for JSX, so `<Child group={group}/>` survived untouched into the emitted module
+  and broke at the bundler. Effect arguments are now templated in lowering like any
+  preserved statement (`lower.rs`: `Lowered.effects` is `Vec<EffectCb>` carrying extracted
+  `ViewNode` branches) and codegen substitutes each branch as an inline IIFE at its
+  placeholder, so loop/callback locals are captured correctly (`codegen/csr.rs`
+  `effect_code`; the hydrate backend reuses it via `csr::effect_code_pub` — effects always
+  *build* fresh nodes since SSG doesn't run them, and SSG drops effects as before).
 - **JSX written inside a loop or callback body captures that scope's locals.** A JSX
   value embedded in a preserved statement (`groups.push(<Child group={group}/>)` inside
   a `for` body, a JSX-valued prop or list-source expression with an embedded callback)
