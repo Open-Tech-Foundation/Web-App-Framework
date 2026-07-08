@@ -1,0 +1,120 @@
+---
+title: Hydration
+description: How OTF Web adopts server-rendered HTML on first paint — SSG and SSR wire reactivity onto existing DOM without a virtual tree.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Hydration
+
+With [Static Generation](/docs/deployment/static-generation) or [Server](/docs/deployment/server)
+rendering, the browser receives real HTML on first load. **Hydration** is what happens next:
+the client **adopts** that markup in place — claims the nodes, wires signals and event handlers
+onto them, and never tears the tree down to reconcile a virtual DOM.
+
+A plain CSR `otfw build` skips this: `#app` starts empty and the client builds every route
+from scratch. Hydration is what makes SSG and SSR genuinely cheaper at interactive time, not
+just better for SEO.
+
+## When hydration runs
+
+| Situation | Client behavior |
+| --- | --- |
+| First load of an SSG page (`otfw build --ssg`) | Adopt the pre-rendered HTML |
+| First load of an SSR page (`otfw serve` or adapter) | Adopt the per-request HTML |
+| Client navigation after first paint (`<Link>`) | **Build** the next route on the client (CSR) |
+| Plain CSR build, first visit | Build into an empty `#app` (no adopt) |
+
+Direct URL hits, refresh, and open-in-new-tab always get a full document — SSG/SSR HTML
+hydrates on that first paint. SPA navigation is layered on top as a progressive enhancement.
+
+<Callout type="info" title="Adopt, never rebuild (on first paint)">
+  The server HTML is already the final structure. Hydration wires reactivity onto those nodes;
+  it does not diff or replace the page the way a VDOM `hydrateRoot` would.
+</Callout>
+
+## How to enable it
+
+Hydration is automatic whenever the toolchain ships adoptable markup:
+
+```bash
+# Pre-rendered HTML + hydrate client bundle
+otfw build --ssg
+
+# Per-request HTML + hydrate client bundle
+otfw serve
+```
+
+A plain `otfw build` emits the leaner CSR bundle and an empty app shell — fine for a
+client-only SPA behind a catch-all `index.html` rule.
+
+The app shell stamps a sentinel on the mount root when hydration is expected:
+
+```html
+<div id="app" data-otfw-hydrate>…server-rendered children…</div>
+```
+
+`mountApp` sees `data-otfw-hydrate`, threads a DOM cursor through the layout chain, and calls
+each route's `hydrateAt` factory instead of `replaceChildren()` + build. When the sentinel is
+absent, the client mounts with a normal CSR build.
+
+## What hydrates today
+
+Fine-grained adoption is implemented for the constructs you use in real apps:
+
+- **Pages and nested layouts** — one cursor walks the layout chain; each layout adopts its
+  slot and hands the cursor to the nested route.
+- **Keyed lists** — `{items.map(…)}` adopts each item root, then reconciles updates in place.
+- **Conditionals** — `{cond ? <A/> : <B/>}` and `{cond && <X/>}` adopt the rendered branch
+  and swap branches reactively after hydration.
+- **Component `{children}` slots** — slotted content is adopted by the composing parent;
+  context and reactivity follow the logical tree.
+- **Built-ins** — `<Link>`, `<Portal>`, `<ContextProvider>`, and `<ErrorBoundary>` participate
+  in first-paint adoption (portals defer relocation until hydration finishes).
+- **Rich island props** — JSON-safe props serialize into a `<script id="__otfw_h">` payload so
+  components upgrade with the correct object/array values, not attribute round-trips.
+- **Loader output** — inline loader data in the HTML keeps `router.data` aligned on first paint;
+  see [Data Fetching](/docs/data-fetching).
+
+<Callout type="warning" title="Keep server and client render aligned">
+  Hydration assumes the client would render the same structure the server sent. Avoid
+  non-deterministic output during render (`Date.now()`, `Math.random()`, browser-only reads).
+  Put time-varying or per-user data in [loaders](/docs/data-fetching) or fetch after mount.
+  For client-only UI branches, gate on `onMount` or a post-hydration signal so SSG does not
+  emit a different tree than the client.
+</Callout>
+
+## SPA navigation after hydration
+
+After first paint the hydration flag clears. `<Link>` navigations load a route chunk and
+**build** the next view with the same CSR path a pure client app uses. Components compiled
+for hydration are **dual**: adopt on first paint, build on subsequent navigations — one bundle,
+both behaviors.
+
+For a full page load instead of SPA navigation, use a normal `<a href>` or configure MPA-style
+routing when you want every navigation to hit the server.
+
+## Mismatches and recovery
+
+If the client cannot adopt what the server sent — wrong tag, missing marker, divergent
+structure — the runtime reports a **hydration mismatch** (surfaced in the dev error overlay)
+and **rebuilds that component** via CSR. The rest of the page stays adopted; recovery is
+per component, not a whole-page bail-out.
+
+Routes or layouts the compiler cannot yet adopt fall back to a clean CSR build for that
+subtree (the app still works; you may see a brief flash). Multi-root fragment route outputs
+are the main remaining gap on the adopt path.
+
+## Compared to other frameworks
+
+OTF Web is zero-VDOM with fine-grained signals. Hydration **claims existing nodes** and binds
+only what is reactive — the same shape as Solid or Svelte 5, expressed on Custom Elements.
+There is no tree-wide reconcile pass.
+
+## Related
+
+- [Static Generation](/docs/deployment/static-generation) — pre-render routes at build time.
+- [Server](/docs/deployment/server) — per-request SSR with `otfw serve` or adapters.
+- [Data Fetching](/docs/data-fetching) — loaders and `router.data` across SSG, SSR, and SPA nav.
+- [Portal](/docs/core-concepts/portal) — relocation deferred until hydration completes.
+- [Navigation](/docs/routing/navigation) — `<Link>` and client-side routing after first paint.
