@@ -122,6 +122,9 @@ describe("serverEntrySource", () => {
     expect(src).toContain(`["/app/about/page.jsx"]: p1,`);
     expect(src).toContain(`import { registerRoutes } from "@opentf/web";`);
     expect(src).toContain(`renderRoute, renderHead, collectRoutePaths`);
+    // resolveMetadata is re-exported so the CSR build can resolve the root layout's
+    // route-independent head via resolveLayoutShellHead.
+    expect(src).toContain(`resolveMetadata`);
   });
 
   test("configures the server-side router with i18n so prefixes match", () => {

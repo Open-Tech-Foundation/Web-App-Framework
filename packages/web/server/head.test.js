@@ -26,6 +26,21 @@ describe("resolveMetadata (layout → page → generateMetadata merge)", () => {
     expect(meta.openGraph).toEqual({ siteName: "Site", type: "website", image: "/a.png" });
   });
 
+  test("entry: null resolves the layout chain only (the CSR shell head contract)", async () => {
+    registerRoutes({
+      "/app/layout.jsx": {
+        default: () => "",
+        metadata: { description: "Site default", links: [{ rel: "icon", href: "/favicon.svg" }] },
+      },
+      "/app/page.jsx": { default: () => "", metadata: { title: "Home", canonical: "/" } },
+    });
+    const meta = await resolveMetadata({ route: "/", entry: null });
+    expect(meta.description).toBe("Site default");
+    expect(meta.links).toEqual([{ rel: "icon", href: "/favicon.svg" }]);
+    expect(meta.title).toBeUndefined(); // no page → no route-specific title
+    expect(meta.canonical).toBeUndefined();
+  });
+
   test("generateMetadata wins over static metadata and sees params", async () => {
     const entry = {
       default: () => "",
