@@ -144,6 +144,124 @@ html {
   font-family: ui-monospace, "Geist Mono", monospace;
 }
 
+/* Portal guide live demo */
+.demo-output--portal {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1.5rem;
+  padding: 2.25rem 1.25rem 1.5rem;
+}
+.demo-portal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
+}
+.demo-portal-section-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.demo-portal-section-desc {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.demo-portal-section-desc code {
+  font-size: 0.82em;
+}
+.demo-portal-clip {
+  position: relative;
+  min-height: 9rem;
+  padding: 1rem 1.1rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.65rem;
+  background: var(--bg-main);
+  overflow: hidden;
+}
+.demo-portal-clip-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.demo-portal-btn {
+  margin-top: 0.75rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--accent-soft);
+  color: var(--text-main);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.05s;
+}
+.demo-portal-btn:hover {
+  border-color: var(--accent);
+}
+.demo-portal-btn:active {
+  transform: scale(0.98);
+}
+.demo-portal-btn--solid {
+  background: var(--text-main);
+  color: var(--bg-main);
+  border-color: var(--text-main);
+}
+.demo-portal-btn--solid:hover {
+  opacity: 0.9;
+  border-color: var(--text-main);
+}
+.demo-portal-btn--dialog {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+.demo-portal-btn--dialog:hover {
+  border-color: #10b981;
+}
+.demo-portal-dialog {
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 1.25rem 1.35rem;
+  border: none;
+  border-radius: 0.85rem;
+  background: var(--bg-main);
+  color: var(--text-main);
+  box-shadow: 0 24px 48px rgba(2, 6, 23, 0.18);
+}
+.demo-portal-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.55);
+}
+.demo-portal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(15, 23, 42, 0.55);
+}
+.demo-portal-modal {
+  width: min(22rem, 100%);
+  padding: 1.25rem 1.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  background: var(--bg-main);
+  color: var(--text-main);
+  box-shadow: 0 24px 48px rgba(2, 6, 23, 0.18);
+}
+.demo-portal-modal-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+.demo-portal-modal-body {
+  margin: 0.5rem 0 1rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
 :root {
   --bg-main: #ffffff;
   --bg-surface: #f8fafc;

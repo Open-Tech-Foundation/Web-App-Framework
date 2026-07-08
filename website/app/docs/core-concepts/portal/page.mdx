@@ -1,0 +1,84 @@
+---
+title: Portal
+description: Render a subtree into another DOM target with <Portal> — escape overflow, z-index, and transform traps.
+---
+
+import { Callout } from "@opentf/web-docs";
+import PortalDemo from "../../../components/PortalDemo.jsx";
+
+# Portal
+
+`<Portal>` relocates its children to another DOM node — by default `document.body`, or a
+selector / element you pass as `to`. Use it when an ancestor's `overflow`, `z-index`, or
+`transform` would clip or bury UI that should float above the page: toasts, tooltips,
+menus, and custom overlays.
+
+```jsx
+import { Portal } from "@opentf/web";
+
+{open && (
+  <Portal to="body">
+    <div class="toast">Saved!</div>
+  </Portal>
+)}
+```
+
+On connect the runtime moves the portal's light-DOM children to the target; on unmount it
+removes them so custom-element disconnect and effect cleanups run. No manual DOM bookkeeping.
+
+<PortalDemo />
+
+Open the portaled modal inside the clipped box — it renders on `document.body`, not inside
+the clip region. Compare with the native `<dialog>` below the demo.
+
+## The `to` target
+
+| `to` value | Resolves to |
+| --- | --- |
+| omitted | `document.body` |
+| `"body"` / `"#root"` / any selector | `document.querySelector(…)`, falling back to `body` |
+| a DOM `Element` | that element directly |
+
+```jsx
+<Portal to="#toast-root">
+  <p>Rendered into the element with id="toast-root".</p>
+</Portal>
+```
+
+## Portals vs native `<dialog>`
+
+For **modals and dialogs**, the browser top layer is often simpler — no relocation, free
+backdrop, Esc-to-close:
+
+```jsx
+const dialogRef = $ref();
+
+<button onclick={() => dialogRef.showModal()}>Open</button>
+<dialog ref={dialogRef}>
+  <p>Native top layer</p>
+  <button onclick={() => dialogRef.close()}>Close</button>
+</dialog>
+```
+
+Reach for `<Portal>` when you need a general escape hatch — stacked toasts, custom
+overlays, tooltips anchored to arbitrary targets, or markup that does not map cleanly to
+`<dialog>`.
+
+<Callout type="info" title="SSR and hydration">
+  On first paint the portal defers relocation until hydration finishes so slotted content
+  can adopt server-rendered DOM in place. On a client-only build the move runs immediately.
+</Callout>
+
+## Runtime API
+
+| Export | Description |
+| --- | --- |
+| `Portal` | Built-in custom element — use as `<Portal to={…}>…</Portal>` in JSX. |
+
+Also listed on the [Runtime API](/api/core) reference.
+
+## Related
+
+- [Context](/docs/core-concepts/context) — portaled subtrees still resolve `$context` from the logical tree.
+- [Components](/docs/core-concepts/components) — where portals fit in the tree.
+- [Imperative API](/docs/core-concepts/imperative-api) — `$ref` for native `<dialog>`.

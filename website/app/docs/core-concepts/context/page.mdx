@@ -104,9 +104,9 @@ Providers compose like CSS inheritance: the **nearest** ancestor wins for its su
 
 ## Portals
 
-Content rendered through [`<Portal>`](/api/core) keeps context from the logical tree.
-A toast portaled to `document.body` still sees the provider that wrapped the portal in
-your JSX — the runtime hops across the portal boundary when resolving `$context`.
+Content rendered through [`<Portal>`](/docs/core-concepts/portal) keeps context from the
+logical tree — a toast portaled to `document.body` still sees the provider that wrapped
+the portal in your JSX.
 
 ## Runtime API
 
@@ -122,6 +122,7 @@ Macro reference: [`$context`](/api/macros#context).
 
 ## Related
 
+- [Portal](/docs/core-concepts/portal) — relocate UI while keeping context.
 - [Reactivity](/docs/core-concepts/reactivity) — `$state` for local state; `reactive()` for shared mutable stores.
 - [Components](/docs/core-concepts/components) — props vs children vs context.
 - [Runtime API](/api/core) — full `@opentf/web` exports.
