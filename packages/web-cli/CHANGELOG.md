@@ -14,6 +14,14 @@
   remain route-specific and still require `--ssg` or `otfw serve`. Only the root layout is
   compiled for this (not the whole app), so CSR build cost is unaffected.
 
+### Tests
+
+- New `build-metadata` e2e drives the real CLI against the fixture and asserts head
+  composition in both modes: plain CSR injects the root layout's route-independent
+  metadata (favicon, feed alternate with `links[].type`, description, OG site default)
+  with no per-route canonical/title; `--ssg` gives `/about` its page title, a per-route
+  canonical, and the inherited feed alternate.
+
 ## [1.13.1] - 2026-07-08
 
 _Dependency updates._
