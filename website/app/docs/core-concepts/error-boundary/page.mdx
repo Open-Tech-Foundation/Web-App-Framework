@@ -1,0 +1,119 @@
+---
+title: Error boundaries
+description: Contain render and mount failures in a subtree with <ErrorBoundary> — show a fallback, retry with reset(), and keep siblings running.
+---
+
+import { Callout } from "@opentf/web-docs";
+import ErrorBoundaryDemo from "./ErrorBoundaryDemo.jsx";
+
+# Error boundaries
+
+When a descendant component **throws during its initial render or mount**, the nearest
+`<ErrorBoundary>` catches the failure, tears down the broken subtree, and shows a
+**fallback** instead of taking down the rest of the page. Call **`reset()`** (from the
+fallback or the default UI) to rebuild the original children and try again.
+
+```jsx
+import { ErrorBoundary } from "@opentf/web";
+
+<ErrorBoundary fallback={(error, reset) => `Oops: ${error.message}`}>
+  <RiskyPanel />
+</ErrorBoundary>
+```
+
+Siblings outside the boundary keep working — only the wrapped subtree is replaced.
+
+<ErrorBoundaryDemo />
+
+Click **Fix the error**, then **Retry** in the fallback to watch the boundary recover.
+
+## The `fallback` prop
+
+`fallback` is a function `(error, reset) => …` called when a descendant throws:
+
+| Return value | What renders |
+| --- | --- |
+| **String** | Inline message plus a built-in **Retry** button (styled alert) |
+| **DOM node** | Appended as-is — build your own layout and wire `reset` to a button |
+| **Omitted / falsy** | Default alert using `error.message` and **Retry** |
+
+```jsx
+<ErrorBoundary
+  fallback={(error, reset) => (
+    <div class="panel-error">
+      <p>{error.message}</p>
+      <button onclick={reset}>Try again</button>
+    </div>
+  )}
+>
+  <UserDashboard />
+</ErrorBoundary>
+```
+
+`reset()` clones the children that were snapshotted **before** the first connect attempt
+and mounts them again. If the underlying cause is gone, the subtree renders cleanly; if
+it still throws, the boundary catches it again.
+
+## What is caught (and what is not)
+
+| Phase | Caught by `<ErrorBoundary>`? |
+| --- | --- |
+| Throw in a component body during **first connect** (render / mount) | ✅ Yes — compiler routes through `handleError` |
+| Throw in a **child** component's mount | ✅ Yes — walks up to the nearest boundary |
+| Throw inside **`$effect`** | ❌ No — reported globally; other bindings keep updating |
+| Throw in an **event handler** (`onclick`, etc.) | ❌ No — use `try/catch` in the handler |
+| **`HydrationMismatch`** during adopt | ❌ No — runtime recovers via CSR rebuild for that subtree |
+
+<Callout type="warning" title="Mount-time only">
+  Boundaries protect the **synchronous render/mount** path. Async failures after connect —
+  failed fetches, timers, effect bodies — need explicit handling (`try/catch` or
+  `resource()` error state).
+</Callout>
+
+## Containment and nesting
+
+- **Siblings are isolated** — a crash inside `<ErrorBoundary>` does not unmount unrelated
+  UI beside it.
+- **Nested boundaries** — the **nearest** ancestor wins; an inner boundary can catch
+  before an outer one sees the error.
+- **Portals** — error routing walks the logical tree: if a throw happens inside portaled
+  content, `handleError` hops from the portal target back to the host and finds the
+  enclosing boundary. See [Portal](/docs/core-concepts/portal).
+
+## Dev overlay and logging
+
+Every caught error is still **reported** to the dev overlay and the `otfw:error` window
+event before the fallback renders. The boundary
+contains user-visible failure; it does not hide errors from developers.
+
+## SSR and hydration
+
+`<ErrorBoundary>` participates in first-paint adoption like other built-ins (`<Link>`,
+`<Portal>`, `<ContextProvider>`). If adopt fails for a subtree, hydration may fall back to
+a client rebuild for that region — see [Hydration](/docs/deployment/hydration).
+
+## When to use one
+
+| Situation | Pattern |
+| --- | --- |
+| Optional widget (chart, third-party embed) | Wrap the widget; fallback explains failure |
+| Route region with risky data | Boundary around the page section; `reset` after user fixes input |
+| Library component that may throw on bad props | Document that parents should wrap if needed |
+
+Prefer **fixing the throw** (guard clauses, loading states, `resource()` errors) over
+wrapping everything — boundaries are for **containment**, not general control flow.
+
+## Runtime API
+
+| Export | Description |
+| --- | --- |
+| `ErrorBoundary` | Built-in custom element — use as `<ErrorBoundary fallback={…}>…</ErrorBoundary>` in JSX. |
+
+Also listed on the [Runtime API](/api/core) reference.
+
+## Related
+
+- [Components](/docs/core-concepts/components) — where throws originate during connect.
+- [Lifecycle](/docs/core-concepts/lifecycle) — async work belongs in `onMount` / `$effect`, not top-level `await`.
+- [Portal](/docs/core-concepts/portal) — portaled subtrees still respect enclosing boundaries.
+- [Hydration](/docs/deployment/hydration) — adopt path and mismatch recovery.

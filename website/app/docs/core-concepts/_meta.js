@@ -1,11 +1,12 @@
 export default {
   components: "Components",
   jsx: "JSX",
-  "imperative-api": "Imperative API",
   reactivity: "Reactivity",
-  context: "Context",
-  portal: "Portal",
   templating: "Templating",
   lifecycle: "Lifecycle",
+  context: "Context",
+  "imperative-api": "Imperative API",
   styling: "Styling",
+  portal: "Portal",
+  "error-boundary": "Error boundaries",
 };
