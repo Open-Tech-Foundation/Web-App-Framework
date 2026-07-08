@@ -28,6 +28,8 @@ const TSCONFIG = {
   include: ["app", "otfw.config.js"],
 };
 
+const APP_TEMPLATES = new Set(["spa", "fullstack"]);
+
 /** @param {string} dir */
 function walkFiles(dir, files = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -44,15 +46,20 @@ function shouldRenameToTsx(file) {
 }
 
 /** @param {string} file */
-function shouldRenameRouteToTs(file) {
-  return path.basename(file) === "route.js" && file.includes(`${path.sep}api${path.sep}`);
+function shouldRenameToTs(file) {
+  const base = path.basename(file);
+  if (base === "route.js" && file.includes(`${path.sep}api${path.sep}`)) return true;
+  if (base === "_middleware.js" || base === "loader.js") return true;
+  return false;
 }
 
-/** @param {string} content @param {"bare" | "docs" | "library"} template */
+/** @param {string} content @param {string} template */
 function patchSource(content, template) {
   let next = content
     .replaceAll("app/page.jsx", "app/page.tsx")
     .replaceAll("app/api/hello/route.js", "app/api/hello/route.ts")
+    .replaceAll("app/_middleware.js", "app/_middleware.ts")
+    .replaceAll("app/loader.js", "app/loader.ts")
     .replaceAll("route.js", "route.ts");
 
   if (template === "library") {
@@ -94,7 +101,7 @@ function patchComponentTypes(content, basename) {
  * Convert a freshly scaffolded JS project to TypeScript (rename + tsconfig).
  *
  * @param {string} targetDir
- * @param {"bare" | "docs" | "library"} template
+ * @param {"spa" | "fullstack" | "docs" | "library"} template
  * @param {Record<string, unknown>} [pkg]
  */
 export function applyTypescript(targetDir, template, pkg) {
@@ -103,7 +110,7 @@ export function applyTypescript(targetDir, template, pkg) {
   for (const file of files) {
     let nextPath = file;
     if (shouldRenameToTsx(file)) nextPath = file.replace(/\.jsx$/, ".tsx");
-    else if (shouldRenameRouteToTs(file)) nextPath = file.replace(/route\.js$/, "route.ts");
+    else if (shouldRenameToTs(file)) nextPath = file.replace(/\.js$/, ".ts");
 
     if (nextPath !== file) {
       let content = fs.readFileSync(file, "utf-8");
@@ -134,7 +141,7 @@ export function applyTypescript(targetDir, template, pkg) {
     include: [...TSCONFIG.include],
   };
 
-  if (template === "bare") {
+  if (APP_TEMPLATES.has(template)) {
     tsconfig.include = ["app"];
     const { allowJs: _allowJs, ...rest } = tsconfig.compilerOptions;
     tsconfig.compilerOptions = rest;

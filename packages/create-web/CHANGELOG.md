@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-08
+
+### Added
+
+- **SPA** project template (`templates/spa/`): browser-only starter — no API routes,
+  middleware, loaders, or `serve` script. For static or client-rendered apps.
+- **Fullstack** project template (`templates/fullstack/`): ships `app/_middleware.js`,
+  `app/loader.js`, `app/api/hello/route.js`, and `otfw serve` — wired to a demo home page.
+
+### Changed
+
+- Replaced the single **App** (`bare`) template with **SPA** and **Fullstack**; the
+  interactive prompt uses plain-language titles and descriptions
+  (e.g. "SPA (browser-only)", "Fullstack (browser + server)").
+- Template dependency floors updated to `@opentf/web@^0.16.0`, `@opentf/web-cli@^1.12.0`,
+  `@opentf/web-docs@^0.12.0`, `@opentf/web-test@^1.11.0`, and `@opentf/web-compiler@^0.8.0`
+  (still pinned to npm latest at scaffold time).
+- TypeScript scaffolding renames `_middleware.js` and `loader.js` to `.ts` alongside API
+  routes.
+
+### Removed
+
+- **`bare` template** — use **SPA** or **Fullstack** instead.
+
 ## [0.14.0] - 2026-07-06
 
 ### Changed

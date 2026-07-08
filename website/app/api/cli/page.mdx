@@ -41,9 +41,9 @@ The scaffolder (`@opentf/create-web`) is interactive:
 
 | Prompt | Options |
 | --- | --- |
-| **Project type** | **App** — SPA with routing, layouts, and an example API route · **Documentation site** — MDX docs powered by `@opentf/web-docs` · **Library** — publishable component package with `bun test` |
+| **Project type** | **SPA (browser-only)** · **Fullstack (browser + server)** · **Documentation site** · **Library** — see [Installation](/docs/getting-started/installation#choosing-a-project-type) |
 | **Language** | JavaScript or TypeScript (`.tsx` pages, `.ts` API routes, `tsconfig.json`) |
-| **Styling** | Plain CSS or Tailwind CSS (App and Library only) |
+| **Styling** | Plain CSS or Tailwind CSS (SPA, Fullstack, and Library only) |
 
 Before writing files, it resolves every `@opentf/*` dependency in the generated
 `package.json` to `^<latest>` from npm. Scaffolding aborts if the registry is
@@ -51,8 +51,8 @@ unreachable. After the project is written, it runs `<pm> install` with the packa
 manager that invoked the command.
 
 <Callout type="info" title="Next steps">
-  App and Docs projects suggest `bun run dev` (or the equivalent for your package
-  manager). Library projects suggest `bun test` — see
+  SPA, Fullstack, and Docs projects suggest `bun run dev` (or the equivalent for your
+  package manager). Library projects suggest `bun test` — see
   [Library template](/docs/getting-started/library-template).
 </Callout>
 

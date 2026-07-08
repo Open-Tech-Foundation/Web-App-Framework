@@ -30,13 +30,31 @@ that invoked it (`npm`, `pnpm`, `yarn`, or `bun`).
 
 | Prompt | Options |
 | --- | --- |
-| **Project type** | **App** — minimal SPA starter · **Documentation site** — MDX docs with `@opentf/web-docs` · **Library** — publishable component package with tests |
+| **Project type** | See [choosing a project type](#choosing-a-project-type) below |
 | **Language** | JavaScript (`.jsx`) or TypeScript (`.tsx` + `tsconfig.json`) |
-| **Styling** | Plain CSS or Tailwind CSS (App and Library only) |
+| **Styling** | Plain CSS or Tailwind CSS (SPA, Fullstack, and Library only) |
+
+#### Choosing a project type
+
+Not sure which to pick? Each option scaffolds a different shape of project:
+
+| Option | What it is | Pick this when… |
+| --- | --- | --- |
+| **SPA (browser-only)** | A normal web app whose UI runs in the browser. You deploy static files (`dist/`) — no server code in the repo. | You want a dashboard, marketing site, or client app with no backend logic (or you call an external API). |
+| **Fullstack (browser + server)** | Same UI **plus** server files: [middleware](/docs/routing/middleware), [API routes](/docs/routing/api-routes), and [route loaders](/docs/data-fetching). Includes `otfw serve` for per-request SSR. | You need auth, a database, or any logic that must not run in the browser. |
+| **Documentation site** | An MDX docs or blog site with navbar, sidebar, and search — powered by `@opentf/web-docs`. | You're building product docs, a handbook, or a content site (like this one). |
+| **Library** | A package of reusable components — not a runnable app. Ships with `bun test`. | You're publishing UI primitives or widgets for other apps to install. |
+
+<Callout type="tip" title="SPA vs Fullstack">
+  **SPA** = browser only, static hosting. **Fullstack** = browser + server files
+  (middleware, `/api/*` routes, loaders). If you might add a database or secrets later,
+  start with **Fullstack** — you can still deploy static output, but the server pieces
+  are already in place.
+</Callout>
 
 ### Start developing
 
-For **App** and **Documentation site** projects, start the dev server:
+For **SPA**, **Fullstack**, and **Documentation site** projects, start the dev server:
 
 ```bash
 cd my-app

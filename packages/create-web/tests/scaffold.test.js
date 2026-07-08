@@ -152,19 +152,20 @@ describe("resolve-deps", () => {
   });
 });
 
-describe("scaffold — bare template", () => {
-  test("writes a project in isolated tmp with npm-latest @opentf/* versions", async () => {
-    const dir = makeTmpDir("bare");
-    const templatePkg = readTemplatePkg("bare");
+describe("scaffold — spa template", () => {
+  test("writes a client-first project with npm-latest @opentf/* versions", async () => {
+    const dir = makeTmpDir("spa");
+    const templatePkg = readTemplatePkg("spa");
     const templateRanges = opentfRanges(templatePkg);
 
-    const { packageJson } = await scaffold({ template: "bare", targetDir: dir });
+    const { packageJson } = await scaffold({ template: "spa", targetDir: dir });
 
     expect(existsSync(join(dir, "package.json"))).toBe(true);
     expect(existsSync(join(dir, ".gitignore"))).toBe(true);
     expect(existsSync(join(dir, "app/page.jsx"))).toBe(true);
-    expect(existsSync(join(dir, "app/api/hello/route.js"))).toBe(true);
+    expect(existsSync(join(dir, "app/api"))).toBe(false);
     expect(existsSync(join(dir, "jsconfig.json"))).toBe(true);
+    expect(packageJson.scripts.serve).toBeUndefined();
     const jsconfig = JSON.parse(readFileSync(join(dir, "jsconfig.json"), "utf-8"));
     expect(jsconfig.compilerOptions.jsx).toBe("preserve");
     expect(jsconfig.compilerOptions.jsxImportSource).toBe("@opentf/web");
@@ -181,19 +182,18 @@ describe("scaffold — bare template", () => {
   });
 
   test("prepends Tailwind import when styling is tailwind", async () => {
-    const dir = makeTmpDir("bare-tailwind");
-    await scaffold({ template: "bare", targetDir: dir, styling: "tailwind" });
+    const dir = makeTmpDir("spa-tailwind");
+    await scaffold({ template: "spa", targetDir: dir, styling: "tailwind" });
     const css = readFileSync(join(dir, "app/global.css"), "utf-8");
     expect(css.startsWith('@import "tailwindcss";\n\n')).toBe(true);
   });
 
-  test("typescript option emits .tsx pages, .ts API routes, and tsconfig", async () => {
-    const dir = makeTmpDir("bare-ts");
-    const { packageJson } = await scaffold({ template: "bare", targetDir: dir, typescript: true });
+  test("typescript option emits .tsx pages and tsconfig", async () => {
+    const dir = makeTmpDir("spa-ts");
+    const { packageJson } = await scaffold({ template: "spa", targetDir: dir, typescript: true });
 
     expect(existsSync(join(dir, "app/page.tsx"))).toBe(true);
     expect(existsSync(join(dir, "app/layout.tsx"))).toBe(true);
-    expect(existsSync(join(dir, "app/api/hello/route.ts"))).toBe(true);
     expect(existsSync(join(dir, "app/page.jsx"))).toBe(false);
     expect(existsSync(join(dir, "tsconfig.json"))).toBe(true);
     expect(existsSync(join(dir, "jsconfig.json"))).toBe(false);
@@ -206,10 +206,40 @@ describe("scaffold — bare template", () => {
 
     const page = readFileSync(join(dir, "app/page.tsx"), "utf-8");
     expect(page).toContain("app/page.tsx");
-    expect(page).toContain("app/api/hello/route.ts");
 
     const layout = readFileSync(join(dir, "app/layout.tsx"), "utf-8");
     expect(layout).toContain("children: unknown");
+  });
+});
+
+describe("scaffold — fullstack template", () => {
+  test("writes middleware, loader, API route, and serve script", async () => {
+    const dir = makeTmpDir("fullstack");
+    const templatePkg = readTemplatePkg("fullstack");
+    const templateRanges = opentfRanges(templatePkg);
+
+    const { packageJson } = await scaffold({ template: "fullstack", targetDir: dir });
+
+    expect(existsSync(join(dir, "app/_middleware.js"))).toBe(true);
+    expect(existsSync(join(dir, "app/loader.js"))).toBe(true);
+    expect(existsSync(join(dir, "app/api/hello/route.js"))).toBe(true);
+    expect(packageJson.scripts.serve).toBe("otfw serve");
+
+    const generated = opentfRanges(packageJson);
+    for (const name of Object.keys(templateRanges)) {
+      const latest = await fetchLatestVersion(name);
+      expect(generated[name]).toBe(`^${latest}`);
+    }
+  });
+
+  test("typescript option renames server files to .ts", async () => {
+    const dir = makeTmpDir("fullstack-ts");
+    await scaffold({ template: "fullstack", targetDir: dir, typescript: true });
+
+    expect(existsSync(join(dir, "app/_middleware.ts"))).toBe(true);
+    expect(existsSync(join(dir, "app/loader.ts"))).toBe(true);
+    expect(existsSync(join(dir, "app/api/hello/route.ts"))).toBe(true);
+    expect(existsSync(join(dir, "app/_middleware.js"))).toBe(false);
   });
 });
 
@@ -293,10 +323,10 @@ describe("scaffold — library template", () => {
 
 describe("scaffold — npm failure", () => {
   test("does not leave a package.json with stale template ranges when npm fails", async () => {
-    const dir = makeTmpDir("bare-fail");
+    const dir = makeTmpDir("spa-fail");
     process.env.CREATE_WEB_NPM_REGISTRY = "http://127.0.0.1:1";
 
-    await expect(scaffold({ template: "bare", targetDir: dir })).rejects.toThrow();
+    await expect(scaffold({ template: "spa", targetDir: dir })).rejects.toThrow();
     expect(existsSync(join(dir, "package.json"))).toBe(false);
   });
 });

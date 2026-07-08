@@ -6,13 +6,12 @@
   "scripts": {
     "dev": "otfw dev",
     "build": "otfw build",
-    "build:ssg": "otfw build --ssg",
-    "serve": "otfw serve"
+    "build:ssg": "otfw build --ssg"
   },
   "dependencies": {
-    "@opentf/web": "^0.9.0"
+    "@opentf/web": "^0.16.0"
   },
   "devDependencies": {
-    "@opentf/web-cli": "^1.4.0"
+    "@opentf/web-cli": "^1.12.0"
   }
 }

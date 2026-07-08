@@ -24,7 +24,7 @@ function copyDir(srcDir, destDir) {
  * Dependency resolution runs before any files are written so npm failures are atomic.
  *
  * @param {{
- *   template: "bare" | "docs" | "library",
+ *   template: "spa" | "fullstack" | "docs" | "library",
  *   targetDir: string,
  *   styling?: "none" | "tailwind",
  *   typescript?: boolean,

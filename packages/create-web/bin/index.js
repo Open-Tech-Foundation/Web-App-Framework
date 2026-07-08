@@ -51,16 +51,29 @@ async function init() {
           message: reset("Project type:"),
           initial: 0,
           choices: [
-            { title: reset("App"), value: "bare", description: "A minimal SPA starter" },
+            {
+              title: reset("SPA (browser-only)"),
+              value: "spa",
+              description:
+                "UI runs entirely in the browser — static deploy, no server files, API routes, or database",
+            },
+            {
+              title: cyan("Fullstack (browser + server)"),
+              value: "fullstack",
+              description:
+                "UI plus server code — ships middleware, API routes, route loaders, and otfw serve (SSR)",
+            },
             {
               title: cyan("Documentation site"),
               value: "docs",
-              description: "A one-page MDX docs starter powered by @opentf/web-docs",
+              description:
+                "MDX docs / marketing site — sidebar, search, and pre-rendered pages (@opentf/web-docs)",
             },
             {
               title: cyan("Library"),
               value: "library",
-              description: "A publishable component package with tests",
+              description:
+                "Reusable components to publish — not an app; includes tests (@opentf/web-test)",
             },
           ],
         },
@@ -104,7 +117,7 @@ async function init() {
     return;
   }
 
-  const { styling, overwrite, template = "bare", language = "js" } = result;
+  const { styling, overwrite, template = "spa", language = "js" } = result;
   const root = path.join(process.cwd(), targetDir);
 
   if (overwrite) emptyDir(root);
