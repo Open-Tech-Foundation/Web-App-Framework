@@ -1,6 +1,6 @@
 {
   "name": "@opentf/web-docs",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Documentation-site generator for OTF Web — themed shell components (sidebar, TOC, callouts, tabs), a build-time nav generator, and a default light/dark theme.",
   "type": "module",
   "exports": {

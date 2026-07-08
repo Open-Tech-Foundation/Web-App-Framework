@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-07-08
+
 ### Added
 
 - **Plain CSR builds now carry the root layout's metadata in `index.html`.** A CSR SPA
