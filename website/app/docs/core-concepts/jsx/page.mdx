@@ -1,0 +1,401 @@
+---
+title: JSX
+description: Every JSX pattern the OTF Web compiler supports — elements, attributes, events, conditionals, lists, fragments, and the pitfalls to avoid.
+---
+
+import { Callout } from "@opentf/web-docs";
+import ExpressionDemo from "./ExpressionDemo.jsx";
+import FragmentDemo from "./FragmentDemo.jsx";
+import ConditionalDemo from "./ConditionalDemo.jsx";
+import ListDemo from "./ListDemo.jsx";
+import EventsDemo from "./EventsDemo.jsx";
+import ClassesDemo from "./ClassesDemo.jsx";
+
+# JSX
+
+OTF Web uses standard JSX. You write familiar markup; the compiler lowers it to imperative
+DOM operations and fine-grained signal bindings. There is no virtual DOM — dynamic
+expressions become surgical updates anchored by comment nodes, and PascalCase tags compile
+to Custom Elements.
+
+This guide is the reference for **every JSX pattern the framework supports**. For how
+components wire up as elements, see [Components](/docs/core-concepts/components). For
+reactive conditionals, lists, and refs in depth, see [Templating](/docs/core-concepts/templating).
+
+## Elements and tags
+
+**Host elements** use lowercase HTML tag names. The compiler creates real DOM nodes:
+
+```jsx
+<div class="card">
+  <h1>Title</h1>
+  <p>Body copy</p>
+</div>
+```
+
+**Components** use PascalCase (or a member expression — see [Unsupported patterns](#unsupported-patterns)).
+They compile to Custom Elements registered under module-scoped tags:
+
+```jsx
+import Badge from "./Badge.jsx";
+
+<Badge label="New" />
+```
+
+Self-closing tags work for both host elements and components:
+
+```jsx
+<input type="text" />
+<Spinner />
+```
+
+SVG and MathML namespaces are supported via the JSX namespace syntax:
+
+```jsx
+<svg:path d="M0 0 L10 10" />
+```
+
+## Text and expressions
+
+Literal text between tags is emitted as text nodes. Curly braces embed JavaScript
+expressions. When an expression reads a `$state` or prop signal, only that text node
+updates when the value changes:
+
+```jsx
+let name = $state("Ada");
+let count = $state(3);
+
+return (
+  <p>
+    Hello, <strong>{name}</strong> — you have <em>{count}</em> messages.
+  </p>
+);
+```
+
+<ExpressionDemo />
+
+Plain values (`{42}`, `{items.length}`), ternaries that yield strings
+(`{done ? "Yes" : "No"}`), and template literals all compile to **text holes** — a single
+node whose `textContent` is rebound reactively.
+
+## Fragments
+
+Return multiple sibling nodes without a wrapper element using the fragment shorthand
+`<>…</>` or an explicit `<Fragment>…</Fragment>`:
+
+```jsx
+return (
+  <>
+    <h1>Dashboard</h1>
+    <p>Welcome back.</p>
+  </>
+);
+```
+
+Fragments can appear as children, as a component's root, and inside dynamic regions. A
+conditional root whose branches are JSX (`return cond ? <A/> : <B/>`) is wrapped in a
+fragment automatically so the view has a stable container.
+
+<FragmentDemo />
+
+<Callout type="note" title="Route roots">
+  Page and layout files should prefer a **single element root** when using lifecycle hooks
+  that observe the host (`onResize`, `onVisibilityChange`). Fragment route roots still work
+  but may fall back to client-only rendering during hydration — see
+  [Hydration](/docs/deployment/hydration).
+</Callout>
+
+## Attributes
+
+### Static strings
+
+String literals become static attributes. HTML character references in attribute values are
+decoded (`title="a &amp; b"` → `a & b`):
+
+```jsx
+<a href="/docs" title="Documentation">Read more</a>
+<input type="email" placeholder="you@example.com" />
+```
+
+### Dynamic expressions
+
+Any JavaScript expression can bind an attribute. Signal reads stay reactive:
+
+```jsx
+<img src={avatarUrl} alt={`${name}'s avatar`} />
+<button disabled={isLoading}>Save</button>
+```
+
+### Boolean and presence attributes
+
+A **valueless** attribute on a host element sets the empty string (HTML presence semantics).
+On a component it crosses as the boolean `true`:
+
+```jsx
+<input disabled />
+<Modal open />
+```
+
+Dynamic booleans remove the attribute when falsy and set it when truthy.
+
+### Spread props
+
+Apply an object's properties in source order with `{...obj}`. Later attributes override
+earlier spread keys:
+
+```jsx
+const attrs = { type: "text", placeholder: "Search…" };
+
+<input {...attrs} class="field" disabled={busy} />
+```
+
+Spread works on both host elements and components. Rest props on components (`function Card({ title, ...rest })`)
+collect unlisted attributes into a static snapshot at connect time.
+
+### React aliases
+
+`className` and `htmlFor` are rewritten to `class` and `for` at compile time — use
+whichever style you prefer:
+
+```jsx
+<label className="label" htmlFor="email">Email</label>
+```
+
+## Inline styles
+
+Pass a camelCased style object. Values can be reactive signals:
+
+```jsx
+<div style={{ display: "flex", gap: "0.5rem", opacity: visible ? 1 : 0 }} />
+```
+
+String values and nested updates follow the same rules as [Styling](/docs/core-concepts/styling).
+
+## Class names
+
+The `class` attribute accepts a string, or a **clsx-style** array or object. Falsy entries
+are dropped; arrays recurse; object keys with truthy values are included. Toggling a signal
+inside the expression re-runs the binding:
+
+```jsx
+<span
+  class={[
+    "badge",
+    active ? "badge--on" : "badge--off",
+    { "badge--danger": alert },
+  ]}
+/>
+```
+
+<ClassesDemo />
+
+## Event handlers
+
+### DOM events
+
+Any `on*` prop whose name does not contain `:` is wired as an event handler. Both
+`onclick` and `onClick` compile to the same DOM event (`click`). Handlers can be inline
+arrows or references to functions declared in the component body:
+
+```jsx
+<button onclick={() => count++}>Increment</button>
+<button onclick={handleSave}>Save</button>
+```
+
+<EventsDemo />
+
+### Listener modifiers
+
+Append `:modifier` to route through `addEventListener` with options. Combine modifiers
+with `-` (`:once-passive`). Recognized modifiers: `capture`, `passive`, `once`. The
+special `listen` modifier forces the listener path with no extra options — useful for
+subscribing to **dispatched CustomEvents** from child components:
+
+```jsx
+<button onclick:once={() => doOnce()}>Fire once</button>
+<input onkeydown:passive={(e) => track(e.key)} />
+<StarRating onRate:listen={(e) => setRating(e.detail)} />
+```
+
+Without a modifier, `on*` props on host elements use the fast property/callback path.
+Listeners are torn down automatically on unmount.
+
+### Component callback props
+
+PascalCase components also accept `on*` props as **callback props** — direct function
+calls, not DOM events. A child can combine both channels: call `props.onChange?.(n)` and
+`emit(this, "rate", n)` so parents choose callback or event subscription.
+
+## Children
+
+Pass markup between a component's tags as **light DOM children**. The child renders them
+with `props.children` (or a destructured `{ children }`):
+
+```jsx
+function Card({ children }) {
+  return <div class="card">{children}</div>;
+}
+
+<Card>
+  <h2>Title</h2>
+  <p>Body</p>
+</Card>
+```
+
+Pages and layouts receive `children` from the router as the nested route outlet.
+
+## Conditionals
+
+Ternaries and `&&` work inline in JSX. When the expression can produce DOM nodes, the
+compiler builds a **dynamic node region** that swaps branches without rebuilding the
+parent:
+
+```jsx
+{isLoading ? <Spinner /> : <Content />}
+{error && <p class="error">{error}</p>}
+```
+
+Root-level conditional returns are reactive too:
+
+```jsx
+return user ? <Dashboard user={user} /> : <Login />;
+```
+
+<ConditionalDemo />
+
+<Callout type="warning" title="Init-once traps">
+  Conditionals written **outside** JSX holes — `if (!user) return <Login />`, or JSX
+  cached in a `const` — run once at first connect and never flip. Put show/hide logic
+  **inside** JSX braces or a single conditional `return`. See
+  [Templating — Init-once vs reactive](/docs/core-concepts/templating#init-once-vs-reactive-conditionals).
+</Callout>
+
+## Lists
+
+Render arrays with `.map`. Each item should carry a stable `key` so reordering moves
+existing DOM nodes instead of recreating them:
+
+```jsx
+<ul>
+  {todos.map((todo) => (
+    <li key={todo.id}>
+      {todo.text}
+      <button onclick={() => remove(todo.id)}>×</button>
+    </li>
+  ))}
+</ul>
+```
+
+Both arrow and `function` callbacks are supported. Locals declared inside the callback
+body stay in scope in the generated item builder.
+
+<ListDemo />
+
+## Dynamic holes — text vs nodes
+
+The compiler classifies `{expression}` holes into two kinds:
+
+| Hole kind | Expression examples | What updates |
+| --- | --- | --- |
+| **Text** | `{count}`, `{name.toUpperCase()}`, `{done ? "yes" : "no"}` | `textContent` of one node |
+| **Node** | `{cond && <p/>}`, `{cond ? <A/> : <B/>}`, `{items.map(…)}` | Child subtree via `bindChild` |
+
+Node holes get a comment anchor; the runtime mounts, swaps, or clears the branch when
+dependencies change. List holes use keyed reconciliation (longest-increasing-subsequence
+moves).
+
+## Thunk holes
+
+A zero-argument arrow in a hole — `{() => expr}` — is **stripped** and lowered like a bare
+hole. Holes are already wrapped in a reactive getter, so an explicit thunk would otherwise
+render as a function value:
+
+```jsx
+{() => count + 1}           // same as {count + 1}
+{() => items.map(…)}        // same as a list hole
+{() => on ? <A/> : <B/>}    // same as a node hole
+```
+
+Thunks with parameters are not unwrapped — they render as ordinary values.
+
+## Child spread
+
+Spread an array (or any expression that evaluates to an array of nodes) as children with
+`{...items}`. The runtime flattens arrays when binding children:
+
+```jsx
+const chips = [<span class="a">One</span>, <span class="b">Two</span>];
+
+<div>{...chips}</div>
+```
+
+## JSX-valued props
+
+Attributes can carry JSX directly — as an expression embedding elements, or as a bare
+element/fragment value:
+
+```jsx
+<Tabs tabs={[{ label: "One", content: <PanelOne /> }]} />
+<Layout sidebar=<Sidebar /> />
+```
+
+Each embedded element is templated into a node-builder so it evaluates in the scope where
+it was written.
+
+## Refs
+
+Assign a `$ref()` signal to `ref` — not a callback function. The compiler sets
+`ref.value` to the mounted node (or `null` before mount):
+
+```jsx
+const input = $ref();
+onMount(() => input.focus());
+return <input ref={input} />;
+```
+
+Read `$ref` inside `$effect` to re-run when a conditional swaps the element. For parent →
+child commands, use [`$expose`](/docs/core-concepts/imperative-api) instead of handing
+out raw DOM. Callback refs (`ref={(el) => …}`) are rejected at compile time.
+
+## Whitespace and entities
+
+JSX text follows the standard whitespace rules: whitespace touching a newline is trimmed,
+newlines collapse to a single space, and whitespace-only text between tags is dropped.
+Significant inline spaces (the gap in `Hello {name}`) are preserved.
+
+HTML character references in text and attributes are decoded:
+
+```jsx
+<p>Drag &amp; drop · &#169; 2026</p>
+```
+
+## Unsupported patterns
+
+These are valid JavaScript but not supported (or not reactive) in OTF Web JSX:
+
+| Pattern | Why |
+| --- | --- |
+| `<Foo.Bar />` member components | No static Custom Element tag — import `Bar` directly |
+| `ref={(el) => …}` callback refs | Use `$ref` + `onMount` / `$effect` / `$expose` |
+| `if (cond) return <A />` guards | Init-once — not a reactive region |
+| `const view = cond ? <A/> : <B/>` then `{view}` | JSX cached in a local — frozen at connect |
+| JSX built in a loop but never returned | Component must **return** its view as JSX |
+| Computed destructuring keys `{ [key]: val }` | Props must use static identifier keys |
+| `dangerouslySetInnerHTML` | Not part of the compiler surface — bind text or use DOM APIs in `onMount` |
+
+<Callout type="tip" title="Quick checklist">
+  - **Show/hide UI?** Put the conditional inside `{…}` in JSX.
+  - **List of rows?** `{items.map((item) => <Row key={item.id} … />)}`.
+  - **Reach a DOM node?** `$ref` + lifecycle — not a callback ref.
+  - **Command a child?** `$expose` on the child, `$ref` on the parent.
+  - **Share data down the tree?** [Context](/docs/core-concepts/context) or props.
+</Callout>
+
+## Related guides
+
+- [Components](/docs/core-concepts/components) — props, children, native interop
+- [Templating](/docs/core-concepts/templating) — reactive conditionals, lists, refs
+- [Reactivity](/docs/core-concepts/reactivity) — `$state`, `$derived`, `$effect`
+- [Styling](/docs/core-concepts/styling) — global CSS, modules, inline styles
+- [Imperative API](/docs/core-concepts/imperative-api) — `$expose` and `$ref`
+- [Lifecycle](/docs/core-concepts/lifecycle) — `onMount`, `onCleanup`, observers

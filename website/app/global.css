@@ -144,6 +144,150 @@ html {
   font-family: ui-monospace, "Geist Mono", monospace;
 }
 
+/* JSX guide live demos */
+.demo-output--jsx {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 2.25rem 1.25rem 1.5rem;
+}
+.demo-jsx-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  width: 100%;
+}
+.demo-jsx-line {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text-main);
+}
+.demo-jsx-muted {
+  color: var(--text-muted);
+}
+.demo-jsx-banner {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--accent-soft);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.demo-jsx-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.demo-jsx-btn {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: var(--bg-main);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.05s;
+}
+.demo-jsx-btn:hover {
+  border-color: var(--accent);
+}
+.demo-jsx-btn:active {
+  transform: scale(0.98);
+}
+.demo-jsx-btn--ghost {
+  background: transparent;
+}
+.demo-jsx-btn--sm {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+}
+.demo-jsx-input {
+  flex: 1;
+  min-width: 10rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: var(--bg-main);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.demo-jsx-input:focus {
+  border-color: var(--accent);
+}
+.demo-jsx-code {
+  font-family: ui-monospace, "Geist Mono", monospace;
+  font-size: 0.88em;
+  color: var(--accent);
+}
+.demo-jsx-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.demo-jsx-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: var(--bg-main);
+  font-size: 0.88rem;
+}
+.demo-jsx-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 0.45rem 0.85rem;
+  border-radius: 0.55rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.demo-jsx-badge--active {
+  background: var(--accent-soft);
+  color: var(--text-main);
+}
+.demo-jsx-badge--idle {
+  background: var(--bg-main);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.demo-jsx-badge--danger {
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.45);
+}
+.demo-jsx-fragment-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.demo-jsx-chip {
+  display: inline-flex;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-main);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.demo-jsx-chip--accent {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 /* Portal guide live demo */
 .demo-output--portal {
   flex-direction: column;
