@@ -200,24 +200,25 @@ pub struct Lowered {
     /// Top-level `$effect(cb)` callbacks, to run as effects with their disposers
     /// collected for cleanup (SPEC §3.2).
     pub effects: Vec<EffectCb>,
-    /// Top-level `$expose(obj)` arguments (`.value`-injected source); each is
-    /// `Object.assign`ed onto the element so its props become public (SPEC §3.2).
-    pub exposes: Vec<String>,
-    /// Top-level `onMount(cb)` callbacks (`.value`-injected source); run after the
-    /// view is inserted into the DOM, their returned disposer collected for cleanup.
-    pub on_mounts: Vec<String>,
-    /// Top-level `onCleanup(cb)` callbacks (`.value`-injected source); registered as
-    /// teardown to run when the component/page is removed.
-    pub on_cleanups: Vec<String>,
-    /// Top-level `onResize(cb)` callbacks (`.value`-injected source); observed via a
-    /// `ResizeObserver` on the host/root element, disconnected on teardown.
-    pub on_resizes: Vec<String>,
-    /// Top-level `onVisibilityChange(cb)` callbacks (`.value`-injected source);
-    /// observed via an `IntersectionObserver` on the host/root element.
-    pub on_visibility_changes: Vec<String>,
-    /// Top-level `onMediaQuery(query, cb)` calls as `(query, callback)` source pairs
-    /// (both `.value`-injected); wired to `matchMedia(query)` with an initial call.
-    pub on_media_queries: Vec<(String, String)>,
+    /// Top-level `$expose(obj)` arguments (injected/templated like `$effect`); each
+    /// is `Object.assign`ed onto the element so its props become public (SPEC §3.2).
+    pub exposes: Vec<EffectCb>,
+    /// Top-level `onMount(cb)` callbacks (injected/templated like `$effect`); run
+    /// after the view is inserted, their returned disposer collected for cleanup.
+    pub on_mounts: Vec<EffectCb>,
+    /// Top-level `onCleanup(cb)` callbacks (injected/templated like `$effect`);
+    /// registered as teardown to run when the component/page is removed.
+    pub on_cleanups: Vec<EffectCb>,
+    /// Top-level `onResize(cb)` callbacks (injected/templated like `$effect`);
+    /// observed via a `ResizeObserver` on the host/root element.
+    pub on_resizes: Vec<EffectCb>,
+    /// Top-level `onVisibilityChange(cb)` callbacks (injected/templated like
+    /// `$effect`); observed via an `IntersectionObserver` on the host/root element.
+    pub on_visibility_changes: Vec<EffectCb>,
+    /// Top-level `onMediaQuery(query, cb)` calls as `(query, callback)` pairs — the
+    /// query is a `.value`-injected one-time read; the callback is injected/templated
+    /// like `$effect`. Wired to `matchMedia(query)` with an initial call.
+    pub on_media_queries: Vec<(String, EffectCb)>,
     /// The local binding name for the `children` slot, if the component
     /// destructures `children` (e.g. `"children"`). Drives child capture + the
     /// `Children` view node.
@@ -462,27 +463,40 @@ fn lower_one<'a>(
         }
     }
 
-    // `$effect` callbacks: `.value`-injected; a callback embedding JSX as a value
-    // (`groups.push(<Child/>)` in its body) is templated like a preserved JSX
-    // statement, so codegen builds the nodes inline where the JSX sits.
-    let effects = classified
-        .effect_args
+    // `onMediaQuery` query members: a one-time `.value` read at mount (the query
+    // expression is not reactive, and holds no JSX).
+    let media_queries: Vec<String> = classified
+        .media_args
         .iter()
-        .map(|arg| match arg.as_expression() {
-            Some(expr) if has_jsx_expr(expr) => {
-                let (eid, nodes) = lowerer.lower_data_expr(expr, expr.span());
-                EffectCb {
-                    code: lowerer.exprs.code(eid).unwrap_or_default().to_string(),
-                    nodes,
-                }
-            }
-            _ => EffectCb {
-                code: inject_arg(source, scoping, &lowerer.signals, lowerer.props_symbol, arg)
-                    .code,
-                nodes: Vec::new(),
-            },
-        })
+        .map(|(q, _)| inject_arg(source, scoping, &lowerer.signals, lowerer.props_symbol, q).code)
         .collect();
+
+    // `$effect`/`$expose`/lifecycle callbacks: `.value`-injected; a callback
+    // embedding JSX as a value (`groups.push(<Child/>)` in its body) is templated
+    // like a preserved JSX statement, so codegen builds the nodes inline where the
+    // JSX sits.
+    let mut lower_cb = |arg: &'a Argument<'a>| match arg.as_expression() {
+        Some(expr) if has_jsx_expr(expr) => {
+            let (eid, nodes) = lowerer.lower_data_expr(expr, expr.span());
+            EffectCb { code: lowerer.exprs.code(eid).unwrap_or_default().to_string(), nodes }
+        }
+        _ => EffectCb {
+            code: inject_arg(source, scoping, &lowerer.signals, lowerer.props_symbol, arg).code,
+            nodes: Vec::new(),
+        },
+    };
+    let effects = classified.effect_args.iter().copied().map(&mut lower_cb).collect();
+    let exposes = classified.expose_args.iter().copied().map(&mut lower_cb).collect();
+    let on_mounts = classified.mount_args.iter().copied().map(&mut lower_cb).collect();
+    let on_cleanups = classified.cleanup_args.iter().copied().map(&mut lower_cb).collect();
+    let on_resizes = classified.resize_args.iter().copied().map(&mut lower_cb).collect();
+    let on_visibility_changes =
+        classified.visibility_args.iter().copied().map(&mut lower_cb).collect();
+    let on_media_queries = media_queries
+        .into_iter()
+        .zip(classified.media_args.iter().map(|(_, cb)| lower_cb(cb)))
+        .collect();
+    drop(lower_cb);
 
     let mut errors = classified.errors;
     errors.extend(lowerer.errors);
@@ -513,12 +527,12 @@ fn lower_one<'a>(
         rest: classified.rest,
         prop_snapshots: classified.prop_snapshots,
         effects,
-        exposes: classified.exposes,
-        on_mounts: classified.on_mounts,
-        on_cleanups: classified.on_cleanups,
-        on_resizes: classified.on_resizes,
-        on_visibility_changes: classified.on_visibility_changes,
-        on_media_queries: classified.on_media_queries,
+        exposes,
+        on_mounts,
+        on_cleanups,
+        on_resizes,
+        on_visibility_changes,
+        on_media_queries,
         children_local,
         needs_host: classified.needs_host,
         module_components,
@@ -1169,15 +1183,16 @@ struct Classified<'a> {
     page_aliases: Vec<PageAlias>,
     rest: Option<RestProp>,
     prop_snapshots: Vec<PropSnapshot>,
-    /// Raw `$effect(cb)` arguments — injected/templated in `lower_one`, where the
-    /// `Lowerer` exists (a callback embedding JSX lowers its branches to view nodes).
+    /// Raw `$effect`/`$expose`/lifecycle-hook arguments — injected/templated in
+    /// `lower_one`, where the `Lowerer` exists (a callback embedding JSX lowers
+    /// its branches to view nodes).
     effect_args: Vec<&'a Argument<'a>>,
-    exposes: Vec<String>,
-    on_mounts: Vec<String>,
-    on_cleanups: Vec<String>,
-    on_resizes: Vec<String>,
-    on_visibility_changes: Vec<String>,
-    on_media_queries: Vec<(String, String)>,
+    expose_args: Vec<&'a Argument<'a>>,
+    mount_args: Vec<&'a Argument<'a>>,
+    cleanup_args: Vec<&'a Argument<'a>>,
+    resize_args: Vec<&'a Argument<'a>>,
+    visibility_args: Vec<&'a Argument<'a>>,
+    media_args: Vec<(&'a Argument<'a>, &'a Argument<'a>)>,
     children: Option<ChildrenInfo>,
     needs_host: bool,
     errors: Vec<String>,
@@ -1447,40 +1462,9 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         }
     }
 
-    // `$expose` arguments: inject `.value` now the symbol set is complete.
-    // (`$effect` arguments stay raw — `lower_one` injects/templates them through
-    // the `Lowerer` so an embedded JSX value gets node-builder branches.)
-    let exposes = expose_args
-        .into_iter()
-        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
-        .collect();
-    let on_mounts = mount_args
-        .into_iter()
-        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
-        .collect();
-    let on_cleanups = cleanup_args
-        .into_iter()
-        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
-        .collect();
-    let on_resizes = resize_args
-        .into_iter()
-        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
-        .collect();
-    let on_visibility_changes = visibility_args
-        .into_iter()
-        .map(|arg| inject_arg(source, scoping, &by_symbol, props_symbol, arg).code)
-        .collect();
-    // Both members injected: the query may read signals/props (a one-time `.value`
-    // read at mount — the query expression is not reactive).
-    let on_media_queries = media_args
-        .into_iter()
-        .map(|(q, cb)| {
-            (
-                inject_arg(source, scoping, &by_symbol, props_symbol, q).code,
-                inject_arg(source, scoping, &by_symbol, props_symbol, cb).code,
-            )
-        })
-        .collect();
+    // `$effect`/`$expose`/lifecycle arguments stay raw — `lower_one` injects/
+    // templates them through the `Lowerer` so an embedded JSX value gets
+    // node-builder branches.
 
     // A component (not a page — pages have no element) that reads `$context` needs
     // its connect bracketed so the resolver can find the host. Computed before the
@@ -1499,12 +1483,12 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         rest: rest_prop,
         prop_snapshots: snapshots,
         effect_args,
-        exposes,
-        on_mounts,
-        on_cleanups,
-        on_resizes,
-        on_visibility_changes,
-        on_media_queries,
+        expose_args,
+        mount_args,
+        cleanup_args,
+        resize_args,
+        visibility_args,
+        media_args,
         children,
         needs_host,
         errors,
@@ -2946,7 +2930,8 @@ mod tests {
             "export function C() { let n = $state(0); $expose({ inc: () => n++ }); return <p>{n}</p>; }",
         );
         assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
-        assert_eq!(lowered.exposes, ["{ inc: () => n.value++ }"]);
+        assert_eq!(lowered.exposes[0].code, "{ inc: () => n.value++ }");
+        assert!(lowered.exposes[0].nodes.is_empty());
     }
 
     #[test]
@@ -2980,8 +2965,8 @@ mod tests {
             "export function C() { let n = $state(0); onMount(() => console.log(n)); onCleanup(() => n++); return <p>{n}</p>; }",
         );
         assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
-        assert_eq!(lowered.on_mounts, ["() => console.log(n.value)"]);
-        assert_eq!(lowered.on_cleanups, ["() => n.value++"]);
+        assert_eq!(lowered.on_mounts[0].code, "() => console.log(n.value)");
+        assert_eq!(lowered.on_cleanups[0].code, "() => n.value++");
     }
 
     #[test]
@@ -2990,13 +2975,11 @@ mod tests {
             "export function C() { let n = $state(0); let q = $state(\"(min-width: 768px)\"); onResize((entry) => console.log(n, entry)); onVisibilityChange((visible) => n = visible ? 1 : 0); onMediaQuery(q, (matches) => console.log(n, matches)); return <p>{n}</p>; }",
         );
         assert!(lowered.errors.is_empty(), "errors: {:?}", lowered.errors);
-        assert_eq!(lowered.on_resizes, ["(entry) => console.log(n.value, entry)"]);
-        assert_eq!(lowered.on_visibility_changes, ["(visible) => n.value = visible ? 1 : 0"]);
+        assert_eq!(lowered.on_resizes[0].code, "(entry) => console.log(n.value, entry)");
+        assert_eq!(lowered.on_visibility_changes[0].code, "(visible) => n.value = visible ? 1 : 0");
         // Both members of the pair are injected: the query may read signals too.
-        assert_eq!(
-            lowered.on_media_queries,
-            [("q.value".to_string(), "(matches) => console.log(n.value, matches)".to_string())]
-        );
+        assert_eq!(lowered.on_media_queries[0].0, "q.value");
+        assert_eq!(lowered.on_media_queries[0].1.code, "(matches) => console.log(n.value, matches)");
         // The hook statements are collected, not preserved in the raw body.
         for item in &lowered.body {
             if let BodyItem::Raw(stmt) = item {

@@ -198,9 +198,11 @@ fn page_body(lowered: &Lowered) -> (Emitter<'_>, String) {
     let mut lifecycle = String::new();
     if e.has_lifecycle() {
         lifecycle.push_str("  const __lifecycle = { mounts: [], cleanups: [] };\n");
-        lifecycle.push_str(&e.render_stmts("  ", &e.on_cleanup_stmts("__lifecycle.cleanups")));
-        lifecycle.push_str(&e.render_stmts("  ", &e.on_mount_stmts("__lifecycle.mounts")));
-        for closure in dom_hook_closures(lowered, &root, hook_error.is_none()) {
+        let cleanup_stmts = e.on_cleanup_stmts("__lifecycle.cleanups");
+        lifecycle.push_str(&e.render_stmts("  ", &cleanup_stmts));
+        let mount_stmts = e.on_mount_stmts("__lifecycle.mounts");
+        lifecycle.push_str(&e.render_stmts("  ", &mount_stmts));
+        for closure in e.dom_hook_closures(&root, hook_error.is_none()) {
             lifecycle.push_str(&format!("  __lifecycle.mounts.push({closure});\n"));
         }
         lifecycle.push_str(&format!("  {root}.__lifecycle = __lifecycle;\n"));
@@ -219,35 +221,12 @@ fn page_body(lowered: &Lowered) -> (Emitter<'_>, String) {
     (e, body)
 }
 
-/// Desugar the DOM lifecycle hooks (`onResize`/`onVisibilityChange`/`onMediaQuery`)
-/// into mount-shaped closures over `host` (a component's `this`, a page's root
-/// var). Each closure returns its disposer, so cleanup flows through the same
-/// path as an `onMount` return value (`_cleanups` / `runMount`). `observers: false`
-/// skips the two observer hooks — a page whose root isn't an Element has nothing
-/// to observe (the caller reports `dom_hook_root_error`; emitting the closure
-/// anyway would throw `observe(fragment)` at runtime).
-pub(crate) fn dom_hook_closures(lowered: &Lowered, host: &str, observers: bool) -> Vec<String> {
-    let mut closures = Vec::new();
-    if observers {
-        for cb in &lowered.on_resizes {
-            closures.push(format!(
-                "() => {{ const __cb = ({cb}); const __ro = new ResizeObserver((__entries) => {{ for (const __entry of __entries) __cb(__entry); }}); __ro.observe({host}); return () => __ro.disconnect(); }}"
-            ));
-        }
-        for cb in &lowered.on_visibility_changes {
-            closures.push(format!(
-                "() => {{ const __cb = ({cb}); const __io = new IntersectionObserver((__entries) => {{ for (const __entry of __entries) __cb(__entry.isIntersecting, __entry); }}); __io.observe({host}); return () => __io.disconnect(); }}"
-            ));
-        }
-    }
-    // The initial state is delivered synchronously at mount; the query expression
-    // is evaluated once (not reactive).
-    for (query, cb) in &lowered.on_media_queries {
-        closures.push(format!(
-            "() => {{ const __cb = ({cb}); const __mql = window.matchMedia(({query})); __cb(__mql.matches, __mql); const __onchange = (__e) => __cb(__e.matches, __e); __mql.addEventListener(\"change\", __onchange); return () => __mql.removeEventListener(\"change\", __onchange); }}"
-        ));
-    }
-    closures
+/// [`Emitter::dom_hook_closures`] for the hydrate backend (which has no CSR
+/// emitter). Helper imports for callbacks embedding JSX are covered by the dual
+/// module's CSR arm, like [`effect_code_pub`].
+pub(crate) fn dom_hook_closures_pub(lowered: &Lowered, host: &str, observers: bool) -> Vec<String> {
+    let mut e = Emitter::new(lowered, Disposal::None);
+    e.dom_hook_closures(host, observers)
 }
 
 /// The observer hooks need an Element to observe; a page whose root is a
@@ -335,12 +314,9 @@ fn component_body_ex<'a>(
     // collected as additional teardown. The DOM hooks desugar to closures that
     // observe the host and return their disposer, so they share the wrapper.
     let mut mounts = String::new();
-    for cb in lowered
-        .on_mounts
-        .iter()
-        .cloned()
-        .chain(dom_hook_closures(lowered, "this", true))
-    {
+    let mount_codes: Vec<String> =
+        lowered.on_mounts.iter().map(|cb| e.effect_code(cb)).collect();
+    for cb in mount_codes.into_iter().chain(e.dom_hook_closures("this", true)) {
         mounts.push_str(&format!(
             "    {{ const __d = ({cb})(); if (typeof __d === \"function\") this._cleanups.push(__d); }}\n"
         ));
@@ -905,9 +881,10 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    /// A `$effect` callback's source, with any embedded JSX branch substituted as
-    /// an inline node-builder IIFE (see [`Self::inline_node_expr`]) so it evaluates
-    /// in the scope the JSX was written in (the callback's loop locals, params).
+    /// A `$effect`/`$expose`/lifecycle callback's source, with any embedded JSX
+    /// branch substituted as an inline node-builder IIFE (see
+    /// [`Self::inline_node_expr`]) so it evaluates in the scope the JSX was
+    /// written in (the callback's loop locals, params).
     fn effect_code(&mut self, cb: &EffectCb) -> String {
         if cb.nodes.is_empty() {
             return cb.code.clone();
@@ -923,8 +900,44 @@ impl<'a> Emitter<'a> {
     /// properties on the element (SPEC §3.2). Component path only.
     fn emit_exposes(&mut self) {
         for obj in self.lowered.exposes.clone() {
-            self.line(format!("Object.assign(this, ({obj}));"));
+            let code = self.effect_code(&obj);
+            self.line(format!("Object.assign(this, ({code}));"));
         }
+    }
+
+    /// Desugar the DOM lifecycle hooks (`onResize`/`onVisibilityChange`/
+    /// `onMediaQuery`) into mount-shaped closures over `host` (a component's
+    /// `this`, a page's root var). Each closure returns its disposer, so cleanup
+    /// flows through the same path as an `onMount` return value (`_cleanups` /
+    /// `runMount`). `observers: false` skips the two observer hooks — a page whose
+    /// root isn't an Element has nothing to observe (the caller reports
+    /// `dom_hook_root_error`; emitting the closure anyway would throw
+    /// `observe(fragment)` at runtime).
+    fn dom_hook_closures(&mut self, host: &str, observers: bool) -> Vec<String> {
+        let mut closures = Vec::new();
+        if observers {
+            for cb in self.lowered.on_resizes.clone() {
+                let cb = self.effect_code(&cb);
+                closures.push(format!(
+                    "() => {{ const __cb = ({cb}); const __ro = new ResizeObserver((__entries) => {{ for (const __entry of __entries) __cb(__entry); }}); __ro.observe({host}); return () => __ro.disconnect(); }}"
+                ));
+            }
+            for cb in self.lowered.on_visibility_changes.clone() {
+                let cb = self.effect_code(&cb);
+                closures.push(format!(
+                    "() => {{ const __cb = ({cb}); const __io = new IntersectionObserver((__entries) => {{ for (const __entry of __entries) __cb(__entry.isIntersecting, __entry); }}); __io.observe({host}); return () => __io.disconnect(); }}"
+                ));
+            }
+        }
+        // The initial state is delivered synchronously at mount; the query
+        // expression is evaluated once (not reactive).
+        for (query, cb) in self.lowered.on_media_queries.clone() {
+            let cb = self.effect_code(&cb);
+            closures.push(format!(
+                "() => {{ const __cb = ({cb}); const __mql = window.matchMedia(({query})); __cb(__mql.matches, __mql); const __onchange = (__e) => __cb(__e.matches, __e); __mql.addEventListener(\"change\", __onchange); return () => __mql.removeEventListener(\"change\", __onchange); }}"
+            ));
+        }
+        closures
     }
 
     fn has_lifecycle(&self) -> bool {
@@ -935,23 +948,31 @@ impl<'a> Emitter<'a> {
             || !self.lowered.on_media_queries.is_empty()
     }
 
-    /// `onCleanup(cb)` teardown registrations targeting `sink` (pushed as-is; run
-    /// when the component/page is removed).
-    fn on_cleanup_stmts(&self, sink: &str) -> Vec<String> {
+    /// `onCleanup(cb)` teardown registrations targeting `sink` (run when the
+    /// component/page is removed).
+    fn on_cleanup_stmts(&mut self, sink: &str) -> Vec<String> {
         self.lowered
             .on_cleanups
+            .clone()
             .iter()
-            .map(|cb| format!("{sink}.push({cb});"))
+            .map(|cb| {
+                let code = self.effect_code(cb);
+                format!("{sink}.push({code});")
+            })
             .collect()
     }
 
     /// `onMount(cb)` callbacks pushed into `sink` (run after the view is inserted;
     /// a returned function is collected as additional teardown by the runtime).
-    fn on_mount_stmts(&self, sink: &str) -> Vec<String> {
+    fn on_mount_stmts(&mut self, sink: &str) -> Vec<String> {
         self.lowered
             .on_mounts
+            .clone()
             .iter()
-            .map(|cb| format!("{sink}.push({cb});"))
+            .map(|cb| {
+                let code = self.effect_code(cb);
+                format!("{sink}.push({code});")
+            })
             .collect()
     }
 
@@ -1641,6 +1662,32 @@ mod tests {
         // The child prop effects read the loop locals directly.
         assert!(m.code.contains("setProp(c0, \"group\", (group));"), "loop local prop:\n{}", m.code);
         assert!(m.code.contains("setProp(c0, \"idx\", (groupIndex));"), "loop local prop:\n{}", m.code);
+    }
+
+    #[test]
+    fn jsx_in_lifecycle_callbacks_is_templated() {
+        // `onMount` (and the other lifecycle hooks) take the same treatment as
+        // `$effect`: JSX inside the callback is templated as an inline IIFE, and
+        // signal reads still get `.value` injection.
+        let m = emit_page(&lower(
+            "export default function P() {\n\
+               let items = $state([]);\n\
+               let container = $ref();\n\
+               onMount(() => {\n\
+                 const nodes = [];\n\
+                 for (const item of items) { nodes.push(<Child item={item} />); }\n\
+                 container.replaceChildren(...nodes);\n\
+               });\n\
+               return <div ref={container}></div>;\n\
+             }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(!m.code.contains("<Child"), "raw JSX leaked:\n{}", m.code);
+        assert!(m.code.contains("nodes.push((() => {"), "inline builder at push site:\n{}", m.code);
+        assert!(m.code.contains("setProp(c0, \"item\", (item));"), "loop local prop:\n{}", m.code);
+        assert!(m.code.contains("of items.value)"), "signal injection in callback:\n{}", m.code);
+        // The generated helpers are imported even though only the mount uses them.
+        assert!(m.code.contains("setProp"), "setProp import:\n{}", m.code);
     }
 
     #[test]

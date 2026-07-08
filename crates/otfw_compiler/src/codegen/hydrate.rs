@@ -312,15 +312,17 @@ impl<'a> Emitter<'a> {
         // already reports it, and an error in this emitter would drop the page's
         // hydrate factory entirely (falling back to a CSR rebuild) over a warning.
         let dom_hooks =
-            csr::dom_hook_closures(lowered, &root, csr::dom_hook_root_error(lowered).is_none());
+            csr::dom_hook_closures_pub(lowered, &root, csr::dom_hook_root_error(lowered).is_none());
         if !lowered.on_mounts.is_empty() || !lowered.on_cleanups.is_empty() || !dom_hooks.is_empty()
         {
             self.line("const __lifecycle = { mounts: [], cleanups: [] };".into());
             for cb in &lowered.on_cleanups {
-                self.line(format!("__lifecycle.cleanups.push({cb});"));
+                let code = csr::effect_code_pub(lowered, cb);
+                self.line(format!("__lifecycle.cleanups.push({code});"));
             }
             for cb in &lowered.on_mounts {
-                self.line(format!("__lifecycle.mounts.push({cb});"));
+                let code = csr::effect_code_pub(lowered, cb);
+                self.line(format!("__lifecycle.mounts.push({code});"));
             }
             for closure in dom_hooks {
                 self.line(format!("__lifecycle.mounts.push({closure});"));
@@ -386,11 +388,13 @@ impl<'a> Emitter<'a> {
             self.bind(format!("effect({code})"));
         }
         for obj in &lowered.exposes {
-            self.line(format!("Object.assign(this, ({obj}));"));
+            let code = csr::effect_code_pub(lowered, obj);
+            self.line(format!("Object.assign(this, ({code}));"));
         }
         if let Some(sink) = self.sink {
             for cb in &lowered.on_cleanups {
-                self.line(format!("{sink}.push({cb});"));
+                let code = csr::effect_code_pub(lowered, cb);
+                self.line(format!("{sink}.push({code});"));
             }
         }
         self.render("      ")

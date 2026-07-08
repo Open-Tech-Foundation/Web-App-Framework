@@ -78,6 +78,18 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
+- **JSX inside `$expose` and the lifecycle hooks compiles instead of leaking raw
+  JSX.** Same hole as `$effect` (below), same fix: the callback arguments of
+  `onMount`/`onCleanup`/`onResize`/`onVisibilityChange`/`onMediaQuery` and the
+  `$expose` object were only `.value`-injected, never probed for JSX — so
+  `onMount(() => { nodes.push(<Child item={item}/>); … })` leaked the JSX verbatim.
+  All of them now flow through the shared `$effect` templating in lowering
+  (`Lowered.exposes`/`on_mounts`/… carry `EffectCb`), and codegen substitutes each
+  embedded element as an inline IIFE at its placeholder, capturing the callback's
+  locals. Rendering the callbacks through the emitter also records their helper
+  usage, so a module whose *only* JSX-in-callback sits in a hook still imports
+  `setProp`/`effect` (`codegen/csr.rs` `dom_hook_closures` moved onto the
+  `Emitter`; hydrate reuses it via `dom_hook_closures_pub`).
 - **JSX inside a `$effect` callback compiles instead of leaking raw JSX.** A `$effect`
   body embedding JSX (`for (…) { groups.push(<Child group={group}/>); }` followed by
   `container.replaceChildren(...groups)`) was injected verbatim — the callback was never
