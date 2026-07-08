@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### Added
+
+- Collapsible sidebar nav groups. A section with children now renders a chevron toggle
+  instead of always showing its child list. The branch containing the active route stays
+  open and top-level groups start expanded; open/closed state is per-session (no
+  persistence). `aria-controls` ids come from a deterministic position path, so they're
+  collision-free and hydration-safe.
+
+### Fixed
+
+- The active sidebar item is scrolled into view after navigation. A fresh `<Sidebar>`
+  mounts scrolled to the top on each navigation, so in a long nav tree the active link
+  landed off-screen; it's now brought into the sidebar's own scroll viewport when out of
+  view, adjusting only the sidebar's scroll (never the page's).
+- The collapse chevron now left-aligns for every group. Sections that are also their own
+  page (e.g. Deployment) previously showed the chevron on the right while label-only
+  sections showed it on the left; all chevrons now share one left column.
+
+### Tests
+
+- New browser e2e (`tests/e2e/sidebar-collapse.mjs`) driving headless Chromium over the
+  collapsible groups — chevron rotation, child-list layout on expand, reduced-motion
+  transition guard, active-branch auto-expand, and active-item scroll-into-view.
+
 ## [0.14.0] - 2026-07-08
 
 _Dependency updates._
