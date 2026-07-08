@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-07-08
+
 ### Fixed
 
 - **Stale route chunks after a redeploy no longer dead-end the page.** A tab still
