@@ -125,6 +125,84 @@ describe("router", () => {
     // Layout wraps the page; params reached the page.
     expect(app.querySelector(".layout main article")?.textContent).toBe("post 7");
   });
+
+  // A lazy loader that rejects the way a browser reports a failed dynamic import of a
+  // content-hashed route chunk ("Failed to fetch dynamically imported module: <url>").
+  const chunkError = () =>
+    Promise.reject(
+      new TypeError(
+        "Failed to fetch dynamically imported module: https://x/assets/layout-DmM9YRKj.js",
+      ),
+    );
+
+  const CHUNK_RELOAD_FLAG = "otfw:chunk-reloaded";
+  const clearReloadFlag = () => window.sessionStorage.removeItem(CHUNK_RELOAD_FLAG);
+
+  test("failed route chunk (redeploy) → one full reload for fresh assets", async () => {
+    const app = document.createElement("div");
+    document.body.appendChild(app);
+    const pages = {
+      "/proj3/app/page.jsx": { default: page("home") },
+      "/proj3/app/stale/page.jsx": chunkError,
+    };
+
+    let reloads = 0;
+    const origReload = window.location.reload;
+    window.location.reload = () => {
+      reloads++;
+    };
+    clearReloadFlag();
+
+    try {
+      if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
+      window.history.replaceState({}, "", "/");
+      mountApp({ pages, target: app });
+      await tick();
+
+      await navigate("/stale");
+      expect(reloads).toBe(1);
+      expect(app.innerHTML).not.toContain("Failed to load");
+    } finally {
+      window.location.reload = origReload;
+      clearReloadFlag();
+    }
+  });
+
+  test("persistent failure after the reload → one reload, then the error (no loop)", async () => {
+    const app = document.createElement("div");
+    document.body.appendChild(app);
+    const pages = {
+      "/proj5/app/page.jsx": { default: page("home") },
+      "/proj5/app/broken/page.jsx": chunkError,
+    };
+
+    let reloads = 0;
+    const origReload = window.location.reload;
+    window.location.reload = () => {
+      reloads++;
+    };
+    clearReloadFlag();
+
+    try {
+      if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
+      window.history.replaceState({}, "", "/");
+      mountApp({ pages, target: app });
+      await tick();
+
+      // First failure: reload once (guard flag now set, survives the mocked reload).
+      await navigate("/broken");
+      expect(reloads).toBe(1);
+
+      // The post-reload attempt still fails: the guard blocks a second reload and the
+      // error surfaces instead of looping.
+      await navigate("/broken");
+      expect(reloads).toBe(1);
+      expect(app.innerHTML).toContain("Failed to load");
+    } finally {
+      window.location.reload = origReload;
+      clearReloadFlag();
+    }
+  });
 });
 
 describe("i18n locale routing (prefix_except_default)", () => {

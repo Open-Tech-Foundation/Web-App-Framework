@@ -324,6 +324,70 @@ export function matchRoute(pathname) {
 // win over a later click).
 let navSeq = 0;
 
+// --- Stale-chunk recovery ---------------------------------------------------
+// Pages/layouts are code-split, so a route is loaded by a lazy `() => import(...)`
+// at navigation time. Asset filenames are content-hashed (`layout-DmM9YRKj.js`),
+// so a new deploy replaces them: a tab that loaded the OLD `index.html` still holds
+// the old chunk names, and the moment the user navigates to a not-yet-loaded route
+// its `import()` 404s — "Failed to fetch dynamically imported module".
+//
+// Recovery is a single full page load, which fetches the fresh `index.html` (new
+// hashes) and completes the navigation for real. We don't try to distinguish a
+// redeploy from a transient network error first — a HEAD probe of the chunk isn't
+// reliable across hosts (405 / no-HEAD, S3 returning 403 for missing keys, CORS
+// preflight, CDN quirks). The reload is guarded by a one-time, tab-scoped
+// sessionStorage flag that survives the reload, so a genuinely broken deploy (fresh
+// HTML still 404s) reloads once and then surfaces the error instead of looping.
+
+/**
+ * Whether `e` is a failed dynamic `import()` of a code-split route chunk — the
+ * signature of the stale-chunk-after-redeploy problem. The message differs per
+ * engine, so match all three:
+ *   Chrome/Edge: "Failed to fetch dynamically imported module: <url>"
+ *   Firefox:     "error loading dynamically imported module: <url>"
+ *   Safari:      "Importing a module script failed."
+ */
+function isChunkLoadError(e) {
+  const msg = (e && (e.message || String(e))) || "";
+  return /dynamically imported module|Importing a module script failed/i.test(msg);
+}
+
+// One-time reload guard. sessionStorage survives `location.reload()` and is scoped to
+// this tab (auto-cleared when it closes), so it's the right place to remember "I've
+// already tried reloading for this." A genuinely broken deploy — fresh HTML that still
+// references a 404ing chunk — therefore reloads exactly once, then surfaces the error
+// instead of looping. `clearChunkReloadFlag` drops it on the next successful render, so
+// a *later* redeploy can recover in turn.
+const CHUNK_RELOAD_FLAG = "otfw:chunk-reloaded";
+
+/**
+ * Hard-reload once to pick up fresh HTML + asset hashes, guarded so it can't loop.
+ * Returns `false` when a reload was already attempted (the caller should surface the
+ * error instead of reloading again).
+ */
+function reloadForFreshAssets() {
+  if (!isBrowser) return false;
+  try {
+    if (window.sessionStorage.getItem(CHUNK_RELOAD_FLAG)) return false; // already tried once
+    window.sessionStorage.setItem(CHUNK_RELOAD_FLAG, "1");
+  } catch {
+    // sessionStorage unavailable — reload unguarded; a normal redeploy still recovers,
+    // and the rare broken-deploy loop is the only thing we can't defend against here.
+  }
+  window.location.reload();
+  return true;
+}
+
+/** Drop the one-time reload guard once a navigation renders successfully. */
+function clearChunkReloadFlag() {
+  if (!isBrowser) return;
+  try {
+    window.sessionStorage.removeItem(CHUNK_RELOAD_FLAG);
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * Navigate to `path`. Runs an optional route guard, fetches the route's loader
  * data when it has any (docs/DATA.md — fetch *then* commit, like the guard),
@@ -423,6 +487,7 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
         currentNodes = adopted.nodes;
         for (const n of adopted.nodes) runMount(n); // onMount for page + every layout
         clearError({ phase: "route" });
+        clearChunkReloadFlag();
         return;
       }
     } catch (e) {
@@ -441,6 +506,10 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
       const built = await buildRouteNode(match, Object.fromEntries(url.searchParams));
       nodes = built.nodes;
     } catch (e) {
+      // A failed route-chunk import (stale after a redeploy, or the network dropped):
+      // try one guarded full reload for fresh HTML + hashes. If we already reloaded once
+      // and it still fails, fall through to the error overlay instead of looping.
+      if (isChunkLoadError(e) && reloadForFreshAssets()) return;
       reportError(e, { phase: "route", path: url.pathname });
       rootEl.replaceChildren();
       rootEl.innerHTML = `<pre style="color:#f87171;padding:1rem">Failed to load ${url.pathname}\n${e?.message ?? e}</pre>`;
@@ -457,6 +526,7 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
     for (const n of nodes) runMount(n); // run onMount for page + every layout
     currentNodes = nodes;
     clearError({ phase: "route" }); // a good render dismisses a prior error overlay
+    clearChunkReloadFlag(); // a successful render means the reload (if any) recovered
     // A forward navigation lands at the top of the new page (or at the targeted
     // anchor); back/forward (`isPop`) keeps the browser's restored scroll position.
     if (!isPop && isBrowser) {
