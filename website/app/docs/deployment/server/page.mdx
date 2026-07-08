@@ -59,8 +59,8 @@ export default {
 };
 ```
 
-For a full worked example — Worker entry, `wrangler.jsonc`, D1 access, and the dev proxy —
-see **[Cloudflare Workers](/docs/deployment/cloudflare)**.
+For a full worked example — Fetch entry, static assets, platform bindings, and the dev proxy —
+see **[Fetch handler](/docs/deployment/fetch-handler)**.
 
 **Node** uses the `node:http` adapter:
 
@@ -127,7 +127,7 @@ the host runtime provides.
 On runtimes that pass bindings through `fetch` (Cloudflare Workers), those arrive on
 `context.env` instead — `env.DB` for D1, KV namespaces, secrets — and `context.ctx` exposes
 `waitUntil` for background work. Use `context.env` for platform bindings and `process.env`
-for plain variables. See [Cloudflare Workers](/docs/deployment/cloudflare).
+for plain variables. See [Fetch handler](/docs/deployment/fetch-handler).
 
 ## What ships today
 

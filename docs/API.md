@@ -154,8 +154,8 @@ import { toNodeListener } from "@opentf/web/server/adapters/node";
 createServer(toNodeListener(apiHandler)).listen(3000);
 ```
 
-For a full full-stack Cloudflare setup (Worker entry, `wrangler.jsonc`, D1, and the
-dev proxy), see the website's [Cloudflare Workers](https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/website/app/docs/deployment/cloudflare/page.mdx)
+For a full full-stack Fetch-handler setup (entry file, static assets, platform bindings,
+and the dev proxy), see the website's [Fetch handler](https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/website/app/docs/deployment/fetch-handler/page.mdx)
 deployment guide.
 
 ### Development with bindings (D1) — the dev proxy

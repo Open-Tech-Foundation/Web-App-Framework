@@ -159,12 +159,12 @@ Keys are matched **longest-prefix-first**, so `"/api/admin"` can point elsewhere
 `"/api"`. A matched prefix is forwarded before the in-process API handler runs, so proxied
 endpoints never also execute locally. `proxy` has **no effect on `otfw build` or a
 production deploy** — in production the backend runs for real (see
-[Cloudflare Workers](/docs/deployment/cloudflare)).
+[Fetch handler](/docs/deployment/fetch-handler)).
 
 <Callout type="info" title="Why proxy instead of running the API locally?">
-  Bindings like D1 only exist inside the Workers runtime. Running the API under
-  `wrangler dev` (which provides a local D1) and proxying `/api/*` to it means the same
-  handler code runs in dev and production — no mocks, no drift.
+  Platform bindings often exist only inside the host's dev runtime. Running the API there
+  and proxying `/api/*` to it means the same handler code runs in dev and production — no
+  mocks, no drift.
 </Callout>
 
 <Callout type="info" title="Framework vs. theme config">

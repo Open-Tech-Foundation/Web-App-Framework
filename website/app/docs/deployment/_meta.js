@@ -4,5 +4,5 @@ export default {
   "static-generation": "Static Generation",
   hydration: "Hydration",
   server: "Server",
-  cloudflare: "Cloudflare Workers",
+  "fetch-handler": "Fetch handler",
 };

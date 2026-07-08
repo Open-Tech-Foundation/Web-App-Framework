@@ -122,7 +122,7 @@ Edits to `route.*` or `_middleware.*` rebuild the server bundle and refresh the 
 | `apiHandler` | Standalone: `app/api/*` routes with `app/api/_middleware.js` composed in — **do not** also pass `middleware` or it runs twice |
 
 ```js
-// Cloudflare Workers / Bun / Deno — full pipeline
+// Fetch-native runtimes (Workers, Bun, Deno) — full pipeline
 import { apiRoutes, middleware } from "./dist/server/api.js";
 import { createFetchHandler } from "@opentf/web/server";
 
@@ -134,7 +134,7 @@ export default {
 };
 ```
 
-See [Server API](/api/server) and [Cloudflare Workers](/docs/deployment/cloudflare).
+See [Server API](/api/server) and [Fetch handler](/docs/deployment/fetch-handler).
 
 ## TypeScript
 

@@ -27,9 +27,9 @@ There are three ways to deploy:
 - **[Server](/docs/deployment/server)** — run a server for per-request SSR and
   [API routes](/docs/routing/api-routes), via `otfw serve` or a runtime adapter. Best for
   fullstack apps that need server logic.
-- **[Cloudflare Workers](/docs/deployment/cloudflare)** — a single Worker serving the SPA
-  assets plus API routes backed by **D1**, with a matching dev proxy. A worked, end-to-end
-  full-stack example.
+- **[Fetch handler](/docs/deployment/fetch-handler)** — deploy `dist/server/api.js` to any
+  Fetch-native runtime (Workers, Deno, Bun edge, etc.): static assets plus middleware and
+  API routes, with platform bindings via `context.env`.
 
 <Callout type="tip" title="Same bundle, more HTML">
   SSG doesn't change your app — it runs the same components through a string renderer at
