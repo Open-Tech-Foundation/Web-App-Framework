@@ -1081,8 +1081,9 @@ impl<'a> Emitter<'a> {
     }
 
     /// The list's data expression, with any JSX embedded in it (`[{ icon: <b/> }]`)
-    /// replaced by a node-builder call — so a data-position element becomes a real
-    /// DOM node rather than falling through to a host `jsx-runtime`.
+    /// replaced by an inline node-builder IIFE — so a data-position element becomes
+    /// a real DOM node rather than falling through to a host `jsx-runtime`, and
+    /// evaluates in the scope its placeholder sits in (see [`Self::inline_node_expr`]).
     fn list_source_code(&mut self, source: ExpressionId, source_branches: &[ViewNode]) -> String {
         let template = self.lowered.exprs.code(source).unwrap_or("[]").to_string();
         if source_branches.is_empty() {
@@ -1090,10 +1091,7 @@ impl<'a> Emitter<'a> {
         }
         let mut calls = Vec::with_capacity(source_branches.len());
         for branch in source_branches {
-            let fn_name = format!("{}_value{}", self.base, self.list_counter);
-            self.list_counter += 1;
-            self.build_fn(&fn_name, branch, "", &[]);
-            calls.push(format!("{fn_name}()"));
+            calls.push(self.inline_node_expr(branch));
         }
         substitute_branches(&template, &calls)
     }
@@ -1143,6 +1141,34 @@ impl<'a> Emitter<'a> {
         self.line("}".to_string());
     }
 
+    /// Build `node` as an inline IIFE expression — `(() => { …; return root; })()`
+    /// — for substitution at a template placeholder. Unlike [`Self::build_fn`],
+    /// nothing is hoisted: the builder body evaluates in the scope where the
+    /// placeholder sits, so JSX written inside a loop or callback body captures
+    /// that scope's locals. Inner effects are not collected (they live and die
+    /// with the produced node), mirroring `build_fn`.
+    fn inline_node_expr(&mut self, node: &ViewNode) -> String {
+        let saved_lines = std::mem::take(&mut self.lines);
+        let saved_counter = self.counter;
+        let saved_disposal = self.disposal;
+        self.counter = 0;
+        self.disposal = Disposal::None;
+
+        let root = self.emit_node(node);
+
+        let body_lines = std::mem::replace(&mut self.lines, saved_lines);
+        self.counter = saved_counter;
+        self.disposal = saved_disposal;
+
+        let mut out = String::from("(() => {");
+        for l in &body_lines {
+            out.push('\n');
+            out.push_str(l);
+        }
+        out.push_str(&format!("\nreturn {root};\n}})()"));
+        out
+    }
+
     /// Emit a dynamic node region (conditional/element-valued hole) into `parent`:
     /// a comment anchor, a node-builder per embedded JSX branch, and a `bindChild`
     /// over the templated expression with each placeholder calling its builder.
@@ -1165,16 +1191,16 @@ impl<'a> Emitter<'a> {
         self.bind(format!("bindChild({anchor}, () => ({code}))"));
     }
 
-    /// Emit a preserved statement that embeds JSX as a value: a node-builder per
-    /// embedded JSX, then the templated statement with each placeholder calling its
-    /// builder (so `const icon = <Icon/>` becomes `const icon = Page_value0();`).
+    /// Emit a preserved statement that embeds JSX as a value: each placeholder is
+    /// substituted with an inline node-builder IIFE (so `const icon = <Icon/>`
+    /// becomes `const icon = (() => { …; return el0; })();`). Inline — not a
+    /// hoisted builder — because the statement can put the placeholder inside a
+    /// scope the component body can't see (a `for` body's loop locals, a callback's
+    /// params); the IIFE evaluates exactly where the JSX was written.
     fn emit_value_stmt(&mut self, template: &str, nodes: &[ViewNode]) {
         let mut calls = Vec::with_capacity(nodes.len());
         for node in nodes {
-            let fn_name = format!("{}_value{}", self.base, self.list_counter);
-            self.list_counter += 1;
-            self.build_fn(&fn_name, node, "", &[]);
-            calls.push(format!("{fn_name}()"));
+            calls.push(self.inline_node_expr(node));
         }
         self.line(substitute_branches(template, &calls));
     }
@@ -1341,9 +1367,9 @@ impl<'a> Emitter<'a> {
     }
 
     /// The JS source for a non-static prop value. For a [`PropValue::DynamicNode`]
-    /// it emits a node-builder per embedded JSX branch and substitutes their calls
-    /// into the templated expression (so `[{ content: <X/> }]` becomes
-    /// `[{ content: C_value0() }]`).
+    /// each embedded JSX branch is substituted as an inline node-builder IIFE
+    /// (so `[{ content: <X/> }]` becomes `[{ content: (() => { …; return c0; })() }]`),
+    /// evaluating in the scope its placeholder sits in (see [`Self::inline_node_expr`]).
     fn dynamic_prop_code(&mut self, value: &PropValue) -> String {
         match value {
             PropValue::Dynamic(expr) => {
@@ -1352,10 +1378,7 @@ impl<'a> Emitter<'a> {
             PropValue::DynamicNode { expr, branches } => {
                 let mut calls = Vec::with_capacity(branches.len());
                 for branch in branches {
-                    let fn_name = format!("{}_value{}", self.base, self.list_counter);
-                    self.list_counter += 1;
-                    self.build_fn(&fn_name, branch, "", &[]);
-                    calls.push(format!("{fn_name}()"));
+                    calls.push(self.inline_node_expr(branch));
                 }
                 let template = self.lowered.exprs.code(*expr).unwrap_or("null").to_string();
                 substitute_branches(&template, &calls)
@@ -1497,6 +1520,68 @@ mod tests {
         let parsed = session.parse(Path::new("page.tsx"), source);
         assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
         lower_component("/app/page.tsx", &parsed.program, source, true).expect("a page")
+    }
+
+    #[test]
+    fn jsx_value_in_loop_body_captures_loop_locals() {
+        // JSX pushed from inside a `for` body references loop locals (`group`,
+        // `current`). The builder must be substituted inline at the push site —
+        // a builder hoisted to the component body would throw ReferenceError
+        // when its effect reads the loop local.
+        let m = emit_page(&lower(
+            "export default function P() {\n\
+               let searchResults = $state([]);\n\
+               function renderResultGroups() {\n\
+                 const groups = [];\n\
+                 let offset = 0;\n\
+                 for (let groupIndex = 0; groupIndex < searchResults.length; groupIndex++) {\n\
+                   const group = searchResults[groupIndex];\n\
+                   const current = offset + groupIndex;\n\
+                   groups.push(<Child group={group} idx={current} />);\n\
+                 }\n\
+                 return groups;\n\
+               }\n\
+               return <div>{renderResultGroups()}</div>;\n\
+             }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // No builder hoisted out of the loop's scope.
+        assert!(!m.code.contains("function default_value"), "hoisted builder:\n{}", m.code);
+        // The push site holds the inline IIFE, inside the loop body.
+        assert!(m.code.contains("groups.push((() => {"), "inline builder at push site:\n{}", m.code);
+        let loop_start = m.code.find("for (let groupIndex").unwrap();
+        let builder = m.code.find("groups.push((() => {").unwrap();
+        assert!(builder > loop_start, "builder inside loop:\n{}", m.code);
+        assert!(m.code.contains("setProp(c0, \"group\", (group));"), "loop local prop:\n{}", m.code);
+        assert!(m.code.contains("setProp(c0, \"idx\", (current));"), "loop local prop:\n{}", m.code);
+    }
+
+    #[test]
+    fn jsx_value_in_loop_body_captures_loop_locals_in_component() {
+        // Same shape inside a props component (`match`/`current` are loop locals
+        // used by a handler and a text hole).
+        let m = emit_component(&lower(
+            "export default function SearchResultGroup({ group, offset }) {\n\
+               function renderMatches() {\n\
+                 const buttons = [];\n\
+                 for (let matchIndex = 0; matchIndex < group.matches.length; matchIndex++) {\n\
+                   const match = group.matches[matchIndex];\n\
+                   const current = offset + matchIndex;\n\
+                   buttons.push(<button onClick={() => select(match, current)}>{match.title}</button>);\n\
+                 }\n\
+                 return buttons;\n\
+               }\n\
+               return <div>{renderMatches()}</div>;\n\
+             }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(!m.code.contains("function default_value"), "hoisted builder:\n{}", m.code);
+        assert!(m.code.contains("buttons.push((() => {"), "inline builder at push site:\n{}", m.code);
+        // Loop-local declarations are preserved before the push.
+        assert!(m.code.contains("const match = group.value.matches[matchIndex];"), "match decl:\n{}", m.code);
+        assert!(m.code.contains("const current = offset.value + matchIndex;"), "current decl:\n{}", m.code);
+        assert!(m.code.contains("el0.onclick = () => select(match, current);"), "handler captures locals:\n{}", m.code);
+        assert!(m.code.contains("bindText(t1, () => (match.title))"), "text hole captures local:\n{}", m.code);
     }
 
     #[test]
@@ -1898,8 +1983,8 @@ mod tests {
         ));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         assert!(!m.code.contains("<i>") && !m.code.contains("<b>"), "no raw JSX:\n{}", m.code);
-        // Builder functions for each embedded JSX value.
-        assert!(m.code.contains("_value0()"), "value builder:\n{}", m.code);
+        // Each embedded JSX value becomes an inline builder IIFE.
+        assert!(m.code.contains("const icon = (() => {"), "inline value builder:\n{}", m.code);
         assert!(m.code.contains("const icon = "), "icon kept:\n{}", m.code);
         assert!(m.code.contains("const map = {"), "map kept:\n{}", m.code);
         // The text-hole anchor is appended before binding (so node values insert).
@@ -1923,8 +2008,7 @@ mod tests {
         let out = emit_module(&m.components, &m.module_stmts, &m.module_exprs);
         assert!(out.is_complete(), "errors: {:?}", out.errors);
         assert!(!out.code.contains("<i>") && !out.code.contains("<A/>"), "no raw JSX:\n{}", out.code);
-        assert!(out.code.contains("function module_value0()"), "module builder:\n{}", out.code);
-        assert!(out.code.contains("const map = { a: module_value0() };"), "map templated:\n{}", out.code);
+        assert!(out.code.contains("const map = { a: (() => {"), "map templated with inline builder:\n{}", out.code);
     }
 
     #[test]
@@ -2338,11 +2422,10 @@ mod tests {
             "export function L() { return <ul>{[{icon: <b>ICON</b>}].map((t) => <li>{t.icon}</li>)}</ul>; }",
         ));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
-        // A node-builder is emitted for the embedded element and its call is spliced
-        // into the source data — no raw JSX survives into the output.
-        assert!(m.code.contains("function L_value1() {"), "source node builder:\n{}", m.code);
+        // An inline node-builder IIFE is spliced into the source data — no raw JSX
+        // survives into the output.
         assert!(
-            m.code.contains("bindList(el0, () => ([{icon: L_value1()}]),"),
+            m.code.contains("bindList(el0, () => ([{icon: (() => {"),
             "source substitution:\n{}",
             m.code
         );

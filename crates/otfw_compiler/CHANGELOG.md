@@ -78,6 +78,18 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
+- **JSX written inside a loop or callback body captures that scope's locals.** A JSX
+  value embedded in a preserved statement (`groups.push(<Child group={group}/>)` inside
+  a `for` body, a JSX-valued prop or list-source expression with an embedded callback)
+  compiled to a node-builder *function hoisted to the component body*, while its effects
+  and handlers still referenced the loop locals (`group`, `current`, …) — throwing
+  `ReferenceError: group is not defined` the moment the builder ran. The CSR backend now
+  substitutes each branch **inline as an IIFE at its placeholder**
+  (`groups.push((() => { …; return c0; })())`), so the built view evaluates in exactly
+  the scope the JSX was written in (`codegen/csr.rs` `inline_node_expr`, replacing the
+  hoisted `{base}_value{N}` builders in `emit_value_stmt`, `dynamic_prop_code`, and
+  `list_source_code`). SSG already composed inline HTML expressions (scope-correct);
+  hydrate still rejects JSX-as-value (Phase 2.1) — unchanged.
 - **A list `key={index}` reads the real index binding instead of `undefined`.** For
   `arr.map((item, index) => <li key={index}>…)`, the emitted key function bound a
   synthetic `_index` parameter while the interned key expression still referenced the
