@@ -162,7 +162,7 @@ not ideal for production SEO.
 | --- | --- |
 | `otfw build --ssg` | Each pre-rendered `.html` file gets a resolved `<head>` per route |
 | `otfw serve` / SSR adapters | `<head>` is rendered per request |
-| Plain CSR (`otfw build`) | `index.html` is the shell only — metadata exports are **ignored**. Put your `<title>` and favicon directly in `index.html`, or build with `--ssg` / serve with `otfw serve` to get per-route `<head>` |
+| Plain CSR (`otfw build`) | The single `index.html` shell gets the **root layout's** site-wide metadata — favicon/other `links`, `description`, and Open Graph site defaults. Per-**page** `title`, `canonical`, and `generateMetadata` are route-specific and need `--ssg` or `otfw serve` |
 
 <Callout type="info" title="Client navigation does not rewrite &lt;head&gt;">
   After first paint, SPA navigations via `<Link>` do not re-run metadata resolution.
