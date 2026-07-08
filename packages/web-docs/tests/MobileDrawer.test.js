@@ -34,11 +34,11 @@ const burger = () => document.querySelector(".otfw-navbar-burger");
 // Mount the burger + drawer as siblings, exactly how DocsLayout composes them (the
 // burger in the navbar, the drawer in the content grid).
 const mounted = new Set();
-function mount() {
+function mount(nav = NAV) {
   const container = document.createElement("div");
   const toggle = document.createElement(SidebarToggle.tag);
   const drawer = document.createElement(Sidebar.tag);
-  drawer.nav = NAV; // object props → set before connect so they're read at mount
+  drawer.nav = nav; // object props → set before connect so they're read at mount
   drawer.config = { nav: NAV_LINKS };
   container.append(toggle, drawer);
   document.body.appendChild(container);
@@ -86,10 +86,67 @@ describe("mobile sidebar drawer", () => {
     mount();
     await tick();
 
-    const links = aside().querySelectorAll(".otfw-sidebar-link");
-    const labels = Array.from(links, (a) => a.textContent.trim());
+    // `Guide` is a group with children → renders one collapse toggle. Top-level groups
+    // start expanded, so its sublist (with `Routing`) is visible alongside the
+    // `Introduction` leaf link.
+    const toggles = aside().querySelectorAll(".otfw-sidebar-group-toggle");
+    expect(toggles.length).toBe(1);
+    expect(toggles[0].getAttribute("aria-expanded")).toBe("true");
+
+    const sublist = aside().querySelector(".otfw-sidebar-sublist");
+    expect(sublist).not.toBeNull();
+    expect(sublist.getAttribute("id")).toBe(toggles[0].getAttribute("aria-controls"));
+
+    const labels = Array.from(aside().querySelectorAll(".otfw-sidebar-link"), (a) => a.textContent.trim());
     expect(labels).toContain("Introduction");
     expect(labels).toContain("Routing");
+  });
+
+  test("nested groups collapse by default and toggle open on click", async () => {
+    // `Sub` is a nested (depth > 0) group that does not hold the active route (/docs),
+    // so it starts collapsed; clicking its toggle reveals the child.
+    const NESTED = [
+      {
+        title: "Guide",
+        items: [{ title: "Sub", items: [{ title: "Deep", path: "/docs/deep" }] }],
+      },
+    ];
+    mount(NESTED);
+    await tick();
+
+    const subToggle = Array.from(aside().querySelectorAll(".otfw-sidebar-group-toggle")).find(
+      (b) => b.textContent.trim() === "Sub",
+    );
+    expect(subToggle).not.toBeUndefined();
+    expect(subToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(document.getElementById(subToggle.getAttribute("aria-controls"))).toBeNull();
+
+    subToggle.click();
+    await tick();
+
+    expect(subToggle.getAttribute("aria-expanded")).toBe("true");
+    const panel = document.getElementById(subToggle.getAttribute("aria-controls"));
+    expect(panel).not.toBeNull();
+    expect(panel.textContent).toContain("Deep");
+  });
+
+  test("the branch holding the active route auto-expands", async () => {
+    setRouteState({ pathname: "/docs/deep" });
+    const NESTED = [
+      {
+        title: "Guide",
+        items: [{ title: "Sub", items: [{ title: "Deep", path: "/docs/deep" }] }],
+      },
+    ];
+    mount(NESTED);
+    await tick();
+
+    const subToggle = Array.from(aside().querySelectorAll(".otfw-sidebar-group-toggle")).find(
+      (b) => b.textContent.trim() === "Sub",
+    );
+    expect(subToggle.getAttribute("aria-expanded")).toBe("true");
+    const labels = Array.from(aside().querySelectorAll(".otfw-sidebar-link"), (a) => a.textContent.trim());
+    expect(labels).toContain("Deep");
   });
 
   test("the drawer surfaces the top-level site links from `config.nav`", async () => {

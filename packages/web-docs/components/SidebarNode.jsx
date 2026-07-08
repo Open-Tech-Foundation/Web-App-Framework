@@ -1,15 +1,103 @@
-// One node of the sidebar tree — a link, a group title, or both. Recurses into
-// `item.items`. The active link is derived from `router.pathname` (reactive).
+// One node of the sidebar tree — a link, a collapsible group, or both. Recurses into
+// `item.items`. Groups with children get a chevron toggle; the branch containing the
+// active route stays open, and top-level groups start expanded. Open/closed state is
+// per-session only (no persistence) — a reload resets to this derived default.
 
 import { Link, router } from "@opentf/web";
 
+// True when `path` is `node` itself or lives somewhere in its subtree.
+function treeContainsPath(node, path) {
+  if (!node) return false;
+  if (node.path === path) return true;
+  if (!node.items || !node.items.length) return false;
+  return node.items.some((child) => treeContainsPath(child, path));
+}
+
 export default function SidebarNode(props) {
   const item = props.item || {};
+  const depth = props.depth || 0;
+  // Deterministic position path ("0", "0-2", "0-2-1") — unique and identical on
+  // server/client, so the aria-controls id is collision-free and hydration-safe.
+  const nodeId = props.nodeId || "0";
   const hasChildren = item.items && item.items.length > 0;
+  const panelId = `otfw-nav-${nodeId}`;
+
+  const containsActive = () => treeContainsPath(item, router.pathname);
+  let expanded = $state(hasChildren && (containsActive() || depth === 0));
+
+  // Re-open the branch that holds the active route whenever navigation enters it.
+  $effect(() => {
+    if (hasChildren && containsActive()) expanded = true;
+  });
+
+  const toggle = () => (expanded = !expanded);
+  const chevronClass = () =>
+    expanded ? "otfw-sidebar-chevron is-open" : "otfw-sidebar-chevron";
 
   return (
-    <li class="otfw-sidebar-node">
-      {item.path ? (
+    <li class={hasChildren ? "otfw-sidebar-node otfw-sidebar-group" : "otfw-sidebar-node"}>
+      {hasChildren ? (
+        item.path ? (
+          // Group that is also a page: the link navigates, the chevron toggles.
+          <div class="otfw-sidebar-group-row">
+            <Link
+              href={item.path}
+              class={router.pathname === item.path ? "otfw-sidebar-link otfw-active" : "otfw-sidebar-link"}
+            >
+              <span class="otfw-sidebar-dot" aria-hidden="true"></span>
+              {item.title}
+            </Link>
+            <button
+              type="button"
+              class="otfw-sidebar-group-toggle otfw-sidebar-group-toggle--icon"
+              aria-expanded={expanded ? "true" : "false"}
+              aria-controls={panelId}
+              aria-label={expanded ? `Collapse ${item.title}` : `Expand ${item.title}`}
+              onclick={toggle}
+            >
+              <svg
+                class={chevronClass()}
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          // Section title with no page of its own — the whole row toggles.
+          <button
+            type="button"
+            class="otfw-sidebar-group-toggle"
+            aria-expanded={expanded ? "true" : "false"}
+            aria-controls={panelId}
+            onclick={toggle}
+          >
+            <svg
+              class={chevronClass()}
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+            <span class="otfw-sidebar-group-label">{item.title}</span>
+          </button>
+        )
+      ) : item.path ? (
         <Link
           href={item.path}
           class={router.pathname === item.path ? "otfw-sidebar-link otfw-active" : "otfw-sidebar-link"}
@@ -20,10 +108,10 @@ export default function SidebarNode(props) {
       ) : (
         <span class="otfw-sidebar-group-title">{item.title}</span>
       )}
-      {hasChildren ? (
-        <ul class="otfw-sidebar-sublist">
-          {item.items.map((child) => (
-            <SidebarNode item={child} />
+      {hasChildren && expanded ? (
+        <ul id={panelId} class="otfw-sidebar-sublist">
+          {item.items.map((child, i) => (
+            <SidebarNode item={child} depth={depth + 1} nodeId={`${nodeId}-${i}`} />
           ))}
         </ul>
       ) : null}

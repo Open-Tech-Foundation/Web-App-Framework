@@ -112,8 +112,8 @@ export default function Sidebar(props) {
         ) : null}
         <nav class="otfw-sidebar-nav" aria-label="Documentation">
           <ul class="otfw-sidebar-list">
-            {nav.map((item) => (
-              <SidebarNode item={item} />
+            {nav.map((item, i) => (
+              <SidebarNode item={item} nodeId={String(i)} />
             ))}
           </ul>
         </nav>

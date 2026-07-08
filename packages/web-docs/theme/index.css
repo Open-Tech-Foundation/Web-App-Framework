@@ -667,7 +667,8 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .otfw-sidebar,
-  .otfw-sidebar-backdrop {
+  .otfw-sidebar-backdrop,
+  .otfw-sidebar-chevron {
     transition: none;
   }
 }
@@ -714,6 +715,69 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--otfw-text-muted);
+}
+/* Collapsible group — a section title that toggles its child list open/closed. */
+.otfw-sidebar-group {
+  margin: 0.15rem 0;
+}
+.otfw-sidebar-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  margin: 0.85rem 0 0.35rem;
+  padding: 0.25rem 0.35rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--otfw-text-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.12s, background 0.12s;
+}
+.otfw-sidebar-group-toggle:hover {
+  color: var(--otfw-text);
+  background: var(--otfw-bg-surface);
+}
+.otfw-sidebar-group-toggle:focus-visible {
+  outline: 2px solid var(--otfw-accent);
+  outline-offset: 2px;
+}
+.otfw-sidebar-group-label {
+  flex: 1;
+  min-width: 0;
+}
+/* Group that is also a page: link + a slim icon-only toggle sharing one row. */
+.otfw-sidebar-group-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.15rem;
+  margin-top: 0.35rem;
+}
+.otfw-sidebar-group-row .otfw-sidebar-link {
+  flex: 1;
+  min-width: 0;
+}
+.otfw-sidebar-group-toggle--icon {
+  flex: none;
+  width: 2rem;
+  margin: 0;
+  padding: 0;
+  justify-content: center;
+  align-self: center;
+  color: var(--otfw-text-muted);
+}
+.otfw-sidebar-chevron {
+  flex: none;
+  transition: transform 0.18s ease;
+}
+.otfw-sidebar-chevron.is-open {
+  transform: rotate(90deg);
 }
 .otfw-sidebar-link {
   display: flex;
