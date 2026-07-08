@@ -114,6 +114,27 @@ body {
   line-height: 1.55;
 }
 
+.blog-demo {
+  max-width: 48rem;
+}
+
+.blog-demo h1 {
+  margin: 0 0 0.5rem;
+  font-size: 2rem;
+}
+
+.blog-demo-tag {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--landing-muted);
+}
+
+.blog-demo-lead {
+  margin: 0 0 1rem;
+  color: var(--landing-muted);
+  line-height: 1.6;
+}
+
 @media (max-width: 760px) {
   .landing {
     padding: 3rem 1.25rem;

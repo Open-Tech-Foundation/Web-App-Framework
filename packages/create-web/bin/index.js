@@ -92,6 +92,24 @@ async function init() {
           ],
         },
         {
+          type: (_, { template } = {}) => (template === "docs" ? "select" : null),
+          name: "blog",
+          message: reset("Include a sample blog?"),
+          initial: 1,
+          choices: [
+            {
+              title: reset("No — docs only"),
+              value: false,
+              description: "Documentation pages without a blog section",
+            },
+            {
+              title: cyan("Yes — add demo blog"),
+              value: true,
+              description: "Adds app/blog/, a sample post, and a Blog link in the navbar",
+            },
+          ],
+        },
+        {
           type: (_, { template } = {}) => (template === "docs" ? null : "select"),
           name: "styling",
           message: reset("Select a styling solution:"),
@@ -117,7 +135,7 @@ async function init() {
     return;
   }
 
-  const { styling, overwrite, template = "spa", language = "js" } = result;
+  const { styling, overwrite, template = "spa", language = "js", blog = false } = result;
   const root = path.join(process.cwd(), targetDir);
 
   if (overwrite) emptyDir(root);
@@ -128,6 +146,7 @@ async function init() {
       template,
       targetDir: root,
       styling,
+      blog: template === "docs" ? blog : false,
       typescript: language === "ts",
       onResolved: (name, version) =>
         console.log(`  ${reset("Resolved")} ${cyan(name)} ${yellow(`^${version}`)}`),

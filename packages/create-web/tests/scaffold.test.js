@@ -256,6 +256,9 @@ describe("scaffold — docs template", () => {
     expect(existsSync(join(dir, "otfw.config.js"))).toBe(true);
     expect(existsSync(join(dir, "app/docs/page.mdx"))).toBe(true);
     expect(existsSync(join(dir, "app/docs/layout.jsx"))).toBe(true);
+    expect(existsSync(join(dir, "app/blog/page.jsx"))).toBe(false);
+    const config = readFileSync(join(dir, "otfw.config.js"), "utf-8");
+    expect(config).not.toContain("blog:");
     expect(packageJson.name).toBe(dir.split("/").pop());
 
     const generated = opentfRanges(packageJson);
@@ -267,6 +270,22 @@ describe("scaffold — docs template", () => {
       const latest = await fetchLatestVersion(name);
       expect(generated[name]).toBe(`^${latest}`);
     }
+  });
+
+  test("blog option adds demo blog files and config", async () => {
+    const dir = makeTmpDir("docs-blog");
+    await scaffold({ template: "docs", targetDir: dir, blog: true });
+
+    expect(existsSync(join(dir, "app/blog/page.jsx"))).toBe(true);
+    expect(existsSync(join(dir, "app/blog/hello-world/page.mdx"))).toBe(true);
+    const config = readFileSync(join(dir, "otfw.config.js"), "utf-8");
+    expect(config).toContain("blog:");
+    expect(config).toContain('label: "Blog"');
+    expect(config).toContain('href: "/blog"');
+    const blogIndex = readFileSync(join(dir, "app/blog/page.jsx"), "utf-8");
+    expect(blogIndex).toContain("Demo only");
+    const docsPage = readFileSync(join(dir, "app/docs/page.mdx"), "utf-8");
+    expect(docsPage).toContain("## Blog (demo)");
   });
 
   test("typescript option emits .tsx layouts and keeps JS config/meta files", async () => {

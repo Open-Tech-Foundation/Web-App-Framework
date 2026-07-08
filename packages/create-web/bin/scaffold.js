@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { applyDocsBlog } from "./apply-docs-blog.js";
 import { applyTypescript } from "./apply-typescript.js";
 import { pinOpentfDeps } from "./resolve-deps.js";
 
@@ -27,6 +28,7 @@ function copyDir(srcDir, destDir) {
  *   template: "spa" | "fullstack" | "docs" | "library",
  *   targetDir: string,
  *   styling?: "none" | "tailwind",
+ *   blog?: boolean,
  *   typescript?: boolean,
  *   templatesRoot?: string,
  *   onResolved?: (name: string, version: string) => void,
@@ -36,6 +38,7 @@ export async function scaffold({
   template,
   targetDir,
   styling = "none",
+  blog = false,
   typescript = false,
   templatesRoot = defaultTemplatesRoot,
   onResolved,
@@ -70,6 +73,10 @@ export async function scaffold({
     const cssPath = path.join(targetDir, "app", "global.css");
     const css = fs.readFileSync(cssPath, "utf-8");
     fs.writeFileSync(cssPath, `@import "tailwindcss";\n\n${css}`);
+  }
+
+  if (template === "docs") {
+    applyDocsBlog(targetDir, blog);
   }
 
   if (typescript) {

@@ -20,8 +20,11 @@ state changes update only the exact DOM node bound to them.
   page, with or without a framework.
 - **Fine-grained signals** — `$state`, `$derived`, and `$effect` macros wire
   reactivity at compile time, so there is no manual `.value`.
-- **Fullstack** — file-based routing, layouts, [middleware](/docs/routing/middleware),
-  route guards, and static generation are built in.
+- **Fullstack** — file-based routing and layouts, [middleware](/docs/routing/middleware)
+  and [API routes](/docs/routing/api-routes), [route loaders](/docs/data-fetching) and
+  [cookies](/docs/routing/cookies), client [route guards](/docs/routing/route-guards),
+  plus [SSG](/docs/deployment/static-generation), [SSR](/docs/deployment/server), and
+  [hydration](/docs/deployment/hydration).
 
 ## A first component
 
@@ -48,7 +51,7 @@ That button is the snippet above, compiled and running — click it.
 
 ## Next steps
 
-- [Installation](/docs/getting-started/installation) — scaffold an App, Docs, or Library project.
+- [Installation](/docs/getting-started/installation) — scaffold SPA, Fullstack, Docs, or Library.
 - [Components](/docs/core-concepts/components) — the component model.
 - [Imperative API](/docs/core-concepts/imperative-api) — `$expose` and parent-to-child commands.
 - [Reactivity](/docs/core-concepts/reactivity) — state, derived values, effects.
