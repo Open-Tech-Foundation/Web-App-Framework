@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Stale route chunks after a redeploy no longer dead-end the page.** A tab still
+  running the previous deploy's `index.html` holds the old content-hashed chunk names;
+  the moment it navigates to a not-yet-loaded route, that chunk's lazy `import()` 404s
+  (`Failed to fetch dynamically imported module`) and the router used to paint a
+  `Failed to load` overlay. The client router now recovers with a single full page load,
+  which fetches the fresh `index.html` (new hashes) and completes the navigation. The
+  reload is guarded by a one-time, tab-scoped `sessionStorage` flag that survives the
+  reload and clears on the next successful render, so a genuinely broken deploy reloads
+  once and then surfaces the error instead of looping.
+
 ## [0.16.0] - 2026-07-07
 
 ### Added
