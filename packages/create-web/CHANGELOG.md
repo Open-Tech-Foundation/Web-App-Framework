@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-08
+
 ### Added
 
 - **Docs** template: interactive **“Include a sample blog?”** prompt (default: no). When

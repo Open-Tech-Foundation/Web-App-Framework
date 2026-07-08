@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-08
+
+### Fixed
+
+- **JSX written inside a loop or callback body captures that scope's locals.** JSX
+  embedded in a plain statement (`groups.push(<Child group={group}/>)` inside a `for`
+  body, a JSX-valued prop or list source with an embedded callback) compiled to a
+  builder function hoisted to the component body, so its generated effects and handlers
+  referenced loop locals that didn't exist there — throwing
+  `ReferenceError: group is not defined` at runtime. The generated builder is now
+  emitted inline at the exact spot the JSX was written, so it evaluates in the scope
+  the developer wrote it in. Dev-written statements and variables are unchanged.
+- **JSX inside a `$effect` callback compiles.** A `$effect` body embedding JSX (e.g. a
+  `for` loop pushing `<Child/>` nodes, then `container.replaceChildren(...nodes)`) was
+  never probed for JSX, so the raw JSX leaked verbatim into the compiled module and
+  broke the build. Effect callbacks are now templated like any other statement, with
+  embedded elements built inline and the callback's locals captured correctly.
+- **JSX inside `$expose` and the lifecycle hooks compiles.** The same gap existed in
+  `onMount`, `onCleanup`, `onResize`, `onVisibilityChange`, `onMediaQuery`, and the
+  `$expose` object — all now share the `$effect` treatment, including pulling in the
+  runtime helpers (`setProp`/`effect`) their generated builders need.
+
 ## [0.8.0] - 2026-07-07
 
 ### Fixed
