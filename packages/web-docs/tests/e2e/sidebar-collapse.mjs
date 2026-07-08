@@ -256,6 +256,31 @@ async function run() {
   const activeLink = await evalJS(client, linkInfo("Deep Dive"));
   assert(activeLink.found && activeLink.height > 0, "the active route's link is visible without interaction");
 
+  // ── Active item scrolled into view when the tree overflows ─────────────────
+  // A fresh Sidebar mounts scrolled to the top on navigation; a deep active link would
+  // otherwise sit below the fold. Use a short viewport so the tree overflows, load a
+  // bottom route, and assert the sidebar scrolled it into its own viewport.
+  console.log("active item scrolled into view (deep route, overflowing tree):");
+  await setViewport(client, { width: 1280, height: 460, deviceScaleFactor: 1, mobile: false });
+  loaded = client.once("Page.loadEventFired");
+  await client.send("Page.navigate", { url: origin + "/docs/bottom" });
+  await loaded;
+  await waitFor(client, `document.documentElement.hasAttribute('data-otfw-has-sidebar')`, (v) => v === true,
+    "the sidebar to re-mount");
+  const IN_VIEW = `(() => {
+    const aside = document.querySelector('#otfw-sidebar');
+    const active = aside && aside.querySelector('.otfw-sidebar-nav .otfw-active');
+    if (!active) return { found: false };
+    const a = active.getBoundingClientRect(), c = aside.getBoundingClientRect();
+    return { found: true, scrollTop: aside.scrollTop, overflows: aside.scrollHeight > aside.clientHeight,
+      inView: a.top >= c.top - 1 && a.bottom <= c.bottom + 1 };
+  })()`;
+  const view = await waitFor(client, IN_VIEW, (v) => v.found && v.inView,
+    "the active item to be scrolled into the sidebar viewport");
+  assert(view.overflows, "the nav tree overflows the sidebar (scroll is meaningful)");
+  assert(view.scrollTop > 0, "the sidebar scrolled down from the top");
+  assert(view.inView, "the active item sits within the sidebar viewport");
+
   client.close();
 }
 

@@ -18,6 +18,10 @@ const NAV = [
       { title: "Routing", path: "/docs/guide/routing" },
     ],
   },
+  // Filler leaf links so the tree overflows the sidebar's scroll viewport — lets the
+  // e2e check that a deep active item is scrolled into view after navigation.
+  ...Array.from({ length: 20 }, (_, i) => ({ title: `Filler ${i}`, path: `/docs/filler/${i}` })),
+  { title: "Bottom Page", path: "/docs/bottom" },
 ];
 const NAV_LINKS = [
   { label: "Home", href: "/" },

@@ -36,6 +36,7 @@ export default function Sidebar(props) {
   // nav is reachable from one place.
   const navLinks = (props.config && props.config.nav) || [];
   let open = $state(false);
+  const asideRef = $ref();
 
   const close = () => (open = false);
   // Stable per-instance toggle so cleanup can tell whether the global still points at us.
@@ -95,6 +96,27 @@ export default function Sidebar(props) {
     close();
   });
 
+  // Keep the active item in view. On navigation a fresh Sidebar mounts (see the
+  // reference-count note above) scrolled to the top, so a deep-in-a-long-tree active link
+  // would sit off-screen. When it's outside the sidebar's own scroll viewport, bring it
+  // into view — adjusting only the sidebar's scrollTop, never the page's scroll.
+  $effect(() => {
+    router.pathname; // re-run on navigation
+    if (typeof requestAnimationFrame === "undefined") return;
+    // Defer a frame so the newly-active class (and any auto-expanded branch) is in the DOM.
+    const raf = requestAnimationFrame(() => {
+      const aside = asideRef;
+      const active = aside && aside.querySelector(".otfw-sidebar-nav .otfw-active");
+      if (!active) return;
+      const a = active.getBoundingClientRect();
+      const c = aside.getBoundingClientRect();
+      if (a.top < c.top || a.bottom > c.bottom) {
+        aside.scrollTop += a.top - c.top - (aside.clientHeight - a.height) / 2;
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  });
+
   return (
     <div class="otfw-sidebar-shell">
       <div
@@ -102,7 +124,7 @@ export default function Sidebar(props) {
         onclick={close}
         aria-hidden="true"
       ></div>
-      <aside id="otfw-sidebar" class={open ? "otfw-sidebar is-open" : "otfw-sidebar"}>
+      <aside id="otfw-sidebar" ref={asideRef} class={open ? "otfw-sidebar is-open" : "otfw-sidebar"}>
         {navLinks.length ? (
           <nav class="otfw-drawer-links" aria-label="Site">
             {navLinks.map((link) => (
