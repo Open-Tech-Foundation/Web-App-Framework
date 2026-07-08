@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-08
+
 ### Added
 
 - Collapsible sidebar nav groups. A section with children now renders a chevron toggle

@@ -91,7 +91,7 @@
     },
     "packages/web-docs": {
       "name": "@opentf/web-docs",
-      "version": "0.14.0",
+      "version": "0.15.0",
       "dependencies": {
         "pagefind": "^1.5.2",
       },
