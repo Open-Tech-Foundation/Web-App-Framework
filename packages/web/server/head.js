@@ -115,6 +115,11 @@ function jsonLdSafe(s) {
 /**
  * Render the resolved `meta` to the inner HTML of `<head>` for the route at `path`.
  * `baseUrl` (site origin) makes canonical / og:url / image URLs absolute when set.
+ *
+ * Pass `path: null` for a *route-independent* head — site-wide layout defaults
+ * injected into a single CSR shell shared by every route. In that mode no canonical
+ * (or its `og:url` fallback) is emitted unless `meta.canonical` is set explicitly, so
+ * the shared shell never claims one route's URL as canonical for all of them.
  */
 export function renderHead(meta = {}, { path = "/", baseUrl = "" } = {}) {
   const tags = [];
@@ -128,7 +133,10 @@ export function renderHead(meta = {}, { path = "/", baseUrl = "" } = {}) {
   if (title != null) push(`<title>${escapeHtml(title)}</title>`);
   push(metaTag("name", "description", description));
 
-  const canonical = absUrl(baseUrl, meta.canonical ?? path);
+  // `path: null` → route-independent head: only an explicit `meta.canonical` yields a
+  // canonical link (never the request path), so a shared CSR shell stays route-neutral.
+  const canonicalPath = meta.canonical ?? (path === null ? null : path);
+  const canonical = canonicalPath == null ? "" : absUrl(baseUrl, canonicalPath);
   if (canonical) push(`<link rel="canonical" href="${escapeAttr(canonical)}">`);
 
   push(metaTag("name", "robots", robotsContent(meta.robots)));

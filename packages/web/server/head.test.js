@@ -71,6 +71,35 @@ describe("renderHead", () => {
     expect(html).toContain('<link rel="canonical" href="https://x.com/p">');
   });
 
+  test("emits links[].type (e.g. an RSS alternate feed)", () => {
+    const html = renderHead(
+      { links: [{ rel: "alternate", type: "application/rss+xml", href: "/blog/rss.xml" }] },
+      { baseUrl: "https://x.com" },
+    );
+    expect(html).toContain(
+      '<link rel="alternate" type="application/rss+xml" href="https://x.com/blog/rss.xml">',
+    );
+  });
+
+  test("route-independent head (path: null) omits canonical and og:url", () => {
+    const html = renderHead(
+      { description: "site-wide", links: [{ rel: "icon", href: "/favicon.svg" }], openGraph: { siteName: "Site" } },
+      { path: null, baseUrl: "https://x.com" },
+    );
+    // Site-wide layout defaults are kept…
+    expect(html).toContain('<meta name="description" content="site-wide">');
+    expect(html).toContain('<link rel="icon" href="https://x.com/favicon.svg">');
+    expect(html).toContain('<meta property="og:site_name" content="Site">');
+    // …but no route-specific canonical / og:url is stamped on the shared shell.
+    expect(html).not.toContain("canonical");
+    expect(html).not.toContain("og:url");
+  });
+
+  test("path: null still honors an explicit canonical", () => {
+    const html = renderHead({ canonical: "/" }, { path: null, baseUrl: "https://x.com" });
+    expect(html).toContain('<link rel="canonical" href="https://x.com/">');
+  });
+
   test("makes image URLs absolute and picks summary_large_image when an image exists", () => {
     const html = renderHead(
       { title: "T", openGraph: { image: "/og.png" } },

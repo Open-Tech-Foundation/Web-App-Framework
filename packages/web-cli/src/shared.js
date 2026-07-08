@@ -1131,7 +1131,7 @@ export function serverEntrySource(pages, i18n = null) {
   return (
     `${imports}\n` +
     `import { ${named} } from "@opentf/web";\n` +
-    `export { renderRoute, renderHead, collectRoutePaths } from "@opentf/web/server";\n` +
+    `export { renderRoute, renderHead, collectRoutePaths, resolveMetadata } from "@opentf/web/server";\n` +
     i18nCall +
     `registerRoutes({\n${map}\n});\n`
   );
@@ -1182,6 +1182,36 @@ export async function buildServerBundle({
   globalThis.HTMLElement ??= class {};
   const mod = await import(pathToFileURL(join(tmp, "out", "server.js")).href);
   return { mod, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
+}
+
+/**
+ * Resolve the site-wide `<head>` for a plain CSR build (docs: Metadata & SEO, the
+ * "Plain CSR" row). A CSR SPA serves one `index.html` shell for *every* route, so only
+ * the root layout's route-independent metadata belongs in it — favicon/other `links`,
+ * a site-wide `description`, Open Graph site defaults, `robots`, extra `meta`/`jsonLd`
+ * — but never a per-page `title` or `canonical` (which would be wrong on every other
+ * route). Compiles just the root `app/layout.{jsx,tsx}` (not the whole app) with the
+ * SSG backend and renders its metadata in route-independent mode (`path: null`).
+ * Returns the head HTML, or "" when there is no root layout or it declares no metadata.
+ */
+export async function resolveLayoutShellHead({ root, appDir, pages, webEntry, otfwc, docsPlugins = [], baseUrl = "" }) {
+  const rootLayout = pages.find((p) => p === join(appDir, "layout.jsx") || p === join(appDir, "layout.tsx"));
+  if (!rootLayout) return "";
+  const { mod, cleanup } = await buildServerBundle({
+    root,
+    pages: [rootLayout],
+    webEntry,
+    otfwc,
+    docsPlugins,
+    tmpName: ".otfw-csr-head",
+  });
+  try {
+    // `entry: null` → layout chain only (no page); `path: null` → route-independent head.
+    const meta = await mod.resolveMetadata({ route: "/", entry: null });
+    return mod.renderHead(meta, { path: null, baseUrl });
+  } finally {
+    cleanup();
+  }
 }
 
 function fail(msg) {

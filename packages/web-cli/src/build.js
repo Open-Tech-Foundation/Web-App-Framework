@@ -26,9 +26,11 @@ import {
   emitApiBundle,
   emitLoaderBundle,
   entrySource,
+  injectHead,
   loaderRoutePath,
   injectBeforeBody,
   loadConfig,
+  resolveLayoutShellHead,
   loadDocsPlugins,
   loadProject,
   otfwPlugin,
@@ -161,6 +163,17 @@ export async function runBuild(options = {}) {
     const out = `${name}-${hash(css)}.css`;
     writeFileSync(join(outDir, "assets", out), css);
     html = html.replaceAll(href, `/assets/${out}`);
+  }
+
+  // Plain CSR: the single index.html shell is shared by every route, so inject the
+  // root layout's route-independent metadata (favicon/other links, site-wide
+  // description, Open Graph site defaults) — but never a per-page title/canonical.
+  // SSG/SSR inject a full per-route <head> instead, so this is CSR-only (`!hydrate`).
+  if (!hydrate) {
+    const layoutHead = await resolveLayoutShellHead({
+      root, appDir, pages, webEntry, otfwc, docsPlugins, baseUrl,
+    });
+    if (layoutHead) html = injectHead(html, layoutHead);
   }
 
   const script = `<script type="module" src="${bundleHref}"></script>\n`;
