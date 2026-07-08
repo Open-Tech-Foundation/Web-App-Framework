@@ -38,15 +38,10 @@ export default function SidebarNode(props) {
     <li class={hasChildren ? "otfw-sidebar-node otfw-sidebar-group" : "otfw-sidebar-node"}>
       {hasChildren ? (
         item.path ? (
-          // Group that is also a page: the link navigates, the chevron toggles.
+          // Group that is also a page: leading chevron toggles, the link navigates.
+          // Chevron on the left mirrors the label-only groups below (no leading dot —
+          // the chevron already marks the row).
           <div class="otfw-sidebar-group-row">
-            <Link
-              href={item.path}
-              class={router.pathname === item.path ? "otfw-sidebar-link otfw-active" : "otfw-sidebar-link"}
-            >
-              <span class="otfw-sidebar-dot" aria-hidden="true"></span>
-              {item.title}
-            </Link>
             <button
               type="button"
               class="otfw-sidebar-group-toggle otfw-sidebar-group-toggle--icon"
@@ -70,6 +65,12 @@ export default function SidebarNode(props) {
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </button>
+            <Link
+              href={item.path}
+              class={router.pathname === item.path ? "otfw-sidebar-link otfw-active" : "otfw-sidebar-link"}
+            >
+              {item.title}
+            </Link>
           </div>
         ) : (
           // Section title with no page of its own — the whole row toggles.
