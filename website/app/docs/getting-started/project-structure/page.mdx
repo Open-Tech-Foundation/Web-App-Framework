@@ -7,12 +7,13 @@ import { Callout } from "@opentf/web-docs";
 
 # Project Structure
 
-`create-web` scaffolds three project types. **App** and **Documentation site** share
-the same routing layout; **Library** is a flat package for publishable components.
+`create-web` scaffolds four project types — **SPA**, **Fullstack**, **Documentation
+site**, and **Library**. Apps and docs sites share the same `app/` routing layout;
+libraries ship source components with no `app/` folder.
 
-## App
+## SPA (browser-only)
 
-A new app looks like this:
+A client-only app — deploy `dist/` to any static host. No server files in the repo.
 
 ```text
 my-app/
@@ -22,17 +23,46 @@ my-app/
 │  ├─ 404.jsx         # not-found page
 │  ├─ about/
 │  │  └─ page.jsx     # route: /about
-│  ├─ api/
-│  │  └─ hello/
-│  │     └─ route.js  # API endpoint: GET /api/hello
 │  └─ global.css
+├─ public/            # static files copied to dist/ as-is (favicon, images, …)
 ├─ index.html         # mount point + injected bundle
 └─ package.json
 ```
 
+Add an optional `otfw.config.js` at the root when you need `site.url` (for
+`otfw build --ssg`), dev `proxy`, or i18n — see [Configuration](/docs/configuration).
+
+## Fullstack (browser + server)
+
+Same UI as an SPA, plus server modules the toolchain bundles separately — never
+shipped to the browser.
+
+```text
+my-app/
+├─ app/
+│  ├─ page.jsx
+│  ├─ layout.jsx
+│  ├─ loader.js       # route loader for / — data → router.data
+│  ├─ _middleware.js  # middleware for the whole app tree
+│  ├─ 404.jsx
+│  ├─ about/
+│  │  └─ page.jsx
+│  ├─ api/
+│  │  └─ hello/
+│  │     └─ route.js  # API endpoint: GET /api/hello
+│  └─ global.css
+├─ public/
+├─ index.html
+└─ package.json
+```
+
+Run `otfw serve` for per-request SSR, loaders, and API routes in one process. See
+[Server](/docs/deployment/server).
+
 ## Documentation site
 
-Docs projects add an `otfw.config.js` and an `app/docs/` section for MDX content:
+Docs projects add `otfw.config.js` and an `app/docs/` section for MDX content. The
+scaffolder can optionally add `app/blog/` — see [web-docs → Blog](/docs/packages/web-docs/blog).
 
 ```text
 my-docs/
@@ -41,10 +71,11 @@ my-docs/
 │  ├─ layout.jsx
 │  ├─ docs/
 │  │  ├─ layout.jsx       # docs shell (sidebar + TOC)
-│  │  ├─ _meta.js         # sidebar order
+│  │  ├─ _meta.js         # sidebar order + labels
 │  │  └─ page.mdx         # /docs introduction
 │  └─ global.css
-├─ otfw.config.js         # @opentf/web-docs config
+├─ public/                # logos, og images — served at /
+├─ otfw.config.js         # site URL, docs/blog sections (@opentf/web-docs)
 ├─ index.html
 └─ package.json
 ```
@@ -68,20 +99,34 @@ my-lib/
 See [Library template](/docs/getting-started/library-template) for publish and
 consumption details.
 
-## Special files (App & Docs)
+## Special files
+
+Files the toolchain recognizes beyond ordinary components. Extensions `.js`, `.ts`,
+`.jsx`, and `.tsx` are interchangeable unless noted.
+
+### Routing (App & Docs)
 
 | File | Role |
 | --- | --- |
-| `page.jsx` | A route. The folder path is the URL (`app/about/page.jsx` → `/about`). |
+| `page.jsx` / `page.mdx` | A route. The folder path is the URL (`app/about/page.jsx` → `/about`). |
 | `layout.jsx` | Wraps every route below it; nests with the folder tree. |
 | `404.jsx` | Rendered when no route matches. |
-| `route.js` | An [API endpoint](/docs/routing/api-routes). The folder is the URL (`app/api/hello/route.js` → `/api/hello`); a folder holds a `page.*` or a `route.*`, never both. |
+| `route.js` | An [API endpoint](/docs/routing/api-routes). The folder is the URL (`app/api/hello/route.js` → `/api/hello`). A folder holds a `page.*` or a `route.*`, never both. |
+| `loader.js` | A [route loader](/docs/data-fetching) sibling to a `page.*`. Runs server-side before the page renders; its return value is `router.data`. Requires a matching `page.*` in the same folder. |
 | `_middleware.js` | [Middleware](/docs/routing/middleware) for its folder and everything nested under it (pages, API, loader data, SSR). |
-| `index.html` | The HTML shell. The toolchain mounts the app into `#app` and injects the bundle. |
-| `otfw.config.js` | Docs-site configuration (`@opentf/web-docs`). Present in Docs projects only. |
+| `_meta.js` | Docs sidebar order and labels for a folder (`@opentf/web-docs`). JavaScript only today. |
 
-Every other PascalCase `.jsx`/`.tsx` file is a reusable component — no registration
-needed (see [Components](/docs/core-concepts/components)).
+### Project root
+
+| File / folder | Role |
+| --- | --- |
+| `index.html` | The HTML shell. The toolchain mounts the app into `#app` and injects the bundle. |
+| `public/` | Static assets copied to `dist/` at build time and served at the site root (`public/favicon.svg` → `/favicon.svg`). Overrides generated files when names collide (e.g. a hand-written `public/robots.txt`). |
+| `otfw.config.js` | Optional for SPA/fullstack (`site.url`, `proxy`, `i18n`). Required for docs/blog production builds and drives `@opentf/web-docs` (navbar, search, feeds). See [Configuration](/docs/configuration). |
+| `dist/` | Build output — created by `otfw build`. Not checked in; safe to delete and rebuild. |
+
+Every other PascalCase `.jsx`/`.tsx` file under `app/` is a reusable component — no
+registration needed (see [Components](/docs/core-concepts/components)).
 
 ## Conventions
 
@@ -90,7 +135,7 @@ needed (see [Components](/docs/core-concepts/components)).
 - You never import `$state`, `onMount`, etc. — the compiler injects them.
 
 <Callout type="info" title="TypeScript">
-  Choose TypeScript at the scaffold prompt to get `.tsx` pages, `.ts` API routes,
-  `tsconfig.json`, and macro typings (`app/otfw-env.d.ts`). Docs sites keep
+  Choose TypeScript at the scaffold prompt to get `.tsx` pages, `.ts` API routes and
+  loaders, `tsconfig.json`, and macro typings (`app/otfw-env.d.ts`). Docs sites keep
   `otfw.config.js` and `_meta.js` as JavaScript — the toolchain reads those today.
 </Callout>
