@@ -1,0 +1,176 @@
+---
+title: Cookies
+description: Read and write cookies in middleware, API routes, and loaders with RFC 6265 helpers from @opentf/web/server.
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Cookies
+
+`@opentf/web/server` ships standards-based helpers for the `Cookie` and `Set-Cookie`
+headers (RFC 6265). Use them anywhere you hold a `Request` or build a `Response` —
+[middleware](/docs/routing/middleware), [API routes](/docs/routing/api-routes), and
+[route loaders](/docs/data-fetching) — without hand-rolling header parsing or serialization.
+
+```js
+import {
+  getCookie,
+  getCookies,
+  setCookie,
+  deleteCookie,
+  serializeCookie,
+} from "@opentf/web/server";
+```
+
+```ts
+import type { CookieOptions, CookieSource, CookieTarget } from "@opentf/web/server";
+```
+
+## Reading cookies
+
+`getCookie(source, name)` returns one percent-decoded value, or `undefined` when absent.
+`getCookies(source)` parses the full header into `{ name: value }`.
+
+`source` can be a `Request` (or anything with `.headers`), a `Headers` object, or the
+raw `Cookie` header string:
+
+```js
+const session = getCookie(request, "session");
+const theme = getCookie(request.headers, "theme");
+const all = getCookies(request); // { session: "…", theme: "dark", … }
+```
+
+On duplicate names the **first** occurrence wins (RFC 6265 §5.4 — the most specific
+cookie is sent first). Malformed percent-encoding stays raw rather than throwing.
+
+## Writing cookies
+
+`setCookie(target, name, value, options?)` **appends** a `Set-Cookie` header so session,
+CSRF, and preference cookies can coexist on one response. It returns the serialized
+header value.
+
+`target` is a `Response` (or anything with `.headers`) or a `Headers`:
+
+```js
+const res = Response.json({ ok: true });
+setCookie(res, "session", token, {
+  httpOnly: true,
+  secure: true,
+  sameSite: "Lax",
+  maxAge: 3600,
+});
+```
+
+`path` defaults to `"/"` — the almost-always-right choice (the spec default is the
+request path, a common footgun). Pass `path: null` to omit the attribute.
+
+`deleteCookie(target, name, { path?, domain? })` expires a cookie with `Max-Age=0` and
+an epoch `Expires`. **`path` and `domain` must match how the cookie was set** or the
+browser treats it as a different cookie and keeps the original.
+
+`serializeCookie(name, value, options?)` builds a `Set-Cookie` string without appending —
+useful when you manage headers manually.
+
+### Options
+
+| Option | Description |
+| --- | --- |
+| `path` | Defaults to `"/"`; pass `null` to omit. |
+| `domain` | Cookie `Domain` attribute. |
+| `maxAge` | Lifetime in seconds. |
+| `expires` | `Date`, ISO string, or epoch ms. |
+| `httpOnly` / `secure` | Standard flags. |
+| `sameSite` | `"Strict"` \| `"Lax"` \| `"None"` — `"None"` requires `secure: true`. |
+| `partitioned` | CHIPS `Partitioned` attribute. |
+
+<Callout type="warning" title="SameSite=None needs Secure">
+  `sameSite: "None"` without `secure: true` throws at write time — browsers reject that
+  combination anyway.
+</Callout>
+
+## Middleware
+
+Read the incoming session, gate protected paths, and stamp a response cookie after
+`next()`:
+
+```js
+// app/_middleware.js
+import { getCookie, setCookie } from "@opentf/web/server";
+
+export default async function (request, context, next) {
+  const path = new URL(request.url).pathname;
+  const session = getCookie(request, "session");
+
+  if (path.startsWith("/dashboard") && !session) {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "/login" },
+    });
+  }
+
+  const res = await next();
+  const wrapped = new Response(res.body, res);
+  setCookie(wrapped, "visited", "1", { maxAge: 86400 });
+  return wrapped;
+}
+```
+
+## API routes
+
+Handlers receive the same `Request` and return a `Response` — set cookies on the JSON
+response directly:
+
+```js
+// app/api/login/route.js
+import { setCookie } from "@opentf/web/server";
+
+export async function POST(request) {
+  const { email } = await request.json();
+  const token = await signIn(email);
+
+  const res = Response.json({ ok: true });
+  setCookie(res, "session", token, { httpOnly: true, secure: true, maxAge: 3600 });
+  return res;
+}
+```
+
+## Loaders
+
+Loaders are server-only modules — safe to read cookies from the request when preparing
+`router.data`:
+
+```js
+// app/account/loader.js
+import { getCookie } from "@opentf/web/server";
+
+export default async function (request) {
+  const session = getCookie(request, "session");
+  if (!session) return { user: null };
+  return { user: await loadUser(session) };
+}
+```
+
+Loaders return data, not `Response` objects. To **set** cookies from loader-driven
+navigation, do it in [middleware](/docs/routing/middleware) or an
+[API route](/docs/routing/api-routes) the client calls explicitly.
+
+## Immutable response headers
+
+A response returned from `fetch` or `next()` may have **immutable** headers. Wrap it
+before calling `setCookie`:
+
+```js
+const res = await next();
+const wrapped = new Response(res.body, res);
+setCookie(wrapped, "theme", "dark", { maxAge: 31536000 });
+return wrapped;
+```
+
+<Callout type="info" title="Values round-trip">
+  Cookie values are percent-encoded on write and decoded on read — any string survives
+  the trip through `setCookie` and `getCookie`.
+</Callout>
+
+## API reference
+
+Full export list and TypeScript types: [Server API](/api/server#cookies).
