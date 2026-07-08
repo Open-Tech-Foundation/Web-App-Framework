@@ -667,8 +667,7 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .otfw-sidebar,
-  .otfw-sidebar-backdrop,
-  .otfw-sidebar-chevron {
+  .otfw-sidebar-backdrop {
     transition: none;
   }
 }
@@ -778,6 +777,14 @@ body {
 }
 .otfw-sidebar-chevron.is-open {
   transform: rotate(90deg);
+}
+/* Defined after `.otfw-sidebar-chevron` so it wins on source order — a media query adds
+ * no specificity, so an earlier reduced-motion rule would be overridden by the transition
+ * above. */
+@media (prefers-reduced-motion: reduce) {
+  .otfw-sidebar-chevron {
+    transition: none;
+  }
 }
 .otfw-sidebar-link {
   display: flex;

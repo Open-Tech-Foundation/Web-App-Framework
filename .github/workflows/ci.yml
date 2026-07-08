@@ -63,3 +63,4 @@ jobs:
           "$CHROME_BIN" --version
           (cd packages/web-cli && bun run test:e2e)
           bun packages/web-docs/tests/e2e/mobile-drawer.mjs
+          bun packages/web-docs/tests/e2e/sidebar-collapse.mjs
