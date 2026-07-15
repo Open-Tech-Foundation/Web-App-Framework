@@ -315,3 +315,115 @@ fn allows_ref_dom_write() {
 fn allows_module_without_state() {
     assert_clean("export default function C() { return <div>hi</div>; }");
 }
+
+// ── Rejected: mutation through a local that aliases into a `$state` value ────
+// The mutation's member root is the local, not the `$state` symbol, so these read
+// as ordinary locals — but they hand back the very object the signal holds, so the
+// write is lost just the same. Reported from the field: a `.map` callback that
+// marks its argument dirty updated nothing, with no diagnostic to explain why.
+
+#[test]
+fn rejects_mutation_of_a_map_callback_param() {
+    let msg = assert_rejected(
+        "export default function C() {
+           const tabs = $state([{ id: 1, dirty: false }]);
+           const mark = () => tabs.map((t) => { t.dirty = true; });
+           return <div onClick={mark}>{tabs.length}</div>;
+         }",
+    );
+    assert!(msg.contains("t.dirty = true"), "names the offending write:\n{msg}");
+}
+
+#[test]
+fn rejects_mutation_of_a_foreach_callback_param() {
+    assert_rejected(
+        "export default function C() {
+           const tabs = $state([{ id: 1 }]);
+           const mark = () => tabs.forEach((t) => { t.dirty = true; });
+           return <div onClick={mark}>{tabs.length}</div>;
+         }",
+    );
+}
+
+#[test]
+fn rejects_mutation_through_a_member_chain_alias() {
+    assert_rejected(
+        "export default function C() {
+           const s = $state({ user: { name: 'a' } });
+           const rename = () => { const u = s.user; u.name = 'b'; };
+           return <div onClick={rename}>{s.user.name}</div>;
+         }",
+    );
+}
+
+#[test]
+fn rejects_array_mutator_on_a_whole_value_alias() {
+    // `const tmp = list` aliases the whole value, so it keeps the Array shape and
+    // the array-mutator gate still applies.
+    assert_rejected(
+        "export default function C() {
+           const list = $state([1]);
+           const add = () => { const tmp = list; tmp.push(2); };
+           return <div onClick={add}>{list.length}</div>;
+         }",
+    );
+}
+
+#[test]
+fn rejects_mutation_of_a_for_of_binding() {
+    assert_rejected(
+        "export default function C() {
+           const tabs = $state([{ id: 1 }]);
+           const mark = () => { for (const t of tabs) { t.dirty = true; } };
+           return <div onClick={mark}>{tabs.length}</div>;
+         }",
+    );
+}
+
+// ── Clean: aliases that are only read, or that point at fresh values ─────────
+
+#[test]
+fn allows_reading_a_map_callback_param() {
+    assert_clean(
+        "export default function C() {
+           const tabs = $state([{ id: 1, name: 'a' }]);
+           return <ul>{tabs.map((t) => <li key={t.id}>{t.name}</li>)}</ul>;
+         }",
+    );
+}
+
+#[test]
+fn allows_a_map_callback_that_returns_a_new_object() {
+    // The immutable update the diagnostic steers toward — the param is copied, not
+    // written through.
+    assert_clean(
+        "export default function C() {
+           let tabs = $state([{ id: 1, dirty: false }]);
+           const mark = () => { tabs = tabs.map((t) => ({ ...t, dirty: true })); };
+           return <div onClick={mark}>{tabs.length}</div>;
+         }",
+    );
+}
+
+#[test]
+fn allows_mutating_a_freshly_derived_array() {
+    // `.map()` returns a new array; it is not the signal's value, so mutating the
+    // local loses nothing.
+    assert_clean(
+        "export default function C() {
+           const tabs = $state([{ id: 1, name: 'a' }]);
+           const names = () => { const out = tabs.map((t) => t.name); out.push('z'); return out; };
+           return <div onClick={names}>{tabs.length}</div>;
+         }",
+    );
+}
+
+#[test]
+fn allows_callback_params_of_a_non_state_source() {
+    assert_clean(
+        "export default function C(props) {
+           const mark = () => props.rows.forEach((r) => { r.dirty = true; });
+           return <div onClick={mark}>x</div>;
+         }",
+    );
+}

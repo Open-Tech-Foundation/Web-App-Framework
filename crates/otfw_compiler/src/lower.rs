@@ -21,7 +21,8 @@ use std::collections::HashMap;
 use oxc::ast::ast::{
     Argument, ArrowFunctionExpression, AssignmentExpression, AssignmentTarget, BindingPattern,
     CallExpression, Declaration, Expression, ExportDefaultDeclarationKind, FormalParameters,
-    Function, FunctionBody, IdentifierReference, ImportDeclarationSpecifier, JSXAttribute,
+    ForOfStatement, ForStatementLeft, Function, FunctionBody, IdentifierReference,
+    ImportDeclarationSpecifier, JSXAttribute,
     JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName,
     JSXExpression, JSXFragment, ObjectProperty, Program, SimpleAssignmentTarget,
     StaticMemberExpression, Statement, TSType, TSTypeName, UnaryExpression, UpdateExpression,
@@ -820,17 +821,26 @@ fn written_shape(call: &CallExpression, decl: &VariableDeclarator) -> Option<Sta
 /// at the first such mutation, steering to an immutable reassignment (`list =
 /// [...list, x]`) or the `reactive()` store; `None` when the module is clean.
 ///
-/// Detection is symbol-precise (via the semantic model), so a local that shadows a
-/// `$state` name, or an alias taken with `const tmp = list`, is not flagged — those
-/// escape the signal and are out of scope here. Only bindings declared with
-/// `$state(...)` are considered; `$ref`/`$derived`/`$context` are excluded so DOM
-/// writes like `el.scrollTop = 0` on a `$ref` remain legal.
+/// Detection is symbol-precise (via the semantic model), so a local that *shadows*
+/// a `$state` name is not flagged. Locals that alias *into* the value are, though:
+/// `const t = tabs[0]`, `tabs.map((t) => …)`, and `for (const t of tabs)` all hand
+/// back the object the signal holds, so a write through them is lost exactly as a
+/// write through the original chain is (see [`StateShapes`]). Aliases taken off a
+/// *call* (`tabs.filter(…).map((t) => …)`, `structuredClone(tabs)`) are not
+/// tracked: the receiver is a fresh value, so the analysis stays conservative and
+/// only flags writes it can prove reach the signal's data.
+///
+/// Only bindings declared with `$state(...)` are considered; `$ref`/`$derived`/
+/// `$context` are excluded so DOM writes like `el.scrollTop = 0` on a `$ref`
+/// remain legal.
 pub fn state_mutation_diagnostic(program: &Program, source: &str) -> Option<String> {
     let resolved = crate::semantic::resolve(program);
     let scoping = resolved.semantic.scoping();
 
-    // Pass 1: every `$state(...)` binding, keyed to its inferred shape.
-    let mut collector = StateShapes { shapes: HashMap::new() };
+    // Pass 1: every `$state(...)` binding, keyed to its inferred shape — plus the
+    // locals that alias into one (`const t = tabs[0]`, `tabs.map((t) => …)`), which
+    // reach the same data and so lose the same writes.
+    let mut collector = StateShapes { scoping, shapes: HashMap::new() };
     collector.visit_program(program);
     if collector.shapes.is_empty() {
         return None;
@@ -847,12 +857,73 @@ pub fn state_mutation_diagnostic(program: &Program, source: &str) -> Option<Stri
     finder.found
 }
 
-/// Collects the binding symbol of each `$state(...)` declarator and its shape.
-struct StateShapes {
+/// Array methods that hand each element to a callback. The callback's first
+/// parameter *is* the element — the same object the `$state` value holds, not a
+/// copy — so writing through it is the same silent no-op as `list[0].x = …`.
+/// `.map` is the one that bites in practice: it reads as a transform, so mutating
+/// the parameter inside it looks harmless.
+const ELEMENT_CALLBACKS: &[&str] =
+    &["map", "forEach", "filter", "find", "findLast", "findIndex", "some", "every", "flatMap"];
+
+/// Collects the binding symbol of each `$state(...)` declarator and its shape,
+/// plus the locals that alias into a `$state` value: a member-chain copy
+/// (`const t = tabs[0]`) and an element-callback parameter (`tabs.map((t) => …)`).
+///
+/// Both reach the very same object the signal holds, so a write through them is
+/// lost exactly as a write through the original chain is — but the member root is
+/// the local, not the `$state` symbol, so without this they read as ordinary
+/// locals and slip past the finder silently. Declarations are visited in source
+/// order, so an alias is recorded before the code that mutates it.
+struct StateShapes<'r> {
+    scoping: &'r Scoping,
     shapes: HashMap<SymbolId, StateShape>,
 }
 
-impl<'a> Visit<'a> for StateShapes {
+impl StateShapes<'_> {
+    /// The recorded shape of the `$state` value a member chain is rooted at, if any.
+    fn chain_shape(&self, expr: &Expression) -> Option<StateShape> {
+        let id = member_root(expr)?;
+        let sym = id.reference_id.get().and_then(|r| self.scoping.get_reference(r).symbol_id())?;
+        self.shapes.get(&sym).copied()
+    }
+
+    /// Record `pattern`'s symbol as reaching a `$state` value with `shape`.
+    fn track(&mut self, pattern: &BindingPattern, shape: StateShape) {
+        if let BindingPattern::BindingIdentifier(bi) = pattern
+            && let Some(sym) = bi.symbol_id.get()
+        {
+            self.shapes.entry(sym).or_insert(shape);
+        }
+    }
+}
+
+impl<'a> Visit<'a> for StateShapes<'_> {
+    fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
+        if let Expression::StaticMemberExpression(member) = &it.callee
+            && ELEMENT_CALLBACKS.contains(&member.property.name.as_str())
+            && self.chain_shape(&member.object).is_some()
+            && let Some(arg) = it.arguments.first()
+            && let Some(params) = callback_params(arg)
+            && let Some(first) = params.items.first()
+        {
+            // The element's own shape is unknowable without a type checker, so it is
+            // `Unknown` — which still catches every member write through it.
+            self.track(&first.pattern, StateShape::Unknown);
+        }
+        walk::walk_call_expression(self, it);
+    }
+
+    fn visit_for_of_statement(&mut self, it: &ForOfStatement<'a>) {
+        // `for (const t of tabs) { t.x = … }` — same element, same lost write.
+        if self.chain_shape(&it.right).is_some()
+            && let ForStatementLeft::VariableDeclaration(decl) = &it.left
+            && let Some(d) = decl.declarations.first()
+        {
+            self.track(&d.id, StateShape::Unknown);
+        }
+        walk::walk_for_of_statement(self, it);
+    }
+
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         if let Some(Expression::CallExpression(call)) = &it.init
             && matches!(macro_kind(call), Some(MacroKind::State))
@@ -869,8 +940,34 @@ impl<'a> Visit<'a> for StateShapes {
                 _ => init_shape,
             };
             self.shapes.insert(sym, shape);
+            walk::walk_variable_declarator(self, it);
+            return;
+        }
+        // An alias into a `$state` value: `const t = tabs[0]`, `const u = s.user`, or
+        // a whole-value alias `const t = tabs`. Only member chains and bare
+        // identifiers qualify — an initializer that *calls* something (`tabs.map(…)`,
+        // `structuredClone(tabs)`) yields a fresh value whose mutation loses nothing.
+        if let Some(init) = &it.init
+            && let Some(shape) = self.chain_shape(init)
+        {
+            // `const t = tabs` still points at the whole value, so it keeps the
+            // shape (and with it the Map/Set mutator gating); an element or field
+            // pulled out of a chain has an unknown shape of its own.
+            let aliased =
+                if matches!(init, Expression::Identifier(_)) { shape } else { StateShape::Unknown };
+            self.track(&it.id, aliased);
         }
         walk::walk_variable_declarator(self, it);
+    }
+}
+
+/// The formal parameters of a callback argument (arrow or `function` expression),
+/// whatever its body — [`map_callback`] only matches callbacks that *return JSX*.
+fn callback_params<'a>(arg: &'a Argument<'a>) -> Option<&'a FormalParameters<'a>> {
+    match arg {
+        Argument::ArrowFunctionExpression(a) => Some(&a.params),
+        Argument::FunctionExpression(f) => Some(&f.params),
+        _ => None,
     }
 }
 
