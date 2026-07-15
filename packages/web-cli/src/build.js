@@ -117,6 +117,9 @@ export async function runBuild(options = {}) {
   const result = await build({
     input: entry,
     resolve: { alias: { "@opentf/web": webEntry }, extensions: EXTENSIONS },
+    // Folds the runtime's `DEV` flag to `false` so its dev-only diagnostics
+    // (SPEC §5.4.4) are dropped by the minifier below rather than shipped.
+    transform: { define: { "process.env.NODE_ENV": '"production"' } },
     plugins: [
       ...docsPlugins,
       otfwPlugin(otfwc, {

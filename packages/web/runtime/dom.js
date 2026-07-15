@@ -2,8 +2,53 @@
 // also back runtime-driven updates (reactive text/attributes). No virtual DOM,
 // no diffing — just direct, fine-grained DOM writes wired to signals.
 
+import { DEV, warnOnce } from "../core/dev.js";
 import { effect, scope, signal } from "../core/signals.js";
 import { claimRegionEnd, claimRegionStart } from "./hydrate.js";
+
+/** Distinguishes items that carry identity (objects) from interchangeable primitives. */
+const hasIdentity = (v) => v !== null && (typeof v === "object" || typeof v === "function");
+
+/** Counts lists so each keyless one warns at most once (see {@link warnKeylessDrift}). */
+let listId = 0;
+
+/**
+ * Dev-only guard for the index-key fallback (SPEC §5.4.4: "if `key` is missing,
+ * `_mapped` falls back to the array index").
+ *
+ * Index keying matches items by position, so it is only safe while positions are
+ * stable. Splice an item out of the middle and every later item shifts up a slot:
+ * the reconciler re-points each surviving node at its *neighbour's* data and
+ * removes the node at the tail — so the DOM node destroyed is the last one, not
+ * the spliced one. Bindings re-render, which hides this for text-only rows, but a
+ * row's node identity is its state: focus, scroll offset, uncontrolled input
+ * values, media playback, and any custom element's internals all follow the node
+ * and so land on the wrong item.
+ *
+ * Rather than warn on every keyless list (noise: `["a","b"].map(...)` is fine
+ * index-keyed forever), warn only once identity has *demonstrably* drifted — an
+ * item object that was at one index is now at another. That is exactly the
+ * reconcile where the fallback is about to do the wrong thing.
+ */
+function warnKeylessDrift(id, prevItems, items) {
+  const prevIndexOf = new Map();
+  for (let i = 0; i < prevItems.length; i++) {
+    if (hasIdentity(prevItems[i])) prevIndexOf.set(prevItems[i], i);
+  }
+  for (let i = 0; i < items.length; i++) {
+    const at = prevIndexOf.get(items[i]);
+    if (at === undefined || at === i) continue;
+    warnOnce(
+      `keyless-list:${id}`,
+      `A list rendered without \`key\` reordered: an item moved from index ${at} to ${i}.\n` +
+        `Without a key, items are matched by position, so the DOM nodes stay put and only their ` +
+        `data is re-pointed — per-node state (focus, scroll, inputs, component internals) now ` +
+        `belongs to the wrong item, and the node removed is the last one rather than the one you ` +
+        `removed.\nFix: give the item a stable key, e.g. \`items.map((item) => <li key={item.id}>…</li>)\`.`,
+    );
+    return;
+  }
+}
 
 // Attribute names that must be assigned as JS properties (not setAttribute) for
 // correct behavior. Mirrors the set the old runtime relied on (core/constants).
@@ -387,9 +432,17 @@ export function hydrateList(cur, sourceFn, adoptItem, renderItem, keyFn) {
  * order) carry reconciliation state across runs. Returns the effect disposer.
  */
 function reconcileList(anchor, sourceFn, renderItem, keyFn, cache, prevKeys) {
+  // Dev-only state for the keyless-drift guard: the previous run's items, so a
+  // reorder can be spotted by identity.
+  const id = DEV && !keyFn ? listId++ : -1;
+  let prevItems = [];
   const disposeEffect = effect(() => {
     const data = sourceFn();
     const items = Array.isArray(data) ? data : [];
+    if (DEV && !keyFn) {
+      warnKeylessDrift(id, prevItems, items);
+      prevItems = items;
+    }
     const next = new Map();
     const nodes = new Array(items.length);
     const newKeys = new Array(items.length);

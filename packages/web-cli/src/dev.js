@@ -144,6 +144,9 @@ export async function runDev() {
       input,
       resolve: { alias: alias || {}, extensions: EXTENSIONS },
       external,
+      // Enables the runtime's dev-only diagnostics (SPEC §5.4.4); `otfw build`
+      // defines this as "production" so they compile away.
+      transform: { define: { "process.env.NODE_ENV": '"development"' } },
       plugins,
     });
     try {
