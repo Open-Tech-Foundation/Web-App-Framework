@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-07-18
+
 ### Fixed
 
 - **A worker referenced both as `new Worker(new URL(…))` and a bare `new URL(…)` is no
