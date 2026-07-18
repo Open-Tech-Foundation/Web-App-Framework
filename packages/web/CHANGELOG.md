@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-07-18
+
 ### Fixed
 
 - **The docs-layout `const body = <jsx>` idiom now hydrates without a flash (Phase 2.1e).** A
