@@ -256,16 +256,29 @@ const PROBE = `(() => {
     // be adopted, not destroyed-and-rebuilt.
     pill: (() => { const b = document.querySelector('#app .pill-host b.pill-on'); return b ? { text: norm(b), server: !!b.__server } : null; })(),
     pillOff: !!document.querySelector('#app .pill-host i.pill-off'),
-    // A non-adoptable component (Panel — a const bound to JSX, used in a conditional root,
-    // so RebuildIfServerChildren) that wraps child islands (Tree then Link). On hydration it
-    // rebuilds; the runBuild guard must make its fresh Link islands BUILD, not adopt DOM
-    // Panel just created — otherwise a HydrationMismatch cascade (the docs-site regression).
-    // The panel's own tree must render its three leaf links correctly, with no double anchor.
+    // A non-adoptable component (Panel — JSX bound inside an object literal, used in a
+    // conditional root, so RebuildIfServerChildren) that wraps child islands (Tree then Link).
+    // On hydration it rebuilds; the runBuild guard must make its fresh Link islands BUILD, not
+    // adopt DOM Panel just created — otherwise a HydrationMismatch cascade (the docs-site
+    // regression). The panel's own tree must render its three leaf links, with no double anchor.
     panelTitle: norm(document.querySelector('#app .panel-framed .panel-title')),
     panelLinks: Array.from(document.querySelectorAll('#app .panel-framed a.tree-link')).map((a) => ({
       href: a.getAttribute('href'),
       text: norm(a),
       hasDot: !!a.querySelector('.tree-dot'),
+      innerAnchors: a.querySelectorAll('a').length,
+    })),
+    // The now-adoptable docs-layout idiom (Phase 2.1e): <Framed> uses a plain const-bound JSX
+    // value from a conditional root. Unlike <Panel>, it ADOPTS its server subtree in place (the
+    // {body} hole via hydrateHole) and its nested <Tree>/<Link> islands adopt too — every node
+    // stays a server node, with correct hrefs/dots and no double-built <a>.
+    framedTitle: norm(document.querySelector('#app .framed-section .framed-title')),
+    framedSectionServer: (() => { const el = document.querySelector('#app .framed-section'); return !!(el && el.__server); })(),
+    framedLinks: Array.from(document.querySelectorAll('#app .framed-section a.tree-link')).map((a) => ({
+      href: a.getAttribute('href'),
+      text: norm(a),
+      hasDot: !!a.querySelector('.tree-dot'),
+      server: !!a.__server,
       innerAnchors: a.querySelectorAll('a').length,
     })),
     // Portal-across-hydration (the docs search-modal bug): the modal is <Portal>-wrapped, so
@@ -373,8 +386,28 @@ async function run(port) {
       "no Panel <Link> double-built its <a> — the rebuild's islands built once (runBuild cleared the flag)",
     );
     assert(s.removedInPanel > 0, "the non-adoptable <Panel> did rebuild its server subtree (the guarded path ran)");
-    // Nothing rebuilt anywhere OUTSIDE the deliberately-non-adoptable Panel (islands, tree,
-    // pill, list, layout chain all adopted in place).
+
+    // ── 1g′. The now-adoptable docs-layout idiom (Phase 2.1e) ───────────────────
+    // <Framed> is the *plain* `const body = <jsx>` → conditional-root shape (the DocsLayout
+    // shape that first broke the docs site). It must now ADOPT in place — no rebuild, no flash
+    // — with its nested <Tree>/<Link> islands adopting their server <a> (no double-anchor).
+    assert(s.framedTitle === "Framed", "the adoptable <Framed> rendered its title");
+    assert(s.framedSectionServer, "the <Framed> <section> is a server node (the JSX-value local adopted in place)");
+    assert(s.framedLinks.length === 3, "the Framed tree adopted its three leaf links");
+    assert(s.framedLinks.every((l) => l.server), "every <Framed> tree link is a server node (adopted, not rebuilt)");
+    assert(
+      s.framedLinks.map((l) => l.href).join(",") === "/a,/b,/c" && s.framedLinks.every((l) => l.hasDot),
+      "the Framed <Link> islands adopted their hrefs + slotted dots (rich props intact)",
+    );
+    assert(
+      s.framedLinks.every((l) => l.innerAnchors === 0),
+      "no <Framed> <Link> double-built its <a> — the value-local adoption threaded through the islands",
+    );
+
+    // Nothing rebuilt anywhere OUTSIDE the deliberately-non-adoptable Panel — every adoptable
+    // view (islands, tree, pill, list, layout chain, and the <Framed> value-local) adopted in
+    // place. If <Framed> had rebuilt (the pre-2.1e behavior), its torn-out server nodes would
+    // land here.
     assert(s.removedServer === 0, "no server node removed outside <Panel> — everything adoptable adopted");
     // A per-component mismatch would have been reported to the console even though the DOM
     // self-heals — the console must be clean for a genuinely correct hydration.

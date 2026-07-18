@@ -5,6 +5,21 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ## [Unreleased]
 
+### Fixed
+
+- **JSX-value locals now hydrate in place (`codegen/hydrate.rs`, Phase 2.1e).** A layout or
+  component that binds JSX to a local and renders it — `const body = <div/>; return frame ?
+  <shell>{body}</shell> : body` (the `DocsLayout` idiom) — was not adoptable: the hydrate
+  backend reported `JSX-as-value is not supported`, demoting the whole view to
+  `RebuildIfServerChildren`, which discarded the server DOM on first paint (a content flash)
+  and cascaded `HydrationMismatch`es through nested islands. The backend now emits such a local
+  as a dual `{ build, adopt }` object: a `{body}` hole adopts the server subtree in place (a new
+  `hydrateHole` runtime helper wrapping the `<!--$-->…<!--/-->` markers), and a bare-identifier
+  dynamic-node branch adopts off the region cursor / rebuilds in the swap arm. Only the bare
+  `const NAME = <jsx>` shape is adopted; a JSX value inside an object/array/ternary stays on the
+  safe rebuild fallback. Covered by `codegen::hydrate` unit tests and a real-browser (CDP)
+  `<Framed>` island in the web-cli hydrate e2e.
+
 ### Added
 
 - **`$state` in-place mutation is rejected** (`lower.rs` `state_mutation_diagnostic`,

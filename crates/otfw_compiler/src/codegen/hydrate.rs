@@ -26,9 +26,17 @@
 //! wrapper, so one cursor threads the whole layout chain — Phase 2.1c). A *component's*
 //! light-DOM `{children}` slot adopts too (Phase 2.1d): the component steps over its slot
 //! (`skipSlot`) while the composing parent locates the slot and adopts the slotted content's
-//! reactivity (`hydrateSlot`), since that content is the parent's JSX. A view this backend
-//! can't adopt yet (fragments / multi-node roots) falls back: pages get no `hydrate` export
-//! (the router rebuilds via CSR); components get `ComponentView::RebuildIfServerChildren`.
+//! reactivity (`hydrateSlot`), since that content is the parent's JSX. A **fragment /
+//! multi-node root** adopts each top-level node in sequence off the shared cursor — pages via
+//! a `DocumentFragment` lifecycle carrier (`fn page`), components via `emit_root_view`. A
+//! **JSX-value local** (`const body = <div/>`, Phase 2.1e) is emitted as a dual
+//! `{ build, adopt }` object; a `{body}` hole adopts the server subtree in place
+//! (`hydrateHole`) and a bare-identifier dynamic-node branch adopts off the region cursor,
+//! instead of the claimText strip-and-rebuild that would flash and cascade rebuilds through
+//! nested islands. A view this backend still can't adopt (an unsupported node *kind*, or a
+//! JSX value in a non-positional shape like `const map = { a: <A/> }`) falls back: pages get
+//! no `hydrate` export (the router rebuilds via CSR); components get
+//! `ComponentView::RebuildIfServerChildren`.
 
 use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
@@ -69,6 +77,7 @@ struct Uses {
     claim_region: bool,
     skip_slot: bool,
     hydrate_slot: bool,
+    hydrate_hole: bool,
 }
 
 fn merge_uses(into: &mut Uses, from: &Uses) {
@@ -81,6 +90,7 @@ fn merge_uses(into: &mut Uses, from: &Uses) {
     into.claim_region |= from.claim_region;
     into.skip_slot |= from.skip_slot;
     into.hydrate_slot |= from.hydrate_slot;
+    into.hydrate_hole |= from.hydrate_hole;
 }
 
 /// Emit a whole module for the **hydrate target**. Calls `csr` to emit the build
@@ -199,6 +209,9 @@ fn claim_import(uses: &Uses) -> String {
     if uses.hydrate_slot {
         names.push("hydrateSlot");
     }
+    if uses.hydrate_hole {
+        names.push("hydrateHole");
+    }
     if names.is_empty() {
         return String::new();
     }
@@ -222,6 +235,11 @@ struct Emitter<'a> {
     base: String,
     /// Monotonic counter for unique list item-function names within a factory scope.
     list_counter: u32,
+    /// Names of **JSX-value locals** in scope (`const body = <div/>` — Phase 2.1e). Each is
+    /// emitted as a dual `{ build, adopt }` object (see [`Self::emit_jsx_value_local`]); its
+    /// name is recorded here so a view reference to it — a `{body}` hole or a bare identifier
+    /// in a dynamic-node branch — adopts the server subtree in place instead of rebuilding it.
+    value_locals: Vec<String>,
 }
 
 impl<'a> Emitter<'a> {
@@ -235,6 +253,7 @@ impl<'a> Emitter<'a> {
             sink,
             base: lowered.ir.id.export.clone(),
             list_counter: 0,
+            value_locals: Vec::new(),
         }
     }
 
@@ -293,8 +312,25 @@ impl<'a> Emitter<'a> {
         // Adopt the view from the passed-in cursor (over the container's — or the enclosing
         // layout slot's — children). The cursor is `hydrateAt`'s first parameter, so nested
         // routes adopt inline at the layout's slot without a fresh `cursor(root)`.
+        //
+        // A multi-node (fragment) page root — the common shape of an MDX document, whose
+        // top-level blocks (`<h1>`, `<p>`, `<h2>`…) are consecutive siblings with no wrapping
+        // element — adopts each child in sequence off the shared cursor, exactly as a
+        // component's `emit_root_view` does. There is no single root element to return or hang
+        // lifecycle on, so a `DocumentFragment` stands in as the carrier the router runs
+        // onMount/onCleanup against; it stays empty (the adopted nodes are already live in the
+        // server DOM and are never moved into it), mirroring the CSR page's fragment root after
+        // it has been appended. Without this, MDX pages emitted no `hydrateAt` and every one
+        // fell back to a full CSR rebuild on first paint — a visible content flash.
         let cur = self.fresh("__c");
-        let root = self.emit_node(&cur, &lowered.ir.view);
+        let root = if let ViewNode::Fragment(_) = &lowered.ir.view {
+            self.emit_root_view(&cur, &lowered.ir.view);
+            let frag = self.fresh("frag");
+            self.line(format!("const {frag} = document.createDocumentFragment();"));
+            frag
+        } else {
+            self.emit_node(&cur, &lowered.ir.view)
+        };
 
         // Top-level $effect callbacks run for the page's lifetime (page disposal: none).
         // Embedded JSX substitutes as inline CSR builders (effects build fresh nodes).
@@ -436,8 +472,18 @@ impl<'a> Emitter<'a> {
         match item {
             BodyItem::Signal(decl) => self.emit_decl(decl),
             BodyItem::Raw(stmt) => self.line(stmt.clone()),
-            BodyItem::Jsx { .. } => {
-                self.errors.push("hydrate: JSX-as-value is not supported yet (Phase 2.1)".into());
+            BodyItem::Jsx { template, nodes } => {
+                // A JSX-value local bound to a single JSX expression (`const body = <div/>`,
+                // Phase 2.1e) is adoptable: emit it as a dual `{ adopt, build }` object and
+                // record the name so its view uses claim the server subtree. Any other
+                // JSX-embedding statement (`const map = { a: <A/> }`, `let x = c ? <A/> : <B/>`)
+                // isn't a single positional node we can adopt — keep the safe rebuild fallback.
+                match value_local_name(template, nodes.len()) {
+                    Some(name) => self.emit_jsx_value_local(&name, &nodes[0]),
+                    None => self
+                        .errors
+                        .push("hydrate: JSX-as-value is not supported yet (Phase 2.1)".into()),
+                }
             }
         }
     }
@@ -465,6 +511,66 @@ impl<'a> Emitter<'a> {
                 self.errors.push(format!("hydrate: prop signal not supported yet: {}", decl.name));
             }
         }
+    }
+
+    /// Emit a **JSX-value local** (`const body = <div/>`, Phase 2.1e) as a dual
+    /// `{ build, adopt }` object, recording its name in `value_locals`.
+    ///
+    /// - `adopt(__vc)` claims the value's server subtree off a passed-in cursor. A `{body}`
+    ///   hole hands it the cursor inside the hole's `<!--$-->…<!--/-->` markers (via
+    ///   `hydrateHole`); a bare-identifier dynamic-node branch (`cond ? <a/> : body`) hands it
+    ///   the region cursor. Bindings inside the adopted subtree collect into the enclosing sink
+    ///   as usual — the closure runs within the factory's adopt walk and disposal scope.
+    /// - `build()` is the CSR builder the dynamic-node swap machinery falls back to when a
+    ///   reactive change selects this branch after first paint. A JSX-value local is a `const`,
+    ///   so a `{body}` hole never swaps (there is no build call there); but a branch position
+    ///   whose *condition* is reactive still needs a builder for the not-server-rendered case.
+    fn emit_jsx_value_local(&mut self, name: &str, node: &ViewNode) {
+        // The CSR build fn — a hoisted `function` declaration referenced by `build:` below.
+        let n = self.list_counter;
+        self.list_counter += 1;
+        let build_fn = format!("{}_vbuild{}", self.base, n);
+        for l in csr::emit_build_node_fn(self.lowered, &build_fn, node) {
+            self.line(l);
+        }
+
+        // The adopt walk, emitted into a nested buffer so it can be wrapped in the closure.
+        // Reset the name counter so the closure's own locals (`el0`, `__c1`, …) are scoped to
+        // it; restore after so the outer walk's numbering is unaffected.
+        let saved_lines = std::mem::take(&mut self.lines);
+        let saved_counter = self.counter;
+        self.counter = 0;
+        let root = self.emit_node("__vc", node);
+        let adopt_body = std::mem::replace(&mut self.lines, saved_lines);
+        self.counter = saved_counter;
+
+        self.line(format!("const {name} = {{"));
+        self.line(format!("  build: {build_fn},"));
+        self.line("  adopt: (__vc) => {".into());
+        for l in &adopt_body {
+            self.line(format!("    {l}"));
+        }
+        self.line(format!("    return {root};"));
+        self.line("  },".into());
+        self.line("};".into());
+        self.value_locals.push(name.to_string());
+    }
+
+    /// Substitute references to JSX-value locals in a dynamic-node branch expression: an
+    /// adopt template turns `body` into `body.adopt(__ic)` (claim off the region cursor), a
+    /// build template into `body.build()`. Only whole-identifier tokens are replaced (never a
+    /// member access like `foo.body`), so an ordinary property named `body` is left alone.
+    fn substitute_value_locals(&self, expr: &str, adopt: bool) -> String {
+        let mut out = expr.to_string();
+        for name in &self.value_locals {
+            let replacement = if adopt {
+                format!("{name}.adopt(__ic)")
+            } else {
+                format!("{name}.build()")
+            };
+            out = replace_ident(&out, name, &replacement);
+        }
+        out
     }
 
     // ── the adopt walk ────────────────────────────────────────────────────────────
@@ -538,6 +644,17 @@ impl<'a> Emitter<'a> {
             ViewNode::Text(_) => {
                 self.uses.skip_node = true;
                 self.line(format!("skipNode({cur});"));
+                String::new()
+            }
+            // A JSX-value-local hole (`{body}` where `const body = <div/>`, Phase 2.1e): the
+            // server rendered the value's subtree inline in the `<!--$-->…<!--/-->` markers.
+            // Adopt it in place (`hydrateHole` + the local's `adopt` closure) instead of the
+            // claimText path, which would strip the subtree and let bindText rebuild it — a
+            // flash plus a rebuild cascade through any island the value contains.
+            ViewNode::Dynamic { expr } if self.value_locals.iter().any(|n| n == self.code(*expr).trim()) => {
+                let name = self.code(*expr).trim().to_string();
+                self.uses.hydrate_hole = true;
+                self.line(format!("hydrateHole({cur}, {name}.adopt);"));
                 String::new()
             }
             // Dynamic text hole: claim the `<!--$-->…<!--/-->` text node and wire it.
@@ -727,6 +844,10 @@ impl<'a> Emitter<'a> {
         let template = self.code(expr);
         let adopt_expr = substitute_branches_pub(&template, &adopt_calls);
         let build_expr = substitute_branches_pub(&template, &build_calls);
+        // A branch may be a bare reference to a JSX-value local (`cond ? <a/> : body`): the
+        // adopt template claims it off the region cursor, the build template rebuilds it.
+        let adopt_expr = self.substitute_value_locals(&adopt_expr, true);
+        let build_expr = self.substitute_value_locals(&build_expr, false);
         self.uses.hydrate_child = true;
         self.bind(format!(
             "hydrateChild({cur}, (__ic) => ({adopt_expr}), () => ({build_expr}))"
@@ -867,6 +988,78 @@ impl<'a> Emitter<'a> {
             }
         }
     }
+}
+
+/// Extract the binding name of a JSX-value local statement (`const body = <div/>`) when it
+/// has the adoptable shape: a single JSX expression bound to one plain identifier, i.e. the
+/// whole right-hand side is the one node placeholder (with only surrounding parens/whitespace).
+/// Returns `None` for anything else (`const map = { a: <A/> }`, `let x = c ? <A/> : <B/>`,
+/// destructuring, multiple nodes), which stays on the safe rebuild fallback.
+///
+/// The templater has replaced the embedded JSX with a NUL placeholder (`\u{0}0\u{0}`); after
+/// removing it the RHS must be nothing but parentheses and whitespace for the statement to be
+/// a bare `const NAME = ( <jsx> )`.
+fn value_local_name(template: &str, nodes_len: usize) -> Option<String> {
+    if nodes_len != 1 {
+        return None;
+    }
+    let rest = template.replacen("\u{0}0\u{0}", "", 1);
+    let rest = rest.trim();
+    let rest = rest.strip_suffix(';').unwrap_or(rest).trim();
+    let kw = ["const ", "let ", "var "].into_iter().find(|k| rest.starts_with(k))?;
+    let after = rest[kw.len()..].trim_start();
+    let eq = after.find('=')?;
+    let name = after[..eq].trim();
+    let is_ident = !name.is_empty()
+        && name.chars().enumerate().all(|(i, c)| {
+            if i == 0 {
+                c.is_ascii_alphabetic() || c == '_' || c == '$'
+            } else {
+                c.is_ascii_alphanumeric() || c == '_' || c == '$'
+            }
+        });
+    if !is_ident {
+        return None;
+    }
+    // The placeholder is gone, so the RHS should now be only balancing parens/whitespace.
+    let rhs = after[eq + 1..].trim();
+    if rhs.chars().all(|c| c == '(' || c == ')' || c.is_whitespace()) {
+        Some(name.to_string())
+    } else {
+        None
+    }
+}
+
+/// Replace every whole-identifier occurrence of `ident` in `hay` with `replacement`. A match
+/// is whole only when the char before isn't `.`/`_`/`$`/alphanumeric (so `foo.body` and
+/// `mybody` are left alone) and the char after isn't `_`/`$`/alphanumeric. `ident` is an
+/// ASCII JS identifier (validated by [`value_local_name`]).
+fn replace_ident(hay: &str, ident: &str, replacement: &str) -> String {
+    let bytes = hay.as_bytes();
+    let mut out = String::with_capacity(hay.len());
+    let mut i = 0;
+    while i < hay.len() {
+        if hay[i..].starts_with(ident) {
+            let before_ok = i == 0 || {
+                let c = bytes[i - 1];
+                !(c == b'.' || c == b'_' || c == b'$' || c.is_ascii_alphanumeric())
+            };
+            let after = i + ident.len();
+            let after_ok = after >= hay.len() || {
+                let c = bytes[after];
+                !(c == b'_' || c == b'$' || c.is_ascii_alphanumeric())
+            };
+            if before_ok && after_ok {
+                out.push_str(replacement);
+                i = after;
+                continue;
+            }
+        }
+        let ch = hay[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
 }
 
 fn node_kind(node: &ViewNode) -> &'static str {
@@ -1110,20 +1303,22 @@ mod tests {
     #[test]
     fn a_build_that_can_run_mid_hydration_is_wrapped_in_run_build() {
         // Regression (docs/HYDRATION.md §3.5): a component the hydrate backend can't adopt —
-        // here because it binds JSX to a local (`const body = <jsx/>`), the docs-layout idiom
-        // that took down the whole site — falls to `RebuildIfServerChildren` and rebuilds on
-        // first paint. That build runs while `isHydrating()` is still set, so its fresh child
-        // islands must build, not adopt DOM this component just created. Codegen brackets the
-        // build in `runBuild(() => …)`, which clears the flag for the build's synchronous span.
+        // here because it binds JSX inside an object literal (`const parts = { body: <jsx/> }`),
+        // which isn't a single positional node to claim — falls to `RebuildIfServerChildren`
+        // and rebuilds on first paint. (The plain `const body = <jsx/>` idiom that took down the
+        // docs site *does* adopt now, Phase 2.1e; this uses a shape that still can't.) That
+        // rebuild runs while `isHydrating()` is still set, so its fresh child islands must
+        // build, not adopt DOM this component just created. Codegen brackets the build in
+        // `runBuild(() => …)`, which clears the flag for the build's synchronous span.
         let m = emit_component(
-            "export default function Panel({ framed, children }){ const body = <div class=\"b\">{children}</div>; \
-             return framed ? <section>{body}</section> : body; }",
+            "export default function Panel({ framed, children }){ const parts = { body: <div class=\"b\">{children}</div> }; \
+             return framed ? <section>{parts.body}</section> : parts.body; }",
         );
         // JSX-as-value is a *non-fatal* adopt error: it's reported (so the gap is visible) but
         // the module still emits — with this component demoted to `RebuildIfServerChildren`.
         assert!(
             m.errors.iter().any(|e| e.contains("JSX-as-value")),
-            "the JSX-const makes it non-adoptable:\n{:?}",
+            "the object-embedded JSX makes it non-adoptable:\n{:?}",
             m.errors,
         );
         // The RebuildIfServerChildren build is wrapped in runBuild.
@@ -1136,6 +1331,79 @@ mod tests {
             "server-DOM discard reads the real flag before the build:\n{}",
             m.code,
         );
+    }
+
+    #[test]
+    fn jsx_value_local_hole_adopts_in_place() {
+        // Phase 2.1e — the docs-layout idiom: a `const body = <jsx/>` local rendered at a
+        // `{body}` hole. The hole must *adopt* the server subtree in place (`hydrateHole` +
+        // the local's `adopt` closure), not strip-and-rebuild it via claimText.
+        let m = emit(
+            "export default function P(){ const body = <div class=\"b\"><span>hi</span></div>; \
+             return <section>{body}</section>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        // The local is a dual `{ build, adopt }` object; the build is a hoisted CSR fn. `base`
+        // is the export name, so a default-export page's build fn is `default_vbuild0`.
+        assert!(hyd.contains("const body = {"), "dual object:\n{}", hyd);
+        assert!(hyd.contains("build: default_vbuild0,"), "build fn reference:\n{}", hyd);
+        assert!(hyd.contains("adopt: (__vc) => {"), "adopt closure:\n{}", hyd);
+        assert!(hyd.contains("claimElement(__vc, \"div\")"), "adopt walk claims body root:\n{}", hyd);
+        // The `{body}` hole adopts via hydrateHole, not claimText.
+        assert!(hyd.contains("hydrateHole(__c2, body.adopt);"), "hole adopts in place:\n{}", hyd);
+        assert!(!hyd.contains("claimText"), "no strip-and-rebuild:\n{}", hyd);
+        assert!(m.code.contains("hydrateHole"), "hydrateHole imported:\n{}", m.code);
+    }
+
+    #[test]
+    fn jsx_value_local_bare_branch_reference_adopts_and_builds() {
+        // The frame-toggle shape: `frame ? <shell>{body}</shell> : body`. The bare `: body`
+        // branch of the root dynamic node must adopt off the region cursor (`body.adopt(__ic)`)
+        // and, for the build/swap arm, rebuild (`body.build()`) — never insert the dual object.
+        let m = emit(
+            "export default function P(props){ const body = <div class=\"b\">x</div>; \
+             return props.framed ? <section>{body}</section> : body; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        assert!(hyd.contains("body.adopt(__ic)"), "bare branch adopts off the region cursor:\n{}", hyd);
+        assert!(hyd.contains("body.build()"), "bare branch rebuilds in the swap arm:\n{}", hyd);
+    }
+
+    #[test]
+    fn jsx_value_local_component_with_slot_adopts_not_rebuilds() {
+        // The real DocsLayout is a *component* with a `{children}` slot inside its JSX-value
+        // local. It must now Adopt (the braced dual switch, not the RebuildIfServerChildren
+        // one-liner), and the value local's adopt walk must step over the component's own slot
+        // with skipSlot while the `{body}` hole adopts the local in place.
+        let m = emit_component(
+            "export default function Panel({ children }){ const body = <div class=\"b\"><article>{children}</article></div>; \
+             return <section>{body}</section>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // Adopts: the braced dual switch (RebuildIfServerChildren is the `… replaceChildren();`
+        // one-liner instead), a `{body}` hole that adopts, and a slot the walk steps over.
+        assert!(m.code.contains("if (isHydrating() && this.firstChild) {"), "braced dual switch:\n{}", m.code);
+        assert!(
+            !m.code.contains("if (isHydrating() && this.firstChild) this.replaceChildren();"),
+            "not the RebuildIfServerChildren one-liner:\n{}",
+            m.code,
+        );
+        assert!(m.code.contains("hydrateHole("), "hole adopts the value local:\n{}", m.code);
+        assert!(m.code.contains("skipSlot("), "component steps over its slot in the value local:\n{}", m.code);
+    }
+
+    #[test]
+    fn object_embedded_jsx_value_stays_non_adoptable() {
+        // Only the bare `const NAME = <jsx>` shape is adoptable. A JSX value inside an object
+        // (or array, or ternary) isn't one positional node — it stays on the rebuild fallback.
+        let m = emit_component(
+            "export default function C({ children }){ const o = { body: <div>{children}</div> }; \
+             return <section>{o.body}</section>; }",
+        );
+        assert!(m.errors.iter().any(|e| e.contains("JSX-as-value")), "still errors:\n{:?}", m.errors);
+        assert!(!m.code.contains("hydrateHole"), "no in-place adoption:\n{}", m.code);
     }
 
     #[test]

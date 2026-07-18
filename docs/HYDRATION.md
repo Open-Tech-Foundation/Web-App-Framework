@@ -55,14 +55,18 @@ This is the SolidStart shape (fine-grained adopt, one artifact branches per inst
 expressed on Custom Elements. See §7 for the `nav` config that lets an app choose MPA, in
 which case components only ever adopt (the build arm is dead and can later be dropped).
 
-> **Implemented so far (2.0–2.1d):** leaf pages, standalone components, components *used* in
+> **Implemented so far (2.0–2.1e):** leaf pages, standalone components, components *used* in
 > a page, **keyed lists** (`{items.map(...)}`), **conditionals / dynamic-node regions**
 > (`{cond ? <A/> : <B/>}`, `{cond && <X/>}`), **layout-chain routes** (a layout's `{children}`
 > slot is a region whose content is the nested route; one cursor threads the chain via
-> `hydrateAt`), and a **component's light-DOM `{children}` slot** (the component steps over its
+> `hydrateAt`), a **component's light-DOM `{children}` slot** (the component steps over its
 > slot; the composing parent adopts the slotted content's reactivity, since that content is the
-> parent's JSX) all hydrate. **Not yet:** fragment / multi-node route roots (the adopt walk
-> assumes a single claimed root) — falls back to a clean CSR build.
+> parent's JSX), **fragment / multi-node roots** (each top-level node adopts in sequence off the
+> shared cursor — pages via a `DocumentFragment` lifecycle carrier), and **JSX-value locals**
+> (`const body = <jsx>` rendered at a `{body}` hole or a bare dynamic-node branch — the
+> docs-layout idiom — adopting the server subtree in place via `hydrateHole`) all hydrate.
+> **Not yet:** a JSX value in a non-positional shape (`const map = { a: <A/> }`, an array, a
+> ternary) — falls back to a clean CSR build (`RebuildIfServerChildren`).
 
 | Mode | Nav | First paint | Subsequent nav | Components |
 |---|---|---|---|---|
@@ -364,6 +368,7 @@ hydration helper. Loader/query data (Phase 3) will ride the **same** channel.
 | **2.1b** | **conditional / dynamic-node hydration** ✓ — the server brackets the rendered branch with `<!--[-->…<!--]-->`; `hydrate.rs` emits an adopt fn + a CSR build fn per branch, and `hydrateChild` claims the rendered branch (adopt closure) then swaps to a freshly-built branch on change (build closure), the closing marker as the swap anchor. A falsy `&&` adopts an empty region. codegen tests, an ssg→hydrate happy-dom round-trip, and a real-browser (CDP) adopt + swap-both-ways e2e ✓ |
 | **2.1c** | **layout-chain / `{children}`-slot hydration** ✓ — a page/layout emits `hydrateAt(cursor, props)` (walk) + a `hydrate(root, props)` wrapper; SSG brackets the `{children}` slot with `<!--[-->…<!--]-->`; the router's `hydrateRouteNode` threads one cursor through the chain, each layout handing its cursor to the nested route's adopt thunk at the slot. Codegen tests, a router chain-adopt unit test (+ non-adoptable-layout fallback), a compiled-layout ssg→hydrate happy-dom round-trip, and a real-browser (CDP) layout-chain e2e ✓ |
 | **2.1d** | **component `{children}`-slot hydration** ✓ — a component's light-DOM slot is bracketed by distinct `<!--c[-->…<!--c]-->` markers; the component steps over it (`skipSlot`) while the composing parent locates the slot by its marker (`hydrateSlot`) and adopts the slotted content's reactivity (which it owns). Order-independent of the component's upgrade (adoption only wires, never moves, nodes). Codegen tests (component skipSlot + parent hydrateSlot), a happy-dom parent-slot-adoption round-trip, and a real-browser (CDP) `<Card>`-with-slotted-button e2e ✓ |
+| **2.1e** | **JSX-value-local hydration** ✓ — the docs-layout idiom `const body = <jsx>` referenced from a `{body}` hole or a bare-identifier dynamic-node branch. `hydrate.rs` emits the local as a dual `{ build, adopt }` object; a `{body}` hole adopts the server subtree in place (`hydrateHole`, wrapping the `<!--$-->…<!--/-->` markers) instead of the claimText strip-and-rebuild that flashed and cascaded rebuilds through nested islands, and a bare branch reference adopts off the region cursor. Only the bare `const NAME = <jsx>` shape is adoptable (a JSX value inside an object/array/ternary stays on the safe `RebuildIfServerChildren` fallback). Codegen tests (hole adopt, bare-branch adopt/build, component-with-slot, object-embedded fallback) + a real-browser (CDP) `<Framed>` island (the DocsLayout shape wrapping a `<Tree>` → `<Link>`) proving the value-local adopts in place with its nested islands, alongside a still-non-adoptable `<Panel>` guarding the `runBuild` cascade ✓ |
 | **2.2** | per-component island recovery wired into the dev overlay |
 | **2.3** _(deferred)_ | lazy/partial island directives (`client:idle` / `visible` / `media`) — leveraging the custom-element lifecycle. **Not in Phase 2**; revisited once core hydration is solid. |
 

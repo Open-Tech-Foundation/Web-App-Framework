@@ -3,6 +3,7 @@ import Stepper from "./Stepper.jsx";
 import Tree from "./Tree.jsx";
 import Pill from "./Pill.jsx";
 import Panel from "./Panel.jsx";
+import Framed from "./Framed.jsx";
 import Search from "./Search.jsx";
 
 // A recursive tree with both leaf links (a path) and a group (no path, with children) —
@@ -49,6 +50,7 @@ export default function Home() {
         <Tree node={TREE} />
       </ul>
       <Panel node={TREE} framed={true} />
+      <Framed node={TREE} framed={true} />
     </main>
   );
 }

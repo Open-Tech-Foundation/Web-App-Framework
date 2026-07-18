@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **The docs-layout `const body = <jsx>` idiom now hydrates without a flash (Phase 2.1e).** A
+  layout/component that binds JSX to a local and renders it at a `{body}` hole (or a bare
+  dynamic-node branch) — the shape at the heart of `DocsLayout` — was not adoptable: on first
+  navigation to a docs page the content area rebuilt from scratch, blanking and flashing, and
+  the rebuild cascaded `HydrationMismatch`es through every nested island (nav, sidebar). The
+  hydrate compiler now emits such a local as a dual `{ build, adopt }` object and adopts its
+  server subtree in place. Adds a `hydrateHole` runtime helper (adopts a JSX-value hole between
+  its `<!--$-->…<!--/-->` markers instead of stripping and rebuilding it).
+
 ## [0.18.0] - 2026-07-08
 
 ### Fixed

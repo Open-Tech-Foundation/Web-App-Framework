@@ -276,6 +276,32 @@ export function claimText(cur) {
   return textNode;
 }
 
+/**
+ * Adopt a **JSX-value hole** — a `{expr}` whose value is a JSX-value local (`const x =
+ * <T/>`), server-rendered in place between the text-hole markers `<!--$-->…<!--/-->`
+ * (docs/HYDRATION.md §3.1, 2.1e). Unlike {@link claimText} — which treats a node-valued
+ * hole as *stray* server content, strips it, and lets `bindText` rebuild it fresh (a flash,
+ * plus a rebuild cascade through any island the node contains) — this *adopts* the server
+ * subtree in place: `adoptFn(inner)` claims it off a cursor seeded just after the opening
+ * marker, advancing to the closing marker. A JSX-value local is a `const` bound to a literal,
+ * so the hole never reactively re-renders — there is no build/swap arm, only the one-shot
+ * adopt. Advances `cur` past `<!--/-->`. Throws {@link HydrationMismatch} on a wrong/absent
+ * marker.
+ */
+export function hydrateHole(cur, adoptFn) {
+  const start = cur.node;
+  if (!start || start.nodeType !== COMMENT || start.data !== HOLE_START) {
+    throw new HydrationMismatch(`expected a text-hole marker, found ${describe(start)}`);
+  }
+  const inner = { node: start.nextSibling };
+  adoptFn(inner); // claims the JSX-value's subtree, advancing `inner` to the end marker
+  const end = inner.node;
+  if (!end || end.nodeType !== COMMENT || end.data !== HOLE_END) {
+    throw new HydrationMismatch(`expected a text-hole end marker, found ${describe(end)}`);
+  }
+  cur.node = end.nextSibling;
+}
+
 /** Claim the `<!--[-->` marker that opens a server-rendered region (list or conditional),
  * advancing the cursor past it. Throws {@link HydrationMismatch} on a wrong/absent node. */
 export function claimRegionStart(cur) {
