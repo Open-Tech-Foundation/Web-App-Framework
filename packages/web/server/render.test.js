@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { registerRoutes, router, routes } from "../runtime/router.js";
 import { defineSSG, ssgComponent } from "./ssg-runtime.js";
@@ -9,11 +9,18 @@ function page(html) {
   return { default: (props) => (typeof html === "function" ? html(props) : html) };
 }
 
-afterEach(() => {
+// The route table is a module singleton shared with the client router, so a sibling
+// suite that registers routes/layouts and doesn't clean up would otherwise leak into
+// the *first* test here (e.g. a leftover root layout wrapping this page's HTML, breaking
+// an exact-equality assertion). Reset before each test too — not just after — so this
+// suite is isolated regardless of which file bun ran before it.
+const resetRoutes = () => {
   routes.pages = {};
   routes.layouts = {};
   routes.notFound = null;
-});
+};
+beforeEach(resetRoutes);
+afterEach(resetRoutes);
 
 describe("server render (SSG, string-based)", () => {
   test("renderToString returns a matched route's HTML", async () => {
