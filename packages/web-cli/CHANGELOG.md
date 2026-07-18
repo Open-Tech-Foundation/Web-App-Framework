@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`process.env.NODE_ENV` is now defined in both bundling paths**, gating the runtime's
+  dev-only diagnostics (SPEC §5.4.4, e.g. the keyless-list reorder warning). `otfw dev`
+  defines it as `"development"` so the diagnostics run; `otfw build` defines it as
+  `"production"`, where minification then drops those branches — verified absent from the
+  production bundle.
+
 ## [1.14.0] - 2026-07-08
 
 ### Added
