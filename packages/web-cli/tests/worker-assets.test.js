@@ -132,6 +132,28 @@ describe("workerAssetsPlugin", () => {
     expect(entryCode).not.toContain("ROLLUP_FILE_URL");
   });
 
+  test("a worker also referenced as a bare new URL is still a recursed chunk", async () => {
+    // The worker is referenced both ways: a bare `new URL` (e.g. a prefetch link)
+    // AND `new Worker`. It must be emitted as a bundled chunk (so its own nested
+    // worker + asset recurse), never downgraded to a verbatim asset copy just
+    // because the bare-URL reference was scanned first.
+    const { names } = await bundleFixture({
+      "main.js":
+        `export const prefetch = new URL("./kernel-worker.js", import.meta.url);\n` +
+        `export const w = new Worker(new URL("./kernel-worker.js", import.meta.url), { type: "module" });\n`,
+      "kernel-worker.js":
+        `new Worker(new URL("./program-worker.js", import.meta.url), { type: "module" });\n` +
+        `const wasm = new URL("./grep.wasm", import.meta.url);\nself.onmessage = () => fetch(wasm);\n`,
+      "program-worker.js": `self.onmessage = () => postMessage("PROGRAM_WORKER_RAN");\n`,
+      "grep.wasm": "\0asm grep payload",
+    });
+
+    // The nested worker and the worker-scoped asset both emit — proving the worker
+    // was bundled+recursed, not copied raw.
+    expect(names.some((n) => /^program-worker-.*\.js$/.test(n))).toBe(true);
+    expect(names.some((n) => /^grep-.*\.wasm$/.test(n))).toBe(true);
+  });
+
   test("warns (does not silently drop) when a reference can't be resolved", async () => {
     // The worker exists, but its `new URL("./missing-worker.js")` points at a file
     // that isn't there — the emitted worker chunk must surface a warning, never leave

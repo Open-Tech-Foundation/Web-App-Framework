@@ -1122,6 +1122,20 @@ export function cssPlugin() {
 const NEW_URL_RE =
   /new\s+URL\(\s*(["'`])(\.\.?\/[^"'`${}\n]+)\1\s*,\s*import\.meta\.url\s*\)/g;
 const WORKER_PREFIX_RE = /new\s+(?:Shared)?Worker\(\s*$/;
+// A JS-ish `new URL` target (`.js`, `.mjs`, `.ts`, …) is executable code — a worker,
+// `importScripts` target, or module to load — so it's bundled as a chunk (imports
+// resolved, nested refs recursed) rather than copied verbatim like a binary asset.
+const SCRIPT_EXT_RE = /\.[mc]?[jt]sx?$/i;
+
+/**
+ * Whether a resolved `new URL` target should be bundled as its own chunk (workers
+ * and any JS-ish script — so imports resolve and nested `new URL` refs recurse)
+ * versus emitted/served as a verbatim asset (`.wasm`, images, fonts, …). `isWorker`
+ * forces a chunk regardless of extension (a `new Worker(new URL(…))` target).
+ */
+export function shouldChunkNewUrl(absPath, isWorker) {
+  return isWorker || SCRIPT_EXT_RE.test(absPath);
+}
 
 /**
  * Scan `code` for the `new URL(<relative literal>, import.meta.url)` convention.
@@ -1191,8 +1205,14 @@ export async function resolveNewUrlRef(ctx, spec, importer) {
  *      `import.meta.ROLLUP_FILE_URL_<referenceId>` placeholder.
  */
 export function workerAssetsPlugin() {
-  // Resolved absolute path → emitted referenceId, so the same worker/asset shared
-  // across modules is emitted (and hashed) once.
+  // Resolved absolute path → emitted referenceId, so a file referenced from several
+  // places is emitted (and hashed) once. Keyed by path alone — NOT by how it was
+  // referenced — so a file used as both a worker/script and a bare `new URL` collapses
+  // to a single output. Whether it's a chunk or an asset is decided by the target
+  // itself (`shouldChunk`), never by which reference happened to be scanned first: a
+  // script must always be a bundled chunk (so its own nested `new URL` refs recurse),
+  // never downgraded to a verbatim `{ type: "asset" }` copy that would leave them
+  // dangling and 404 at runtime.
   let refs;
   return {
     name: "otfw:worker-assets",
@@ -1217,7 +1237,7 @@ export function workerAssetsPlugin() {
         }
         let refId = refs.get(abs);
         if (refId === undefined) {
-          refId = ref.isWorker
+          refId = shouldChunkNewUrl(abs, ref.isWorker)
             ? this.emitFile({ type: "chunk", id: abs, importer: id })
             : this.emitFile({ type: "asset", name: abs.split("/").pop(), source: readFileSync(abs) });
           refs.set(abs, refId);

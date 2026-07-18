@@ -4,6 +4,18 @@
 
 ### Fixed
 
+- **A worker referenced both as `new Worker(new URL(…))` and a bare `new URL(…)` is no
+  longer downgraded to a copied asset (nested workers/assets 404).** `workerAssetsPlugin`
+  deduped emitted files by path but keyed the *kind* off whichever reference was scanned
+  first — so if a worker script was also referenced as a bare `new URL` (a prefetch/preload
+  link) that was seen first, it was emitted as a verbatim `{ type: "asset" }` **copy**
+  instead of a bundled chunk. That copy skips this plugin, so its own
+  `new Worker(new URL("./program-worker.js"))` and `new URL("./assets/x.wasm")` stayed raw
+  and 404'd at runtime (resolving to `/assets/program-worker.js`, `/assets/assets/x.wasm`).
+  Emission kind is now decided by the target itself, not the reference: a worker — or any
+  JS-ish script target (`.js`, `.mjs`, `.ts`, …) — is always bundled as a chunk (so its
+  nested refs recurse) and dedupes to one output shared by every reference; only true
+  binary assets (`.wasm`, images, fonts) are copied. Same decision in `otfw dev`.
 - **Worker/asset references now resolve through Rolldown's resolver, and an
   unresolvable one warns instead of silently 404'ing.** `workerAssetsPlugin` resolved
   each `new URL(…, import.meta.url)` with a naive `dirname(importer) + spec` filesystem

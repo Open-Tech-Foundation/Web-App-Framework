@@ -3,6 +3,13 @@
 // in build, the /__worker & /__asset dev routes in dev). Plain `.js` so nothing
 // but the worker/asset scanner touches it.
 
+// The worker is ALSO referenced as a bare `new URL` (e.g. a prefetch link), and —
+// critically for the regression — this bare reference is scanned BEFORE the
+// `new Worker(...)` below. It must not downgrade the worker to a copied asset: the
+// worker has to stay a bundled chunk so its nested worker + wasm still recurse
+// (the dedup cross-contamination bug — asset-first ordering was the trigger).
+export const workerPrefetchUrl = new URL("./counter-worker.js", import.meta.url);
+
 export function makeWorker() {
   return new Worker(new URL("./counter-worker.js", import.meta.url), { type: "module" });
 }

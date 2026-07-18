@@ -48,6 +48,7 @@ import {
   applyNewUrlEdits,
   resolveNewUrlRef,
   scanNewUrlRefs,
+  shouldChunkNewUrl,
 } from "./shared.js";
 
 // Resolve the start port. An explicit `--port <n>` / `-p <n>` / `--port=<n>` is
@@ -171,7 +172,10 @@ export async function runDev() {
           );
           continue;
         }
-        const url = ref.isWorker ? toWorkerUrl(abs) : toAssetUrl(abs);
+        // A JS-ish target is bundled + served as a worker route (its own nested refs
+        // rewritten), so a worker referenced both as `new Worker` and a bare `new URL`
+        // resolves to the same bundled script; binary assets serve verbatim from disk.
+        const url = shouldChunkNewUrl(abs, ref.isWorker) ? toWorkerUrl(abs) : toAssetUrl(abs);
         edits.push({ start: ref.start, end: ref.end, text: `new URL(${JSON.stringify(url)}, import.meta.url)` });
       }
       if (edits.length === 0) return null;
