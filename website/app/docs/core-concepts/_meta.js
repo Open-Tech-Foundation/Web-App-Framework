@@ -7,6 +7,7 @@ export default {
   context: "Context",
   "imperative-api": "Imperative API",
   styling: "Styling",
+  assets: "Assets & Workers",
   portal: "Portal",
   "error-boundary": "Error boundaries",
 };

@@ -1,0 +1,112 @@
+---
+title: Assets & Workers
+description: Reference bundled files — web workers, WebAssembly, images — with new URL(…, import.meta.url).
+---
+
+import { Callout } from "@opentf/web-docs";
+
+# Assets & Workers
+
+Reference a file that lives next to your source — a web worker, a `.wasm` module, an
+image — with the standard `new URL(…, import.meta.url)` convention. The toolchain
+resolves it at build time, emits a content-hashed copy into `dist/assets/`, and
+rewrites the reference to point at it. The same references are served on demand in
+`otfw dev`, so a worker works identically in development, `otfw build`, and
+`otfw build --ssg`.
+
+## Static assets
+
+Point `new URL` at a sibling file and use the resulting URL like any other:
+
+```js
+// WebAssembly
+const wasmUrl = new URL("./add.wasm", import.meta.url);
+const { instance } = await WebAssembly.instantiateStreaming(fetch(wasmUrl));
+
+// An image, font, or any binary
+img.src = new URL("./logo.png", import.meta.url).href;
+```
+
+At build time `./add.wasm` becomes `dist/assets/add-<hash>.wasm` and the reference is
+rewritten to resolve to it. `.wasm` is served with the correct `application/wasm` MIME
+type, so `instantiateStreaming` works without a fallback.
+
+## Web workers
+
+Instantiate a module worker the same way — pass a `new URL` and `{ type: "module" }`:
+
+```js
+const worker = new Worker(new URL("./search-worker.js", import.meta.url), {
+  type: "module",
+});
+
+worker.postMessage({ query });
+worker.onmessage = (e) => render(e.data);
+```
+
+The worker file is bundled as its own entry (`dist/assets/search-worker-<hash>.js`) with
+its own imports. `SharedWorker` is supported the same way.
+
+### Nested workers
+
+A worker that spawns another worker just works — use the same convention *inside* the
+worker file and it resolves recursively:
+
+```js
+// search-worker.js
+const indexer = new Worker(new URL("./indexer.js", import.meta.url), { type: "module" });
+```
+
+<Callout type="info" title="Workers are bundled standalone">
+A worker has no access to the page's import map, so its bundle inlines everything it
+imports (including `@opentf/web`). Keep worker code self-contained — it runs in its own
+global scope, with no DOM.
+</Callout>
+
+## The rules
+
+For the toolchain to resolve a reference, the specifier must be a **static, relative
+literal**:
+
+```js
+new URL("./worker.js", import.meta.url)   // ✅ resolved & emitted
+new URL(`./data.wasm`, import.meta.url)   // ✅ backticks are fine (no ${…})
+new URL("../shared/w.js", import.meta.url) // ✅ ../ is fine
+
+new URL(userPath, import.meta.url)        // ✋ dynamic — left untouched
+new URL("https://cdn/x.js", import.meta.url) // ✋ absolute URL — left untouched
+```
+
+A dynamic or non-relative reference is left exactly as written (it may be a real remote
+URL), so nothing breaks — but the toolchain can't emit a file it can't resolve at build
+time.
+
+<Callout type="danger" title="Don't build worker/asset URLs from strings">
+`new Worker("/assets/" + name + ".js")` won't be bundled or hashed and will 404 in
+production. Always hand `new Worker`/`new URL` a static relative literal.
+</Callout>
+
+## `assets/` vs `public/`
+
+These files are emitted alongside your JS in `dist/assets/` — not in `public/` — and that
+placement is required, not incidental. The rewritten reference resolves **relative to the
+bundle chunk that uses it**, and chunks live in `/assets/`, so the worker/asset must be
+their sibling:
+
+```
+dist/assets/
+  bundle-<hash>.js          references ↓
+  search-worker-<hash>.js   the emitted worker
+  add-<hash>.wasm           the emitted asset
+```
+
+Use `public/` only for files you serve verbatim at the site root by a fixed name
+(`favicon.ico`, `robots.txt`) — those are copied as-is and never hashed. Anything you
+reference from code with `new URL` belongs in `assets/`, which the toolchain handles for
+you.
+
+<Callout type="info" title="Instantiate in the browser, not during render">
+A bare `new URL(…)` is safe anywhere, but `new Worker(…)` spawns a thread. Under
+`otfw build --ssg` your modules also execute during pre-render, so create workers inside
+an event handler or `onMount` — never at module top level — to keep them browser-only.
+</Callout>

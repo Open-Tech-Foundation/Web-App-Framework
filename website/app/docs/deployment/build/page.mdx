@@ -24,10 +24,14 @@ dist/
     bundle-<hash>.js   the entry bundle (code-split per route)
     <chunk>-<hash>.js  lazily-loaded route chunks
     <name>-<hash>.css  compiled stylesheets
+    <worker>-<hash>.js  bundled web workers (new Worker(new URL(…)))
+    <asset>-<hash>.wasm binary assets (new URL(…, import.meta.url))
 ```
 
 Routes are code-split: visiting a page loads only its chunk. Filenames are content-
-hashed, so they can be cached forever.
+hashed, so they can be cached forever. Web workers and files referenced with
+`new URL(…, import.meta.url)` are emitted here too — see
+[Assets & Workers](/docs/core-concepts/assets).
 
 ## How route code splitting works
 
