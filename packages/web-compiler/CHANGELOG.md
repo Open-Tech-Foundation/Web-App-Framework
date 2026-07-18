@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **JSX-value locals now hydrate in place instead of forcing a rebuild (Phase 2.1e).** The
+  `otfwc` hydrate backend could not adopt a layout/component that binds JSX to a local and
+  renders it — `const body = <div/>; return frame ? <shell>{body}</shell> : body` (the
+  `DocsLayout` idiom) — so the whole view fell to `RebuildIfServerChildren`, discarding the
+  server DOM on first paint (a content flash) and cascading `HydrationMismatch`es through
+  nested islands. It now emits such a local as a dual `{ build, adopt }` object: a `{body}`
+  hole adopts the server subtree in place (via `@opentf/web`'s new `hydrateHole`) and a
+  bare-identifier dynamic-node branch adopts off the region cursor. Only the bare
+  `const NAME = <jsx>` shape is adopted; a JSX value inside an object/array/ternary stays on
+  the safe rebuild fallback. (Requires `@opentf/web` ≥ 0.19.0 for the `hydrateHole` runtime
+  helper.)
+
 ## [0.9.0] - 2026-07-08
 
 ### Fixed
