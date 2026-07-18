@@ -73,8 +73,11 @@ async function testBuild(mode) {
   // Worker + nested worker are emitted as their own hashed chunks…
   assert(assets.some((f) => /^counter-worker-.*\.js$/.test(f)), `[${mode}] worker chunk emitted (counter-worker-*.js)`);
   assert(assets.some((f) => /^nested-worker-.*\.js$/.test(f)), `[${mode}] nested worker chunk emitted (nested-worker-*.js)`);
-  // …and the .wasm asset is emitted with a hash…
+  // …the .wasm asset referenced from the page is emitted with a hash…
   assert(assets.some((f) => /^pixel-.*\.wasm$/.test(f)), `[${mode}] wasm asset emitted (pixel-*.wasm)`);
+  // …and the .wasm asset referenced from *inside the worker* is emitted too (the
+  // emitted worker chunk was re-scanned for its own new URL assets).
+  assert(assets.some((f) => /^kernel-.*\.wasm$/.test(f)), `[${mode}] worker-scoped wasm asset emitted (kernel-*.wasm)`);
 
   // The nested worker's real source made it into its chunk (not a stub / 404).
   const nested = assets.find((f) => /^nested-worker-.*\.js$/.test(f));
@@ -82,6 +85,11 @@ async function testBuild(mode) {
     readFileSync(`${FIXTURE}/dist/assets/${nested}`, "utf8").includes("MARKER_NESTED_WORKER"),
     `[${mode}] nested worker chunk carries the real worker source`,
   );
+  // The worker chunk points at the hashed kernel asset, not the raw literal.
+  const counter = assets.find((f) => /^counter-worker-.*\.js$/.test(f));
+  const counterCode = readFileSync(`${FIXTURE}/dist/assets/${counter}`, "utf8");
+  assert(/kernel-.*\.wasm/.test(counterCode), `[${mode}] worker chunk references the hashed kernel asset`);
+  assert(!counterCode.includes('"./kernel.wasm"'), `[${mode}] worker chunk drops the raw ./kernel.wasm literal`);
 
   // No dangling literal references survive anywhere in the emitted JS.
   const allJs = assets
@@ -91,6 +99,7 @@ async function testBuild(mode) {
   assert(!/["'`]\.\/counter-worker\.js["'`]/.test(allJs), `[${mode}] no dangling ./counter-worker.js literal remains`);
   assert(!/["'`]\.\/nested-worker\.js["'`]/.test(allJs), `[${mode}] no dangling ./nested-worker.js literal remains`);
   assert(!/["'`]\.\/pixel\.wasm["'`]/.test(allJs), `[${mode}] no dangling ./pixel.wasm literal remains`);
+  assert(!/["'`]\.\/kernel\.wasm["'`]/.test(allJs), `[${mode}] no dangling ./kernel.wasm literal remains`);
 }
 
 async function waitForServer(base, tries = 100) {
@@ -134,6 +143,14 @@ async function testDev() {
     const workerCode = await workerRes.text();
     const nestedMatch = workerCode.match(/\/__worker\/[A-Za-z0-9_-]+\.js/);
     assert(!!nestedMatch, "worker bundle rewrites its nested worker to a /__worker/ URL");
+
+    // The worker also rewrites its own `new URL(".wasm")` asset to a /__asset/ URL,
+    // which serves the bytes — proving the worker bundle is re-scanned for assets.
+    const workerAssetMatch = workerCode.match(/\/__asset\/[A-Za-z0-9_-]+\.wasm/);
+    assert(!!workerAssetMatch, "worker bundle rewrites its own asset to a /__asset/ URL");
+    const workerAssetRes = await fetch(base + workerAssetMatch[0]);
+    assert(workerAssetRes.ok, "GET /__asset/<kernel>.wasm (from inside worker) is 200");
+    assert(workerAssetRes.headers.get("content-type") === "application/wasm", "worker-scoped wasm served as application/wasm");
 
     const nestedRes = await fetch(base + nestedMatch[0]);
     assert(nestedRes.ok, "GET /__worker/<nested> is 200");

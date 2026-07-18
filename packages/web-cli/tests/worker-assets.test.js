@@ -73,6 +73,32 @@ describe("workerAssetsPlugin", () => {
     expect(names.some((n) => /^inner-.*\.js$/.test(n))).toBe(true);
   });
 
+  test("emits an asset referenced from inside a worker (nested asset URL)", async () => {
+    const { names } = await bundleFixture({
+      "main.js": `export const w = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });\n`,
+      // The worker itself pulls in a .wasm via a bare `new URL` — the emitted worker
+      // chunk must be re-scanned so this asset is emitted too (not left dangling).
+      "worker.js": `const wasm = new URL("./kernel.wasm", import.meta.url);\nself.onmessage = () => fetch(wasm);\n`,
+      "kernel.wasm": "\0asm kernel payload",
+    });
+
+    expect(names.some((n) => /^worker-.*\.js$/.test(n))).toBe(true);
+    expect(names.some((n) => /^kernel-.*\.wasm$/.test(n))).toBe(true);
+  });
+
+  test("emits an asset imported through a regular module chain", async () => {
+    const { names, entryCode } = await bundleFixture({
+      "main.js": `export { texture } from "./mid.js";\n`,
+      "mid.js": `export const texture = new URL("./sprite.png", import.meta.url);\n`,
+      "sprite.png": "PNG bytes",
+    });
+
+    expect(names.some((n) => /^sprite-.*\.png$/.test(n))).toBe(true);
+    // The rewrite lands in whichever chunk the mid module folded into; assert no
+    // dangling literal survives anywhere in the output.
+    expect(entryCode).not.toContain('"./sprite.png"');
+  });
+
   test("handles SharedWorker and backtick specifiers", async () => {
     const { names, entryCode } = await bundleFixture({
       "main.js": "export const w = new SharedWorker(new URL(`./shared.js`, import.meta.url), { type: \"module\" });\n",
