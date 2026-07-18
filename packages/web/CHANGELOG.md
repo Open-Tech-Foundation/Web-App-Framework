@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Tests
+
+- **Isolated the SSG `server/render.test.js` suite from shared-route pollution.** It reset the
+  shared route-table singleton only in `afterEach`, so its first test inherited whatever a
+  sibling suite (e.g. `router.test.js`, which registers a root layout and never cleans up) left
+  behind — a leftover layout wrapped the rendered HTML and the exact-equality assertion failed,
+  flaky under CI's bun test-file ordering but green locally. Now resets the routes in
+  `beforeEach` too, so the suite is isolated regardless of order.
+
 ## [0.19.0] - 2026-07-18
 
 ### Fixed
