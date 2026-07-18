@@ -10,7 +10,6 @@
   "workspaces": [
     "packages/*",
     "playground",
-    "website",
     "benchmarks/*"
   ],
   "scripts": {

@@ -10,10 +10,13 @@
   "dependencies": {
     "@opentf/web": "^0.20.0",
     "@opentf/web-docs": "^0.17.0",
-    "@opentf/web-form": "^1.14.0",
-    "@opentf/web-i18n": "^1.14.0"
+    "@opentf/web-form": "^1.15.0",
+    "@opentf/web-i18n": "^1.15.0"
   },
   "devDependencies": {
     "@opentf/web-cli": "^1.16.0"
-  }
+  },
+  "trustedDependencies": [
+    "@opentf/web-compiler"
+  ]
 }
