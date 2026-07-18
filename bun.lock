@@ -75,7 +75,7 @@
         "otfw": "./src/cli.js",
       },
       "dependencies": {
-        "@opentf/web-compiler": "0.8.0",
+        "@opentf/web-compiler": "0.10.0",
         "@tailwindcss/node": "4.2.2",
         "@tailwindcss/oxide": "4.2.2",
         "rolldown": "1.0.0-rc.17",
