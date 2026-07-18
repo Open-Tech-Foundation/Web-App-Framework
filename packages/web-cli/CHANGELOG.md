@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-07-18
+
 ### Fixed
 
 - **Web workers and `new URL(…, import.meta.url)` assets are now emitted/served.** Both
