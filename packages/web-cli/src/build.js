@@ -35,6 +35,7 @@ import {
   loadProject,
   otfwPlugin,
   readHtmlShell,
+  workerAssetsPlugin,
   runBlogFeed,
   runDocsSearchIndex,
   runLlmsFiles,
@@ -128,12 +129,17 @@ export async function runBuild(options = {}) {
         onResult: (id) => buildStep.update(`${basename(id)}  (${++compiled})`),
       }),
       cssPlugin(),
+      // Emit `new Worker(new URL(…))` scripts + `new URL(…)` assets (.wasm, …) that
+      // Rolldown would otherwise leave as dangling 404 references. Runs after the
+      // compiler so it scans emitted JS.
+      workerAssetsPlugin(),
     ],
     output: {
       dir: join(outDir, "assets"),
       format: "esm",
       entryFileNames: "bundle-[hash].js",
       chunkFileNames: "[name]-[hash].js",
+      assetFileNames: "[name]-[hash][extname]",
       minify: true,
     },
     // The compiler runs a subprocess per file, so it dominates plugin time by design;
@@ -142,7 +148,11 @@ export async function runBuild(options = {}) {
   });
   rmSync(tmp, { recursive: true, force: true });
 
-  const entryChunk = result.output.find((o) => o.type === "chunk" && o.isEntry);
+  // The app entry — matched by its module id, not just `isEntry`, because emitted
+  // worker chunks (workerAssetsPlugin) are entries too and must not be picked here.
+  const entryChunk =
+    result.output.find((o) => o.type === "chunk" && o.facadeModuleId === entry) ??
+    result.output.find((o) => o.type === "chunk" && o.isEntry);
   const bundleHref = `/assets/${entryChunk.fileName}`;
 
   // Compose dist/index.html from the project shell: strip module entry scripts,

@@ -24,6 +24,9 @@ export const MIME = {
   jpg: "image/jpeg",
   ico: "image/x-icon",
   woff2: "font/woff2",
+  wasm: "application/wasm",
+  gif: "image/gif",
+  webp: "image/webp",
 };
 
 /** Fallback HTML shell used when a project has no `index.html`. */
@@ -1108,6 +1111,86 @@ export function cssPlugin() {
         ? `${inject}\nexport default new Proxy({}, { get: (_, k) => k });`
         : `${inject}\nexport default ${JSON.stringify(code)};`;
       return { code: out, moduleSideEffects: true };
+    },
+  };
+}
+
+// A relative `new URL("./x", import.meta.url)` reference, optionally wrapped in a
+// `new Worker(...)` / `new SharedWorker(...)`. The specifier is restricted to a
+// static, relative, expression-free literal (`./` or `../`, single/double/back
+// quotes, no `${…}`) — the only shape we can resolve to a file at build time.
+const NEW_URL_RE =
+  /new\s+URL\(\s*(["'`])(\.\.?\/[^"'`${}\n]+)\1\s*,\s*import\.meta\.url\s*\)/g;
+const WORKER_PREFIX_RE = /new\s+(?:Shared)?Worker\(\s*$/;
+
+/**
+ * Scan `code` (of module `id`) for the `new URL(<relative literal>, import.meta
+ * .url)` convention and rewrite each occurrence. `resolveRef(absPath, isWorker)`
+ * returns the replacement expression text (e.g. a `new URL(…)` pointing at the
+ * emitted/served file), or a nullish value to leave that occurrence untouched.
+ * `isWorker` is true when the reference is the argument of `new Worker(…)` /
+ * `new SharedWorker(…)`. Returns the rewritten source, or `null` when nothing
+ * matched (so callers can skip re-emitting an unchanged module).
+ */
+export function rewriteNewUrlRefs(code, id, resolveRef) {
+  // Cheap bail: no `import.meta.url` means nothing to rewrite.
+  if (!code.includes("import.meta.url")) return null;
+
+  // Collect edits with their source offsets, then splice right-to-left so earlier
+  // offsets stay valid (and duplicate literals can't be mis-replaced).
+  const edits = [];
+  for (const m of code.matchAll(NEW_URL_RE)) {
+    const abs = join(dirname(id), m[2]);
+    if (!existsSync(abs)) continue; // leave unresolvable refs untouched
+    const isWorker = WORKER_PREFIX_RE.test(code.slice(0, m.index));
+    const text = resolveRef(abs, isWorker);
+    if (text == null) continue;
+    edits.push({ start: m.index, end: m.index + m[0].length, text });
+  }
+  if (edits.length === 0) return null;
+
+  let out = code;
+  for (const e of edits.reverse()) out = out.slice(0, e.start) + e.text + out.slice(e.end);
+  return out;
+}
+
+/**
+ * Worker & asset plugin (`otfw build`): teaches Rolldown the `new Worker(new URL(…,
+ * import.meta.url))` / bare `new URL(…, import.meta.url)` convention that the
+ * runtime (and user code) uses to reference sibling worker scripts and binary
+ * assets (`.wasm`, images, …). Rolldown leaves these as dangling runtime strings,
+ * so the referenced file is never emitted and 404s in production. This mirrors
+ * what Vite's `vite:worker` + `vite:asset` plugins do:
+ *
+ *   1. detect `new URL(<relative literal>, import.meta.url)`,
+ *   2. resolve the literal relative to the importing module,
+ *   3. emit it — a `new Worker(…)` target as its own `{ type: "chunk" }` entry (so
+ *      it's bundled and its own imports, incl. nested workers, recurse through this
+ *      same plugin), everything else as a `{ type: "asset" }`,
+ *   4. rewrite the expression to the hashed output URL via Rolldown's
+ *      `import.meta.ROLLUP_FILE_URL_<referenceId>` placeholder.
+ */
+export function workerAssetsPlugin() {
+  // Resolved absolute path → emitted referenceId, so the same worker/asset shared
+  // across modules is emitted (and hashed) once.
+  let refs;
+  return {
+    name: "otfw:worker-assets",
+    buildStart() {
+      refs = new Map();
+    },
+    transform(code, id) {
+      const out = rewriteNewUrlRefs(code, id, (abs, isWorker) => {
+        let refId = refs.get(abs);
+        if (refId === undefined) {
+          refId = isWorker
+            ? this.emitFile({ type: "chunk", id: abs, importer: id })
+            : this.emitFile({ type: "asset", name: abs.split("/").pop(), source: readFileSync(abs) });
+          refs.set(abs, refId);
+        }
+        return `new URL(import.meta.ROLLUP_FILE_URL_${refId}, import.meta.url)`;
+      });
+      return out == null ? null : { code: out, moduleSideEffects: true };
     },
   };
 }

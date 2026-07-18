@@ -18,7 +18,7 @@
 
 import { rolldown } from "rolldown";
 import { existsSync, mkdirSync, readFileSync, statSync, watch, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { compileCss, usesTailwind } from "./tailwind.js";
@@ -45,6 +45,7 @@ import {
   proxyRequest,
   readHtmlShell,
   resolveProxyRules,
+  rewriteNewUrlRefs,
 } from "./shared.js";
 
 // Resolve the start port. An explicit `--port <n>` / `-p <n>` / `--port=<n>` is
@@ -93,6 +94,20 @@ const toRouteUrl = (file) => `${ROUTE_PREFIX}${Buffer.from(file).toString("base6
 const fromRouteUrl = (pathname) =>
   Buffer.from(pathname.slice(ROUTE_PREFIX.length, -".js".length), "base64url").toString("utf8");
 
+// Worker scripts (`new Worker(new URL("./w.js", import.meta.url))`) and binary
+// assets (`new URL("./x.wasm", import.meta.url)`) get their own dev URLs, same
+// base64url-of-absolute-path scheme as routes. Assets keep their real extension so
+// the browser gets the right MIME; the base64url body never contains a `.`, so the
+// first dot cleanly separates path from extension when decoding.
+const WORKER_PREFIX = "/__worker/";
+const ASSET_PREFIX = "/__asset/";
+const toWorkerUrl = (file) => `${WORKER_PREFIX}${Buffer.from(file).toString("base64url")}.js`;
+const fromWorkerUrl = (pathname) =>
+  Buffer.from(pathname.slice(WORKER_PREFIX.length, -".js".length), "base64url").toString("utf8");
+const toAssetUrl = (file) => `${ASSET_PREFIX}${Buffer.from(file).toString("base64url")}${extname(file)}`;
+const fromAssetUrl = (pathname) =>
+  Buffer.from(pathname.slice(ASSET_PREFIX.length).split(".")[0], "base64url").toString("utf8");
+
 export async function runDev() {
   const bootStart = Date.now();
   const { root, appDir, webEntry, otfwc, exclude } = loadProject();
@@ -134,7 +149,22 @@ export async function runDev() {
     onResult: (id, err) => (err ? compileErrors.set(id, err) : compileErrors.delete(id)),
   });
   const css = cssPlugin();
-  const plugins = [...docsPlugins, otfw, css];
+  // Rewrite `new Worker(new URL("./w.js", …))` → a `/__worker/…` dev URL (bundled
+  // self-contained on request) and bare `new URL("./x.wasm", …)` → a `/__asset/…`
+  // dev URL (served from disk). Included in every bundle below so entry, routes,
+  // and worker scripts (nested workers) all get rewritten. Without this the browser
+  // resolves the raw literal against the served module's URL → 404.
+  const devWorkerAssets = {
+    name: "otfw:dev-worker-assets",
+    transform(code, id) {
+      const out = rewriteNewUrlRefs(code, id, (abs, isWorker) => {
+        const url = isWorker ? toWorkerUrl(abs) : toAssetUrl(abs);
+        return `new URL(${JSON.stringify(url)}, import.meta.url)`;
+      });
+      return out == null ? null : { code: out, moduleSideEffects: true };
+    },
+  };
+  const plugins = [...docsPlugins, otfw, css, devWorkerAssets];
 
   // Bundle `input` to a single ESM string in memory (no disk). `external` ids are
   // left as bare imports (resolved by the browser via the import map / route URLs).
@@ -174,12 +204,18 @@ export async function runDev() {
   async function buildRoute(file) {
     return bundle({ input: file, external: ["@opentf/web"] });
   }
+  // A worker script, bundled self-contained: a worker has no access to the page's
+  // import map, so `@opentf/web` must be inlined (aliased) rather than left external.
+  async function buildWorker(file) {
+    return bundle({ input: file, alias: { "@opentf/web": webEntry } });
+  }
 
   // Everything is built on first request and cached (Vite-style), so startup does no
   // compilation at all. `null` means "needs (re)building".
   let fwCode = null;
   let entryCode = null;
   const routeCache = new Map(); // route file → compiled chunk
+  const workerCache = new Map(); // worker file → compiled chunk
 
   // A build error becomes a thrown-on-load stub so the overlay shows it in place.
   const errorStub = (id, msg) =>
@@ -204,6 +240,10 @@ export async function runDev() {
   async function serveRoute(file) {
     if (!routeCache.has(file)) routeCache.set(file, await compileOnce(file, buildRoute));
     return routeCache.get(file);
+  }
+  async function serveWorker(file) {
+    if (!workerCache.has(file)) workerCache.set(file, await compileOnce(file, buildWorker));
+    return workerCache.get(file);
   }
 
   // API routes (SPEC §11) are plain server modules under app/api/. In dev they're
@@ -320,10 +360,15 @@ export async function runDev() {
     if (!hit) {
       fwCode = entryCode = null;
       routeCache.clear();
+      workerCache.clear();
     } else {
       if (hit.has(webEntry)) fwCode = null;
       if (file === entryFile || pages.includes(file)) entryCode = null;
       for (const f of [...routeCache.keys()]) if (hit.has(f)) routeCache.delete(f);
+      // The module graph doesn't trace worker scripts (they're a separate bundle),
+      // so a worker edit lands here as an "unknown reach"; clear the worker cache
+      // whenever anything the edit touches is a worker file or the graph is unsure.
+      for (const f of [...workerCache.keys()]) if (hit.has(f) || f === file) workerCache.delete(f);
     }
     if (compileErrors.size > 0) {
       const [id, message] = [...compileErrors][0];
@@ -444,6 +489,26 @@ export async function runDev() {
       if (pathname === "/bundle.js") return js(await serveEntry());
       if (pathname.startsWith(ROUTE_PREFIX) && pathname.endsWith(".js")) {
         return js(await serveRoute(fromRouteUrl(pathname)));
+      }
+      // Worker scripts + `new URL` assets, rewritten to these dev URLs by
+      // `devWorkerAssets`. Both decode a base64url absolute path; normalize and
+      // guard it to the project root so a crafted `..` URL can't read arbitrary files.
+      const underRoot = (file) => {
+        const abs = resolve(file);
+        return (abs === root || abs.startsWith(root + sep)) && existsSync(abs) ? abs : null;
+      };
+      if (pathname.startsWith(WORKER_PREFIX) && pathname.endsWith(".js")) {
+        const file = underRoot(fromWorkerUrl(pathname));
+        if (!file) return new Response("not found", { status: 404 });
+        return js(await serveWorker(file));
+      }
+      if (pathname.startsWith(ASSET_PREFIX)) {
+        const file = underRoot(fromAssetUrl(pathname));
+        if (!file) return new Response("not found", { status: 404 });
+        const ext = extname(file).slice(1);
+        return new Response(readFileSync(file), {
+          headers: { "content-type": MIME[ext] ?? "application/octet-stream" },
+        });
       }
       // Dev proxy: a configured path prefix is forwarded to its target origin
       // (e.g. a local `wrangler dev`) instead of being handled here — so bindings

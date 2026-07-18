@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Web workers and `new URL(…, import.meta.url)` assets are now emitted/served.** Both
+  the `new Worker(new URL("./worker.js", import.meta.url), { type: "module" })` convention
+  and bare `new URL("./x.wasm", import.meta.url)` asset references were left by Rolldown as
+  dangling runtime strings — the referenced worker/asset file was never produced, so it
+  404'd at runtime (`import.meta.url` resolved the literal against the bundle's own URL).
+  - `otfw build` (and `otfw build --ssg`, which bundles the same client) now runs a
+    **worker/asset plugin** (mirroring Vite's `vite:worker` + `vite:asset`): a
+    `new Worker(…)` target is emitted as its own hashed chunk — recursing into nested
+    workers (a worker that spawns a worker) — and any other `new URL(…)` target (`.wasm`,
+    images, …) as a hashed asset, with each reference rewritten to the emitted file via
+    `import.meta.ROLLUP_FILE_URL_*`. Pre-rendered SSG pages reference the same emitted
+    files in `/assets`, so they resolve on a plain static host.
+  - `otfw dev` serves the same references on demand from `/__worker/*` (bundled
+    self-contained, since a worker has no page import map) and `/__asset/*` (from disk,
+    with the correct MIME — `.wasm` as `application/wasm`), guarded to the project root.
+
 ## [1.15.0] - 2026-07-18
 
 ### Added
