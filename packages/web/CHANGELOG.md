@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-07-18
+
 ### Tests
 
 - **Isolated the SSG `server/render.test.js` suite from shared-route pollution.** It reset the

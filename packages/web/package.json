@@ -1,6 +1,6 @@
 {
   "name": "@opentf/web",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "The native-first OTF Web runtime — signal-based reactivity and zero-VDOM DOM operations, paired with the IR-based compiler.",
   "type": "module",
   "exports": {
