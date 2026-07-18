@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-18
+
 ### Fixed
 
 - **JSX-value locals now hydrate in place instead of forcing a rebuild (Phase 2.1e).** The

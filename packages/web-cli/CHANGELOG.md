@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-07-18
+
 ### Added
 
 - **`process.env.NODE_ENV` is now defined in both bundling paths**, gating the runtime's
