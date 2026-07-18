@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Worker/asset references now resolve through Rolldown's resolver, and an
+  unresolvable one warns instead of silently 404'ing.** `workerAssetsPlugin` resolved
+  each `new URL(…, import.meta.url)` with a naive `dirname(importer) + spec` filesystem
+  check and, on a miss, dropped the reference silently — so a worker/asset that isn't a
+  literal on-disk sibling (symlinked `node_modules`, a package `exports` map, an
+  extensionless specifier) was left dangling with no diagnostic. It now resolves via
+  `this.resolve(…, { kind: "new-url" })` first (falling back to the sibling join), and
+  emits a build **warning** naming the file and reference when it still can't be resolved
+  — the same in `otfw dev`. Recursion into emitted worker chunks (nested workers, and
+  assets referenced from inside a worker) was already working; this makes a genuine
+  resolution failure visible rather than a silent runtime 404.
+
 ## [1.16.0] - 2026-07-18
 
 ### Fixed

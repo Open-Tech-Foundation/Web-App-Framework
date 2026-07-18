@@ -45,7 +45,9 @@ import {
   proxyRequest,
   readHtmlShell,
   resolveProxyRules,
-  rewriteNewUrlRefs,
+  applyNewUrlEdits,
+  resolveNewUrlRef,
+  scanNewUrlRefs,
 } from "./shared.js";
 
 // Resolve the start port. An explicit `--port <n>` / `-p <n>` / `--port=<n>` is
@@ -156,12 +158,24 @@ export async function runDev() {
   // resolves the raw literal against the served module's URL → 404.
   const devWorkerAssets = {
     name: "otfw:dev-worker-assets",
-    transform(code, id) {
-      const out = rewriteNewUrlRefs(code, id, (abs, isWorker) => {
-        const url = isWorker ? toWorkerUrl(abs) : toAssetUrl(abs);
-        return `new URL(${JSON.stringify(url)}, import.meta.url)`;
-      });
-      return out == null ? null : { code: out, moduleSideEffects: true };
+    async transform(code, id) {
+      const found = scanNewUrlRefs(code);
+      if (found.length === 0) return null;
+      const edits = [];
+      for (const ref of found) {
+        const abs = await resolveNewUrlRef(this, ref.spec, id);
+        if (!abs) {
+          this.warn(
+            `could not resolve new URL(${JSON.stringify(ref.spec)}, import.meta.url) ` +
+              `in ${id} — left as-is; it will 404 at runtime`,
+          );
+          continue;
+        }
+        const url = ref.isWorker ? toWorkerUrl(abs) : toAssetUrl(abs);
+        edits.push({ start: ref.start, end: ref.end, text: `new URL(${JSON.stringify(url)}, import.meta.url)` });
+      }
+      if (edits.length === 0) return null;
+      return { code: applyNewUrlEdits(code, edits), moduleSideEffects: true };
     },
   };
   const plugins = [...docsPlugins, otfw, css, devWorkerAssets];

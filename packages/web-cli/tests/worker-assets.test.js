@@ -1,24 +1,28 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { build } from "rolldown";
 
-import { workerAssetsPlugin } from "../src/shared.js";
+import { resolveNewUrlRef, workerAssetsPlugin } from "../src/shared.js";
 
 // Bundle `main.js` from an in-memory fixture through `workerAssetsPlugin` and
-// return the entry code plus the list of emitted file names. Mirrors the
-// `otfw build` output config (hashed entry/chunk/asset names, esm).
+// return the entry code, the list of emitted file names, and any plugin warnings.
+// Mirrors the `otfw build` output config (hashed entry/chunk/asset names, esm).
 async function bundleFixture(files) {
   const dir = mkdtempSync(join(tmpdir(), "otfw-worker-assets-"));
   const outDir = join(dir, "out");
+  const warnings = [];
   try {
     for (const [name, source] of Object.entries(files)) {
       writeFileSync(join(dir, name), source);
     }
     const result = await build({
       input: join(dir, "main.js"),
+      onLog: (level, log) => {
+        if (level === "warn") warnings.push(log.message ?? String(log));
+      },
       plugins: [workerAssetsPlugin()],
       output: {
         dir: outDir,
@@ -30,7 +34,7 @@ async function bundleFixture(files) {
     });
     const names = result.output.map((o) => o.fileName);
     const entry = result.output.find((o) => o.type === "chunk" && o.isEntry && o.facadeModuleId?.endsWith("main.js"));
-    return { names, entryCode: entry.code, dir };
+    return { names, entryCode: entry.code, warnings, dir };
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(outDir, { recursive: true, force: true });
@@ -126,5 +130,66 @@ describe("workerAssetsPlugin", () => {
 
     expect(entryCode).toContain('"https://cdn.example/x.js"');
     expect(entryCode).not.toContain("ROLLUP_FILE_URL");
+  });
+
+  test("warns (does not silently drop) when a reference can't be resolved", async () => {
+    // The worker exists, but its `new URL("./missing-worker.js")` points at a file
+    // that isn't there — the emitted worker chunk must surface a warning, never leave
+    // a silent dangling reference that 404s at runtime.
+    const { names, warnings } = await bundleFixture({
+      "main.js": `export const w = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });\n`,
+      "worker.js": `new Worker(new URL("./missing-worker.js", import.meta.url), { type: "module" });\n`,
+    });
+
+    expect(names.some((n) => /^worker-.*\.js$/.test(n))).toBe(true); // the resolvable one still emits
+    expect(warnings.some((w) => w.includes("missing-worker.js") && w.includes("404"))).toBe(true);
+  });
+});
+
+describe("resolveNewUrlRef", () => {
+  async function withTemp(fn) {
+    const dir = mkdtempSync(join(tmpdir(), "otfw-resolve-"));
+    try {
+      return await fn(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("prefers ctx.resolve, then falls back to a filesystem-sibling join", async () => {
+    await withTemp(async (dir) => {
+      const importer = join(dir, "worker.js");
+      const target = join(dir, "program-worker.js");
+      writeFileSync(importer, "");
+      writeFileSync(target, "");
+
+      // ctx.resolve wins when it returns an existing, non-external id…
+      const viaResolve = await resolveNewUrlRef(
+        { resolve: async () => ({ id: target, external: false }) },
+        "./program-worker.js",
+        importer,
+      );
+      expect(viaResolve).toBe(target);
+
+      // …and when the resolver can't help (null/throw), the join fallback finds the sibling.
+      const viaJoin = await resolveNewUrlRef({ resolve: async () => null }, "./program-worker.js", importer);
+      expect(viaJoin).toBe(target);
+      const viaThrow = await resolveNewUrlRef(
+        { resolve: async () => { throw new Error("no"); } },
+        "./program-worker.js",
+        importer,
+      );
+      expect(viaThrow).toBe(target);
+    });
+  });
+
+  test("returns null when the target genuinely does not exist", async () => {
+    await withTemp(async (dir) => {
+      const importer = join(dir, "worker.js");
+      writeFileSync(importer, "");
+      const out = await resolveNewUrlRef({ resolve: async () => null }, "./nope.wasm", importer);
+      expect(out).toBeNull();
+      expect(existsSync(join(dir, "nope.wasm"))).toBe(false);
+    });
   });
 });

@@ -1124,34 +1124,54 @@ const NEW_URL_RE =
 const WORKER_PREFIX_RE = /new\s+(?:Shared)?Worker\(\s*$/;
 
 /**
- * Scan `code` (of module `id`) for the `new URL(<relative literal>, import.meta
- * .url)` convention and rewrite each occurrence. `resolveRef(absPath, isWorker)`
- * returns the replacement expression text (e.g. a `new URL(…)` pointing at the
- * emitted/served file), or a nullish value to leave that occurrence untouched.
- * `isWorker` is true when the reference is the argument of `new Worker(…)` /
- * `new SharedWorker(…)`. Returns the rewritten source, or `null` when nothing
- * matched (so callers can skip re-emitting an unchanged module).
+ * Scan `code` for the `new URL(<relative literal>, import.meta.url)` convention.
+ * Returns one entry per occurrence: `{ start, end, spec, isWorker }`, where
+ * `[start, end)` spans the whole `new URL(…)` expression, `spec` is the relative
+ * specifier, and `isWorker` is true when it's the argument of `new Worker(…)` /
+ * `new SharedWorker(…)`. Empty when nothing matched (cheap bail on no
+ * `import.meta.url`), so callers can skip untouched modules.
  */
-export function rewriteNewUrlRefs(code, id, resolveRef) {
-  // Cheap bail: no `import.meta.url` means nothing to rewrite.
-  if (!code.includes("import.meta.url")) return null;
-
-  // Collect edits with their source offsets, then splice right-to-left so earlier
-  // offsets stay valid (and duplicate literals can't be mis-replaced).
-  const edits = [];
+export function scanNewUrlRefs(code) {
+  if (!code.includes("import.meta.url")) return [];
+  const refs = [];
   for (const m of code.matchAll(NEW_URL_RE)) {
-    const abs = join(dirname(id), m[2]);
-    if (!existsSync(abs)) continue; // leave unresolvable refs untouched
-    const isWorker = WORKER_PREFIX_RE.test(code.slice(0, m.index));
-    const text = resolveRef(abs, isWorker);
-    if (text == null) continue;
-    edits.push({ start: m.index, end: m.index + m[0].length, text });
+    refs.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      spec: m[2],
+      isWorker: WORKER_PREFIX_RE.test(code.slice(0, m.index)),
+    });
   }
-  if (edits.length === 0) return null;
+  return refs;
+}
 
+// Apply `{ start, end, text }` edits to `code`, splicing right-to-left so earlier
+// offsets stay valid (and duplicate literals can't be mis-replaced).
+export function applyNewUrlEdits(code, edits) {
   let out = code;
-  for (const e of edits.reverse()) out = out.slice(0, e.start) + e.text + out.slice(e.end);
+  for (const e of [...edits].sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, e.start) + e.text + out.slice(e.end);
+  }
   return out;
+}
+
+/**
+ * Resolve a `new URL` specifier to an absolute on-disk path from within a plugin
+ * `transform` hook. Prefers Rolldown's resolver (`ctx.resolve` with the `new-url`
+ * kind) so it follows symlink realpaths, package `exports` maps, and non-standard
+ * `node_modules` layouts — the naive `dirname(importer) + spec` only works when the
+ * target is a literal filesystem sibling. Falls back to that join, then returns
+ * `null` if the file genuinely isn't there (caller warns — never silently drops).
+ */
+export async function resolveNewUrlRef(ctx, spec, importer) {
+  try {
+    const r = await ctx.resolve(spec, importer, { kind: "new-url", skipSelf: true });
+    if (r && !r.external && existsSync(r.id)) return r.id;
+  } catch {
+    // fall through to the filesystem join below
+  }
+  const abs = join(dirname(importer), spec);
+  return existsSync(abs) ? abs : null;
 }
 
 /**
@@ -1179,18 +1199,37 @@ export function workerAssetsPlugin() {
     buildStart() {
       refs = new Map();
     },
-    transform(code, id) {
-      const out = rewriteNewUrlRefs(code, id, (abs, isWorker) => {
+    async transform(code, id) {
+      const found = scanNewUrlRefs(code);
+      if (found.length === 0) return null;
+
+      const edits = [];
+      for (const ref of found) {
+        const abs = await resolveNewUrlRef(this, ref.spec, id);
+        if (!abs) {
+          // Never drop it silently: a dangling `new URL` 404s at runtime, and the
+          // whole point of this plugin is to make that impossible to ship unnoticed.
+          this.warn(
+            `could not resolve new URL(${JSON.stringify(ref.spec)}, import.meta.url) ` +
+              `in ${id} — left as-is; it will 404 at runtime`,
+          );
+          continue;
+        }
         let refId = refs.get(abs);
         if (refId === undefined) {
-          refId = isWorker
+          refId = ref.isWorker
             ? this.emitFile({ type: "chunk", id: abs, importer: id })
             : this.emitFile({ type: "asset", name: abs.split("/").pop(), source: readFileSync(abs) });
           refs.set(abs, refId);
         }
-        return `new URL(import.meta.ROLLUP_FILE_URL_${refId}, import.meta.url)`;
-      });
-      return out == null ? null : { code: out, moduleSideEffects: true };
+        edits.push({
+          start: ref.start,
+          end: ref.end,
+          text: `new URL(import.meta.ROLLUP_FILE_URL_${refId}, import.meta.url)`,
+        });
+      }
+      if (edits.length === 0) return null;
+      return { code: applyNewUrlEdits(code, edits), moduleSideEffects: true };
     },
   };
 }
