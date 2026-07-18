@@ -6,49 +6,47 @@ on:
 
 permissions:
   contents: write  # create tags and GitHub Releases
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   check-release:
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
+      release_opentf_web_compiler: ${{ steps.check.outputs.release_opentf_web_compiler }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Install otf-release
-        if: runner.os != 'Windows'
         shell: bash
         run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.sh | bash
-      - name: Install otf-release
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: irm https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.ps1 | iex
       - id: check
-        run: echo "should_release=$(otf-release check)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "should_release=$(otf-release check --exclude-package @opentf/web-compiler)" >> "$GITHUB_OUTPUT"
+          echo "release_opentf_web_compiler=$(otf-release check --package @opentf/web-compiler)" >> "$GITHUB_OUTPUT"
 
   matrix-opentf-web-compiler:
     needs: [check-release]
-    if: needs.check-release.outputs.should_release == 'true'
+    if: needs.check-release.outputs.release_opentf_web_compiler == 'true'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
       - name: Install otf-release
-        if: runner.os != 'Windows'
         shell: bash
         run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.sh | bash
-      - name: Install otf-release
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: irm https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.ps1 | iex
       - id: set
         run: echo "matrix=$(otf-release matrix --package @opentf/web-compiler)" >> "$GITHUB_OUTPUT"
 
   build-opentf-web-compiler:
     needs: [check-release, matrix-opentf-web-compiler]
-    if: needs.check-release.outputs.should_release == 'true'
+    if: needs.check-release.outputs.release_opentf_web_compiler == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -75,9 +73,9 @@ jobs:
           name: opentf-web-compiler-${{ matrix.name }}-${{ matrix.arch }}
           path: .artifacts/@opentf/web-compiler
 
-  publish:
+  publish-opentf-web-compiler:
     needs: [check-release, build-opentf-web-compiler]
-    if: needs.check-release.outputs.should_release == 'true'
+    if: needs.check-release.outputs.release_opentf_web_compiler == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,15 +93,37 @@ jobs:
           merge-multiple: true
       - run: bun install --frozen-lockfile
       - name: Install otf-release
-        if: runner.os != 'Windows'
         shell: bash
         run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.sh | bash
-      - name: Install otf-release
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: irm https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.ps1 | iex
       - name: Publish
-        run: otf-release publish --artifacts-dir .artifacts
+        run: otf-release publish --package @opentf/web-compiler --artifacts-dir .artifacts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    needs: [check-release, publish-opentf-web-compiler]
+    if: >-
+      always() &&
+      needs.check-release.outputs.should_release == 'true' &&
+      needs.publish-opentf-web-compiler.result != 'failure' &&
+      needs.publish-opentf-web-compiler.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: bun install --frozen-lockfile
+      - name: Install otf-release
+        shell: bash
+        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.sh | bash
+      - name: Publish
+        run: otf-release publish --exclude-package @opentf/web-compiler
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
