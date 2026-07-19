@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-07-19
+
 ### Fixed
 
 - **`otfw dev` now serves a worker/asset that lives in a symlinked dependency (its real
