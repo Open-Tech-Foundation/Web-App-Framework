@@ -18,7 +18,7 @@
 
 import { rolldown } from "rolldown";
 import { existsSync, mkdirSync, readFileSync, statSync, watch, writeFileSync } from "node:fs";
-import { dirname, extname, join, resolve, sep } from "node:path";
+import { dirname, extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { compileCss, usesTailwind } from "./tailwind.js";
@@ -157,6 +157,14 @@ export async function runDev() {
   // dev URL (served from disk). Included in every bundle below so entry, routes,
   // and worker scripts (nested workers) all get rewritten. Without this the browser
   // resolves the raw literal against the served module's URL → 404.
+  // The set of absolute paths this plugin has actually rewritten a `new URL` ref to.
+  // The fetch handlers serve only these — so a worker/asset that legitimately lives in
+  // a symlinked dependency (realpath outside the project root) is served, while a
+  // crafted `..`/arbitrary `/__worker/` or `/__asset/` URL that was never emitted is
+  // refused. This replaces a root-containment check, which wrongly rejected any
+  // dependency whose real path resolves outside `root` (e.g. an isolated node_modules).
+  const devWorkerFiles = new Set();
+  const devAssetFiles = new Set();
   const devWorkerAssets = {
     name: "otfw:dev-worker-assets",
     async transform(code, id) {
@@ -175,7 +183,14 @@ export async function runDev() {
         // A JS-ish target is bundled + served as a worker route (its own nested refs
         // rewritten), so a worker referenced both as `new Worker` and a bare `new URL`
         // resolves to the same bundled script; binary assets serve verbatim from disk.
-        const url = shouldChunkNewUrl(abs, ref.isWorker) ? toWorkerUrl(abs) : toAssetUrl(abs);
+        let url;
+        if (shouldChunkNewUrl(abs, ref.isWorker)) {
+          devWorkerFiles.add(abs);
+          url = toWorkerUrl(abs);
+        } else {
+          devAssetFiles.add(abs);
+          url = toAssetUrl(abs);
+        }
         edits.push({ start: ref.start, end: ref.end, text: `new URL(${JSON.stringify(url)}, import.meta.url)` });
       }
       if (edits.length === 0) return null;
@@ -509,20 +524,18 @@ export async function runDev() {
         return js(await serveRoute(fromRouteUrl(pathname)));
       }
       // Worker scripts + `new URL` assets, rewritten to these dev URLs by
-      // `devWorkerAssets`. Both decode a base64url absolute path; normalize and
-      // guard it to the project root so a crafted `..` URL can't read arbitrary files.
-      const underRoot = (file) => {
-        const abs = resolve(file);
-        return (abs === root || abs.startsWith(root + sep)) && existsSync(abs) ? abs : null;
-      };
+      // `devWorkerAssets`. Both decode a base64url absolute path; we serve only paths
+      // that plugin actually emitted a reference to (the allowlist sets), so a crafted
+      // `..`/arbitrary URL that was never rewritten can't read files off disk — while a
+      // worker/asset in a symlinked dependency (real path outside `root`) still serves.
       if (pathname.startsWith(WORKER_PREFIX) && pathname.endsWith(".js")) {
-        const file = underRoot(fromWorkerUrl(pathname));
-        if (!file) return new Response("not found", { status: 404 });
+        const file = fromWorkerUrl(pathname);
+        if (!devWorkerFiles.has(file) || !existsSync(file)) return new Response("not found", { status: 404 });
         return js(await serveWorker(file));
       }
       if (pathname.startsWith(ASSET_PREFIX)) {
-        const file = underRoot(fromAssetUrl(pathname));
-        if (!file) return new Response("not found", { status: 404 });
+        const file = fromAssetUrl(pathname);
+        if (!devAssetFiles.has(file) || !existsSync(file)) return new Response("not found", { status: 404 });
         const ext = extname(file).slice(1);
         return new Response(readFileSync(file), {
           headers: { "content-type": MIME[ext] ?? "application/octet-stream" },

@@ -1,4 +1,4 @@
-import { makeWorker, pixelUrl } from "./workers.js";
+import { makeWorker, makeDepWorker, pixelUrl } from "./workers.js";
 
 // Reference the worker + asset from the page so they enter the module graph. Kept
 // behind a click so nothing spawns during SSR/prerender.
@@ -6,6 +6,7 @@ export default function Home() {
   const onClick = () => {
     const w = makeWorker();
     w.postMessage(1);
+    makeDepWorker().postMessage(1);
     fetch(pixelUrl);
   };
   return (

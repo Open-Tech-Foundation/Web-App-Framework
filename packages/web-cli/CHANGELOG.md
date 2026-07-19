@@ -6,6 +6,18 @@
 
 ### Fixed
 
+- **`otfw dev` now serves a worker/asset that lives in a symlinked dependency (its real
+  path outside the project root) instead of 404'ing it.** The `/__worker/` and `/__asset/`
+  dev handlers gated the decoded file path with a root-containment check
+  (`resolve(file).startsWith(root)`), meant to stop a crafted `..` URL from reading
+  arbitrary files. But a dependency reached through a symlinked `node_modules` (a
+  workspace/isolated install, e.g. `@opentf/workeros-web`) resolves to a **real path
+  outside `root`**, so its `new Worker(new URL("./w.js"))` / `new URL("./x.wasm")` was
+  refused — every such worker/asset 404'd in dev even though `otfw build`/SSG emitted them
+  fine. The handlers now serve only paths the dev worker/asset plugin **actually rewrote a
+  reference to** (an allowlist populated during transform), which serves the symlinked-dep
+  case correctly and is strictly tighter than the old check — a URL that was never emitted
+  (a crafted or arbitrary path) is still refused.
 - **A worker referenced both as `new Worker(new URL(…))` and a bare `new URL(…)` is no
   longer downgraded to a copied asset (nested workers/assets 404).** `workerAssetsPlugin`
   deduped emitted files by path but keyed the *kind* off whichever reference was scanned

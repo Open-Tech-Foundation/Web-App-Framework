@@ -1,0 +1,5 @@
+{
+  "name": "@dep/pkg",
+  "private": true,
+  "type": "module"
+}

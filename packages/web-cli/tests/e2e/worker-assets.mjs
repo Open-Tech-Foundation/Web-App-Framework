@@ -16,7 +16,7 @@
 //
 // Needs the workspace otfwc debug build (OTFWC_BIN overrides).
 
-import { readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -27,6 +27,17 @@ const OTFWC = process.env.OTFWC_BIN || ROOT + "target/debug/otfwc";
 const PAGE = FIXTURE + "/app/page.jsx";
 const PORT = 3987;
 
+// A dependency whose real path is OUTSIDE the fixture root — the app reaches it
+// through a symlinked `node_modules/@dep/pkg`, exactly like an isolated/workspace
+// dependency (its worker used to 404 in dev). `worker-dep/` lives beside the fixture.
+const DEP_SRC = HERE + "worker-dep";
+const DEP_LINK = FIXTURE + "/node_modules/@dep/pkg";
+function linkDep() {
+  rmSync(FIXTURE + "/node_modules", { recursive: true, force: true });
+  mkdirSync(FIXTURE + "/node_modules/@dep", { recursive: true });
+  symlinkSync(DEP_SRC, DEP_LINK, "dir");
+}
+
 let passed = 0;
 const ok = (label) => (passed++, console.log(`  ✓ ${label}`));
 function assert(cond, label) {
@@ -35,7 +46,7 @@ function assert(cond, label) {
 }
 
 function cleanFixture() {
-  for (const d of ["dist", ".otfw", ".dev"]) {
+  for (const d of ["dist", ".otfw", ".dev", "node_modules"]) {
     rmSync(`${FIXTURE}/${d}`, { recursive: true, force: true });
   }
 }
@@ -45,6 +56,7 @@ function cleanFixture() {
 // pre-renders, which must not choke on the module-top-level `new URL(…)`.
 async function testBuild(mode) {
   cleanFixture();
+  linkDep();
   const args = mode === "ssg" ? ["build", "--ssg", "--base-url=https://example.com"] : ["build"];
   const proc = Bun.spawn(["bun", CLI, ...args], {
     cwd: FIXTURE,
@@ -114,6 +126,7 @@ async function waitForServer(base, tries = 100) {
 }
 
 async function testDev() {
+  linkDep();
   const base = `http://localhost:${PORT}`;
   const proc = Bun.spawn(["bun", CLI, "dev", "--port", String(PORT)], {
     cwd: FIXTURE,
@@ -129,20 +142,33 @@ async function testDev() {
     const routeUrl = `/__route/${Buffer.from(PAGE).toString("base64url")}.js`;
     const routeCode = await (await fetch(base + routeUrl)).text();
 
-    const workerMatch = routeCode.match(/\/__worker\/[A-Za-z0-9_-]+\.js/);
+    // The page references two workers now (the app's counter worker + a worker owned
+    // by the symlinked `@dep/pkg`), so pick each by fetching and inspecting its body.
+    const workerUrls = [...new Set([...routeCode.matchAll(/\/__worker\/[A-Za-z0-9_-]+\.js/g)].map((m) => m[0]))];
     const assetMatch = routeCode.match(/\/__asset\/[A-Za-z0-9_-]+\.wasm/);
-    assert(!!workerMatch, "route chunk rewrites the worker to a /__worker/ URL");
+    assert(workerUrls.length >= 2, "route chunk rewrites both workers to /__worker/ URLs");
     assert(!!assetMatch, "route chunk rewrites the asset to a /__asset/ URL");
     assert(!routeCode.includes('"./counter-worker.js"'), "route chunk drops the raw ./counter-worker.js literal");
 
-    // The worker URL serves a real, self-contained bundle that itself rewrites its
-    // nested worker to another /__worker/ URL.
-    const workerRes = await fetch(base + workerMatch[0]);
-    assert(workerRes.ok, "GET /__worker/<counter> is 200 (not a 404)");
-    assert((workerRes.headers.get("content-type") || "").includes("javascript"), "worker served as JavaScript");
-    const workerCode = await workerRes.text();
+    const workerBodies = new Map();
+    for (const u of workerUrls) {
+      const res = await fetch(base + u);
+      assert(res.ok, `GET ${u} is 200 (not a 404)`);
+      assert((res.headers.get("content-type") || "").includes("javascript"), `${u} served as JavaScript`);
+      workerBodies.set(u, await res.text());
+    }
+
+    // The counter worker's bundle rewrites its OWN nested worker + wasm to dev URLs.
+    const counterUrl = workerUrls.find((u) => /\/__asset\/[A-Za-z0-9_-]+\.wasm/.test(workerBodies.get(u)));
+    assert(!!counterUrl, "counter worker bundle found (references a nested asset)");
+    const workerCode = workerBodies.get(counterUrl);
     const nestedMatch = workerCode.match(/\/__worker\/[A-Za-z0-9_-]+\.js/);
     assert(!!nestedMatch, "worker bundle rewrites its nested worker to a /__worker/ URL");
+
+    // The dependency's worker — its real path is OUTSIDE the project root (symlinked
+    // @dep/pkg). It must still serve; before the fix a root guard 404'd it.
+    const depUrl = workerUrls.find((u) => workerBodies.get(u).includes("MARKER_DEP_WORKER"));
+    assert(!!depUrl, "symlinked-dependency worker (real path outside root) is served");
 
     // The worker also rewrites its own `new URL(".wasm")` asset to a /__asset/ URL,
     // which serves the bytes — proving the worker bundle is re-scanned for assets.

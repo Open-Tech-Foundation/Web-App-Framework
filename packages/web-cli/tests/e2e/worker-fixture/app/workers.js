@@ -14,5 +14,10 @@ export function makeWorker() {
   return new Worker(new URL("./counter-worker.js", import.meta.url), { type: "module" });
 }
 
+// A worker owned by a (symlinked) dependency — its real path resolves outside the
+// project root. The dev server must still serve it (the regression: a root-containment
+// guard 404'd any worker whose real path fell outside root, e.g. an isolated dep).
+export { makeDepWorker } from "@dep/pkg/dep.js";
+
 // A bare asset reference (the .wasm case from the bug report).
 export const pixelUrl = new URL("./pixel.wasm", import.meta.url);
