@@ -2,8 +2,6 @@
 
 ## [Unreleased]
 
-## [1.17.0] - 2026-07-18
-
 ### Fixed
 
 - **`otfw dev` now serves a worker/asset that lives in a symlinked dependency (its real
@@ -18,6 +16,11 @@
   reference to** (an allowlist populated during transform), which serves the symlinked-dep
   case correctly and is strictly tighter than the old check — a URL that was never emitted
   (a crafted or arbitrary path) is still refused.
+
+## [1.17.0] - 2026-07-18
+
+### Fixed
+
 - **A worker referenced both as `new Worker(new URL(…))` and a bare `new URL(…)` is no
   longer downgraded to a copied asset (nested workers/assets 404).** `workerAssetsPlugin`
   deduped emitted files by path but keyed the *kind* off whichever reference was scanned
