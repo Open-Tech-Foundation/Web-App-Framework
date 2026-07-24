@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-07-24
+
 ### Tests
 
 - The `hydrate-browser` e2e fixture's `<Framed>` island now takes a light-DOM `{children}`

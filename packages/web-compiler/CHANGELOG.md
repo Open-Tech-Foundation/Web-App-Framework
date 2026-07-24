@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-24
+
 ### Fixed
 
 - **A JSX-value local containing a `{children}` slot no longer crashes hydration

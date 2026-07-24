@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-07-24
+
+_Dependency updates._
+
 ## [0.17.0] - 2026-07-18
 
 _Dependency updates._

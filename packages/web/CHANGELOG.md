@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-07-24
+
 ### Fixed
 
 - **`skipSlot` now returns the slotted nodes it steps over.** Adoption never *captures* a
