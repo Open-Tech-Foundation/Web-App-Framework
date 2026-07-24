@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`hydrateSlot` no longer adopts a component's children against a *nested* component's slot.**
+  It located the slot by the first `<!--c[-->` marker under the host, but a component renders
+  chrome around its slot and any nested component in that chrome emits slot markers of its own —
+  which come first in tree order. `<DocsLayout>` with the default `frame` is the case that broke:
+  `<Navbar>` (with its own slotted `<Link>`s) sits before the prose slot, so the parent adopted
+  its children against the navbar's region and threw
+  `HydrationMismatch: expected <h1>, found comment <!--[-->`, tearing out and rebuilding the whole
+  layout on first paint. The lookup now prefers the first marker with no intervening component
+  host — unambiguously the host's own slot — and only falls back to first-in-tree-order when
+  there is none, so the forwarding shape (`<Card>{children}</Card>` as the entire view) keeps
+  working.
+
 ## [0.21.0] - 2026-07-24
 
 ### Fixed

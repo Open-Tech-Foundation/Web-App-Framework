@@ -359,16 +359,42 @@ export function skipSlot(cur) {
  * (a rebuilt component, or no children) is a no-op.
  */
 export function hydrateSlot(host, adoptFn) {
-  const start = findComment(host, SLOT_START);
+  const start = findSlotStart(host);
   if (start) adoptFn({ node: start.nextSibling });
 }
 
-/** The first descendant comment of `root` whose data is `data` (tree order). */
-function findComment(root, data) {
-  const walker = document.createTreeWalker(root, 128 /* NodeFilter.SHOW_COMMENT */);
+/**
+ * The `<!--c[-->` marker that belongs to `host` itself.
+ *
+ * Tree order alone is not enough: a component renders its own chrome around the slot, and any
+ * *nested* component in that chrome emits slot markers of its own. `<DocsLayout>` framed is the
+ * case that broke — `<Navbar>` (with its own slotted `<Link>`s) sits before the prose slot, so
+ * the first marker in tree order is the navbar's and the parent adopted its children against
+ * the wrong region (`expected <h1>, found comment <!--[-->`).
+ *
+ * So: prefer the first marker with no intervening component host between it and `host` — that
+ * one is unambiguously this component's own slot. Only if there is none do we fall back to the
+ * first marker in tree order, which keeps the forwarding shape working (`<Card>{children}</Card>`
+ * as the whole view: the markers are the Card's, but they wrap exactly these children).
+ */
+function findSlotStart(host) {
+  let fallback = null;
+  const walker = document.createTreeWalker(host, 128 /* NodeFilter.SHOW_COMMENT */);
   let n;
-  while ((n = walker.nextNode())) if (n.data === data) return n;
-  return null;
+  while ((n = walker.nextNode())) {
+    if (n.data !== SLOT_START) continue;
+    if (fallback === null) fallback = n;
+    let nested = false;
+    for (let p = n.parentNode; p && p !== host; p = p.parentNode) {
+      // A custom-element ancestor is another component's host, so this marker is its slot.
+      if (p.nodeType === ELEMENT && p.tagName.includes("-")) {
+        nested = true;
+        break;
+      }
+    }
+    if (!nested) return n;
+  }
+  return fallback;
 }
 
 /** A short human description of a node for mismatch messages. */

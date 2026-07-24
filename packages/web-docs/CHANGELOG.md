@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Tests
+
+- **New browser hydration e2e (`tests/e2e/hydration.mjs`) — the gap that let the docs shell ship
+  broken twice.** Every other test in this package mounts components through the CSR path, so a
+  layout could hydrate-crash in production with the suite fully green. This compiles the real
+  `<DocsLayout>` twice with otfwc (`--target=ssg` for the server HTML, `--target=hydrate` for the
+  client), serves the pair with the island props payload, and has headless Chromium adopt one
+  with the other — asserting, for both `frame={false}` (the docs-site call site) and the default
+  framed chrome, that no error is logged, no server node is torn out, and the slotted children
+  stay in the prose slot exactly once. It caught the `hydrateSlot` nested-marker bug fixed in
+  `@opentf/web`.
+
 ## [0.18.0] - 2026-07-24
 
 _Dependency updates._

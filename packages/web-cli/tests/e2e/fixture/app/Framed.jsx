@@ -19,16 +19,17 @@ import Tree from "./Tree.jsx";
 // nodes into a throwaway tree and silently empties the slot. Hence the adopt-root memo — the
 // first `build()` after an adopt returns the adopted node untouched.
 export default function Framed({ node, framed, children }) {
-  // The slot sits *before* the tree deliberately: `hydrateSlot` locates a component's slotted
-  // content by the first `<!--c[-->` marker under the host, and <Tree>'s nested <Link> islands
-  // emit slot markers of their own — put the tree first and the parent's adopt walk starts on
-  // a Link's dot instead of this slot (a separate, pre-existing limitation of that lookup).
+  // The slot sits *after* the tree deliberately. `hydrateSlot` locates a component's slotted
+  // content by a `<!--c[-->` marker under the host, and <Tree>'s nested <Link> islands emit
+  // slot markers of their own — which come first in tree order. Picking that first marker was
+  // the `hydrateSlot` bug (the parent adopted its children against a <Link>'s slot); the lookup
+  // now prefers the marker with no intervening component host, so this ordering must work.
   const body = (
     <div class="framed-body">
-      <div class="framed-slot">{children}</div>
       <ul class="framed-tree">
         <Tree node={node} />
       </ul>
+      <div class="framed-slot">{children}</div>
     </div>
   );
   return framed ? (
