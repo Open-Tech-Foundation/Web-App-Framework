@@ -407,6 +407,15 @@ impl<'a> Emitter<'a> {
         self.emit_prop_aliases();
         self.emit_prop_snapshots();
         self.emit_rest();
+        // Adoption doesn't *capture* light-DOM children (they are already server-rendered in
+        // place), but the children local must still exist in this scope: a JSX-value local's
+        // CSR `build` fallback is emitted here and closes over it, so a reactive rebuild after
+        // first paint would otherwise hit `ReferenceError: <local> is not defined`. Declare it
+        // up front (before the body decls that emit those build fns) and let the walk's
+        // `skipSlot` fill it with the real slotted nodes.
+        if let Some(local) = lowered.children_local.clone() {
+            self.line(format!("let {local} = [];"));
+        }
         for item in lowered.body.clone() {
             self.emit_decl_item(&item);
         }
@@ -525,6 +534,14 @@ impl<'a> Emitter<'a> {
     ///   reactive change selects this branch after first paint. A JSX-value local is a `const`,
     ///   so a `{body}` hole never swaps (there is no build call there); but a branch position
     ///   whose *condition* is reactive still needs a builder for the not-server-rendered case.
+    ///
+    /// `build()` also has to survive one *spurious* call: `hydrateChild` runs the build
+    /// template once on its first effect run purely to subscribe to the branch expression's
+    /// reactive deps, and throws the result away (docs/HYDRATION.md §3.1). Rebuilding there
+    /// would be worse than wasteful — the builder re-slots the component's `{children}`, and
+    /// `appendChild` *moves* those live server nodes into the discarded tree, silently
+    /// emptying the slot. So the adopt walk memoizes its root and the first `build()` after an
+    /// adopt hands that same node back untouched; only a genuine later swap builds fresh.
     fn emit_jsx_value_local(&mut self, name: &str, node: &ViewNode) {
         // The CSR build fn — a hoisted `function` declaration referenced by `build:` below.
         let n = self.list_counter;
@@ -533,6 +550,10 @@ impl<'a> Emitter<'a> {
         for l in csr::emit_build_node_fn(self.lowered, &build_fn, node) {
             self.line(l);
         }
+        // The adopted-root memo. A closure variable, not a field: `adopt` is passed around
+        // unbound (`hydrateHole(cur, body.adopt)`), so it can't rely on `this`.
+        let memo = format!("{build_fn}_adopted");
+        self.line(format!("let {memo} = null;"));
 
         // The adopt walk, emitted into a nested buffer so it can be wrapped in the closure.
         // Reset the name counter so the closure's own locals (`el0`, `__c1`, …) are scoped to
@@ -545,12 +566,16 @@ impl<'a> Emitter<'a> {
         self.counter = saved_counter;
 
         self.line(format!("const {name} = {{"));
-        self.line(format!("  build: {build_fn},"));
+        // Consume the memo: the adopted node is handed back exactly once (the subscribe-only
+        // run), and every call after that builds fresh.
+        self.line(format!(
+            "  build: () => {{ const __n = {memo}; {memo} = null; return __n ?? {build_fn}(); }},"
+        ));
         self.line("  adopt: (__vc) => {".into());
         for l in &adopt_body {
             self.line(format!("    {l}"));
         }
-        self.line(format!("    return {root};"));
+        self.line(format!("    return ({memo} = {root});"));
         self.line("  },".into());
         self.line("};".into());
         self.value_locals.push(name.to_string());
@@ -700,8 +725,12 @@ impl<'a> Emitter<'a> {
             // parent's JSX, whose reactivity the parent wires via `hydrateSlot`. Here the
             // component just steps its own cursor over the `<!--c[-->…<!--c]-->` region.
             ViewNode::Children if self.lowered.children_local.is_some() => {
+                let local = self.lowered.children_local.clone().unwrap();
                 self.uses.skip_slot = true;
-                self.line(format!("skipSlot({cur});"));
+                // Assign (never re-declare): the binding is `let` in the adopt branch's scope,
+                // and this walk may run nested inside a value local's `adopt` closure. Seeding
+                // it here is what makes that local's `build` fallback able to re-slot.
+                self.line(format!("{local} = skipSlot({cur});"));
                 String::new()
             }
             unsupported => {
@@ -1344,10 +1373,11 @@ mod tests {
         );
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         let hyd = hydrate_fn(&m.code);
-        // The local is a dual `{ build, adopt }` object; the build is a hoisted CSR fn. `base`
-        // is the export name, so a default-export page's build fn is `default_vbuild0`.
+        // The local is a dual `{ build, adopt }` object; the build delegates to a hoisted CSR
+        // fn. `base` is the export name, so a default-export page's build fn is
+        // `default_vbuild0`.
         assert!(hyd.contains("const body = {"), "dual object:\n{}", hyd);
-        assert!(hyd.contains("build: default_vbuild0,"), "build fn reference:\n{}", hyd);
+        assert!(hyd.contains("default_vbuild0()"), "build delegates to the hoisted CSR fn:\n{}", hyd);
         assert!(hyd.contains("adopt: (__vc) => {"), "adopt closure:\n{}", hyd);
         assert!(hyd.contains("claimElement(__vc, \"div\")"), "adopt walk claims body root:\n{}", hyd);
         // The `{body}` hole adopts via hydrateHole, not claimText.
@@ -1392,6 +1422,76 @@ mod tests {
         );
         assert!(m.code.contains("hydrateHole("), "hole adopts the value local:\n{}", m.code);
         assert!(m.code.contains("skipSlot("), "component steps over its slot in the value local:\n{}", m.code);
+    }
+
+    #[test]
+    fn value_local_build_fallback_sees_the_children_local_in_the_adopt_scope() {
+        // Regression (docs site: `ReferenceError: __children is not defined` thrown from a value
+        // local's `build`): the adopt branch emits the value local's CSR `build` fn, whose body
+        // re-slots the children local — but the *capture* of that local lives only inside the
+        // sibling `__build` closure, so in the adopt scope the name was free. The adopt branch
+        // must declare it itself and seed it from `skipSlot`.
+        //
+        // Uses the props-object form (`props.children` → the synthesized `__children` local),
+        // which is the shape the docs layout hit.
+        let m = emit_component(
+            "export default function Panel(props){ const body = <div class=\"b\"><article>{props.children}</article></div>; \
+             return <section>{body}</section>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let adopt = m
+            .code
+            .find("if (isHydrating() && this.firstChild) {")
+            .map(|i| m.code[i..].to_string())
+            .expect("adopt branch");
+        // The binding is declared in the adopt branch, ahead of the build fn that closes over it…
+        let decl = adopt.find("let __children = [];").expect("children local declared in adopt scope");
+        let build_fn = adopt.find("function default_vbuild0()").expect("value local build fn");
+        assert!(decl < build_fn, "declared before the build fn that closes over it:\n{}", adopt);
+        // …and seeded (assigned, not re-declared) from the slot walk.
+        assert!(adopt.contains("__children = skipSlot("), "slot walk seeds the local:\n{}", adopt);
+        assert!(
+            !adopt.contains("const __children = skipSlot("),
+            "seeds by assignment — a `const` here would shadow inside the adopt closure:\n{}",
+            adopt,
+        );
+        // The build fn still re-slots, and now resolves.
+        assert!(adopt.contains("of __children)"), "build fn re-slots the children:\n{}", adopt);
+    }
+
+    #[test]
+    fn value_local_build_returns_the_adopted_node_once_instead_of_rebuilding() {
+        // Companion to the above. Seeding the children local is only safe because the value
+        // local's `build()` is inert on `hydrateChild`'s subscribe-only first run: that run
+        // evaluates the build template and discards the result, so a real rebuild there would
+        // `appendChild` the *live* slotted nodes into a throwaway tree and empty the slot.
+        // The adopt walk memoizes its root; the first `build()` hands it straight back.
+        let m = emit_component(
+            "export default function Panel(props){ const frame = props.frame === true; \
+             const body = <div class=\"b\"><article>{props.children}</article></div>; \
+             return frame ? <div class=\"shell\">{body}</div> : body; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let adopt = m
+            .code
+            .find("if (isHydrating() && this.firstChild) {")
+            .map(|i| m.code[i..].to_string())
+            .expect("adopt branch");
+        // The memo is a closure variable, not a field: `adopt` is passed unbound to
+        // `hydrateHole`, so it must never depend on `this`.
+        assert!(adopt.contains("let default_vbuild0_adopted = null;"), "memo declared:\n{}", adopt);
+        assert!(adopt.contains("return (default_vbuild0_adopted = el0);"), "adopt memoizes its root:\n{}", adopt);
+        assert!(
+            adopt.contains(
+                "build: () => { const __n = default_vbuild0_adopted; default_vbuild0_adopted = null; \
+                 return __n ?? default_vbuild0(); },"
+            ),
+            "build consumes the memo before falling back to a real build:\n{}",
+            adopt,
+        );
+        // The bare-branch swap arm still routes through `build()` (not the raw builder), so it
+        // gets the memo behaviour.
+        assert!(adopt.contains("body.build()"), "swap arm calls build():\n{}", adopt);
     }
 
     #[test]

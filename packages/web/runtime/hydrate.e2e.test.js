@@ -42,10 +42,12 @@ import {
   handleError,
   HydrationMismatch,
   hydrateChild,
+  hydrateHole,
   hydrateList,
   hydrateSlot,
   hydrationProps,
   isHydrating,
+  runBuild,
   skipNode,
   skipSlot,
 } from "./index.js";
@@ -67,12 +69,30 @@ const OTFWC = process.env.OTFWC_BIN ?? (workspace ? join(workspace, "target", "d
 const hasBin = existsSync(OTFWC);
 
 // Compile `source` with otfwc for `target` (ssg | hydrate), returning the emitted JS.
-function compile(source, target) {
-  const proc = Bun.spawnSync([OTFWC, "build", `--target=${target}`, "--stdin", "/app/page.tsx"], {
-    stdin: new TextEncoder().encode(source),
-  });
+// `component` selects the Custom Element backend (the page backend is the default).
+function compile(source, target, component = false) {
+  const args = [OTFWC, "build", `--target=${target}`, "--stdin"];
+  if (component) args.push("--component");
+  args.push(component ? "/app/Panel.tsx" : "/app/page.tsx");
+  const proc = Bun.spawnSync(args, { stdin: new TextEncoder().encode(source) });
   if (proc.exitCode !== 0) throw new Error(`otfwc ${target} failed:\n${proc.stderr}`);
   return proc.stdout.toString();
+}
+
+// Evaluate an emitted *component* module and return the named binding (the element class, or
+// the `_ssg` render fn). Unlike `loadModule` this keeps the declaration addressable, so the
+// test can construct and connect the element by hand — happy-dom does not upgrade elements
+// parsed out of `innerHTML`, so the adopt branch is only reachable by driving it directly.
+function loadComponent(code, name, bindings) {
+  const body = code
+    .split("\n")
+    .filter((l) => !l.startsWith("import "))
+    .join("\n")
+    .replace(/export class /g, "class ")
+    .replace(/export function /g, "function ")
+    .replace(/^export default \w+;$/gm, "");
+  const names = Object.keys(bindings);
+  return new Function(...names, `${body}\n; return ${name};`)(...names.map((n) => bindings[n]));
 }
 
 // Evaluate an emitted module, injecting the runtime helpers it imports (the code uses
@@ -720,4 +740,87 @@ describe.skipIf(!hasBin)("hydration construct matrix (ssg → hydrate, no rebuil
       kase.check(container);
     });
   }
+
+  // The DocsLayout shape that took down the docs site: a *component* whose view is a JSX-value
+  // local containing a `{children}` slot, rendered through a `frame ? <shell>{body}</shell> :
+  // body` dynamic node and used with `frame={false}` — so the bare `body.build()` branch is
+  // the one `hydrateChild` evaluates.
+  //
+  // Two defects met here, both in the component's *adopt* branch (which the MATRIX above can't
+  // reach — it keeps the container detached so component classes never upgrade):
+  //   1. The value local's build fn re-slots the children local, but only the sibling `__build`
+  //      closure declared it → `ReferenceError: __children is not defined`, killing the render.
+  //   2. Declaring it isn't enough: `hydrateChild` evaluates the build template once purely to
+  //      subscribe to its deps and discards the result, so a real rebuild there `appendChild`s
+  //      the *live* slotted nodes into a throwaway tree — silently emptying the slot.
+  const slotValueLocalSource =
+    "export default function Panel(props){ const frame = props.frame === true;" +
+    ' const body = <div class="b"><article class="slot">{props.children}</article></div>;' +
+    ' return frame ? <div class="shell">{body}</div> : body; }';
+
+  test("component adopt: a value local's `{children}` slot survives the subscribe-only build", () => {
+    // 1. Server-render the component body with real slotted content, then wrap it in its host
+    //    tag exactly as a parent's `ssgComponent` would.
+    const ssgFn = loadComponent(compile(slotValueLocalSource, "ssg", true), "Panel_ssg", {
+      signal,
+      ssgText,
+      defineSSG,
+    });
+    const inner = ssgFn({ frame: false }, '<b class="probe">HI</b>');
+    expect(inner).toContain("<!--c[-->"); // the slot markers the adopt walk steps over
+    expect(inner).toContain('<b class="probe">HI</b>');
+    expect(inner).not.toContain('class="shell"'); // unframed: the bare `body` branch
+
+    // 2. Build the host element from the compiled class and give it the server DOM.
+    const Panel = loadComponent(compile(slotValueLocalSource, "hydrate", true), "PanelElement", {
+      signal,
+      bindText,
+      bindChild,
+      cursor,
+      claimElement,
+      claimText,
+      skipNode,
+      skipSlot,
+      hydrateChild,
+      hydrateHole,
+      hydrationProps,
+      isHydrating,
+      runBuild,
+      HydrationMismatch,
+      reportError,
+      handleError,
+    });
+    const host = new Panel();
+    host.innerHTML = inner;
+    const probe = host.querySelector(".probe");
+    const serverBody = host.querySelector(".b");
+
+    // 3. Connect inside the first-paint pass. The flag must be set *before* attaching: appending
+    //    a defined custom element connects it synchronously, and connectedCallback is what picks
+    //    adopt over build.
+    const errors = [];
+    const onError = (e) => errors.push(e.detail);
+    window.addEventListener("otfw:error", onError);
+    beginHydration();
+    try {
+      document.body.appendChild(host);
+      if (!host._mounted) host.connectedCallback();
+    } finally {
+      endHydration();
+      window.removeEventListener("otfw:error", onError);
+    }
+
+    try {
+      // 4. The render completed — no `ReferenceError` swallowed by the component's error boundary.
+      expect(errors).toEqual([]);
+      // 5. It adopted rather than rebuilt: the server nodes kept their identity…
+      expect(host.querySelector(".b")).toBe(serverBody);
+      expect(host.querySelectorAll(".b").length).toBe(1);
+      // …and the slotted content is still in the slot, not stolen into a discarded tree.
+      expect(host.contains(probe)).toBe(true);
+      expect(probe.parentNode).toBe(host.querySelector(".slot"));
+    } finally {
+      host.remove();
+    }
+  });
 });

@@ -281,6 +281,25 @@ const PROBE = `(() => {
       server: !!a.__server,
       innerAnchors: a.querySelectorAll('a').length,
     })),
+    // The children slot *inside* that value local — the ingredient the docs site had and this
+    // fixture originally didn't. Both the framed branch (adopts via hydrateHole) and the
+    // unframed one (framed={false}, the docs site's own usage — the branch whose build template
+    // hydrateChild actually evaluates) must keep their slotted node: adopted in place, still
+    // parented by the slot, exactly once in the document.
+    framedSlot: (() => {
+      const b = document.querySelector('#app .framed-section .framed-slot .framed-slotted');
+      return { present: !!b, server: !!(b && b.__server), text: norm(b), count: document.querySelectorAll('.framed-slotted').length };
+    })(),
+    unframedSlot: (() => {
+      const b = document.querySelector('#app .unframed-slotted');
+      return {
+        present: !!b,
+        server: !!(b && b.__server),
+        text: norm(b),
+        inSlot: !!(b && b.parentNode && b.parentNode.classList.contains('framed-slot')),
+        count: document.querySelectorAll('.unframed-slotted').length,
+      };
+    })(),
     // Portal-across-hydration (the docs search-modal bug): the modal is <Portal>-wrapped, so
     // its reactive class binding must be wired by the parent's adopt walk BEFORE the portal
     // relocates it to <body>. Probe the modal wherever it lives (moved out of #app) + its state.
@@ -403,6 +422,20 @@ async function run(port) {
       s.framedLinks.every((l) => l.innerAnchors === 0),
       "no <Framed> <Link> double-built its <a> — the value-local adoption threaded through the islands",
     );
+
+    // The `{children}` slot inside the value local — the docs-site crash. Without the adopt
+    // branch declaring the children local, the render died with `ReferenceError: __children is
+    // not defined`; with it declared but no adopt-root memo, the subscribe-only build stole the
+    // slotted node into a discarded tree and the slot came back empty.
+    assert(s.framedSlot.present, "the framed value-local's {children} slot kept its slotted node");
+    assert(s.framedSlot.server, "that slotted node is the server node (adopted in place, not rebuilt)");
+    assert(s.framedSlot.text === "framed slot", "the framed slot's content is intact");
+    assert(s.framedSlot.count === 1, "the framed slotted node exists exactly once (not duplicated)");
+    assert(s.unframedSlot.present, "the unframed (`framed={false}`) value local kept its slotted node — the docs-site crash path");
+    assert(s.unframedSlot.server, "the unframed slotted node is the server node (adopted, not rebuilt)");
+    assert(s.unframedSlot.inSlot, "the unframed slotted node is still parented by its slot (the subscribe-only build didn't steal it)");
+    assert(s.unframedSlot.text === "unframed slot", "the unframed slot's content is intact");
+    assert(s.unframedSlot.count === 1, "the unframed slotted node exists exactly once");
 
     // Nothing rebuilt anywhere OUTSIDE the deliberately-non-adoptable Panel — every adoptable
     // view (islands, tree, pill, list, layout chain, and the <Framed> value-local) adopted in

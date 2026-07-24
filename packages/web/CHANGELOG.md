@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`skipSlot` now returns the slotted nodes it steps over.** Adoption never *captures* a
+  component's light-DOM children the way a CSR build does — they are already server-rendered in
+  place — but a JSX-value local's `build` fallback still closes over the children local, so the
+  compiler had no live binding to give it and the docs layout died on first paint with
+  `ReferenceError: __children is not defined`. `skipSlot` still steps the cursor past the
+  `<!--c[-->…<!--c]-->` region exactly as before; it just hands back the nodes in between so the
+  hydrate backend can seed that binding. Purely additive — existing call sites ignore the return.
+  Pairs with `@opentf/web-compiler` ≥ 0.11.0.
+
 ## [0.20.0] - 2026-07-18
 
 ### Tests

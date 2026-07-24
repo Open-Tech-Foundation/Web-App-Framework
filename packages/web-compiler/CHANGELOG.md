@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A JSX-value local containing a `{children}` slot no longer crashes hydration
+  (`ReferenceError: __children is not defined`).** Phase 2.1e made
+  `const body = <jsx>{children}</jsx>` adoptable, but the value local's CSR `build` fallback is
+  emitted *inside* the component's adopt branch while the light-DOM children capture lived only
+  in the sibling `__build` closure — so in the adopt scope the children local was a free
+  variable. Any component whose value local slots its children (the real `DocsLayout`:
+  `<article class="otfw-prose">{props.children}</article>`) threw out of `connectedCallback` on
+  first paint, killing the render and leaving the rest of the page to mismatch. The adopt branch
+  now declares the children local itself and seeds it from `skipSlot`'s return value.
+
+  Seeding alone would have traded the crash for silent content loss: `hydrateChild` evaluates the
+  build template once purely to subscribe to the branch expression's reactive deps and throws the
+  result away, and a real rebuild there `appendChild`s the *live* slotted nodes into that
+  discarded tree — emptying the slot. So the adopt walk now memoizes its root and the first
+  `build()` after an adopt returns that node untouched; only a genuine later swap builds fresh.
+  (Requires `@opentf/web` ≥ 0.21.0, where `skipSlot` returns the slotted nodes.)
+
 ## [0.10.0] - 2026-07-18
 
 ### Fixed

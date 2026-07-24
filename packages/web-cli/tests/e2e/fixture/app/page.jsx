@@ -50,7 +50,14 @@ export default function Home() {
         <Tree node={TREE} />
       </ul>
       <Panel node={TREE} framed={true} />
-      <Framed node={TREE} framed={true} />
+      <Framed node={TREE} framed={true}>
+        <b class="framed-slotted">framed slot</b>
+      </Framed>
+      {/* `framed={false}` is the docs site's own usage (website/app/docs/layout.jsx) and the
+          branch that actually calls the value local's `build()` — the crash path. */}
+      <Framed node={TREE} framed={false}>
+        <b class="unframed-slotted">unframed slot</b>
+      </Framed>
     </main>
   );
 }

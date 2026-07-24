@@ -328,15 +328,25 @@ export function claimRegionEnd(cur) {
 /** Step a component's own adopt walk past its `{children}` slot — claim the
  * `<!--c[-->`…`<!--c]-->` markers and skip the slotted nodes (the parent owns their
  * reactivity, wired separately by {@link hydrateSlot}), leaving them in place. Advances the
- * cursor past the closing marker. Throws {@link HydrationMismatch} on a missing start marker. */
+ * cursor past the closing marker. Throws {@link HydrationMismatch} on a missing start marker.
+ *
+ * Returns the slotted nodes. Adoption never captures light-DOM children the way a CSR build
+ * does (they are already in place), but a JSX-value local's `build` fallback still closes over
+ * the children local — so codegen seeds that binding from this return value, giving a later
+ * reactive rebuild the real nodes to re-slot instead of a `ReferenceError`. */
 export function skipSlot(cur) {
   const start = cur.node;
   if (!start || start.nodeType !== COMMENT || start.data !== SLOT_START) {
     throw new HydrationMismatch(`expected a children-slot marker, found ${describe(start)}`);
   }
+  const slotted = [];
   let n = start.nextSibling;
-  while (n && !(n.nodeType === COMMENT && n.data === SLOT_END)) n = n.nextSibling;
+  while (n && !(n.nodeType === COMMENT && n.data === SLOT_END)) {
+    slotted.push(n);
+    n = n.nextSibling;
+  }
   cur.node = n ? n.nextSibling : null; // step past the `<!--c]-->` end marker
+  return slotted;
 }
 
 /**
