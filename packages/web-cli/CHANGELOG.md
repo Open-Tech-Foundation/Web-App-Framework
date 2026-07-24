@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Tests
+
+- The `hydrate-browser` e2e fixture's `<Framed>` island now takes a light-DOM `{children}`
+  slot *inside* its JSX-value local, plus a second `framed={false}` instance. `<Framed>` was
+  documented as the exact `DocsLayout` shape, but it had no slot — the one ingredient that
+  matters — so the suite stayed green while the docs site died on first paint with
+  `ReferenceError: __children is not defined` (fixed in `@opentf/web-compiler`). Nine new
+  assertions cover both branches: the slotted node is adopted in place, still parented by its
+  slot, and present exactly once. Reverting the codegen fix now fails this suite with the
+  reported error instead of passing.
+- Its slot is ordered *before* the nested `<Tree>` deliberately: `hydrateSlot` locates slotted
+  content by the first `<!--c[-->` marker under the host, and the tree's `<Link>` islands emit
+  markers of their own — a separate, pre-existing limitation of that lookup.
+
 ## [1.18.0] - 2026-07-19
 
 ### Fixed
