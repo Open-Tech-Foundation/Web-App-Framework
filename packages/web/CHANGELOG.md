@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-07-25
+
 ### Fixed
 
 - **A route-guard redirect on first paint no longer leaves the hydration flag set**
