@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-25
+
 ### Fixed
 
 - **MDX no longer wraps block-level content in a `<p>`.** markdown-rs puts stacked JSX elements
