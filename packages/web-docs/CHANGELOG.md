@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-07-25
+
 ### Fixed
 
 - **`<Toc>` no longer builds its outline twice on first paint.** Effects run at construction,
