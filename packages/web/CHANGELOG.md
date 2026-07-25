@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-07-25
+
 ### Fixed
 
 - **`<CodeFence>` / `<RawHtml>` no longer destroy their server-rendered DOM on hydration**
