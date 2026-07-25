@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Tests
+
+- The `hydrate-browser` e2e fixture's `<Framed>` slot moves back *after* its nested `<Tree>`.
+  That ordering previously failed — `hydrateSlot` located a component's slotted content by the
+  first `<!--c[-->` marker under the host, and the tree's `<Link>` islands emit markers of their
+  own, so the parent adopted its children against a `<Link>`'s slot. The fixture had been
+  ordered slot-first to dodge it; with that lookup fixed in `@opentf/web` (it now prefers the
+  marker with no intervening component host), the original ordering is restored so the fixture
+  regression-tests the fix instead of avoiding it.
+
 ## [1.19.0] - 2026-07-24
 
 ### Tests
