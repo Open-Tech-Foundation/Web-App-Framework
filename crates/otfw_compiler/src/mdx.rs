@@ -129,7 +129,28 @@ impl Emit {
                     "<h{d} id=\"{id}\">{inner}<a class=\"otfw-heading-anchor\" href=\"#{id}\" aria-hidden=\"true\" tabindex=\"-1\"></a></h{d}>"
                 )
             }
-            Node::Paragraph(n) => format!("<p>{}</p>", self.nodes(&n.children)),
+            Node::Paragraph(n) => {
+                // A "paragraph" whose whole content is raw HTML blocks or JSX elements is
+                // not prose — markdown-rs wraps consecutive `<Callout/>` lines (or a raw
+                // `<h1>…</h1>`) in one Paragraph, but those render *block-level* markup.
+                // Emitting `<p>` around them produces HTML the browser re-parses
+                // differently: the parser closes an open `<p>` at any block-level start
+                // tag, hoisting the content out. That breaks hydration outright — the
+                // adopt walk claims the `<p>` and then looks inside it for children the
+                // parser moved elsewhere (`expected <h1>, found nothing`), desyncing the
+                // cursor and rebuilding the whole route (docs/HYDRATION.md §3.1: server
+                // output must re-parse 1:1). Emit the blocks directly instead, dropping
+                // the whitespace-only separators between them.
+                if is_block_only(&n.children) {
+                    n.children
+                        .iter()
+                        .filter(|c| !is_whitespace_text(c))
+                        .map(|c| self.node(c))
+                        .collect()
+                } else {
+                    format!("<p>{}</p>", self.nodes(&n.children))
+                }
+            }
             Node::Text(n) => self.text(n),
             Node::Strong(n) => format!("<strong>{}</strong>", self.nodes(&n.children)),
             Node::Emphasis(n) => format!("<em>{}</em>", self.nodes(&n.children)),
@@ -387,6 +408,31 @@ fn emit_code(code: &str, lang: &str, meta: Option<&str>) -> String {
     format!("<CodeFence html={{{}}} />", js_string(&html))
 }
 
+/// Is this a text node with nothing but whitespace? Those are the line breaks between
+/// stacked JSX elements in a paragraph — significant between inline marks, noise between
+/// blocks.
+fn is_whitespace_text(node: &Node) -> bool {
+    matches!(node, Node::Text(t) if t.value.trim().is_empty())
+}
+
+/// Does this paragraph hold only block-level content — raw HTML and/or JSX elements,
+/// separated by whitespace? Such a paragraph must not be wrapped in `<p>` (see
+/// `Node::Paragraph`). A paragraph mixing prose with an inline element
+/// (`text <Badge/> text`) is *not* block-only and keeps its `<p>`.
+fn is_block_only(children: &[Node]) -> bool {
+    let mut saw_block = false;
+    for child in children {
+        match child {
+            Node::Html(_) | Node::MdxJsxFlowElement(_) | Node::MdxJsxTextElement(_) => {
+                saw_block = true;
+            }
+            c if is_whitespace_text(c) => {}
+            _ => return false,
+        }
+    }
+    saw_block
+}
+
 /// Concatenated text of a node's descendants (for heading ids).
 fn node_text(node: &Node) -> String {
     match node {
@@ -556,6 +602,32 @@ mod tests {
         assert!(out.contains("<p>"));
         assert!(out.contains("<strong>b</strong>"));
         assert!(out.contains("<em>c</em>"));
+    }
+
+    // A `<p>` around block-level content is HTML the parser re-nests (it closes the open
+    // `<p>` at the first block-level start tag), which desyncs the hydration cursor walk
+    // and rebuilds the whole route. These three lock the shape of the emitted markup.
+    #[test]
+    fn raw_html_blocks_are_not_wrapped_in_a_paragraph() {
+        // Prose first: that's what makes markdown-rs put the following stacked tags in a
+        // Paragraph rather than at root (the shape the docs site actually hit).
+        let out = mdx_to_jsx("Hello\n\n<h1>Raw</h1>\n<h2>Raw2</h2>", "doc.mdx").unwrap();
+        assert!(out.contains("<p>Hello</p>"), "{out}");
+        assert!(!out.contains("<p><h1>"), "{out}");
+        assert!(out.contains("<h1>Raw</h1><h2>Raw2</h2>"), "{out}");
+    }
+
+    #[test]
+    fn stacked_jsx_elements_are_not_wrapped_in_a_paragraph() {
+        let out = mdx_to_jsx("<Callout>one</Callout>\n<Callout>two</Callout>", "doc.mdx").unwrap();
+        assert!(!out.contains("<p>"), "{out}");
+        assert_eq!(out.matches("<Callout").count(), 2, "{out}");
+    }
+
+    #[test]
+    fn an_inline_element_keeps_its_paragraph() {
+        let out = mdx_to_jsx("text with <Badge/> inline", "doc.mdx").unwrap();
+        assert!(out.contains("<p>text with <Badge"), "{out}");
     }
 
     #[test]

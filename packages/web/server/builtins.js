@@ -12,10 +12,13 @@ import { defineSSG } from "./ssg-runtime.js";
 // SLOT_START/SLOT_END) — the same markers the compiler emits around `{children}` in a normal
 // component's SSG view. These hand-written renderers must emit them too, or the slotted
 // content never gets its reactivity wired on first paint (dead bindings until a CSR rebuild).
-const slot = (children) => `<!--c[-->${children ?? ""}<!--c]-->`;
-defineSSG("web-internal-context-provider", (_props, children) => slot(children));
-defineSSG("web-internal-portal", (_props, children) => slot(children));
-defineSSG("web-internal-error-boundary", (_props, children) => slot(children));
+// The markers carry the host's own tag, exactly as the compiled components' do — slot
+// regions nest, and the label is what lets each side find its own pair (see ssg.rs).
+const slot = (tag, children) => `<!--c[${tag}-->${children ?? ""}<!--c]${tag}-->`;
+const passthrough = (tag) => defineSSG(tag, (_props, children) => slot(tag, children));
+passthrough("web-internal-context-provider");
+passthrough("web-internal-portal");
+passthrough("web-internal-error-boundary");
 // RawHtml: emit the trusted HTML string inline (MDX highlighted code blocks).
 defineSSG("web-internal-raw-html", (props) => (props && props.html != null ? String(props.html) : ""));
 // CodeFence: same inline HTML as RawHtml; the copy button wires up on the client

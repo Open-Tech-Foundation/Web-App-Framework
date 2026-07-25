@@ -68,6 +68,9 @@ struct Uses {
     /// the fresh subtree's child islands build (not adopt) — the flag tracks server DOM, and
     /// what we just `createElement`'d isn't server DOM.
     run_build: bool,
+    /// The build path rescues the server-rendered `{children}` slot before rebuilding
+    /// (`slotChildren`) — hydrate target only.
+    slot_children: bool,
     /// The constructor reads rich island props from the serialized payload (hydrate
     /// target only; a CSR `Build` component reads attributes as before).
     hydration_props: bool,
@@ -92,6 +95,7 @@ impl Uses {
         self.hydration_mismatch |= o.hydration_mismatch;
         self.report_error |= o.report_error;
         self.run_build |= o.run_build;
+        self.slot_children |= o.slot_children;
         self.hydration_props |= o.hydration_props;
     }
 }
@@ -142,6 +146,9 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
     }
     if uses.run_build {
         names.push("runBuild");
+    }
+    if uses.slot_children {
+        names.push("slotChildren");
     }
     if uses.hydration_mismatch {
         names.push("HydrationMismatch");
@@ -292,7 +299,9 @@ fn component_body_ex<'a>(
     let hydratable = !matches!(view, ComponentView::Build);
 
     let mut e = Emitter::new(lowered, Disposal::Sink("this._cleanups"));
-    e.emit_children_capture();
+    // A hydrate-target build can run over a server-rendered host (rebuild fallback / mismatch
+    // recovery), where the slotted children must be recovered from the slot markers.
+    e.emit_children_capture(hydratable && lowered.children_local.is_some());
     e.emit_prop_aliases();
     e.emit_prop_snapshots();
     e.emit_rest();
@@ -429,12 +438,17 @@ fn component_body_ex<'a>(
             if lowered.children_local.is_some() {
                 // Has a `{children}` slot but isn't adoptable yet (Phase 2.1). During
                 // first-paint hydration the server DOM is the *rendered* view, not the
-                // original slot children, so it can't feed the capture in `body` — discard
-                // it and rebuild (a flash; the slotted content is lost until §2.1 markers).
-                // On client navigation `isHydrating()` is false, so the call-site light-DOM
-                // children are left in place for the capture to slot.
+                // original slot children — so pull the slotted nodes out of the view by their
+                // `<!--c[…-->` markers first and hand them to the capture (`this._serverSlot`),
+                // then discard the rest and rebuild. The rebuild is still a flash, but the
+                // content the parent slotted in survives it (it used to be thrown away with
+                // the view). On client navigation `isHydrating()` is false, so the call-site
+                // light-DOM children are left in place for the capture to slot as usual.
                 e.uses.is_hydrating = true;
-                code.push_str("    if (isHydrating() && this.firstChild) this.replaceChildren();\n");
+                e.uses.slot_children = true;
+                code.push_str(
+                    "    if (isHydrating() && this.firstChild) { this._serverSlot = slotChildren(this); this.replaceChildren(); }\n",
+                );
             } else {
                 // No slot to preserve — discard any pre-existing children (server DOM on
                 // hydration, or unused call-site children on navigation) before building.
@@ -488,6 +502,13 @@ fn component_body_ex<'a>(
                 "        reportError(__e, {{ phase: \"hydrate\", component: {} }});\n",
                 js_string(&export)
             ));
+            if lowered.children_local.is_some() {
+                // Rescue the slotted content before clearing: it is the *parent's* JSX and
+                // has nothing to do with this component's mismatch, so the rebuild re-slots
+                // the same nodes instead of dropping them.
+                e.uses.slot_children = true;
+                code.push_str("        this._serverSlot = slotChildren(this);\n");
+            }
             code.push_str("        this.replaceChildren();\n");
             code.push_str("        __build();\n");
             code.push_str("      }\n");
@@ -809,9 +830,24 @@ impl<'a> Emitter<'a> {
     /// Capture the light-DOM children before the view is built, then clear them
     /// from the host (they are re-placed at the `{children}` slot). Component
     /// path only; no-op when the component doesn't take children.
-    fn emit_children_capture(&mut self) {
+    /// Capture the call-site light-DOM children the view slots at `{children}`.
+    ///
+    /// `from_server_slot` is set for a hydrate-target component whose build can run against a
+    /// **server-rendered** host (`RebuildIfServerChildren`, or an `Adopt` component recovering
+    /// from a mismatch). There `this.childNodes` is the rendered view, not the slotted content
+    /// — so those paths stash the real slot nodes in `this._serverSlot` (via `slotChildren`)
+    /// before clearing, and the capture prefers them. Without this the rebuild silently
+    /// dropped everything the parent had slotted into the component.
+    fn emit_children_capture(&mut self, from_server_slot: bool) {
         if let Some(local) = self.lowered.children_local.clone() {
-            self.line(format!("const {local} = Array.from(this.childNodes);"));
+            if from_server_slot {
+                self.line(format!(
+                    "const {local} = this._serverSlot ?? Array.from(this.childNodes);"
+                ));
+                self.line("this._serverSlot = null;".to_string());
+            } else {
+                self.line(format!("const {local} = Array.from(this.childNodes);"));
+            }
             self.line("this.replaceChildren();".to_string());
         }
     }

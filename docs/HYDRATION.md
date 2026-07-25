@@ -63,10 +63,12 @@ which case components only ever adopt (the build arm is dead and can later be dr
 > slot; the composing parent adopts the slotted content's reactivity, since that content is the
 > parent's JSX), **fragment / multi-node roots** (each top-level node adopts in sequence off the
 > shared cursor — pages via a `DocumentFragment` lifecycle carrier), and **JSX-value locals**
-> (`const body = <jsx>` rendered at a `{body}` hole or a bare dynamic-node branch — the
-> docs-layout idiom — adopting the server subtree in place via `hydrateHole`) all hydrate.
-> **Not yet:** a JSX value in a non-positional shape (`const map = { a: <A/> }`, an array, a
-> ternary) — falls back to a clean CSR build (`RebuildIfServerChildren`).
+> (`const body = <jsx>`, `const body = cond ? <a/> : <b/>`, `cond && <a/>` — rendered at a
+> `{body}` hole or a bare dynamic-node branch, the layout idiom — adopting the server subtree in
+> place via `hydrateHole`) all hydrate.
+> **Not yet:** a JSX value in a non-*positional* shape (`const map = { a: <A/> }`, an array) and
+> spread props in a view — both fall back to a clean CSR build
+> (`RebuildIfServerChildren`), which now preserves the slotted children (§3.5).
 
 | Mode | Nav | First paint | Subsequent nav | Components |
 |---|---|---|---|---|
@@ -164,15 +166,32 @@ the shared cursor and the closing `<!--]-->` becomes the reconcile/swap anchor. 
 one item root per item; a conditional holds the one rendered branch (or nothing, for a falsy
 `&&` — an empty region, like an empty list); a layout's `{children}` slot holds the nested
 route's DOM, which the layout adopts by handing its cursor to a children thunk. A **component's**
-light-DOM `{children}` slot uses **distinct** markers `<!--c[-->…<!--c]-->` (2.1d) so the
-composing parent can locate that slot inside the host — by scanning for the marker, independent
-of when the component upgrades — and adopt the slotted content (whose reactivity it owns), while
-the component itself steps over the slot.
+light-DOM `{children}` slot uses **distinct, labeled** markers `<!--c[<tag>-->…<!--c]<tag>-->`
+(2.1d) so the composing parent can locate that slot inside the host — by scanning for the marker
+labeled with the host's own tag, independent of when the component upgrades — and adopt the
+slotted content (whose reactivity it owns), while the component itself steps over the slot.
+
+> **Why the slot markers carry a label.** Slot regions *nest*: a component that forwards
+> `{children}` into another (`Card` → `<Link>{children}</Link>`) emits its markers inside that
+> component's, and a forwarding parent adds a third pair at the same position. Unlabeled, neither
+> side could identify its own pair — `skipSlot` stopped at the first close it met (a nested one)
+> and overran its walk, and `hydrateSlot` had to guess by tree order and adopted against another
+> component's region, losing the children. Position heuristics were tried twice and failed twice;
+> the label makes both lookups exact, and `skipSlot` depth-matches same-label pairs.
 
 > **Hazard handled:** the HTML parser collapses/merges adjacent and empty text nodes
 > and trims whitespace. The `$`/`/` markers survive that; and because `ssg.rs`
 > concatenates server output with no inter-element padding, the re-parsed DOM carries
 > text nodes only where the template does — so a cursor walk stays aligned 1:1.
+
+> **The deeper form of the same hazard: server output must re-parse 1:1.** Whitespace is the
+> easy case. The hard case is *invalid nesting*, where the parser silently restructures the
+> tree: a `<p>` is closed by any block-level start tag, so `<p><web-callout><div>…` re-parses
+> with the callout hoisted out of the paragraph, and the adopt walk claims the `<p>` and then
+> finds nothing inside it (`expected <h1>, found nothing`). That's a page-level mismatch, so the
+> router discards the *entire* pre-rendered route and rebuilds via CSR. The MDX front-end no
+> longer wraps block-level content in `<p>` (`mdx.rs`); any other backend change that can emit
+> structurally invalid HTML is a hydration bug, not a cosmetic one.
 
 ### 3.2 `hydrate.rs` codegen backend — adopt, don't create _(implemented for pages)_
 
@@ -278,7 +297,12 @@ and hides where the mismatch was.
 **Implemented:** the component's adopt arm is wrapped in `try { <adopt> } catch (e)`; a
 `HydrationMismatch` is reported via `reportError` (not routed to `<ErrorBoundary>` — the
 component *recovers*) and the shared `__build` closure rebuilds the subtree after clearing
-the mismatched server DOM. Any non-mismatch error re-throws to the outer render guard
+the mismatched server DOM. **The rebuild keeps what was slotted into the component:** on a
+server-rendered host `this.childNodes` is the *rendered view*, not the call-site children, so
+capturing it after the clear returned nothing and the parent's slotted content — page content —
+was destroyed rather than re-slotted. Both rebuild paths (recovery and
+`RebuildIfServerChildren`) now rescue the slot region by its markers (`slotChildren`) before
+clearing. A non-adoptable component still flashes; nothing disappears. Any non-mismatch error re-throws to the outer render guard
 (`handleError` → nearest boundary), as before. A **page**'s adopt walk collects its effect
 disposers into a local `__disposers` and, if it throws partway, disposes them before
 rethrowing — so the router's fallback CSR rebuild doesn't leave the partial walk's
@@ -408,6 +432,16 @@ whitespace nodes, double mounts). The bar:
   a per-component mismatch is reported even when the DOM self-heals, so a correct *final* DOM
   is necessary but not sufficient — silent adoption is the actual bar.
 
+  **Route-level coverage (the tier the fixtures missed).** Composition e2e fixtures were 84/84
+  green while **1 of 62 real docs routes** hydrated cleanly: the failures lived in MDX output
+  (`<p>` re-nesting), in hand-written built-ins that no compiler test touches
+  (`<CodeFence>`/`<RawHtml>` overwriting their server DOM), and in forwarding chains no fixture
+  composed. The check that catches this class is cheap and belongs in CI: build the site, serve
+  `dist/`, tag every parser-inserted node from a document-start `MutationObserver`, then per
+  route assert **zero mismatches logged and zero server nodes discarded**, attributing any
+  client-built node to its nearest custom-element ancestor so a regression names the component.
+  Post-fix that measure reads 53/62, with the remainder accounted for by the open items in §6.
+
 ---
 
 ## 6. Sub-design decisions & open items
@@ -458,11 +492,15 @@ whitespace nodes, double mounts). The bar:
 
 **Open:**
 
-- **Deeply-composed pages can still leave some islands rebuilt.** On a page with many nested
-  components (the docs route: eager navbar + docs layout + a recursive sidebar of `<Link>`s),
-  a subset of `<web-link>`s still rebuild rather than adopt (a first-paint flash + a reported
-  per-component mismatch; the final DOM self-heals). The isolated compositions all adopt
-  cleanly (§5); the residual is an ordering interaction at scale, under investigation.
+- **Spread props in a view** (`<div {...rest}/>`) make a component non-adoptable — it falls back
+  to a clean CSR build. The remaining first-paint rebuilds on the docs site are all this.
+- **A JSX value in a non-positional shape** — `const map = { a: <A/> }`, `const tabs = [<A/>, <B/>]`
+  — stays on the rebuild fallback. Only shapes where every node sits in a *node position* (a bare
+  node, a conditional's branches) can have adopt calls substituted into them.
+- **A client-derived island has nothing to adopt.** `<Toc>` builds its outline from the rendered
+  headings at `onMount`, so the server ships an empty `<nav>` and the outline pops in (CLS).
+  Fixing it means feeding the page's `toc` export in as data rather than reading the DOM —
+  a data-hydration concern, not a DOM one.
 - **Fragment / multi-node *route* roots** — a page/layout whose view root is a fragment still
   falls back to a clean CSR build (component fragment roots now adopt, §3.2).
 - MPA-only build optimization: when `nav: "mpa"`, components never client-build, so the

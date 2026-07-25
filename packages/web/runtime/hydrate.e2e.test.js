@@ -388,7 +388,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
       defineSSG,
     }).default;
     const html = ssg({});
-    expect(html).toContain("<!--c[-->"); // component slot opens
+    expect(html).toContain("<!--c[web-card"); // component slot opens, labeled with its tag
     expect(html).toMatch(/<button class="inner">c <!--\$-->0<!--\/--><\/button>/); // parent JSX inside
 
     // 2. Put it in a DETACHED container so the Card custom element does NOT upgrade — proving
@@ -497,8 +497,8 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
       defineSSG,
     }).default;
     const html = ssg();
-    expect(html).toContain("<web-internal-portal><!--c[-->"); // slot opens inside the host
-    expect(html).toContain("<!--c]--></web-internal-portal>"); // …and closes inside it
+    expect(html).toContain("<web-internal-portal><!--c[web-internal-portal-->"); // slot opens inside the host
+    expect(html).toContain("<!--c]web-internal-portal--></web-internal-portal>"); // …and closes inside it
 
     // 2. Enter the first-paint pass, then connect the server DOM. The <web-internal-portal>
     //    upgrades on connect and would relocate now — but `_hydrating` is set, so it *defers*.
@@ -696,7 +696,7 @@ describe.skipIf(!hasBin)("hydration construct matrix (ssg → hydrate, no rebuil
         " export default function P(){ let n=$state(0);" +
         ' return <div><button class="act" onclick={() => n++}>+</button>' +
         ' <Card><b class="probe">v {n}</b></Card></div>; }',
-      ssg: ["<!--c[-->"], // component slot markers
+      ssg: ["<!--c[web-card"], // component slot markers, labeled with the owning tag
       check: (c) => {
         c.querySelector(".act").click();
         expect(c.querySelector(".probe").textContent).toBe("v 1");
@@ -709,7 +709,7 @@ describe.skipIf(!hasBin)("hydration construct matrix (ssg → hydrate, no rebuil
         " export default function P(){ let n=$state(0);" +
         ' return <div><button class="act" onclick={() => n++}>+</button>' +
         ' <ContextProvider><b class="probe">c {n}</b></ContextProvider></div>; }',
-      ssg: ["<web-internal-context-provider><!--c[-->"], // built-in emits slot markers now
+      ssg: ["<web-internal-context-provider><!--c[web-internal-context-provider-->"], // built-in emits labeled slot markers now
       check: (c) => {
         c.querySelector(".act").click();
         expect(c.querySelector(".probe").textContent).toBe("c 1");
@@ -723,7 +723,7 @@ describe.skipIf(!hasBin)("hydration construct matrix (ssg → hydrate, no rebuil
         " export default function P(){ let n=$state(0);" +
         ' return <div><button class="act" onclick={() => n++}>+</button>' +
         ' <Outer><Inner><b class="probe">n {n}</b></Inner></Outer></div>; }',
-      ssg: ["<!--c[-->"],
+      ssg: ["<!--c[web-outer", "<!--c[web-inner"],
       check: (c) => {
         c.querySelector(".act").click();
         expect(c.querySelector(".probe").textContent).toBe("n 1");
@@ -767,7 +767,7 @@ describe.skipIf(!hasBin)("hydration construct matrix (ssg → hydrate, no rebuil
       defineSSG,
     });
     const inner = ssgFn({ frame: false }, '<b class="probe">HI</b>');
-    expect(inner).toContain("<!--c[-->"); // the slot markers the adopt walk steps over
+    expect(inner).toContain("<!--c[web-panel"); // the slot markers the adopt walk steps over
     expect(inner).toContain('<b class="probe">HI</b>');
     expect(inner).not.toContain('class="shell"'); // unframed: the bare `body` branch
 

@@ -331,33 +331,44 @@ export function bindChild(anchor, fn) {
  * rebuild. `buildFn()` is the CSR version (build calls) the effect swaps to when a later
  * reactive change selects a different branch. The closing `<!--]-->` is the swap anchor.
  * Returns the effect disposer.
+ *
+ * `depsFn()` is the same branch expression with **every branch replaced by `null`**. The
+ * region effect has to run something on first paint to subscribe to the deps it should react
+ * to — the *condition* — but running the real `buildFn` there constructs a whole subtree only
+ * to discard it, and when a branch re-slots the component's `{children}`, `appendChild`
+ * **moves** those live server nodes into the throwaway tree, silently emptying the slot (the
+ * `<Card>` → `<Link>{children}</Link>` shape lost its children this way). Evaluating the
+ * condition with null branches subscribes to exactly the same reads without building anything;
+ * reactivity *inside* a branch is wired by that branch's own bindText/bindAttr effects, so it
+ * is not a dependency of this region. Older codegen passes no `depsFn` — fall back to `buildFn`.
  */
-export function hydrateChild(cur, adoptFn, buildFn) {
+export function hydrateChild(cur, adoptFn, buildFn, depsFn) {
   claimRegionStart(cur);
   // Adopt inside a scope so the adopted branch owns its bindings' effects; the
   // region disposes it when a reactive change swaps the branch out.
   const adoptedScope = scope(() => toNodes(adoptFn(cur)));
   const anchor = claimRegionEnd(cur);
   // Seed with the adopted nodes and skip the first effect run's DOM write: the branch is
-  // already in place. The first run still evaluates `buildFn` to subscribe to its reactive
-  // deps (the built nodes are discarded); from the second run on it swaps normally.
-  return childEffect(anchor, buildFn, adoptedScope.result, true, adoptedScope);
+  // already in place; from the second run on it swaps normally.
+  return childEffect(anchor, buildFn, adoptedScope.result, true, adoptedScope, depsFn || buildFn);
 }
 
 /** The child-region effect shared by {@link bindChild} (empty seed, no skip) and
  * {@link hydrateChild} (seeded with adopted nodes, first DOM write skipped). On each run
  * the previous nodes are replaced with the new ones, inserted before `anchor`; the
  * previous branch's scope is disposed so its bindings' effects don't outlive it. */
-function childEffect(anchor, fn, current, skipFirst, currentScope = null) {
+function childEffect(anchor, fn, current, skipFirst, currentScope = null, firstFn = fn) {
   let first = skipFirst;
   const disposeEffect = effect(() => {
     // Build in a scope: the branch's nested bindings (text/attr/list effects)
     // belong to this run and are disposed when the branch is replaced.
-    const built = scope(() => toNodes(fn()));
+    // On a hydration first run this evaluates `firstFn` — the condition with null
+    // branches — which subscribes the region without constructing (or stealing) DOM.
+    const built = scope(() => toNodes((first ? firstFn : fn)()));
     if (first) {
       first = false;
-      // Hydration first run subscribes the region effect only; the discarded
-      // build's own effects must not stay live alongside the adopted branch.
+      // Hydration first run subscribes the region effect only; anything the discarded
+      // run did create must not stay live alongside the adopted branch.
       built.dispose();
       return; // keep the adopted DOM on first paint
     }

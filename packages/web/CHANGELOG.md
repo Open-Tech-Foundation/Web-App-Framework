@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`<CodeFence>` / `<RawHtml>` no longer destroy their server-rendered DOM on hydration**
+  (`runtime/code-block.js`, `runtime/raw-html.js`). Both are hand-written elements that assign
+  `innerHTML` on connect — with no hydration awareness — and the adopt walk re-applies the
+  `html` prop right after claiming the host (the MDX front-end writes `html={"…"}` as an
+  expression, so it's a dynamic prop). Every code block on every page was therefore torn out
+  and re-parsed on first paint: on the docs site that was **9,072 rebuilt nodes** and 264
+  discarded server blocks, the single biggest source of first-paint churn. They now adopt the
+  markup they were rendered with (wiring only the copy button) and re-render only when the
+  value actually changes.
+- **Slot markers are matched by label, and closes by depth** (`runtime/hydrate.js`). Slot
+  regions nest whenever a component forwards `{children}` into another, and the old lookups
+  couldn't cope: `skipSlot` scanned siblings for the *first* `<!--c]-->` and stopped inside a
+  nested region (`expected <span>, found comment <!--c]-->` — `<Tooltip>`), while
+  `hydrateSlot` guessed the host's slot by tree order and adopted against another component's
+  region (`expected a children-slot marker, found <span>` — `<Card>`, whose children were then
+  lost). The markers now carry the owning host's tag (see `otfw_compiler`), so `skipSlot`
+  depth-matches its own close and `hydrateSlot` finds the marker labeled with `host.tagName`.
+- **`hydrateChild` subscribes without building** (`runtime/dom.js`). Its first effect run used
+  to evaluate the real build closure just to register dependencies, discarding the result — but
+  a branch that re-slots `{children}` `appendChild`s those *live* server nodes into the
+  throwaway tree, emptying the slot. It now takes an optional fourth argument, the same
+  expression with null branches, and runs that instead.
+- **New `slotChildren(host)`** — the nodes in a host's own `{children}` slot in the server DOM.
+  A component that can't adopt (unsupported view shape, or a mismatch it's recovering from)
+  rebuilds via CSR, and its build used to capture an already-cleared host: the page content the
+  parent had slotted in was destroyed, not just rebuilt. Codegen now rescues it through this
+  helper first.
+
 ## [0.22.0] - 2026-07-25
 
 ### Fixed

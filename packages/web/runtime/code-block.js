@@ -12,30 +12,59 @@
 // (server/builtins.js); the behavior wires when the element upgrades in the browser.
 
 import { copyWithFeedback } from "./clipboard.js";
+import { isHydrating } from "./hydrate.js";
 
 export class CodeBlockElement extends HTMLElement {
   set html(v) {
     this._html = v;
-    if (this.isConnected) this.render();
+    if (!this.isConnected) return;
+    // First value handed to a host that adopted its server DOM: that markup *is* this
+    // string (same compiler, same build), so re-rendering would destroy and re-parse the
+    // block we just adopted — the single biggest source of first-paint churn on a docs
+    // site. The adopt walk always re-applies the prop, because the MDX front-end writes
+    // `html={"…"}` as an expression, so this arm is the common case. Just record it; a
+    // genuinely *different* value later still renders.
+    if (this._adopted) {
+      this._adopted = false;
+      this._applied = v;
+      return;
+    }
+    if (v !== this._applied) this.render();
   }
   get html() {
     return this._html;
   }
 
   connectedCallback() {
+    // Server-rendered inline by `server/builtins.js` and adopted on first paint: keep the
+    // markup, wire only the behavior (docs/HYDRATION.md §3.4 — the same
+    // `isHydrating() && this.firstChild` discriminator a compiled component uses).
+    if (isHydrating() && this.firstChild) {
+      this._adopted = true;
+      this._rendered = true;
+      this._applied = this._html;
+      this.wireCopy();
+      return;
+    }
     // The `html` property is set before append during a CSR build; render once.
     if (!this._rendered) this.render();
   }
 
   render() {
     this.innerHTML = this._html == null ? "" : String(this._html);
+    this._applied = this._html;
+    this.wireCopy();
+    this._rendered = true;
+  }
+
+  /** Wire the copy button to the block's `<pre>` text (idempotent). */
+  wireCopy() {
     const button = this.querySelector(".otfw-copy");
     const pre = this.querySelector("pre");
     if (button && pre && !button._otfwWired) {
       button._otfwWired = true;
       button.addEventListener("click", () => copyWithFeedback(button, pre.innerText));
     }
-    this._rendered = true;
   }
 }
 

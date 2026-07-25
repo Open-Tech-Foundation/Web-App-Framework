@@ -38,9 +38,18 @@ export default function Toc() {
     return () => observer && observer.disconnect();
   });
 
-  // Rebuild when the route changes (content swaps under the same layout).
+  // Rebuild when the route changes (content swaps under the same layout). Effects run at
+  // construction — before `onMount` — so the first run would schedule a second, redundant
+  // build of the same headings: on first paint the outline was built once by `onMount` and
+  // then torn down and rebuilt a frame later, a visible flicker on every docs page. Skip that
+  // run and let `onMount` do the initial build.
+  let routed = false;
   $effect(() => {
     router.pathname;
+    if (!routed) {
+      routed = true;
+      return;
+    }
     if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(build);
   });
 

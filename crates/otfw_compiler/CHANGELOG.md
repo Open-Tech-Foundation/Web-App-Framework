@@ -7,6 +7,47 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
+- **MDX no longer wraps block-level content in a `<p>` (`mdx.rs`).** markdown-rs puts stacked
+  JSX elements (four `<Callout/>` lines in a row) and raw HTML blocks in one Paragraph, and the
+  emitted `<p>` around them is markup the browser **re-parses differently** — the parser closes
+  an open `<p>` at any block-level start tag, hoisting the content out. The hydration walk then
+  claims the `<p>` and looks inside it for children that now live elsewhere
+  (`expected <h1>, found nothing`), desyncing the cursor and bailing the *whole route* to a CSR
+  rebuild: on the docs site two pages rebuilt ~85% of their nodes, layout, navbar and sidebar
+  included. A paragraph whose entire content is raw HTML and/or JSX elements now emits those
+  blocks directly (whitespace separators dropped); a paragraph mixing prose with an inline
+  element keeps its `<p>`.
+- **A component's `{children}` slot markers now carry the owning host's tag (`codegen/ssg.rs`).**
+  `<!--c[web-card-8e61e2ff-->…<!--c]web-card-8e61e2ff-->` instead of bare `<!--c[-->`. Slot
+  regions nest — a component that forwards `{children}` into another
+  (`Card` → `<Link>{children}</Link>`) emits its markers *inside* that component's, and a
+  forwarding parent adds a third pair at the same position — and unlabeled, neither the
+  component's own walk nor the parent's `hydrateSlot` could identify its own pair. See
+  `@opentf/web` for the matching runtime change.
+- **`const body = cond ? <a/> : <b/>` is now adoptable (`codegen/hydrate.rs`).** The JSX-value
+  local support added in 2.1e only accepted the bare `const NAME = <jsx>` shape, so the
+  extremely common layout idiom — `web-docs`' own `BlogLayout` — stayed on
+  `RebuildIfServerChildren` and threw away the server DOM (with the slotted page content in it)
+  on first paint. A right-hand side that puts every JSX node in a **node position** (a bare
+  node, `cond ? X : Y` with either branch nullish, or `cond && X`) is now emitted as a dual
+  `{ build, adopt }` object whose templates keep the condition, so the adopt walk selects the
+  same branch the server rendered. Non-positional shapes (`{ a: <A/> }`, `[<A/>, <B/>]`) still
+  fall back.
+- **`hydrateChild` no longer steals a component's slotted children (`codegen/hydrate.rs`).**
+  Its region effect ran the *build* template once on first paint purely to subscribe to the
+  condition's deps and discarded the result — but when a branch re-slots `{children}`,
+  `appendChild` **moves** those live server nodes into the throwaway tree, silently emptying
+  the slot (`<Card>` lost its children this way). Codegen now emits a third closure, the same
+  expression with every branch replaced by `null`, and `hydrateChild` subscribes with that:
+  same reads, no DOM. This also retires the adopted-root memo the value-local emitter needed to
+  survive the spurious call.
+- **A rebuilt component keeps the content that was slotted into it (`codegen/csr.rs`).** The
+  `RebuildIfServerChildren` fallback and the per-component mismatch recovery cleared the host
+  and *then* captured `this.childNodes` as the call-site children — which on a server-rendered
+  host is the rendered view, so the capture came back empty and the parent's slotted content
+  was destroyed rather than re-slotted. Both paths now rescue the slot nodes by their markers
+  (`slotChildren`) into `this._serverSlot` first, and the capture prefers them. A non-adoptable
+  component still flashes, but nothing disappears.
 - **JSX-value locals now hydrate in place (`codegen/hydrate.rs`, Phase 2.1e).** A layout or
   component that binds JSX to a local and renders it — `const body = <div/>; return frame ?
   <shell>{body}</shell> : body` (the `DocsLayout` idiom) — was not adoptable: the hydrate

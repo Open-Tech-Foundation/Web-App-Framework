@@ -125,6 +125,10 @@ struct Emitter<'a> {
     /// Sibling component names, so a same-module `<Sibling/>` resolves via its
     /// in-scope render fn (`{name}_ssg`) rather than a recomputed tag.
     module_components: Vec<String>,
+    /// This component's own Custom Element tag — the label stamped on its `{children}`
+    /// slot markers (`<!--c[web-card-8e61e2ff-->`), so the parent can find *this* host's
+    /// slot among the markers of the components nested around it. `None` for a page.
+    self_tag: Option<String>,
     counter: u32,
 }
 
@@ -138,6 +142,11 @@ impl<'a> Emitter<'a> {
             is_page: lowered.is_page,
             page_param: lowered.page_param.clone(),
             module_components: lowered.module_components.clone(),
+            self_tag: if lowered.is_page {
+                None
+            } else {
+                Some(tags::def_tag(&lowered.name, &lowered.ir.id.module))
+            },
             counter: 0,
         }
     }
@@ -151,6 +160,7 @@ impl<'a> Emitter<'a> {
             is_page: false,
             page_param: None,
             module_components: Vec::new(),
+            self_tag: None,
             counter: 0,
         }
     }
@@ -336,10 +346,22 @@ impl<'a> Emitter<'a> {
                     format!("\"<!--[-->\" + {inner} + \"<!--]-->\"")
                 } else {
                     // A component's light-DOM `{children}` slot (2.1d): bracket it with the
-                    // distinct `<!--c[-->…<!--c]-->` slot markers so the component can step
+                    // distinct `<!--c[…-->…<!--c]…-->` slot markers so the component can step
                     // over it and the parent can locate + adopt the slotted content (whose
                     // reactivity the parent owns). Inert for static SSG output.
-                    "\"<!--c[-->\" + (__children ?? \"\") + \"<!--c]-->\"".to_string()
+                    //
+                    // The markers carry **this component's own tag**. Slot regions nest —
+                    // a component that forwards `{children}` into another component
+                    // (`Card` → `<Link>{children}</Link>`) puts its markers inside that
+                    // component's, and a parent that itself forwards adds a third pair at the
+                    // same spot. Unlabeled, neither side could tell which pair was its own:
+                    // the component's walk stopped at the first close it saw (a nested one)
+                    // and the parent's `hydrateSlot` guessed by tree order and adopted against
+                    // another component's region. The tag makes both lookups exact.
+                    let tag = self.self_tag.clone().unwrap_or_default();
+                    format!(
+                        "\"<!--c[{tag}-->\" + (__children ?? \"\") + \"<!--c]{tag}-->\""
+                    )
                 }
             }
             ViewNode::List { source, source_branches, item_param, index_param, item, key: _, preamble } => {

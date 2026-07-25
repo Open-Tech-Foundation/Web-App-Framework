@@ -30,9 +30,24 @@ export const REGION_END = "]";
  * 2.1d) — distinct bytes from the list/conditional region markers so a component's own
  * internal regions never collide with its slot. The slot's content is the *parent's* JSX
  * (server-rendered here), so the parent finds this slot by its `<!--c[-->` marker within the
- * host and adopts the children (its reactivity), while the component steps over the slot. */
+ * host and adopts the children (its reactivity), while the component steps over the slot.
+ *
+ * Each marker is **labeled with the owning host's tag** — `<!--c[web-card-8e61e2ff-->` — because
+ * slot regions nest: a component that forwards `{children}` into another component
+ * (`Card` → `<Link>{children}</Link>`) emits its markers *inside* that component's, and a
+ * forwarding parent adds a third pair at the same position. Unlabeled, a component's walk
+ * stopped at the first close it met (a nested one) and the parent's slot lookup had to guess
+ * by tree order — both wrong in the forwarding shape. The label makes each side's pair exact. */
 export const SLOT_START = "c[";
 export const SLOT_END = "c]";
+
+/** The tag a slot marker is labeled with, or `null` if `node` isn't that kind of marker.
+ * `prefix` is {@link SLOT_START} or {@link SLOT_END}. */
+function slotLabel(node, prefix) {
+  if (!node || node.nodeType !== COMMENT) return null;
+  const d = node.data;
+  return d.startsWith(prefix) ? d.slice(prefix.length) : null;
+}
 
 const ELEMENT = 1;
 const TEXT = 3;
@@ -336,17 +351,61 @@ export function claimRegionEnd(cur) {
  * reactive rebuild the real nodes to re-slot instead of a `ReferenceError`. */
 export function skipSlot(cur) {
   const start = cur.node;
-  if (!start || start.nodeType !== COMMENT || start.data !== SLOT_START) {
+  const label = slotLabel(start, SLOT_START);
+  if (label === null) {
     throw new HydrationMismatch(`expected a children-slot marker, found ${describe(start)}`);
   }
+  // Match the close by label, counting depth: the slotted content may itself contain a
+  // region from the *same* component (a recursive or forwarding chain), and it very often
+  // contains regions from other components. Stopping at the first `<!--c]…-->` in sibling
+  // order — as this did before — left the cursor short of the slot and the next claim
+  // failed against the end marker (`expected <span>, found comment <!--c]-->`).
   const slotted = [];
+  let depth = 0;
   let n = start.nextSibling;
-  while (n && !(n.nodeType === COMMENT && n.data === SLOT_END)) {
+  while (n) {
+    if (slotLabel(n, SLOT_END) === label) {
+      if (depth === 0) break;
+      depth--;
+    } else if (slotLabel(n, SLOT_START) === label) {
+      depth++;
+    }
     slotted.push(n);
     n = n.nextSibling;
   }
-  cur.node = n ? n.nextSibling : null; // step past the `<!--c]-->` end marker
+  cur.node = n ? n.nextSibling : null; // step past the `<!--c]…-->` end marker
   return slotted;
+}
+
+/**
+ * The nodes sitting in `host`'s own `{children}` slot in the server DOM, or `null` when the
+ * host has no slot markers. Non-destructive — the nodes stay where they are.
+ *
+ * This is the rescue path for a component that *can't* adopt (a view shape the hydrate
+ * backend doesn't support yet, or an adopt walk that hit a mismatch and is recovering). Such
+ * a component rebuilds via CSR, and its build captures `this.childNodes` as the call-site
+ * children — but on a server-rendered host those children are the *rendered view*, not the
+ * slotted content. Clearing first and capturing after (what the generated code used to do)
+ * therefore didn't just rebuild the component, it **lost the page content inside it**. Pulling
+ * the slot region out first gives the rebuild the real children to re-slot: still a flash,
+ * but nothing disappears.
+ */
+export function slotChildren(host) {
+  const start = findSlotStart(host);
+  if (!start) return null;
+  const label = slotLabel(start, SLOT_START);
+  const nodes = [];
+  let depth = 0;
+  for (let n = start.nextSibling; n; n = n.nextSibling) {
+    if (slotLabel(n, SLOT_END) === label) {
+      if (depth === 0) break;
+      depth--;
+    } else if (slotLabel(n, SLOT_START) === label) {
+      depth++;
+    }
+    nodes.push(n);
+  }
+  return nodes;
 }
 
 /**
@@ -364,29 +423,33 @@ export function hydrateSlot(host, adoptFn) {
 }
 
 /**
- * The `<!--c[-->` marker that belongs to `host` itself.
+ * The `<!--c[…-->` marker that belongs to `host` itself — the one labeled with its tag.
  *
- * Tree order alone is not enough: a component renders its own chrome around the slot, and any
- * *nested* component in that chrome emits slot markers of its own. `<DocsLayout>` framed is the
- * case that broke — `<Navbar>` (with its own slotted `<Link>`s) sits before the prose slot, so
- * the first marker in tree order is the navbar's and the parent adopted its children against
- * the wrong region (`expected <h1>, found comment <!--[-->`).
+ * Position alone can't identify it. A component renders chrome around its slot, and any
+ * component nested in that chrome emits slot markers of its own that come *first* in tree
+ * order (`<DocsLayout>` framed: `<Navbar>`'s slotted `<Link>`s precede the prose slot). And a
+ * component that forwards `{children}` into another (`<Card>` → `<Link>{children}</Link>`)
+ * emits its own marker *inside* that component's host, so "the first marker not nested in
+ * another component" finds the wrong one too — that shape adopted the Card's children against
+ * Link's region (`expected a children-slot marker, found <span>`) and lost them.
  *
- * So: prefer the first marker with no intervening component host between it and `host` — that
- * one is unambiguously this component's own slot. Only if there is none do we fall back to the
- * first marker in tree order, which keeps the forwarding shape working (`<Card>{children}</Card>`
- * as the whole view: the markers are the Card's, but they wrap exactly these children).
+ * Matching the label to `host.tagName` settles both. The only remaining ambiguity is a
+ * component nested within itself (a recursive component that also takes children): the host's
+ * own marker always precedes any same-tag marker inside its slot content, so first-in-tree-order
+ * among label matches is correct — except for a same-tag host in the *chrome* before the slot,
+ * which the "no intervening component host" preference still resolves.
  */
 function findSlotStart(host) {
+  const tag = host.tagName ? host.tagName.toLowerCase() : "";
   let fallback = null;
   const walker = document.createTreeWalker(host, 128 /* NodeFilter.SHOW_COMMENT */);
   let n;
   while ((n = walker.nextNode())) {
-    if (n.data !== SLOT_START) continue;
+    if (slotLabel(n, SLOT_START) !== tag) continue;
     if (fallback === null) fallback = n;
     let nested = false;
     for (let p = n.parentNode; p && p !== host; p = p.parentNode) {
-      // A custom-element ancestor is another component's host, so this marker is its slot.
+      // A same-tag host inside the chrome would emit an identically labeled marker.
       if (p.nodeType === ELEMENT && p.tagName.includes("-")) {
         nested = true;
         break;

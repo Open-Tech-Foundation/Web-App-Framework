@@ -121,9 +121,6 @@ const CASES = [
     body: `<BlogLayout config={props.config} posts={[]} frame={false}>{props.children}</BlogLayout>`,
     props: { config: {} },
     forbidMarkup: [/class="otfw-shell"/],
-    known: "BlogLayout's view is `const body = post ? <jsx> : <jsx>` — a ternary, not the bare "
-      + "`const NAME = <jsx>` shape, so it is not adoptable and falls to RebuildIfServerChildren. "
-      + "It rebuilds on first paint and the slotted children are lost with the discarded server DOM.",
   },
   {
     name: "BlogLayout frame={true} (Navbar + Footer chrome)",
@@ -131,7 +128,6 @@ const CASES = [
     body: `<BlogLayout config={props.config} posts={[]} frame={true}>{props.children}</BlogLayout>`,
     props: { config: {} },
     expectMarkup: [/class="otfw-shell"/],
-    known: "Same non-adoptable ternary as the unframed case.",
   },
   {
     name: "Callout (plain slot, no nested component)",
@@ -144,15 +140,12 @@ const CASES = [
     imports: `import Card from "${COMPONENTS}/Card.jsx";`,
     body: `<Card title="T" href="/docs">{props.children}</Card>`,
     props: {},
-    known: "Card puts its own `{children}` *inside* a <Link> island, so Card's slot markers nest "
-      + "within Link's. The walk mis-steps: `expected a children-slot marker, found <span>`.",
   },
   {
     name: "Cards > Card (nested slot components)",
     imports: `import Cards from "${COMPONENTS}/Cards.jsx";\nimport Card from "${COMPONENTS}/Card.jsx";`,
     body: `<Cards><Card title="T" href="/docs">{props.children}</Card></Cards>`,
     props: {},
-    known: "Inherits the Card nesting above.",
   },
   {
     name: "Steps",
@@ -175,8 +168,6 @@ const CASES = [
     imports: `import Tooltip from "${COMPONENTS}/Tooltip.jsx";`,
     body: `<Tooltip text="hi">{props.children}</Tooltip>`,
     props: {},
-    known: "Tooltip renders `{children}` followed by a sibling <span> inside the same host; the "
-      + "walk overruns: `expected <span>, found comment <!--c]-->`.",
   },
   {
     name: "DocsLayout > Callout (page content nested inside the layout slot)",
@@ -395,7 +386,7 @@ try {
 
     // Assert on the server markup, never on the whole page — the page inlines the theme CSS,
     // which mentions every one of these class names.
-    assert(markup.includes("<!--c[-->"), `${kase.name}: server HTML carries the slot markers`);
+    assert(markup.includes("<!--c["), `${kase.name}: server HTML carries the slot markers`);
     assert(markup.includes('class="probe"'), `${kase.name}: server HTML rendered the slotted probe`);
     for (const re of kase.expectMarkup ?? []) {
       assert(re.test(markup), `${kase.name}: server HTML matches ${re}`);

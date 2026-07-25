@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`<Toc>` no longer builds its outline twice on first paint.** Effects run at construction,
+  before `onMount`, so the route-change effect scheduled a second build of the same headings a
+  frame after `onMount` had already built them — the outline was torn down and rebuilt on every
+  docs page (59 discarded `.otfw-toc-inner` across the site). The effect now skips its initial
+  run and leaves the first build to `onMount`.
+
+### Tests
+
+- The hydration e2e's `known`-failure list is empty: `<Tooltip>`, `<Card>`, `<Cards> > <Card>`
+  and both `<BlogLayout>` cases now adopt (or, for a rebuild, keep their slotted content) after
+  the slot-marker, `hydrateChild` and conditional-value-local fixes in `@opentf/web` /
+  `otfw_compiler`. 126 checks pass across all 12 cases, up from 103 with 23 known failures.
+
 ## [0.19.0] - 2026-07-25
 
 ### Tests

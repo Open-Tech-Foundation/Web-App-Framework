@@ -49,6 +49,15 @@ use crate::codegen::csr::{
 use crate::codegen::tags;
 use crate::lower::{BodyItem, ExprTable, Lowered, SignalDecl};
 
+/// How a reference to a JSX-value local is rewritten in a dynamic-node branch template:
+/// claim it off the region cursor, rebuild it, or drop it (the deps-only template).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Subst {
+    Adopt,
+    Build,
+    Deps,
+}
+
 /// The Hydrate output for a module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HydrateModule {
@@ -482,13 +491,17 @@ impl<'a> Emitter<'a> {
             BodyItem::Signal(decl) => self.emit_decl(decl),
             BodyItem::Raw(stmt) => self.line(stmt.clone()),
             BodyItem::Jsx { template, nodes } => {
-                // A JSX-value local bound to a single JSX expression (`const body = <div/>`,
-                // Phase 2.1e) is adoptable: emit it as a dual `{ adopt, build }` object and
-                // record the name so its view uses claim the server subtree. Any other
-                // JSX-embedding statement (`const map = { a: <A/> }`, `let x = c ? <A/> : <B/>`)
-                // isn't a single positional node we can adopt — keep the safe rebuild fallback.
-                match value_local_name(template, nodes.len()) {
-                    Some(name) => self.emit_jsx_value_local(&name, &nodes[0]),
+                // A JSX-value local whose right-hand side puts every JSX node in a *node
+                // position* — `const body = <div/>`, or the layout idiom
+                // `const body = cond ? <a/> : <b/>` / `cond && <a/>` — is adoptable: emit it as
+                // a dual `{ adopt, build }` object and record the name so its view uses claim
+                // the server subtree. The server rendered whichever branch the condition chose,
+                // and the condition is deterministic across server and client (the same
+                // hydration assumption everything else rests on), so evaluating the adopt
+                // template picks the same one. Any other JSX-embedding statement
+                // (`const map = { a: <A/> }`) isn't positional — keep the safe rebuild fallback.
+                match value_local(template) {
+                    Some((name, rhs)) => self.emit_jsx_value_local(&name, &rhs, nodes),
                     None => self
                         .errors
                         .push("hydrate: JSX-as-value is not supported yet (Phase 2.1)".into()),
@@ -535,63 +548,80 @@ impl<'a> Emitter<'a> {
     ///   so a `{body}` hole never swaps (there is no build call there); but a branch position
     ///   whose *condition* is reactive still needs a builder for the not-server-rendered case.
     ///
-    /// `build()` also has to survive one *spurious* call: `hydrateChild` runs the build
-    /// template once on its first effect run purely to subscribe to the branch expression's
-    /// reactive deps, and throws the result away (docs/HYDRATION.md §3.1). Rebuilding there
-    /// would be worse than wasteful — the builder re-slots the component's `{children}`, and
-    /// `appendChild` *moves* those live server nodes into the discarded tree, silently
-    /// emptying the slot. So the adopt walk memoizes its root and the first `build()` after an
-    /// adopt hands that same node back untouched; only a genuine later swap builds fresh.
-    fn emit_jsx_value_local(&mut self, name: &str, node: &ViewNode) {
-        // The CSR build fn — a hoisted `function` declaration referenced by `build:` below.
-        let n = self.list_counter;
-        self.list_counter += 1;
-        let build_fn = format!("{}_vbuild{}", self.base, n);
-        for l in csr::emit_build_node_fn(self.lowered, &build_fn, node) {
-            self.line(l);
+    /// `build()` used to need a memo guarding one *spurious* call, because `hydrateChild` ran
+    /// the build template on its first effect run just to subscribe to the branch expression's
+    /// deps — which re-slotted the component's `{children}` and `appendChild`-moved those live
+    /// server nodes into the discarded tree. `hydrateChild` now takes a separate deps closure
+    /// (branches → `null`), so the spurious call is gone and `build()` only ever runs for a
+    /// genuine swap.
+    /// `rhs` is the right-hand side with each JSX node replaced by its `\u{0}i\u{0}`
+    /// placeholder — a lone placeholder for the bare shape, or a conditional whose branches are
+    /// placeholders. Each node gets a CSR build fn and an adopt fn, and the two templates are
+    /// the `rhs` with those calls substituted in, so a conditional evaluates its condition once
+    /// and adopts (or builds) only the branch it selects.
+    fn emit_jsx_value_local(&mut self, name: &str, rhs: &str, nodes: &[ViewNode]) {
+        let mut build_calls = Vec::with_capacity(nodes.len());
+        let mut adopt_calls = Vec::with_capacity(nodes.len());
+        for node in nodes {
+            let n = self.list_counter;
+            self.list_counter += 1;
+            let build_fn = format!("{}_vbuild{}", self.base, n);
+            let adopt_fn = format!("{}_vadopt{}", self.base, n);
+            for l in csr::emit_build_node_fn(self.lowered, &build_fn, node) {
+                self.line(l);
+            }
+            self.emit_value_adopt_fn(&adopt_fn, node);
+            build_calls.push(format!("{build_fn}()"));
+            adopt_calls.push(format!("{adopt_fn}(__vc)"));
         }
-        // The adopted-root memo. A closure variable, not a field: `adopt` is passed around
-        // unbound (`hydrateHole(cur, body.adopt)`), so it can't rely on `this`.
-        let memo = format!("{build_fn}_adopted");
-        self.line(format!("let {memo} = null;"));
-
-        // The adopt walk, emitted into a nested buffer so it can be wrapped in the closure.
-        // Reset the name counter so the closure's own locals (`el0`, `__c1`, …) are scoped to
-        // it; restore after so the outer walk's numbering is unaffected.
-        let saved_lines = std::mem::take(&mut self.lines);
-        let saved_counter = self.counter;
-        self.counter = 0;
-        let root = self.emit_node("__vc", node);
-        let adopt_body = std::mem::replace(&mut self.lines, saved_lines);
-        self.counter = saved_counter;
-
+        let build_expr = substitute_branches_pub(rhs, &build_calls);
+        let adopt_expr = substitute_branches_pub(rhs, &adopt_calls);
         self.line(format!("const {name} = {{"));
-        // Consume the memo: the adopted node is handed back exactly once (the subscribe-only
-        // run), and every call after that builds fresh.
-        self.line(format!(
-            "  build: () => {{ const __n = {memo}; {memo} = null; return __n ?? {build_fn}(); }},"
-        ));
-        self.line("  adopt: (__vc) => {".into());
-        for l in &adopt_body {
-            self.line(format!("    {l}"));
-        }
-        self.line(format!("    return ({memo} = {root});"));
-        self.line("  },".into());
+        self.line(format!("  build: () => ({build_expr}),"));
+        self.line(format!("  adopt: (__vc) => ({adopt_expr}),"));
         self.line("};".into());
         self.value_locals.push(name.to_string());
     }
 
+    /// Emit `const {fn_name} = (__vc) => { …; return root; };` — the adopt walk for one JSX
+    /// node of a value local, claiming off the cursor it is handed.
+    ///
+    /// An **arrow const**, not a hoisted `function`: the walk's bindings collect into the
+    /// enclosing sink (`this._cleanups` in a component), so the body must keep the outer
+    /// `this`. It also has to be *declared before use* rather than hoisted — which it is, since
+    /// the local's `{ build, adopt }` object is emitted right after.
+    fn emit_value_adopt_fn(&mut self, fn_name: &str, node: &ViewNode) {
+        // Emit into a nested buffer so it can be wrapped in the arrow. Reset the name counter
+        // so the closure's own locals (`el0`, `__c1`, …) are scoped to it; restore after so
+        // the outer walk's numbering is unaffected.
+        let saved_lines = std::mem::take(&mut self.lines);
+        let saved_counter = self.counter;
+        self.counter = 0;
+        let root = self.emit_node("__vc", node);
+        let body = std::mem::replace(&mut self.lines, saved_lines);
+        self.counter = saved_counter;
+
+        self.line(format!("const {fn_name} = (__vc) => {{"));
+        for l in &body {
+            self.line(format!("  {l}"));
+        }
+        self.line(format!("  return {root};"));
+        self.line("};".to_string());
+    }
+
     /// Substitute references to JSX-value locals in a dynamic-node branch expression: an
     /// adopt template turns `body` into `body.adopt(__ic)` (claim off the region cursor), a
-    /// build template into `body.build()`. Only whole-identifier tokens are replaced (never a
-    /// member access like `foo.body`), so an ordinary property named `body` is left alone.
-    fn substitute_value_locals(&self, expr: &str, adopt: bool) -> String {
+    /// build template into `body.build()`, and the deps template into `null` (evaluate the
+    /// condition, construct nothing — see [`Self::emit_dynamic_node`]). Only whole-identifier
+    /// tokens are replaced (never a member access like `foo.body`), so an ordinary property
+    /// named `body` is left alone.
+    fn substitute_value_locals(&self, expr: &str, mode: Subst) -> String {
         let mut out = expr.to_string();
         for name in &self.value_locals {
-            let replacement = if adopt {
-                format!("{name}.adopt(__ic)")
-            } else {
-                format!("{name}.build()")
+            let replacement = match mode {
+                Subst::Adopt => format!("{name}.adopt(__ic)"),
+                Subst::Build => format!("{name}.build()"),
+                Subst::Deps => "null".to_string(),
             };
             out = replace_ident(&out, name, &replacement);
         }
@@ -873,13 +903,24 @@ impl<'a> Emitter<'a> {
         let template = self.code(expr);
         let adopt_expr = substitute_branches_pub(&template, &adopt_calls);
         let build_expr = substitute_branches_pub(&template, &build_calls);
+        // The deps template: the same expression with every branch replaced by `null`.
+        // `hydrateChild`'s region effect must run *something* on first paint to subscribe to
+        // the condition's reads, but running the real build there constructs a subtree only to
+        // throw it away — and if a branch re-slots the component's `{children}`, `appendChild`
+        // moves those live server nodes into the discarded tree, emptying the slot. Evaluating
+        // the condition alone subscribes to the same reads and touches no DOM. (Reactivity
+        // *inside* a branch rides that branch's own bindText/bindAttr effects.)
+        let nulls = vec!["null".to_string(); branches.len()];
+        let deps_expr = substitute_branches_pub(&template, &nulls);
         // A branch may be a bare reference to a JSX-value local (`cond ? <a/> : body`): the
-        // adopt template claims it off the region cursor, the build template rebuilds it.
-        let adopt_expr = self.substitute_value_locals(&adopt_expr, true);
-        let build_expr = self.substitute_value_locals(&build_expr, false);
+        // adopt template claims it off the region cursor, the build template rebuilds it, the
+        // deps template drops it.
+        let adopt_expr = self.substitute_value_locals(&adopt_expr, Subst::Adopt);
+        let build_expr = self.substitute_value_locals(&build_expr, Subst::Build);
+        let deps_expr = self.substitute_value_locals(&deps_expr, Subst::Deps);
         self.uses.hydrate_child = true;
         self.bind(format!(
-            "hydrateChild({cur}, (__ic) => ({adopt_expr}), () => ({build_expr}))"
+            "hydrateChild({cur}, (__ic) => ({adopt_expr}), () => ({build_expr}), () => ({deps_expr}))"
         ));
     }
 
@@ -1019,21 +1060,25 @@ impl<'a> Emitter<'a> {
     }
 }
 
-/// Extract the binding name of a JSX-value local statement (`const body = <div/>`) when it
-/// has the adoptable shape: a single JSX expression bound to one plain identifier, i.e. the
-/// whole right-hand side is the one node placeholder (with only surrounding parens/whitespace).
-/// Returns `None` for anything else (`const map = { a: <A/> }`, `let x = c ? <A/> : <B/>`,
-/// destructuring, multiple nodes), which stays on the safe rebuild fallback.
+/// Split a JSX-value local statement into `(binding name, right-hand side)` when it has an
+/// adoptable shape, or `None` when it stays on the safe rebuild fallback.
 ///
-/// The templater has replaced the embedded JSX with a NUL placeholder (`\u{0}0\u{0}`); after
-/// removing it the RHS must be nothing but parentheses and whitespace for the statement to be
-/// a bare `const NAME = ( <jsx> )`.
-fn value_local_name(template: &str, nodes_len: usize) -> Option<String> {
-    if nodes_len != 1 {
-        return None;
-    }
-    let rest = template.replacen("\u{0}0\u{0}", "", 1);
-    let rest = rest.trim();
+/// The statement must bind one plain identifier (`const body = …`, not a destructuring
+/// pattern), and every JSX node in the right-hand side — marked by the templater as a NUL
+/// placeholder (`\u{0}i\u{0}`) — must sit in a **node position**, so that substituting an
+/// adopt/build call for it produces a valid expression that constructs exactly one subtree:
+///
+/// - `const body = <div/>` — the whole RHS is the placeholder.
+/// - `const body = cond ? <a/> : <b/>` (the layout idiom), with either branch allowed to be
+///   `null`/`undefined` instead.
+/// - `const body = cond && <a/>`.
+///
+/// Anything else — `const map = { a: <A/> }`, `const list = [<A/>, <B/>]`, a placeholder in
+/// the condition — returns `None`. Those aren't a single positional node, and the object case
+/// is never referenced by bare name anyway (the view reads `map.a`), so emitting a dual
+/// `{build, adopt}` object for it would be wrong as well as useless.
+fn value_local(template: &str) -> Option<(String, String)> {
+    let rest = template.trim();
     let rest = rest.strip_suffix(';').unwrap_or(rest).trim();
     let kw = ["const ", "let ", "var "].into_iter().find(|k| rest.starts_with(k))?;
     let after = rest[kw.len()..].trim_start();
@@ -1050,13 +1095,99 @@ fn value_local_name(template: &str, nodes_len: usize) -> Option<String> {
     if !is_ident {
         return None;
     }
-    // The placeholder is gone, so the RHS should now be only balancing parens/whitespace.
     let rhs = after[eq + 1..].trim();
-    if rhs.chars().all(|c| c == '(' || c == ')' || c.is_whitespace()) {
-        Some(name.to_string())
+    if is_positional_rhs(rhs) {
+        Some((name.to_string(), rhs.to_string()))
     } else {
         None
     }
+}
+
+/// Is every placeholder in `expr` in a node position (see [`value_local`])?
+fn is_positional_rhs(expr: &str) -> bool {
+    let e = strip_parens(expr);
+    if is_placeholder(e) || is_nullish(e) {
+        return true;
+    }
+    // `cond ? then : else` — the condition must build nothing, the branches must be nodes.
+    if let Some(q) = top_level(e, '?') {
+        // Guard `??`: that's a nullish coalesce, not a conditional.
+        if !e[q + 1..].starts_with('?') && !e[..q].ends_with('?') {
+            if let Some(colon) = top_level(&e[q + 1..], ':') {
+                let cond = &e[..q];
+                let then = &e[q + 1..q + 1 + colon];
+                let alt = &e[q + 1 + colon + 1..];
+                return !has_placeholder(cond) && is_positional_rhs(then) && is_positional_rhs(alt);
+            }
+        }
+    }
+    // `cond && <jsx/>`
+    if let Some(i) = top_level(e, '&') {
+        if e[i..].starts_with("&&") {
+            return !has_placeholder(&e[..i]) && is_positional_rhs(&e[i + 2..]);
+        }
+    }
+    false
+}
+
+/// Strip balanced surrounding parentheses and whitespace.
+fn strip_parens(s: &str) -> &str {
+    let mut s = s.trim();
+    while s.starts_with('(') && s.ends_with(')') && top_level(&s[1..s.len() - 1], ')').is_none() {
+        s = s[1..s.len() - 1].trim();
+    }
+    s
+}
+
+fn is_placeholder(s: &str) -> bool {
+    let s = strip_parens(s);
+    s.starts_with('\u{0}') && s.ends_with('\u{0}') && s.matches('\u{0}').count() == 2
+}
+
+fn is_nullish(s: &str) -> bool {
+    matches!(strip_parens(s), "null" | "undefined" | "false" | "\"\"")
+}
+
+fn has_placeholder(s: &str) -> bool {
+    s.contains('\u{0}')
+}
+
+/// Byte index of the first `needle` at nesting depth 0, outside string/template literals.
+/// `None` when there is none (or when the expression is unbalanced).
+fn top_level(s: &str, needle: char) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut depth = 0i32;
+    let mut quote: Option<u8> = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if let Some(q) = quote {
+            if c == b'\\' {
+                i += 2;
+                continue;
+            }
+            if c == q {
+                quote = None;
+            }
+        } else {
+            match c {
+                b'"' | b'\'' | b'`' => quote = Some(c),
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => {
+                    depth -= 1;
+                    if depth < 0 && c as char != needle {
+                        return None; // unbalanced — not an expression we can reason about
+                    }
+                }
+                _ => {}
+            }
+            if depth == 0 && c as char == needle {
+                return Some(i);
+            }
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Replace every whole-identifier occurrence of `ident` in `hay` with `replacement`. A match
@@ -1354,10 +1485,18 @@ mod tests {
         assert!(m.code.contains("runBuild(() => {"), "build wrapped in runBuild:\n{}", m.code);
         assert!(m.code.contains("runBuild"), "runBuild imported:\n{}", m.code);
         // The server-DOM discard still gates on the *true* flag (outside the wrapper), so a
-        // client-nav build with call-site children doesn't wrongly clear them.
+        // client-nav build with call-site children doesn't wrongly clear them — and it rescues
+        // the slotted content out of the rendered view first, so the rebuild can re-slot it.
         assert!(
-            m.code.contains("if (isHydrating() && this.firstChild) this.replaceChildren();"),
-            "server-DOM discard reads the real flag before the build:\n{}",
+            m.code.contains(
+                "if (isHydrating() && this.firstChild) { this._serverSlot = slotChildren(this); this.replaceChildren(); }"
+            ),
+            "server-DOM discard reads the real flag and rescues the slot:\n{}",
+            m.code,
+        );
+        assert!(
+            m.code.contains("const children = this._serverSlot ?? Array.from(this.childNodes);"),
+            "the rebuild captures the rescued slot children:\n{}",
             m.code,
         );
     }
@@ -1378,7 +1517,7 @@ mod tests {
         // `default_vbuild0`.
         assert!(hyd.contains("const body = {"), "dual object:\n{}", hyd);
         assert!(hyd.contains("default_vbuild0()"), "build delegates to the hoisted CSR fn:\n{}", hyd);
-        assert!(hyd.contains("adopt: (__vc) => {"), "adopt closure:\n{}", hyd);
+        assert!(hyd.contains("adopt: (__vc) => (default_vadopt0(__vc)),"), "adopt closure:\n{}", hyd);
         assert!(hyd.contains("claimElement(__vc, \"div\")"), "adopt walk claims body root:\n{}", hyd);
         // The `{body}` hole adopts via hydrateHole, not claimText.
         assert!(hyd.contains("hydrateHole(__c2, body.adopt);"), "hole adopts in place:\n{}", hyd);
@@ -1460,12 +1599,12 @@ mod tests {
     }
 
     #[test]
-    fn value_local_build_returns_the_adopted_node_once_instead_of_rebuilding() {
-        // Companion to the above. Seeding the children local is only safe because the value
-        // local's `build()` is inert on `hydrateChild`'s subscribe-only first run: that run
-        // evaluates the build template and discards the result, so a real rebuild there would
-        // `appendChild` the *live* slotted nodes into a throwaway tree and empty the slot.
-        // The adopt walk memoizes its root; the first `build()` hands it straight back.
+    fn value_local_build_is_never_called_on_the_subscribe_only_run() {
+        // Companion to the above. Seeding the children local is only safe because nothing
+        // rebuilds this branch on first paint: a rebuild would `appendChild` the *live*
+        // slotted nodes into a throwaway tree and empty the slot. `hydrateChild` gets a
+        // separate deps closure (branches → `null`) for its subscribe-only run, so `build()`
+        // runs only for a genuine later swap — no memo needed.
         let m = emit_component(
             "export default function Panel(props){ const frame = props.frame === true; \
              const body = <div class=\"b\"><article>{props.children}</article></div>; \
@@ -1477,21 +1616,71 @@ mod tests {
             .find("if (isHydrating() && this.firstChild) {")
             .map(|i| m.code[i..].to_string())
             .expect("adopt branch");
-        // The memo is a closure variable, not a field: `adopt` is passed unbound to
-        // `hydrateHole`, so it must never depend on `this`.
-        assert!(adopt.contains("let default_vbuild0_adopted = null;"), "memo declared:\n{}", adopt);
-        assert!(adopt.contains("return (default_vbuild0_adopted = el0);"), "adopt memoizes its root:\n{}", adopt);
+        assert!(adopt.contains("build: () => (default_vbuild0()),"), "plain builder:\n{}", adopt);
+        assert!(adopt.contains("return el0;"), "adopt returns its claimed root:\n{}", adopt);
+        // The deps closure drops the value-local reference entirely — the first run evaluates
+        // the condition and nothing else.
         assert!(
-            adopt.contains(
-                "build: () => { const __n = default_vbuild0_adopted; default_vbuild0_adopted = null; \
-                 return __n ?? default_vbuild0(); },"
-            ),
-            "build consumes the memo before falling back to a real build:\n{}",
+            adopt.contains("() => (frame ? null : null)"),
+            "deps closure nulls the branches:\n{}",
             adopt,
         );
-        // The bare-branch swap arm still routes through `build()` (not the raw builder), so it
-        // gets the memo behaviour.
+        // The swap arm still routes through `build()`.
         assert!(adopt.contains("body.build()"), "swap arm calls build():\n{}", adopt);
+    }
+
+    #[test]
+    fn conditional_jsx_value_local_adopts_the_rendered_branch() {
+        // The `BlogLayout` shape: `const body = post ? <post-view/> : <index-view/>`, rendered
+        // at a `{body}` hole. Both branches are node positions, so the local is adoptable — the
+        // condition is deterministic across server and client, so evaluating the adopt template
+        // selects the same branch the server rendered.
+        let m = emit_component(
+            "export default function L(props){ const post = props.post; \
+             const body = post ? <article class=\"p\">{props.children}</article> : <div class=\"i\">i</div>; \
+             return <main>{body}</main>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("const body = {"), "dual object:\n{}", m.code);
+        // One adopt fn + one build fn per branch, spliced back into the original conditional.
+        assert!(
+            m.code.contains("adopt: (__vc) => (post ? default_vadopt0(__vc) : default_vadopt1(__vc)),"),
+            "adopt template keeps the condition:\n{}",
+            m.code,
+        );
+        assert!(
+            m.code.contains("build: () => (post ? default_vbuild0() : default_vbuild1()),"),
+            "build template keeps the condition:\n{}",
+            m.code,
+        );
+        assert!(m.code.contains("hydrateHole"), "the hole adopts in place:\n{}", m.code);
+    }
+
+    #[test]
+    fn logical_and_jsx_value_local_is_adoptable() {
+        let m = emit_component(
+            "export default function L(props){ const extra = props.on && <span>x</span>; \
+             return <div>{extra}</div>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(
+            m.code.contains("adopt: (__vc) => (props.on.value && default_vadopt0(__vc)),"),
+            "adopt template keeps the guard:\n{}",
+            m.code,
+        );
+    }
+
+    #[test]
+    fn array_embedded_jsx_value_stays_non_adoptable() {
+        // A placeholder that isn't in a node position of a conditional — an array element —
+        // stays on the rebuild fallback: substituting an adopt call there would claim DOM that
+        // isn't at the cursor.
+        let m = emit_component(
+            "export default function C(props){ const tabs = [<a>1</a>, <b>2</b>]; \
+             return <section>{tabs[0]}</section>; }",
+        );
+        assert!(m.errors.iter().any(|e| e.contains("JSX-as-value")), "still errors:\n{:?}", m.errors);
+        assert!(!m.code.contains("hydrateHole"), "no in-place adoption:\n{}", m.code);
     }
 
     #[test]
@@ -1593,7 +1782,13 @@ mod tests {
         assert!(m.code.contains("claimElement(__c0, \"div\");"), "claim the view root:\n{}", m.code);
         assert!(m.code.contains("skipSlot(__c2);"), "step over the {{children}} slot:\n{}", m.code);
         // Build arm (client nav) still captures the call-site children.
-        assert!(m.code.contains("const children = Array.from(this.childNodes);"), "build-arm capture:\n{}", m.code);
+        // The build arm can also run over a server-rendered host (mismatch recovery), so its
+        // capture prefers the slot nodes rescued from the markers.
+        assert!(
+            m.code.contains("const children = this._serverSlot ?? Array.from(this.childNodes);"),
+            "build-arm capture:\n{}",
+            m.code,
+        );
         assert!(m.code.contains("import { cursor, claimElement, skipNode, skipSlot }"), "skipSlot imported:\n{}", m.code);
     }
 
@@ -1700,7 +1895,7 @@ mod tests {
         // hydrateChild gets the adopt closure (claims) and the build closure (swaps), both over
         // the same branch expression.
         assert!(
-            hyd.contains("hydrateChild(__c2, (__ic) => (open.value ? default_hnode0(__ic) : default_hnode1(__ic)), () => (open.value ? default_node0() : default_node1()))"),
+            hyd.contains("hydrateChild(__c2, (__ic) => (open.value ? default_hnode0(__ic) : default_hnode1(__ic)), () => (open.value ? default_node0() : default_node1()), () => (open.value ? null : null))"),
             "hydrateChild call:\n{}",
             hyd
         );
