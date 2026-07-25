@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-07-25
+
 ### Fixed
 
 - **`hydrateSlot` no longer adopts a component's children against a *nested* component's slot.**

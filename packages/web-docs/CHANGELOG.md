@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-07-25
+
 ### Tests
 
 - **New browser hydration e2e (`tests/e2e/hydration.mjs`) — the gap that let the docs shell ship
