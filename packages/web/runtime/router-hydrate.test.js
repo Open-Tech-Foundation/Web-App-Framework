@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { signal } from "../core/signals.js";
 import { bindText } from "./dom.js";
 import {
+  beginHydration,
   claimElement,
   claimRegionEnd,
   claimRegionStart,
@@ -221,5 +222,45 @@ describe("router boot — hydrate vs build", () => {
     expect(calls.hydratingDuringBuild).toBe(false);
     expect(isHydrating()).toBe(false);
     expect(root.textContent).toContain("BUILT");
+  });
+
+  test("a guard redirect on first paint leaves hydration before the target route builds", async () => {
+    // The server rendered `/`; a route guard redirects to `/docs` at boot. The target route
+    // must build fresh — its server DOM is the *previous* route's — so the first-paint flag
+    // has to be cleared before that build. It used to survive: this path returns before the
+    // `hydrate && match` block that clears it, so the flag stayed true for the rest of the
+    // session and every island the build created took the adopt arm against DOM its own
+    // parent had just created (`expected a region start marker, found <div>` on the live
+    // js-std site — and the same on every SPA navigation after it).
+    const calls = {};
+    registerRoutes({
+      "/proj/app/page.jsx": makeModule({}),
+      "/proj/app/docs/page.jsx": {
+        default() {
+          calls.build = true;
+          calls.hydratingDuringBuild = isHydrating();
+          const d = document.createElement("div");
+          d.textContent = "DOCS";
+          return d;
+        },
+      },
+    });
+    const root = serverRoot(true); // sentinel + `/` server markup
+    // In a browser the flag is seeded `true` at hydrate.js module load, from the sentinel in
+    // the already-parsed HTML (docs/HYDRATION.md §3.4) — that's what makes it leak. happy-dom
+    // imports the module against an empty document, so seed it here or the test can't see the
+    // bug at all (it passed against the unfixed router until this line existed).
+    beginHydration();
+
+    await mountApp({
+      target: root,
+      guard: (to, { next, redirect }) => (to.pathname === "/" ? redirect("/docs") : next()),
+    });
+    await new Promise((r) => setTimeout(r, 0)); // the redirect navigation is async
+
+    expect(calls.build).toBe(true); // the target route built…
+    expect(calls.hydratingDuringBuild).toBe(false); // …with hydration already left
+    expect(isHydrating()).toBe(false); // and the flag doesn't leak into later navigations
+    expect(root.textContent).toContain("DOCS");
   });
 });

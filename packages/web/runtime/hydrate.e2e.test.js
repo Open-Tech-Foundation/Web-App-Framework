@@ -378,6 +378,30 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     ' export default function P(){ let n=$state(0);' +
     ' return <main><Card><button class="inner" onclick={() => n++}>c {n}</button></Card></main>; }';
 
+  test("hydrateSlot still finds an unlabeled slot marker (older-compiler skew)", () => {
+    // The markers carry the owning host's tag, but `@opentf/web-cli` pins a compiler version,
+    // so this runtime can run against server HTML built by a compiler one release behind that
+    // emits bare `<!--c[-->`. A strict label comparison would make `hydrateSlot` a silent
+    // no-op — every slot's reactivity dead on first paint, nothing logged. Unlabeled markers
+    // must still resolve via the positional heuristic.
+    const host = document.createElement("web-card-1234abcd");
+    host.innerHTML = '<div class="card"><b>C</b><!--c[--><button class="inner">hi</button><!--c]--></div>';
+    let claimed = null;
+    hydrateSlot(host, (cur) => {
+      claimed = claimElement(cur, "button");
+    });
+    expect(claimed).toBe(host.querySelector("button.inner"));
+
+    // A labeled marker for a *different* host is still ignored (no false positive).
+    const other = document.createElement("web-card-1234abcd");
+    other.innerHTML = '<web-link><a><!--c[web-link--><span>x</span><!--c]web-link--></a></web-link>';
+    let ran = false;
+    hydrateSlot(other, () => {
+      ran = true;
+    });
+    expect(ran).toBe(false);
+  });
+
   test("a parent adopts a component's slotted children's reactivity (2.1d)", () => {
     // 1. Server render: the slot is bracketed by the distinct <!--c[-->…<!--c]--> markers,
     //    with the parent's <button class="inner"> rendered inside the host.

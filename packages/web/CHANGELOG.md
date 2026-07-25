@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A route-guard redirect on first paint no longer leaves the hydration flag set**
+  (`runtime/router.js`). The flag is seeded `true` from the server sentinel at module load, and
+  `navigate` clears it in the `finally` of its `hydrate && match` block — but a guard that
+  redirects returns *before* that block, so the flag stayed `true` for the rest of the session.
+  Every island created by the redirected build then saw `isHydrating() && this.firstChild` and
+  took the **adopt** arm against DOM its own parent had just `createElement`'d, mismatching
+  (`HydrationMismatch: expected a region start marker, found <div>`) and rebuilding — and so did
+  every SPA navigation after it. This is what broke the live `js-std.opentechf.org`, whose
+  guard redirects `/` → `/docs`: a single reported mismatch and a full rebuild of the shell,
+  navbar and 330-node sidebar on entry. The guard's `redirect`/`replace` now leave hydration
+  before the target route builds (that route's server DOM belongs to the route being left, so
+  building fresh is correct).
+- **`hydrateSlot` tolerates an unlabeled slot marker.** Slot markers now carry the owning host's
+  tag, but `@opentf/web-cli` pins `@opentf/web-compiler`, so this runtime can run against server
+  HTML produced by a compiler one release behind that still emits bare `<!--c[-->`. A strict
+  label comparison made the lookup match nothing — a silent no-op leaving every slot's
+  reactivity dead on first paint with nothing logged. An unlabeled marker now falls back to the
+  positional heuristic, so version skew degrades to the old behavior instead of a worse one.
+
 ## [0.23.0] - 2026-07-25
 
 ### Fixed

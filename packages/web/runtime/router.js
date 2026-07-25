@@ -413,15 +413,29 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
       query: Object.fromEntries(url.searchParams),
     };
     await new Promise((resolve) => {
+      // A guard redirect on **first paint** leaves hydration: the server DOM in `#app`
+      // belongs to the route we're leaving, so the target route has to build fresh. The
+      // hydration flag is seeded `true` from the server sentinel at module load, and this
+      // path returns before the `hydrate && match` block that clears it in its `finally` —
+      // so without this the flag stayed true for the rest of the session. Every island the
+      // redirected build creates would then see `isHydrating() && this.firstChild` and take
+      // the *adopt* arm against DOM its own parent had just `createElement`'d, mismatching
+      // (`expected a region start marker, found <div>`) and rebuilding — and so would every
+      // later SPA navigation. Clear it before the target navigation builds anything.
+      const leaveHydration = () => {
+        if (hydrate) endHydration();
+      };
       const tools = {
         next: () => resolve(),
         redirect: (p) => {
           redirected = true;
+          leaveHydration();
           navigate(p, true);
           resolve();
         },
         replace: (p) => {
           redirected = true;
+          leaveHydration();
           navigate(p, true);
           resolve();
         },

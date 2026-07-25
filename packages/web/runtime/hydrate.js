@@ -445,7 +445,15 @@ function findSlotStart(host) {
   const walker = document.createTreeWalker(host, 128 /* NodeFilter.SHOW_COMMENT */);
   let n;
   while ((n = walker.nextNode())) {
-    if (slotLabel(n, SLOT_START) !== tag) continue;
+    const label = slotLabel(n, SLOT_START);
+    // An **unlabeled** marker (`<!--c[-->`, empty label) comes from an older compiler that
+    // predates the labeling. Treat it as matching any host and fall through to the positional
+    // heuristic below, rather than matching nothing: this runtime can be installed alongside a
+    // compiler that is a release behind (`@opentf/web-cli` pins `@opentf/web-compiler`), and a
+    // strict comparison would make `hydrateSlot` a silent no-op for every component — every
+    // slot's reactivity dead on first paint, with nothing logged. Skew should degrade to the
+    // old behavior, not to a worse one.
+    if (label === null || (label !== "" && label !== tag)) continue;
     if (fallback === null) fallback = n;
     let nested = false;
     for (let p = n.parentNode; p && p !== host; p = p.parentNode) {
