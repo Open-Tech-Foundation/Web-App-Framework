@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **MDX no longer wraps block-level content in a `<p>`.** markdown-rs puts stacked JSX elements
+  (four `<Callout/>` lines in a row) and raw HTML blocks into a single paragraph, and the `<p>`
+  emitted around them is markup the browser **re-parses differently** — a `<p>` is closed by any
+  block-level start tag, so the content gets hoisted out of it. The hydration walk then claimed
+  the `<p>` and looked inside for children the parser had moved elsewhere
+  (`HydrationMismatch: expected <h1>, found nothing`), which bails the **whole route** to a
+  client-side rebuild — two docs pages rebuilt ~85% of their nodes, layout, navbar and sidebar
+  included. A paragraph whose entire content is raw HTML and/or JSX elements now emits those
+  blocks directly; a paragraph mixing prose with an inline element keeps its `<p>`.
+- **A component's `{children}` slot markers now carry the owning host's tag** —
+  `<!--c[web-card-8e61e2ff-->…<!--c]web-card-8e61e2ff-->` instead of bare `<!--c[-->`. Slot
+  regions nest: a component that forwards `{children}` into another
+  (`<Card>` → `<Link>{children}</Link>`) emits its markers *inside* that component's, and a
+  forwarding parent adds a third pair at the same spot. Unlabeled, neither the component's own
+  walk nor the composing parent could tell which pair was its own — the walk stopped at the
+  first close it met and overran (`expected <span>, found comment <!--c]-->`), and the parent
+  adopted its children against another component's region and lost them
+  (`expected a children-slot marker, found <span>`). **Requires `@opentf/web` ≥ 0.23.0**, which
+  reads the labels.
+- **`const body = cond ? <a/> : <b/>` is now adoptable.** JSX-value-local support previously
+  accepted only the bare `const NAME = <jsx>` shape, so the common layout idiom — including
+  `@opentf/web-docs`' own `BlogLayout` — stayed on the rebuild fallback and discarded the server
+  DOM (with the page content slotted into it) on first paint. A right-hand side that puts every
+  JSX node in a *node position* (a bare node, `cond ? X : Y` with either branch nullish, or
+  `cond && X`) is now emitted as a dual `{ build, adopt }` object whose templates keep the
+  condition, so adoption selects the branch the server rendered. Non-positional shapes
+  (`{ a: <A/> }`, `[<A/>, <B/>]`) still fall back.
+- **A conditional region no longer steals the component's slotted children on first paint.** The
+  region effect ran the *build* template once just to subscribe to the condition's dependencies
+  and threw the result away — but when a branch re-slots `{children}`, `appendChild` **moves**
+  those live server nodes into the discarded tree, silently emptying the slot. The generated code
+  now passes a separate dependency-only closure (the same expression with every branch replaced
+  by `null`), so the subscribe run touches no DOM.
+- **A component that can't be adopted keeps the content slotted into it.** The rebuild fallback
+  and the per-component mismatch recovery cleared the host and *then* captured `this.childNodes`
+  as the call-site children — but on a server-rendered host those are the rendered view, so the
+  capture came back empty and the parent's slotted content was destroyed rather than re-slotted.
+  Both paths now recover the slot nodes from their markers first. A non-adoptable component
+  still flashes, but nothing disappears.
+
 ## [0.11.0] - 2026-07-24
 
 ### Fixed
