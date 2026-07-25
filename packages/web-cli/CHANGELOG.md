@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-07-25
+
 ### Tests
 
 - The `hydrate-browser` e2e fixture's `<Framed>` slot moves back *after* its nested `<Tree>`.
