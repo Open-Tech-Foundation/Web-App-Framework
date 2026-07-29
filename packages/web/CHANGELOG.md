@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-07-29
+
 ### Performance
 
 - **A route's page and layout chunks now download in parallel** (`runtime/router.js`).
