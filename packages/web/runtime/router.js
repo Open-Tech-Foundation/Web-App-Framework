@@ -206,6 +206,28 @@ export async function resolveFactory(entry) {
 }
 
 /**
+ * Resolve every route entry *in parallel* and return them in order.
+ *
+ * A route's page and its whole layout chain are separate code-split chunks, and all
+ * of them are known before the first `import()` starts — so resolving them one after
+ * another would stack their network latencies (a page under two layouts pays 3× the
+ * round trip instead of 1×). Starting every `import()` in the same tick lets the
+ * browser fetch them concurrently.
+ *
+ * `Promise.allSettled` rather than `Promise.all`: `all` rejects on the first failure
+ * while the other imports are still in flight, so a second failure (a redeploy 404s
+ * *every* stale chunk, not just one) would surface as an unhandled rejection. Settle
+ * first, then rethrow the earliest failure — `navigate` still sees the same chunk-load
+ * error it needs for stale-chunk recovery.
+ */
+async function resolveAll(entries, resolve) {
+  const settled = await Promise.allSettled(entries.map((e) => resolve(e)));
+  const failed = settled.find((r) => r.status === "rejected");
+  if (failed) throw failed.reason;
+  return settled.map((r) => r.value);
+}
+
+/**
  * Build the DOM node for a matched route: the page factory wrapped by its layout
  * chain (most-specific inward, root outermost). Returns the outermost `node` plus
  * the ordered `nodes` list (page → … → root) so callers can run lifecycle on each.
@@ -213,13 +235,15 @@ export async function resolveFactory(entry) {
  */
 export async function buildRouteNode(match, query = {}) {
   const props = { params: match.params, query };
-  const pageFactory = await resolveFactory(match.entry);
+  const chain = layoutChain(match.route);
+  const [pageFactory, ...layoutFactories] = await resolveAll(
+    [match.entry, ...chain],
+    resolveFactory,
+  );
   let node = pageFactory(props);
   const nodes = [node];
-  const chain = layoutChain(match.route);
   for (let i = chain.length - 1; i >= 0; i--) {
-    const layout = await resolveFactory(chain[i]);
-    node = layout({ ...props, children: node });
+    node = layoutFactories[i]({ ...props, children: node });
     nodes.push(node);
   }
   return { node, nodes };
@@ -237,15 +261,14 @@ export async function buildRouteNode(match, query = {}) {
  */
 export async function hydrateRouteNode(match, query, rootEl) {
   const props = { params: match.params, query };
-  const pageMod = await resolveModule(match.entry);
-  if (!pageMod || typeof pageMod.hydrateAt !== "function") return null;
   const chain = layoutChain(match.route);
-  const layoutMods = [];
-  for (const entry of chain) {
-    const m = await resolveModule(entry);
-    if (!m || typeof m.hydrateAt !== "function") return null; // whole chain must be adoptable
-    layoutMods.push(m);
-  }
+  // Page + layout chunks download concurrently (see `resolveAll`). Adoptability is
+  // checked after they all land rather than short-circuiting on the page: bailing
+  // early would only skip imports the CSR fallback below is about to need anyway.
+  const [pageMod, ...layoutMods] = await resolveAll([match.entry, ...chain], resolveModule);
+  if (!pageMod || typeof pageMod.hydrateAt !== "function") return null;
+  // The whole chain must be adoptable — one non-adoptable layout means a clean CSR build.
+  if (layoutMods.some((m) => !m || typeof m.hydrateAt !== "function")) return null;
 
   // Compose the adopt thunks innermost-first: the page, then each layout wrapping it. Each
   // thunk pushes its claimed root node, so `nodes` ends up page → … → outermost (the inner

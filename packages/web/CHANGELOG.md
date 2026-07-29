@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Performance
+
+- **A route's page and layout chunks now download in parallel** (`runtime/router.js`).
+  `buildRouteNode` and `hydrateRouteNode` awaited each `import()` in turn — the page chunk, then
+  layout 1, then layout 2 — so a page under two layouts paid three stacked round trips (~1.1s at
+  ~350–400ms per chunk) where one would do. Nothing required the serialization: `layoutChain`
+  knows the whole set before the first import starts. Both now resolve every entry in a single
+  `resolveAll` batch, which affects first paint *and* every SPA navigation on every app.
+
+  `resolveAll` settles all imports before rethrowing the earliest failure, rather than using
+  `Promise.all`. After a redeploy *every* stale chunk 404s, and `Promise.all` would reject on the
+  first while leaving the others' rejections unhandled; the stale-chunk reload recovery still sees
+  the same `isChunkLoadError` it did before.
+
 ## [0.24.0] - 2026-07-25
 
 ### Fixed

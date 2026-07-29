@@ -203,6 +203,91 @@ describe("router", () => {
       clearReloadFlag();
     }
   });
+
+  test("page + layout chunks download concurrently, not one after another", async () => {
+    const app = document.createElement("div");
+    document.body.appendChild(app);
+
+    // Each lazy entry records when its "download" starts and finishes. Serial loading
+    // would show start(n) only after finish(n-1); concurrent loading interleaves them.
+    const events = [];
+    const chunk = (name, factory) => () => {
+      events.push(`start:${name}`);
+      return new Promise((resolve) =>
+        setTimeout(() => {
+          events.push(`end:${name}`);
+          resolve({ default: factory });
+        }, 10),
+      );
+    };
+    const wrap = (cls) => (props) => {
+      const d = document.createElement("div");
+      d.className = cls;
+      d.appendChild(props.children);
+      return d;
+    };
+
+    // Layouts are scoped under /docs (never the root) — `routes.layouts` is module
+    // state shared across tests, and a root layout here would wrap every other test's
+    // home page.
+    const pages = {
+      "/proj6/app/docs/layout.jsx": chunk("outer-layout", wrap("outer")),
+      "/proj6/app/docs/intro/layout.jsx": chunk("inner-layout", wrap("inner")),
+      "/proj6/app/docs/intro/page.jsx": chunk("page", page("intro")),
+    };
+
+    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/docs/intro");
+    window.history.replaceState({}, "", "/docs/intro");
+    mountApp({ pages, target: app });
+    await new Promise((r) => setTimeout(r, 50));
+
+    // All three started before any finished — one round trip, not three stacked.
+    expect(events).toHaveLength(6);
+    expect(events.slice(0, 3).every((e) => e.startsWith("start:"))).toBe(true);
+    // …and the layout chain still composes outermost-first around the page.
+    expect(app.querySelector(".outer .inner")?.textContent).toBe("intro");
+  });
+
+  test("a chunk failure still surfaces even when a sibling chunk fails too", async () => {
+    const app = document.createElement("div");
+    document.body.appendChild(app);
+    const pages = {
+      "/proj7/app/page.jsx": { default: page("home") },
+      // Both the page and its layout 404 — the redeploy case, where every stale chunk
+      // fails. The second rejection must not escape as an unhandled rejection.
+      "/proj7/app/stale/layout.jsx": chunkError,
+      "/proj7/app/stale/page.jsx": chunkError,
+    };
+
+    const unhandled = [];
+    const onUnhandled = (e) => {
+      unhandled.push(e);
+      e.preventDefault?.();
+    };
+    window.addEventListener("unhandledrejection", onUnhandled);
+    let reloads = 0;
+    const origReload = window.location.reload;
+    window.location.reload = () => {
+      reloads++;
+    };
+    clearReloadFlag();
+
+    try {
+      if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
+      window.history.replaceState({}, "", "/");
+      mountApp({ pages, target: app });
+      await tick();
+
+      await navigate("/stale");
+      await tick();
+      expect(reloads).toBe(1); // recognized as a chunk-load error, recovery still runs
+      expect(unhandled).toHaveLength(0);
+    } finally {
+      window.removeEventListener("unhandledrejection", onUnhandled);
+      window.location.reload = origReload;
+      clearReloadFlag();
+    }
+  });
 });
 
 describe("i18n locale routing (prefix_except_default)", () => {
