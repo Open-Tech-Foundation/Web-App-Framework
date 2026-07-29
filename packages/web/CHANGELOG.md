@@ -16,6 +16,13 @@
   first while leaving the others' rejections unhandled; the stale-chunk reload recovery still sees
   the same `isChunkLoadError` it did before.
 
+### Changed
+
+- `renderRoute` additionally returns `route` (the matched pattern, `null` for the 404 fallback)
+  and `collectRoutePaths` entries carry `route` alongside `path`/`params` — so the toolchain can
+  key build-time, per-route data (the chunk manifest behind `<link rel="modulepreload">`) by
+  pattern. Purely additive.
+
 ## [0.24.0] - 2026-07-25
 
 ### Fixed

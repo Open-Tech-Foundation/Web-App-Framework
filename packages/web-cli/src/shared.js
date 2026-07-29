@@ -559,6 +559,100 @@ export function routeKey(filePath, appDir) {
   return `/app${stripAppPrefix(filePath, appDir)}`;
 }
 
+/** The route pattern a page/layout/404 file registers under — mirrors the runtime's
+ *  `routeFromPath` (packages/web/runtime/router.js), but anchored on the known `appDir`. */
+function routePatternFor(filePath, appDir) {
+  const r = stripAppPrefix(filePath, appDir).replace(/\/(page|layout|404)\.(jsx|tsx|mdx|md)$/, "");
+  return r === "" ? "/" : r;
+}
+
+/**
+ * Which code-split chunks each route's first paint needs, as `/assets/…` hrefs — the
+ * page chunk, its layout chain's chunks, and everything those statically import.
+ *
+ * Without this the browser can't know: the pre-rendered HTML references only the CSS and
+ * `bundle.js`, so the route chunks are discovered only *after* `bundle.js` downloads and
+ * runs, serializing HTML → bundle → route chunks. Emitting `<link rel="modulepreload">`
+ * for them in the `<head>` lets the preload scanner fetch them alongside `bundle.js`.
+ *
+ * Chunks the entry bundle already pulls in statically are excluded — they arrive with
+ * `bundle.js` regardless, so preloading them would just duplicate work.
+ *
+ * Returns `{ routes: { [pattern]: hrefs }, notFound: hrefs }`. The 404 page carries no
+ * layouts, matching `layoutChain(null)` in the runtime.
+ */
+export function routeChunkManifest({ output, pages, appDir, entryFileName, assetBase = "/assets/" }) {
+  const chunks = output.filter((o) => o.type === "chunk");
+  const byFile = new Map(chunks.map((c) => [c.fileName, c]));
+  const byModule = new Map();
+  for (const c of chunks) {
+    for (const id of c.moduleIds || []) if (!byModule.has(id)) byModule.set(id, c);
+    if (c.facadeModuleId) byModule.set(c.facadeModuleId, c);
+  }
+
+  // Transitive static-import closure of a chunk, as file names, BFS from the chunk itself.
+  const closure = (start) => {
+    const seen = new Set();
+    const queue = [start];
+    while (queue.length) {
+      const file = queue.shift();
+      if (!file || seen.has(file)) continue;
+      seen.add(file);
+      for (const imp of byFile.get(file)?.imports || []) queue.push(imp);
+    }
+    return seen;
+  };
+  const eager = closure(entryFileName);
+
+  // Split the discovered route files exactly the way `registerRoutes` does.
+  const layouts = new Map();
+  const pageFiles = new Map();
+  let notFoundFile = null;
+  for (const p of pages) {
+    if (/\/404\.(jsx|tsx)$/.test(p)) notFoundFile = p;
+    else if (/\/layout\.(jsx|tsx)$/.test(p)) layouts.set(routePatternFor(p, appDir), p);
+    else pageFiles.set(routePatternFor(p, appDir), p);
+  }
+
+  const layoutChainFor = (route) => {
+    const chain = [];
+    let p = route;
+    while (true) {
+      if (layouts.has(p)) chain.unshift(layouts.get(p));
+      if (p === "/") break;
+      p = p.slice(0, p.lastIndexOf("/")) || "/";
+    }
+    return chain;
+  };
+
+  const hrefsFor = (files) => {
+    const out = [];
+    const seen = new Set();
+    for (const file of files) {
+      const chunk = byModule.get(file);
+      if (!chunk) continue;
+      for (const name of closure(chunk.fileName)) {
+        if (eager.has(name) || seen.has(name)) continue;
+        seen.add(name);
+        out.push(assetBase + name);
+      }
+    }
+    return out;
+  };
+
+  const routes = {};
+  for (const [route, file] of pageFiles) {
+    routes[route] = hrefsFor([file, ...layoutChainFor(route)]);
+  }
+  return { routes, notFound: notFoundFile ? hrefsFor([notFoundFile]) : [] };
+}
+
+/** `<link rel="modulepreload">` tags for a route's chunk hrefs (`""` when there are none). */
+export function modulepreloadTags(hrefs) {
+  if (!hrefs || hrefs.length === 0) return "";
+  return hrefs.map((h) => `<link rel="modulepreload" href="${h}">`).join("\n");
+}
+
 /** The page URL for a `.../app/<...>/page.{mdx,md,jsx,tsx}` file (folder = URL). */
 export function pageRouteFromPath(filePath, appDir) {
   const r = stripAppPrefix(filePath, appDir).replace(/\/page\.(mdx|md|jsx|tsx)$/, "");

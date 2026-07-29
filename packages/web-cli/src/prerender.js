@@ -13,6 +13,7 @@ import {
   injectHydrationData,
   injectMarkup,
   injectRouteData,
+  modulepreloadTags,
   withHtmlLang,
 } from "./shared.js";
 
@@ -83,7 +84,7 @@ function escapeXml(s) {
  * Pre-render the app to static HTML files under `outDir`. Returns
  * `{ count, skipped, failed }`.
  */
-export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", docsPlugins = [], lastUpdated = {}, i18n = null, loaders = null, onCompile, onRender }) {
+export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", docsPlugins = [], lastUpdated = {}, i18n = null, loaders = null, chunkManifest = null, onCompile, onRender }) {
   const { mod, cleanup } = await buildServerBundle({ root, pages, webEntry, otfwc, docsPlugins, i18n, onCompile });
 
   // i18n (docs/I18N.md §6): pre-render each route once per locale. The default
@@ -95,10 +96,14 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
   const defaultLocale = i18nOn ? i18n.defaultLocale : null;
 
   const { paths, skipped } = await mod.collectRoutePaths();
+
+  // `<link rel="modulepreload">` for the page + layout chunks this route will import,
+  // so the browser fetches them in parallel with `bundle.js` rather than after it.
+  const preloadFor = (route) => modulepreloadTags(chunkManifest?.routes?.[route]);
   const failed = [];
   const rendered = []; // concrete paths that produced an HTML file (for the sitemap)
   let renderedCount = 0;
-  for (const { path, params } of paths) {
+  for (const { path, params, route } of paths) {
     onRender?.(++renderedCount, paths.length);
     for (const locale of locales) {
       const urlPath = localizeFor(path, locale, defaultLocale);
@@ -121,6 +126,8 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
           ? { ...metadata, links: [...(metadata.links || []), ...alternatesFor(path, locales, defaultLocale)] }
           : metadata;
         let head = mod.renderHead(meta, { path: urlPath, baseUrl });
+        const preload = preloadFor(route);
+        if (preload) head += `\n${preload}`;
         // SEO: expose the page's last-updated time (git/frontmatter) as Open Graph's
         // article:modified_time so crawlers see when the content actually changed.
         const iso = lastUpdated[path];
@@ -160,7 +167,9 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
   try {
     const result = await mod.renderRoute("/__otfw_404__");
     if (result) {
-      const head = mod.renderHead({ robots: "noindex", ...result.metadata }, { baseUrl });
+      let head = mod.renderHead({ robots: "noindex", ...result.metadata }, { baseUrl });
+      const preload = modulepreloadTags(chunkManifest?.notFound);
+      if (preload) head += `\n${preload}`;
       writeFileSync(
         join(outDir, "404.html"),
         injectHydrationData(injectMarkup(injectHead(shellHtml, head), result.html), result.hydration),

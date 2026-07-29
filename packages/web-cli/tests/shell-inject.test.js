@@ -8,6 +8,8 @@ import {
   entrySource,
   injectHead,
   injectMarkup,
+  modulepreloadTags,
+  routeChunkManifest,
   serverEntrySource,
   stampHydrateSentinel,
   withHtmlLang,
@@ -158,6 +160,75 @@ describe("entrySource route-map keys", () => {
   test("a custom loaderUrl (dev server) still gets the real file path", () => {
     const src = entrySource(pages, appDir, (p) => `/__route${p.replace(appDir, "")}`);
     expect(src).toContain(`["/app/docs/page.jsx"]: () => import("/__route/docs/page.jsx")`);
+  });
+});
+
+describe("routeChunkManifest", () => {
+  // A miniature Rolldown output: the entry statically pulls in `shared`, each route is
+  // its own dynamically-imported chunk, and /docs' page shares a `md` chunk with nobody.
+  const chunk = (fileName, moduleIds, imports = []) => ({
+    type: "chunk",
+    fileName,
+    facadeModuleId: moduleIds[0],
+    moduleIds,
+    imports,
+  });
+  const appDir = "/r/app";
+  const pages = [
+    "/r/app/layout.jsx",
+    "/r/app/page.jsx",
+    "/r/app/docs/layout.jsx",
+    "/r/app/docs/[slug]/page.jsx",
+    "/r/app/404.jsx",
+  ];
+  const output = [
+    chunk("bundle-A.js", ["/r/.otfw/entry.js"], ["shared-S.js"]),
+    chunk("shared-S.js", ["/r/shared.js"]),
+    chunk("layout-L.js", ["/r/app/layout.jsx"], ["shared-S.js"]),
+    chunk("page-H.js", ["/r/app/page.jsx"]),
+    chunk("layout-D.js", ["/r/app/docs/layout.jsx"]),
+    chunk("page-S.js", ["/r/app/docs/[slug]/page.jsx"], ["md-M.js"]),
+    chunk("md-M.js", ["/r/markdown.js"]),
+    chunk("404-N.js", ["/r/app/404.jsx"]),
+    { type: "asset", fileName: "style-C.css" },
+  ];
+  const manifest = routeChunkManifest({ output, pages, appDir, entryFileName: "bundle-A.js" });
+
+  test("a nested route lists its page chunk plus every layout in its chain", () => {
+    // Page (and what it statically imports) first, then the layout chain outermost-in —
+    // the same order `layoutChain` yields at runtime.
+    expect(manifest.routes["/docs/[slug]"]).toEqual([
+      "/assets/page-S.js",
+      "/assets/md-M.js",
+      "/assets/layout-L.js",
+      "/assets/layout-D.js",
+    ]);
+  });
+
+  test("chunks the entry already imports statically are left out (bundle.js brings them)", () => {
+    // The root layout imports shared-S.js, but so does the entry — no point preloading it.
+    expect(manifest.routes["/"]).toEqual(["/assets/page-H.js", "/assets/layout-L.js"]);
+  });
+
+  test("the 404 carries no layout chain, matching layoutChain(null) at runtime", () => {
+    expect(manifest.notFound).toEqual(["/assets/404-N.js"]);
+  });
+
+  test("every page route is keyed by its pattern, layouts are not routes", () => {
+    expect(Object.keys(manifest.routes).sort()).toEqual(["/", "/docs/[slug]"]);
+  });
+});
+
+describe("modulepreloadTags", () => {
+  test("renders one link per chunk", () => {
+    expect(modulepreloadTags(["/assets/a.js", "/assets/b.js"])).toBe(
+      `<link rel="modulepreload" href="/assets/a.js">\n<link rel="modulepreload" href="/assets/b.js">`,
+    );
+  });
+
+  test("empty/missing input renders nothing (so callers can append unconditionally)", () => {
+    expect(modulepreloadTags([])).toBe("");
+    expect(modulepreloadTags(undefined)).toBe("");
   });
 });
 

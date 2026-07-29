@@ -4,6 +4,15 @@
 
 ### Performance
 
+- **Server-rendered HTML now hints its route chunks with `<link rel="modulepreload">`.** The
+  pre-rendered `<head>` listed only the stylesheet and `bundle.js`, so the browser learned which
+  page/layout chunks it needed only after `bundle.js` had downloaded *and run* — a four-step
+  chain (HTML → bundle → page → layouts) where two steps suffice. `routeChunkManifest` maps each
+  route to the chunks its first paint imports (page + layout chain + their static imports, minus
+  anything the entry bundle already pulls in), and both SSG pre-render and `otfw serve` emit those
+  links per route. The client build writes `dist/server/preload.json` so SSR can key off the
+  pattern `renderRoute` now returns; a missing or malformed manifest just means no hints.
+
 - **The client route map no longer ships absolute build paths.** `entrySource` used each route
   file's absolute path as its map key, so the entry bundle carried one copy of the build machine's
   checkout prefix per route — ~8KB of a 50KB bundle on the critical path for a large site, and a

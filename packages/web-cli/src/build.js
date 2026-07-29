@@ -35,6 +35,7 @@ import {
   loadProject,
   otfwPlugin,
   readHtmlShell,
+  routeChunkManifest,
   workerAssetsPlugin,
   runBlogFeed,
   runDocsSearchIndex,
@@ -155,6 +156,14 @@ export async function runBuild(options = {}) {
     result.output.find((o) => o.type === "chunk" && o.isEntry);
   const bundleHref = `/assets/${entryChunk.fileName}`;
 
+  // Which chunks each route's first paint needs, so the pre-rendered/SSR'd HTML can
+  // hint them with `<link rel="modulepreload">` instead of leaving the browser to
+  // discover them only after `bundle.js` has downloaded and run. Only meaningful when
+  // there's server-rendered HTML per route — a CSR build serves one shell for all of them.
+  const chunkManifest = hydrate
+    ? routeChunkManifest({ output: result.output, pages, appDir, entryFileName: entryChunk.fileName })
+    : null;
+
   // Compose dist/index.html from the project shell: strip module entry scripts,
   // compile + hash any local stylesheet links, and inject the bundle. When the
   // client was built for hydration, stamp the `#app` sentinel so the client adopts
@@ -192,6 +201,13 @@ export async function runBuild(options = {}) {
   const script = `<script type="module" src="${bundleHref}"></script>\n`;
   html = injectBeforeBody(html, script);
   writeFileSync(join(outDir, "index.html"), html);
+
+  // Persist the manifest for `otfw serve`: SSR renders each navigation at request time,
+  // so it needs the same route → chunk mapping the SSG pass uses below.
+  if (chunkManifest) {
+    mkdirSync(join(outDir, "server"), { recursive: true });
+    writeFileSync(join(outDir, "server", "preload.json"), JSON.stringify(chunkManifest));
+  }
 
   const chunks = result.output.filter((o) => o.type === "chunk").length;
   buildStep.done(`Compiled ${pages.length} routes · bundled ${chunks} chunks`);
@@ -235,6 +251,7 @@ export async function runBuild(options = {}) {
       lastUpdated,
       i18n: config?.i18n,
       loaders,
+      chunkManifest,
       onCompile: (id) => ssgStep.update(`compiling ${basename(id)}  (${++ssgCompiled})`),
       onRender: (done, total) => ssgStep.update(`rendering ${done}/${total}`),
     });

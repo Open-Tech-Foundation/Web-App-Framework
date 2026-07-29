@@ -41,6 +41,7 @@ import {
   loadConfig,
   loadDocsPlugins,
   loadProject,
+  modulepreloadTags,
   withHtmlLang,
 } from "./shared.js";
 
@@ -110,6 +111,17 @@ export async function runServe() {
     process.exit(1);
   }
   const shell = readFileSync(shellPath, "utf8");
+
+  // Route → code-split chunks, written by the client build. Lets each SSR'd page hint
+  // its own chunks with `<link rel="modulepreload">` so the browser fetches them
+  // alongside `bundle.js` instead of discovering them only once the bundle has run.
+  const preloadPath = join(distDir, "server", "preload.json");
+  let chunkManifest = null;
+  try {
+    if (existsSync(preloadPath)) chunkManifest = JSON.parse(readFileSync(preloadPath, "utf8"));
+  } catch {
+    // A malformed/partial manifest costs performance, never correctness — serve without it.
+  }
 
   const pages = discoverPages(appDir, exclude);
   const config = await loadConfig(root);
@@ -242,7 +254,13 @@ export async function runServe() {
     const meta = i18nOn
       ? { ...result.metadata, links: [...(result.metadata.links || []), ...alternatesFor(stripLocale(url.pathname))] }
       : result.metadata;
-    const head = mod.renderHead(meta, { path: url.pathname, baseUrl });
+    let head = mod.renderHead(meta, { path: url.pathname, baseUrl });
+    // `result.route` is the matched pattern; a 404 fallback has none, so it uses the
+    // manifest's `notFound` entry (which carries no layouts, like the runtime's chain).
+    const preload = modulepreloadTags(
+      result.route ? chunkManifest?.routes?.[result.route] : chunkManifest?.notFound,
+    );
+    if (preload) head += `\n${preload}`;
     const localizedShell = i18nOn ? withHtmlLang(shell, localeOf(url.pathname)) : shell;
     const html = injectRouteData(
       injectHydrationData(injectMarkup(injectHead(localizedShell, head), result.html), result.hydration),

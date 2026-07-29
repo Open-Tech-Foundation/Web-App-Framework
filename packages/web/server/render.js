@@ -60,7 +60,9 @@ export async function renderRoute(pathname, params = null, search = "", { data }
     params: match.params,
     query,
   });
-  return { html, metadata, status: real ? 200 : 404, hydration };
+  // `route` is the matched *pattern* ("/docs/[slug]", null for the 404 fallback) — the
+  // toolchain keys its per-route chunk manifest by it to emit `<link rel="modulepreload">`.
+  return { html, metadata, status: real ? 200 : 404, hydration, route: match.route };
 }
 
 /** Back-compat / convenience: render just the `#app` markup for `pathname`. */
@@ -77,10 +79,12 @@ function fillRoute(route, params) {
 }
 
 /**
- * Enumerate the concrete paths to pre-render as `{ path, params }`. Static routes
+ * Enumerate the concrete paths to pre-render as `{ path, params, route }`. Static routes
  * are taken as-is (`params: {}`); dynamic routes (`[param]`) are expanded via the
  * page module's optional `getStaticPaths()` (returning `[{ params }]`), carrying the
- * params forward so the renderer/`generateMetadata` see them. Dynamic routes without
+ * params forward so the renderer/`generateMetadata` see them. `route` is the pattern the
+ * concrete path came from, so the caller can look the path up in pattern-keyed build data
+ * (the chunk manifest behind `<link rel="modulepreload">`). Dynamic routes without
  * `getStaticPaths` are collected as `skipped`.
  */
 export async function collectRoutePaths() {
@@ -88,7 +92,7 @@ export async function collectRoutePaths() {
   const skipped = [];
   for (const route in routes.pages) {
     if (!route.includes("[")) {
-      paths.push({ path: route, params: {} });
+      paths.push({ path: route, params: {}, route });
       continue;
     }
     const ns = routes.pages[route];
@@ -97,7 +101,7 @@ export async function collectRoutePaths() {
     if (typeof getStaticPaths === "function") {
       for (const entry of (await getStaticPaths()) || []) {
         const params = entry.params || entry;
-        paths.push({ path: fillRoute(route, params), params });
+        paths.push({ path: fillRoute(route, params), params, route });
       }
     } else {
       skipped.push(route);
