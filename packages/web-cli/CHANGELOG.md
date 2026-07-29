@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-07-29
+
 ### Performance
 
 - **Server-rendered HTML now hints its route chunks with `<link rel="modulepreload">`.** The
