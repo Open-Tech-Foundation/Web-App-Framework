@@ -139,6 +139,28 @@ describe("serverEntrySource", () => {
   });
 });
 
+describe("entrySource route-map keys", () => {
+  const pages = ["/opt/buildhome/repo/website/app/page.jsx", "/opt/buildhome/repo/website/app/docs/page.jsx"];
+  const appDir = "/opt/buildhome/repo/website/app";
+
+  test("keys are app-relative — the build machine's path never ships", () => {
+    const src = entrySource(pages, appDir);
+    expect(src).toContain(`["/app/page.jsx"]: () => import(`);
+    expect(src).toContain(`["/app/docs/page.jsx"]: () => import(`);
+    expect(src).not.toContain(`["/opt/buildhome`);
+  });
+
+  test("the import specifier stays absolute so the bundler can resolve it", () => {
+    const src = entrySource(pages, appDir);
+    expect(src).toContain(`import("/opt/buildhome/repo/website/app/page.jsx")`);
+  });
+
+  test("a custom loaderUrl (dev server) still gets the real file path", () => {
+    const src = entrySource(pages, appDir, (p) => `/__route${p.replace(appDir, "")}`);
+    expect(src).toContain(`["/app/docs/page.jsx"]: () => import("/__route/docs/page.jsx")`);
+  });
+});
+
 describe("entrySource (i18n)", () => {
   test("threads the i18n config into mountApp", () => {
     const src = entrySource(["/app/page.jsx"], "/app", undefined, {

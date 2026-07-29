@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Performance
+
+- **The client route map no longer ships absolute build paths.** `entrySource` used each route
+  file's absolute path as its map key, so the entry bundle carried one copy of the build machine's
+  checkout prefix per route — ~8KB of a 50KB bundle on the critical path for a large site, and a
+  public disclosure of the CI directory layout. Keys are now app-relative (`/app/docs/page.jsx`);
+  `registerRoutes` only ever read the `/app`-onward portion, so runtime behavior is unchanged. The
+  `import()` specifier stays absolute for the bundler to resolve.
+
 ## [1.22.0] - 2026-07-25
 
 _Dependency updates._

@@ -551,6 +551,14 @@ function stripAppPrefix(filePath, appDir) {
   return filePath.replace(/^.*\/app(?=\/)/, "");
 }
 
+/**
+ * The app-relative key a route file gets in the client route map (`/app/docs/page.jsx`).
+ * Keeps the `/app` segment because the runtime's `routeFromPath` anchors on it.
+ */
+export function routeKey(filePath, appDir) {
+  return `/app${stripAppPrefix(filePath, appDir)}`;
+}
+
 /** The page URL for a `.../app/<...>/page.{mdx,md,jsx,tsx}` file (folder = URL). */
 export function pageRouteFromPath(filePath, appDir) {
   const r = stripAppPrefix(filePath, appDir).replace(/\/page\.(mdx|md|jsx|tsx)$/, "");
@@ -865,10 +873,16 @@ export function findGuard(appDir) {
  * `loaderUrl(filePath)` maps each route file to the specifier its loader imports.
  * The production build imports the file directly (Rolldown code-splits it); the dev
  * server passes a `/__route/…` URL so the route compiles on first navigation.
+ *
+ * The map *keys* ship in the entry bundle, so they're app-relative (`/app/docs/page.jsx`),
+ * not absolute. `registerRoutes` only ever reads the part from `/app` onward
+ * (`routeFromPath`), so this is byte-for-byte equivalent at runtime — while an absolute
+ * key repeats the build machine's directory prefix once per route (kilobytes on the
+ * critical path, and it leaks the CI checkout layout to every visitor).
  */
 export function entrySource(pages, appDir, loaderUrl = (p) => p, i18n = null, nav = null, loaderRoutes = []) {
   const map = pages
-    .map((p) => `    [${JSON.stringify(p)}]: () => import(${JSON.stringify(loaderUrl(p))}),`)
+    .map((p) => `    [${JSON.stringify(routeKey(p, appDir))}]: () => import(${JSON.stringify(loaderUrl(p))}),`)
     .join("\n");
   const guard = findGuard(appDir);
   // Thread the i18n config (otfw.config) into `mountApp` so the client router knows
