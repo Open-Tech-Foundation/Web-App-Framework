@@ -59,12 +59,13 @@ parallel = true
 # event loop, portal relocation) the happy-dom tier can't reach. Slow and browser-dependent,
 # so it stays out of `test`.
 #
-# These stay **sequential** deliberately, unlike `test` and `ci`. The suites take their HTTP
-# port from the OS (`port: 0`) but their Chrome debugging port is `9000 + random(1000)` — and
-# hydration.mjs hardcodes a second one at 9333 — so concurrent suites can collide on a port,
-# and each one spawns its own Chrome. Overlapping them trades a real flake risk and heavy
-# contention for very little wall-clock. Flip `parallel` on here once the suites take every
-# port from the OS.
+# These stay **sequential** deliberately, unlike `test` and `ci`. Every suite takes its HTTP
+# port from the OS (`port: 0`), but the Chrome debugging ports are not that clean: the three
+# web-docs suites draw `9000 + random(1000)`, while three web-cli suites hardcode theirs —
+# 9333 (hydrate-browser), 9334 (lifecycle-hooks), 9355 (runtime-browser). Overlapping the two
+# groups can collide whenever a web-docs suite happens to draw a web-cli port, and each suite
+# spawns its own Chrome besides. Flip `parallel` on once every suite takes its debugging port
+# from the OS too — the fixed three are the blocker, not the random ones.
 #
 # The seven web-cli suites are still one step: their chain lives in that package's own
 # `test:e2e` script.
