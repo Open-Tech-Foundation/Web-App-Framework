@@ -1,5 +1,6 @@
 {
-  "measuredAt": "2026-07-30",
+  "measuredAt": "2026-07-31 (otfw); 2026-07-04 (astro, next, tanstack, vite)",
+  "measurementNote": "The otfw column was re-measured after the linear-MDX-parse and template-cloning build fixes; the other four toolchains were not re-run and carry the original sweep's numbers. See benchmarks/ssg-build/README.md.",
   "env": "Intel i7-8700K (12 threads), 16 GB RAM, Linux 6.12, Node 24.14",
   "fixture": "One route rendering a real 72 KB MDX docs page (1751 lines, 43 code blocks, 298 table rows)",
   "engines": [
@@ -21,7 +22,7 @@
     {
       "label": "Peak build memory (MB)",
       "values": {
-        "otfw": 254,
+        "otfw": 140,
         "astro": 416,
         "next": 1226,
         "tanstack": 510,
@@ -32,7 +33,7 @@
     {
       "label": "Build time (s)",
       "values": {
-        "otfw": 0.5,
+        "otfw": 0.25,
         "astro": 1.23,
         "next": 3.78,
         "tanstack": 1.96,
