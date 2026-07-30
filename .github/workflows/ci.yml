@@ -18,16 +18,24 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
-      # The test runner compiles `.jsx` fixtures through `otfwc` (bunfig preload), so
-      # the Rust toolchain must be present; `cargo test` builds the binary.
+      # The test runner compiles `.jsx` fixtures through `otfwc` (bunfig preload), so the
+      # Rust toolchain must be present; the `test` task's `cargo build` produces the binary.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: oven-sh/setup-bun@v2
+      - name: Install tsr
+        shell: bash
+        # Unpinned, so CI tracks the current tsr. The installer drops the binary in
+        # ~/.tsr/bin and only *suggests* a PATH entry — non-interactively it just prints
+        # one — so the bin dir goes onto PATH explicitly for the later steps.
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/tsr/main/install.sh | bash
+          echo "$HOME/.tsr/bin" >> "$GITHUB_PATH"
       - run: bun install
-      # `bun run test` = `cargo test && bun test packages/web/` — the Rust suite plus
-      # the new-runtime JS suite (scoped to packages/web/, so the not-yet-ported
-      # web-form package isn't pulled in).
-      - run: bun run test
+      # `tsr test` = the Rust suite (cargo build && cargo test) then the JS suite, scoped
+      # to packages/web/, web-cli/tests/ and create-web/tests/ so the not-yet-ported
+      # packages aren't pulled in. What it runs lives in tasks.toml.
+      - run: tsr test
 
   # Real-browser tier: the e2e suites that drive `otfw serve`/`build` + headless Chrome over
   # CDP (docs/HYDRATION.md §5) — including the hi-fi runtime unit suite (runtime-browser.mjs)
@@ -49,19 +57,21 @@ jobs:
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
+      - name: Install tsr
+        shell: bash
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/tsr/main/install.sh | bash
+          echo "$HOME/.tsr/bin" >> "$GITHUB_PATH"
       - run: bun install
-      # The e2e drive the real toolchain, so the otfwc compiler binary must exist.
-      - run: cargo build
       - name: Browser e2e (real headless Chrome)
         env:
           # A missing/incorrect binary makes the suites *skip* (exit 0), which would be a false
           # green — so print the version first: a bad path fails the step loudly here.
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
           OTFWC_BIN: ${{ github.workspace }}/target/debug/otfwc
+        # `tsr test-e2e` runs the web-cli and web-docs suites. Each declares the
+        # `build-compiler` dep that produces OTFWC_BIN, de-duplicated to a single cargo build.
         run: |
           echo "Chrome: $CHROME_BIN"
           "$CHROME_BIN" --version
-          (cd packages/web-cli && bun run test:e2e)
-          bun packages/web-docs/tests/e2e/mobile-drawer.mjs
-          bun packages/web-docs/tests/e2e/sidebar-collapse.mjs
-          bun packages/web-docs/tests/e2e/hydration.mjs
+          tsr test-e2e

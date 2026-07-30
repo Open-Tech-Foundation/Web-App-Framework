@@ -1,13 +1,19 @@
 # tasks.toml — the workspace root anchor and config for `tsr`.
 # Docs: https://tsr.opentechf.org/docs
 #
-# One discoverable entry point for the repo's tasks — `tsr --list` — instead of
-# knowing which of the root package.json, a package's own scripts, or a bare
-# cargo/wrangler command holds the one you want.
+# One discoverable entry point for the repo's tasks — `tsr --list` — instead of knowing
+# which of the root package.json, a package's own scripts, or a bare cargo/wrangler
+# command holds the one you want. CI runs `tsr test` and `tsr test-e2e`, so what is
+# defined here is what CI enforces.
 #
-# These wrap the underlying scripts rather than replacing them: CI calls
-# `bun run test` and `bun run test:e2e` directly, so those stay the source of
-# truth for what runs and this stays a convenience layer over them.
+# Multi-step work is expressed with `deps`, not shell `&&`: each step stays a task you
+# can run on its own — `tsr test-e2e-docs-hydration` when debugging that one suite —
+# and tsr owns the ordering and the per-step reporting.
+#
+# `build-compiler` is declared as a dep of every leaf that needs the binary rather than
+# listed as a sibling beside them. tsr de-duplicates shared deps (a diamond runs its base
+# once) and will not start a task until its own deps finish, so this is what makes
+# `parallel = true` safe: as a sibling it would race the tasks that need its output.
 
 [workspace]
 members = ["packages/*", "playground", "benchmarks/*", "website"]
@@ -29,36 +35,70 @@ dir = "website"
 [tasks.typecheck]
 run = "tsc --noEmit"
 
-# `cargo build` before `cargo test`: the bun suites compile .jsx fixtures through
-# otfwc via the bunfig preload, so the binary has to exist on disk first.
-[tasks.test-rust]
-run = "cargo build && cargo test"
-
-[tasks.test-js]
-run = "bun test packages/web/ packages/web-cli/tests/ packages/create-web/tests/"
-
-[tasks.test]
-deps = ["test-rust", "test-js"]
-
-# Real-browser tier (docs/HYDRATION.md §5) — drives `otfw serve`/`build` against
-# headless Chrome over CDP, covering engine-fidelity paths the happy-dom tier
-# can't reach. Slow and browser-dependent, so it is separate from `test`.
+# The compiler binary, which several suites need on disk: the bun tests compile .jsx
+# fixtures through otfwc via the bunfig preload, and the e2e drive the real toolchain.
 [tasks.build-compiler]
 run = "cargo build"
 
+[tasks.test-rust]
+deps = ["build-compiler"]
+run = "cargo test"
+
+# Scoped to the ported packages, so the not-yet-ported ones aren't pulled in.
+[tasks.test-js]
+deps = ["build-compiler"]
+run = "bun test packages/web/ packages/web-cli/tests/ packages/create-web/tests/"
+
+# Independent processes — one cargo, one bun — so they overlap.
+[tasks.test]
+deps = ["test-rust", "test-js"]
+parallel = true
+
+# Real-browser tier (docs/HYDRATION.md §5) — drives `otfw serve`/`build` against headless
+# Chrome over CDP, covering engine-fidelity paths (custom-element upgrade timing, the real
+# event loop, portal relocation) the happy-dom tier can't reach. Slow and browser-dependent,
+# so it stays out of `test`.
+#
+# These stay **sequential** deliberately, unlike `test` and `ci`. The suites take their HTTP
+# port from the OS (`port: 0`) but their Chrome debugging port is `9000 + random(1000)` — and
+# hydration.mjs hardcodes a second one at 9333 — so concurrent suites can collide on a port,
+# and each one spawns its own Chrome. Overlapping them trades a real flake risk and heavy
+# contention for very little wall-clock. Flip `parallel` on here once the suites take every
+# port from the OS.
+#
+# The seven web-cli suites are still one step: their chain lives in that package's own
+# `test:e2e` script.
 [tasks.test-e2e-cli]
+deps = ["build-compiler"]
 run = "bun run test:e2e"
 dir = "packages/web-cli"
 
-[tasks.test-e2e-docs]
-run = "bun tests/e2e/mobile-drawer.mjs && bun tests/e2e/sidebar-collapse.mjs && bun tests/e2e/hydration.mjs"
+[tasks.test-e2e-docs-drawer]
+deps = ["build-compiler"]
+run = "bun tests/e2e/mobile-drawer.mjs"
 dir = "packages/web-docs"
 
-[tasks.test-e2e]
-deps = ["build-compiler", "test-e2e-cli", "test-e2e-docs"]
+[tasks.test-e2e-docs-sidebar]
+deps = ["build-compiler"]
+run = "bun tests/e2e/sidebar-collapse.mjs"
+dir = "packages/web-docs"
 
+[tasks.test-e2e-docs-hydration]
+deps = ["build-compiler"]
+run = "bun tests/e2e/hydration.mjs"
+dir = "packages/web-docs"
+
+[tasks.test-e2e-docs]
+deps = ["test-e2e-docs-drawer", "test-e2e-docs-sidebar", "test-e2e-docs-hydration"]
+
+[tasks.test-e2e]
+deps = ["test-e2e-cli", "test-e2e-docs"]
+
+# Local convenience — CI runs the fast and browser tiers as separate parallel jobs, so this
+# is the "use my cores" path on a dev machine. `build-compiler` is de-duplicated to one run.
 [tasks.ci]
 deps = ["typecheck", "test", "test-e2e"]
+parallel = true
 
 # --- build --------------------------------------------------------------------
 
@@ -71,12 +111,12 @@ run = "bun run build:ssg"
 dir = "website"
 
 # Installing the site is pinned to bun 1.2.15 — and only installing, because of the
-# lockfile it writes. Cloudflare Workers' builder cannot read bun
-# `lockfileVersion: 2`, and bun ≥ 1.4 writes v2. An older bun does not downgrade a
-# v2 lockfile either — it reports "Unknown lockfile version", ignores the file, and
-# re-resolves the tree from scratch — so a stray `bun install` here breaks the
-# deploy *and* silently moves every dependency to whatever the ranges now allow.
-# Dev and build above run on current bun; the site is fine on it.
+# lockfile it writes. Cloudflare Workers' builder cannot read bun `lockfileVersion: 2`,
+# and bun ≥ 1.4 writes v2. An older bun does not downgrade a v2 lockfile either — it
+# reports "Unknown lockfile version", ignores the file, and re-resolves the tree from
+# scratch — so a stray `bun install` here breaks the deploy *and* silently moves every
+# dependency to whatever the ranges now allow. Dev and build above run on current bun;
+# the site is fine on it.
 [tasks.site-install]
 run = "mise exec bun@1.2.15 -- bun install"
 dir = "website"
@@ -86,8 +126,8 @@ dir = "website"
 # Runtime benchmark (update latency in a real browser). Args pass through:
 #   tsr bench -- all           every case, with a comparison table
 #   tsr bench -- otfw react    just those two
-# See benchmarks/README.md. The SSG build benchmark is a separate, manual
-# procedure — benchmarks/ssg-build/README.md.
+# See benchmarks/README.md. The SSG build benchmark is a separate, manual procedure —
+# benchmarks/ssg-build/README.md.
 [tasks.bench]
 run = "bun benchmarks/run.mjs"
 
