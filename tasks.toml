@@ -1,32 +1,105 @@
 # tasks.toml — the workspace root anchor and config for `tsr`.
 # Docs: https://tsr.opentechf.org/docs
+#
+# One discoverable entry point for the repo's tasks — `tsr --list` — instead of
+# knowing which of the root package.json, a package's own scripts, or a bare
+# cargo/wrangler command holds the one you want.
+#
+# These wrap the underlying scripts rather than replacing them: CI calls
+# `bun run test` and `bun run test:e2e` directly, so those stay the source of
+# truth for what runs and this stays a convenience layer over them.
 
 [workspace]
 members = ["packages/*", "playground", "benchmarks/*", "website"]
 
-# --- website ------------------------------------------------------------------
-# The site's toolchain is pinned to bun 1.2.15 rather than whatever `bun` resolves
-# to on PATH.
-#
-# Cloudflare Workers' builder cannot read bun `lockfileVersion: 2`, and bun ≥ 1.4
-# writes v2. Worse, an older bun does not *downgrade* a v2 lockfile — it reports
-# "Unknown lockfile version", ignores the file, and resolves the tree from scratch.
-# So one stray `bun install` in website/ both breaks the deploy and silently moves
-# every dependency to whatever the ranges now allow. These tasks are the supported
-# way in; use them instead of calling bun directly.
-#
-# Pinning lives here rather than in a mise config so the version travels with the
-# task that needs it — nothing else in the repo wants an old bun, and the packages
-# and playground are developed against the current one.
+# --- develop ------------------------------------------------------------------
 
+# The playground is the framework's own scratch app — `dev` matches the root
+# package.json, where `bun run dev` has always meant the playground.
+[tasks.dev]
+run = "bun run dev"
+dir = "playground"
+
+[tasks.site]
+run = "bun run dev"
+dir = "website"
+
+# --- check --------------------------------------------------------------------
+
+[tasks.typecheck]
+run = "tsc --noEmit"
+
+# `cargo build` before `cargo test`: the bun suites compile .jsx fixtures through
+# otfwc via the bunfig preload, so the binary has to exist on disk first.
+[tasks.test-rust]
+run = "cargo build && cargo test"
+
+[tasks.test-js]
+run = "bun test packages/web/ packages/web-cli/tests/ packages/create-web/tests/"
+
+[tasks.test]
+deps = ["test-rust", "test-js"]
+
+# Real-browser tier (docs/HYDRATION.md §5) — drives `otfw serve`/`build` against
+# headless Chrome over CDP, covering engine-fidelity paths the happy-dom tier
+# can't reach. Slow and browser-dependent, so it is separate from `test`.
+[tasks.build-compiler]
+run = "cargo build"
+
+[tasks.test-e2e-cli]
+run = "bun run test:e2e"
+dir = "packages/web-cli"
+
+[tasks.test-e2e-docs]
+run = "bun tests/e2e/mobile-drawer.mjs && bun tests/e2e/sidebar-collapse.mjs && bun tests/e2e/hydration.mjs"
+dir = "packages/web-docs"
+
+[tasks.test-e2e]
+deps = ["build-compiler", "test-e2e-cli", "test-e2e-docs"]
+
+[tasks.ci]
+deps = ["typecheck", "test", "test-e2e"]
+
+# --- build --------------------------------------------------------------------
+
+[tasks.build]
+run = "bun run build"
+dir = "playground"
+
+[tasks.site-build]
+run = "bun run build:ssg"
+dir = "website"
+
+# Installing the site is pinned to bun 1.2.15 — and only installing, because of the
+# lockfile it writes. Cloudflare Workers' builder cannot read bun
+# `lockfileVersion: 2`, and bun ≥ 1.4 writes v2. An older bun does not downgrade a
+# v2 lockfile either — it reports "Unknown lockfile version", ignores the file, and
+# re-resolves the tree from scratch — so a stray `bun install` here breaks the
+# deploy *and* silently moves every dependency to whatever the ranges now allow.
+# Dev and build above run on current bun; the site is fine on it.
 [tasks.site-install]
 run = "mise exec bun@1.2.15 -- bun install"
 dir = "website"
 
-[tasks.site]
-run = "mise exec bun@1.2.15 -- bun run dev"
-dir = "website"
+# --- benchmarks ---------------------------------------------------------------
 
-[tasks.site-build]
-run = "mise exec bun@1.2.15 -- bun run build:ssg"
-dir = "website"
+# Runtime benchmark (update latency in a real browser). Args pass through:
+#   tsr bench -- all           every case, with a comparison table
+#   tsr bench -- otfw react    just those two
+# See benchmarks/README.md. The SSG build benchmark is a separate, manual
+# procedure — benchmarks/ssg-build/README.md.
+[tasks.bench]
+run = "bun benchmarks/run.mjs"
+
+# --- deploy (Cloudflare) ------------------------------------------------------
+
+[tasks.cf-build]
+run = "bun scripts/build-website-standalone.mjs"
+
+[tasks.preview]
+deps = ["cf-build"]
+run = "wrangler dev"
+
+[tasks.deploy]
+deps = ["cf-build"]
+run = "wrangler deploy"
