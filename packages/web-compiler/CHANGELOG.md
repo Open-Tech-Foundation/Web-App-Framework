@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-07-30
+
 ### Fixed
 
 - **SSG codegen folds adjacent static markup into single string literals**, instead of emitting
