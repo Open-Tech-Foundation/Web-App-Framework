@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-30
+
 ### Performance
 
 - **The CSR build path stamps static subtrees from a hoisted `<template>`** instead of emitting a

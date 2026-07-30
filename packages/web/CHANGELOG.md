@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-07-30
+
 ### Added
 
 - **`template(html)`** (`runtime/dom.js`) — compiles a static subtree into a `<template>` once and
