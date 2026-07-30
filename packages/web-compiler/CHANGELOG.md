@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Performance
+
+- **MDX parsing is linear in page length again.** `mdx_to_jsx` was superlinear — a docs page cost
+  ~3× more per doubling rather than 2× — and the cause was not in this crate: `markdown-rs`
+  1.0.0's `EditMap::add` scans its pending-edit list on every call, and that list grows with the
+  document. Parsing 8,000 GFM table rows took 13.7 s. `crates/otfw_markdown` is a fork of the
+  crate carrying the one-function fix (see its `FORK.md`); the same parse now takes 213 ms, and
+  `mdx_to_jsx` over a 74 KB → 2.4 MB ladder holds a flat 2× per doubling. Emitted JSX is
+  byte-identical across the repo's 78 `.md`/`.mdx` files.
+
+  Combined with the template change, the 2.3 MB page builds in **2.9 s instead of 16.1 s**.
+
 ### Fixed
 
 - **The hydrate backend no longer walks into fully static subtrees.** Adopting a page emitted a

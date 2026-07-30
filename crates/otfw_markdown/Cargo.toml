@@ -1,0 +1,28 @@
+[package]
+name = "otfw_markdown"
+version = "1.0.0"
+# Upstream's edition, kept so the vendored source stays a byte-for-byte match
+# outside the documented delta. Upstream's `rust-version = "1.56"` is dropped:
+# it only served to widen the resolver for its own consumers, and here it just
+# pins the optional `log` dependency back to a 2023 release.
+edition = "2018"
+license = "MIT"
+repository.workspace = true
+description = "OTF Web's fork of markdown-rs 1.0.0 (CommonMark + GFM + MDX). See FORK.md."
+
+# Upstream is `markdown` on crates.io; the lib keeps that name so the fork is a
+# drop-in (`markdown = { package = "otfw_markdown", … }` in dependents).
+[lib]
+name = "markdown"
+path = "src/lib.rs"
+
+[dependencies]
+log = { optional = true, version = "0.4" }
+serde = { features = ["derive"], optional = true, version = "1" }
+unicode-id = { features = ["no_std"], version = "0.3" }
+
+[features]
+default = []
+json = ["serde"]
+log = ["dep:log"]
+serde = ["dep:serde"]
