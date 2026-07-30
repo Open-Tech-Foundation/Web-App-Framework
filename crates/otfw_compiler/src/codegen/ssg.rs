@@ -304,9 +304,23 @@ impl<'a> Emitter<'a> {
 
     // ── the view: each node → a JS expression evaluating to an HTML string ────
 
+    /// One node → a single JS expression evaluating to an HTML string.
     fn html_expr(&mut self, node: &ViewNode) -> String {
+        let terms = self.html_terms(node);
+        join_plus(&terms)
+    }
+
+    /// One node → the *flat* sequence of `+` terms it contributes.
+    ///
+    /// Nesting is deliberately not reflected here: an element splices its children's
+    /// terms into its own list rather than embedding a pre-joined sub-expression. That
+    /// keeps every static fragment in a subtree adjacent in one list, so the single
+    /// `join_plus` at the top can fold the whole run into one literal. Joining per level
+    /// instead would leave each child a compound expression, blocking the merge at every
+    /// boundary and rebuilding the deep `+` chain this exists to avoid.
+    fn html_terms(&mut self, node: &ViewNode) -> Vec<String> {
         match node {
-            ViewNode::Text(text) => js_string(&escape_text(text)),
+            ViewNode::Text(text) => vec![js_string(&escape_text(text))],
             ViewNode::Element { tag, props, children } => self.element(tag, props, children),
             ViewNode::Dynamic { expr } => {
                 self.server.insert("ssgText");
@@ -314,9 +328,15 @@ impl<'a> Emitter<'a> {
                 // with `<!--$-->…<!--/-->` so the client can claim the text node even when
                 // it is empty or adjacent to static text (the HTML parser would otherwise
                 // merge them). Inert for plain SSG output (just an HTML comment).
-                format!("\"<!--$-->\" + ssgText({}) + \"<!--/-->\"", self.code(*expr))
+                vec![
+                    "\"<!--$-->\"".to_string(),
+                    format!("ssgText({})", self.code(*expr)),
+                    "\"<!--/-->\"".to_string(),
+                ]
             }
-            ViewNode::Component { name, props, children } => self.component_use(name, props, children),
+            ViewNode::Component { name, props, children } => {
+                vec![self.component_use(name, props, children)]
+            }
             ViewNode::DynamicNode { expr, branches } => {
                 let calls: Vec<String> = branches
                     .iter()
@@ -328,10 +348,11 @@ impl<'a> Emitter<'a> {
                 // the client can find the region to adopt/swap it — the closing `<!--]-->`
                 // becomes the swap anchor. An empty branch (falsy `&&`) renders nothing between
                 // the markers, mirroring an empty list. Inert for static SSG output.
-                format!(
-                    "\"<!--[-->\" + ssgText({}) + \"<!--]-->\"",
-                    substitute_branches(&template, &calls)
-                )
+                vec![
+                    "\"<!--[-->\"".to_string(),
+                    format!("ssgText({})", substitute_branches(&template, &calls)),
+                    "\"<!--]-->\"".to_string(),
+                ]
             }
             ViewNode::Children => {
                 if self.is_page {
@@ -343,7 +364,7 @@ impl<'a> Emitter<'a> {
                         Some(p) => format!("({p}?.children ?? \"\")"),
                         None => "\"\"".to_string(),
                     };
-                    format!("\"<!--[-->\" + {inner} + \"<!--]-->\"")
+                    vec!["\"<!--[-->\"".to_string(), inner, "\"<!--]-->\"".to_string()]
                 } else {
                     // A component's light-DOM `{children}` slot (2.1d): bracket it with the
                     // distinct `<!--c[…-->…<!--c]…-->` slot markers so the component can step
@@ -359,19 +380,21 @@ impl<'a> Emitter<'a> {
                     // and the parent's `hydrateSlot` guessed by tree order and adopted against
                     // another component's region. The tag makes both lookups exact.
                     let tag = self.self_tag.clone().unwrap_or_default();
-                    format!(
-                        "\"<!--c[{tag}-->\" + (__children ?? \"\") + \"<!--c]{tag}-->\""
-                    )
+                    vec![
+                        format!("\"<!--c[{tag}-->\""),
+                        "(__children ?? \"\")".to_string(),
+                        format!("\"<!--c]{tag}-->\""),
+                    ]
                 }
             }
             ViewNode::List { source, source_branches, item_param, index_param, item, key: _, preamble } => {
-                self.list(*source, source_branches, item_param, index_param.as_deref(), item, preamble)
+                vec![self.list(*source, source_branches, item_param, index_param.as_deref(), item, preamble)]
             }
             ViewNode::Fragment(children) => self.concat(children),
         }
     }
 
-    fn element(&mut self, tag: &str, props: &[Prop], children: &[ViewNode]) -> String {
+    fn element(&mut self, tag: &str, props: &[Prop], children: &[ViewNode]) -> Vec<String> {
         // Static attributes fold into the opening literal; dynamic ones append a
         // runtime `attr(name, value)` piece; on*/ref are dropped (no SSR meaning).
         let mut open = format!("<{tag}");
@@ -404,14 +427,13 @@ impl<'a> Emitter<'a> {
         // `<tag static-attrs` + dynamic attr pieces + `>` + children + `</tag>`.
         let mut pieces: Vec<String> = vec![js_string(&open)];
         pieces.extend(dyn_attrs);
-        if VOID.contains(&tag) {
-            pieces.push(js_string(">"));
-            return join_plus(&pieces);
-        }
         pieces.push(js_string(">"));
-        pieces.push(self.concat(children));
+        if VOID.contains(&tag) {
+            return pieces;
+        }
+        pieces.extend(self.concat(children));
         pieces.push(js_string(&format!("</{tag}>")));
-        join_plus(&pieces)
+        pieces
     }
 
     fn component_use(&mut self, name: &str, props: &[Prop], children: &[ViewNode]) -> String {
@@ -445,7 +467,10 @@ impl<'a> Emitter<'a> {
             entries.push(format!("{}: {}", js_object_key(&p.name), val));
         }
         let props_obj = format!("{{ {} }}", entries.join(", "));
-        let children_html = self.concat(children);
+        // A component boundary is a real call argument, so its children must be joined
+        // into one expression here rather than spliced into the parent's term list.
+        let children_terms = self.concat(children);
+        let children_html = join_plus(&children_terms);
         self.server.insert("ssgComponent");
         format!("ssgComponent({tag_expr}, {props_obj}, {children_html})")
     }
@@ -509,24 +534,67 @@ impl<'a> Emitter<'a> {
         )
     }
 
-    /// Concatenate a list of child nodes into one HTML-string expression.
-    fn concat(&mut self, children: &[ViewNode]) -> String {
-        let parts: Vec<String> = children.iter().map(|c| self.html_expr(c)).collect();
-        if parts.is_empty() {
-            "\"\"".to_string()
-        } else {
-            join_plus(&parts)
-        }
+    /// The flat `+` terms for a run of sibling nodes.
+    fn concat(&mut self, children: &[ViewNode]) -> Vec<String> {
+        children.iter().flat_map(|c| self.html_terms(c)).collect()
     }
 }
 
-/// Join JS expression pieces with `+`, dropping empty-string literals.
+/// Join JS expression pieces with `+`, dropping empty-string literals and merging
+/// runs of adjacent string literals into one (`"<div" + ">"` → `"<div>"`).
+///
+/// The merge matters for more than output size. `element`/`concat` feed their result
+/// back into a parent `join_plus`, so folding here collapses each fully static subtree
+/// into a single literal recursively. Without it a page's markup becomes one expression
+/// carrying a `+` per fragment — ~11k of them for a 1000-section docs page — and the
+/// deeply left-nested tree that produces is what the downstream bundler chokes on: peak
+/// RSS grows ~quadratically with page size, and past roughly 13k terms its parser
+/// overflows its stack and crashes the build outright.
 fn join_plus(parts: &[String]) -> String {
     let kept: Vec<&String> = parts.iter().filter(|p| p.as_str() != "\"\"").collect();
     if kept.is_empty() {
         return "\"\"".to_string();
     }
-    kept.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" + ")
+    // Carry each piece's literal-ness so a long run folds in linear time rather than
+    // re-scanning the accumulated literal on every merge.
+    let mut out: Vec<(String, bool)> = Vec::with_capacity(kept.len());
+    for part in kept {
+        let is_lit = is_string_literal(part);
+        match out.last_mut() {
+            // Both sides are already-escaped `js_string` literals, so they concatenate
+            // textually: drop the left's closing quote and the right's opening one. The
+            // result is itself such a literal, so a whole run collapses into one.
+            Some((prev, true)) if is_lit => {
+                prev.pop();
+                prev.push_str(&part[1..]);
+            }
+            _ => out.push((part.clone(), is_lit)),
+        }
+    }
+    out.into_iter().map(|(s, _)| s).collect::<Vec<_>>().join(" + ")
+}
+
+/// True when `code` is exactly one string literal as emitted by `js_string`: double
+/// quoted, with every interior `"` backslash-escaped. Compound expressions that merely
+/// start and end with a quote (`"a" + x + "b"`) are rejected — their interior holds an
+/// unescaped quote — so folding never reaches across a dynamic piece.
+fn is_string_literal(code: &str) -> bool {
+    let b = code.as_bytes();
+    if b.len() < 2 || b[0] != b'"' || b[b.len() - 1] != b'"' {
+        return false;
+    }
+    let end = b.len() - 1;
+    let mut i = 1;
+    while i < end {
+        match b[i] {
+            b'\\' => i += 2, // an escape consumes the next byte, whatever it is
+            b'"' => return false,
+            _ => i += 1,
+        }
+    }
+    // `i > end` means the trailing quote was consumed as an escape (`"a\"`), leaving the
+    // literal unterminated rather than complete.
+    i == end
 }
 
 /// Replace NUL-delimited slot placeholders (`\u{0}i\u{0}`) with branch calls.
@@ -636,7 +704,9 @@ mod tests {
         assert!(m.code.contains("export default function ()"), "code:\n{}", m.code);
         assert!(m.code.contains("const n = signal(3);"), "code:\n{}", m.code);
         // Static markup is a string literal; the dynamic hole goes through ssgText.
-        assert!(m.code.contains("\"<div class=\\\"box\\\"\""), "code:\n{}", m.code);
+        // Adjacent static fragments are folded, so the open tag carries the nested
+        // static markup up to the hole rather than sitting in its own literal.
+        assert!(m.code.contains("\"<div class=\\\"box\\\"><h1>Count "), "code:\n{}", m.code);
         assert!(m.code.contains("ssgText(n.value)"), "code:\n{}", m.code);
         // No DOM, no effects, no lifecycle in SSG output.
         assert!(!m.code.contains("document."), "no DOM:\n{}", m.code);
@@ -664,8 +734,10 @@ mod tests {
         // claim the text node even when empty/adjacent to static text (docs/HYDRATION.md).
         let m = emit("export default function P(){ let n=$state(1); return <p>x {n}</p>; }", true);
         assert!(m.is_complete(), "errors: {:?}", m.errors);
+        // The opening marker folds into the preceding static text; the closing one folds
+        // into the closing tag. What must survive is the bracketing around `ssgText`.
         assert!(
-            m.code.contains("\"<!--$-->\" + ssgText(n.value) + \"<!--/-->\""),
+            m.code.contains("x <!--$-->\" + ssgText(n.value) + \"<!--/-->"),
             "markers:\n{}",
             m.code
         );
@@ -755,7 +827,54 @@ mod tests {
     fn void_element_has_no_closing_tag() {
         let m = emit("export default function P(){ return <img src=\"/a.png\"/>; }", true);
         assert!(m.is_complete(), "errors: {:?}", m.errors);
-        assert!(m.code.contains("\"<img src=\\\"/a.png\\\"\""), "code:\n{}", m.code);
+        assert!(m.code.contains("\"<img src=\\\"/a.png\\\">\""), "code:\n{}", m.code);
         assert!(!m.code.contains("</img>"), "no closing tag:\n{}", m.code);
+    }
+
+    #[test]
+    fn static_subtree_folds_to_one_literal() {
+        // A fully static tree carries no `+` at all: every fragment merges into a single
+        // literal. This is what keeps the bundler's parse tree shallow on large pages.
+        let m = emit(
+            "export default function P(){ return <div class=\"a\"><h1>Hi</h1><p>Body <b>bold</b></p></div>; }",
+            true,
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(
+            m.code.contains("return \"<div class=\\\"a\\\"><h1>Hi</h1><p>Body <b>bold</b></p></div>\";"),
+            "single literal:\n{}",
+            m.code
+        );
+    }
+
+    #[test]
+    fn folding_stops_at_dynamic_pieces() {
+        // Static runs on either side of a hole collapse, but the hole still separates
+        // them — folding must never merge across a non-literal piece.
+        let m = emit(
+            "export default function P(){ let n=$state(0); return <div><b>a</b>{n}<i>b</i></div>; }",
+            true,
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(
+            m.code.contains("\"<div><b>a</b><!--$-->\" + ssgText(n.value) + \"<!--/--><i>b</i></div>\""),
+            "folds up to the hole only:\n{}",
+            m.code
+        );
+    }
+
+    #[test]
+    fn folding_preserves_escapes_across_the_merge() {
+        // Merging is textual, so a literal ending in an escape must not be mistaken for
+        // an unterminated one, and quotes/backslashes must survive intact.
+        assert!(is_string_literal("\"a\\\\\""), "trailing backslash escape is a literal");
+        assert!(!is_string_literal("\"a\\\""), "unterminated literal");
+        assert!(!is_string_literal("\"a\" + x + \"b\""), "compound expression");
+        assert!(!is_string_literal("attr(\"id\", x)"), "call expression");
+        assert_eq!(
+            join_plus(&["\"a\\\\\"".to_string(), "\"\\\"b\"".to_string()]),
+            "\"a\\\\\\\"b\"",
+            "escapes survive the merge"
+        );
     }
 }

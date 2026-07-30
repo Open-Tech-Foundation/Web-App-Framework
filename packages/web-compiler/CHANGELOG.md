@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **SSG codegen folds adjacent static markup into single string literals**, instead of emitting
+  one `+` term per fragment (`"<div" + ">" + "<h2" + ">"` → `"<div><h2>"`). A fully static
+  subtree now collapses to one literal. Previously a page's whole view was one expression
+  carrying a `+` per fragment — ~11k of them for a 1000-section docs page, ~16.5k for 1500 —
+  and the deeply left-nested tree that produced is what the bundler choked on:
+
+  - **`otfw build --ssg` crashed with SIGSEGV** on large pages, past roughly 13k terms
+    (~90KB of markdown in one page), when the bundler's parser overflowed its stack. It
+    could not be worked around with `ulimit -s`, since that parse runs off the main thread.
+    A 468KB single-page build now completes in 573MB.
+  - **Peak build memory grew ~quadratically with page size**, which made whole-site builds
+    run out of memory: 40 docs pages totalling ~1MB of markdown peaked at **6.0GB**, now
+    **700MB**. A single 1100-section page went from 1348MB to 312MB.
+
+  Emitted SSG output is ~48% smaller for static-heavy pages. Rendered HTML is unchanged —
+  byte-identical `dist/` output across a real 12-route, 62-file docs site.
+
 ## [0.12.0] - 2026-07-25
 
 ### Fixed
