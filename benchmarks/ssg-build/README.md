@@ -55,9 +55,9 @@ structure (288 `<table>`, 344 `<pre>`, 320 `<h2>` at 8×).
 ## Results
 
 Intel i7-8700K (12 threads), 16 GB RAM, Linux 6.12, Node 24.14. Peak RSS sampled
-across the whole process tree at 50 Hz. One run per cell. The two tables come from
+across the whole process tree at 50 Hz. One run per cell. The tables come from
 separate sweeps, so the same tool's 72 KB cell differs by a few percent between
-them (OTF Web reads 254 MB in one and 262 MB in the other) — that spread is the
+them (OTF Web read 254 MB in one and 262 MB in another) — that spread is the
 run-to-run noise floor, and no claim here rests on a margin near it. See
 [How reproducible is this?](#how-reproducible-is-this) before quoting any of it.
 
@@ -65,11 +65,14 @@ run-to-run noise floor, and no claim here rests on a margin near it. See
 
 | | peak RSS | wall |
 |---|---|---|
-| **OTF Web** | **254 MB** | **0.50 s** |
+| **OTF Web** | **140 MB** | **0.25 s** |
 | Vite (no client bundle) | 260 MB | 0.77 s |
 | Astro (no client bundle) | 416 MB | 1.23 s |
 | TanStack Start | 510 MB | 1.96 s |
 | Next.js | 1226 MB | 3.78 s |
+
+The OTF Web cell is from the latest sweep (it read 254 MB / 0.50 s before the two
+fixes below); the other four are the original one and were not re-run.
 
 ### As one page grows
 
@@ -80,7 +83,9 @@ build.
 |---|---|---|---|---|---|---|
 | OTF Web (0.12, no SSG fold) | 312 MB / 0.6 s | **SIGSEGV** | **SIGSEGV** | **SIGSEGV** | — | — |
 | OTF Web (0.13, SSG fold only) | 268 / 0.5 | 320 / 0.8 | 375 / 1.4 | 604 / 3.9 | 867 / 10.3 | 1720 / 47.2 |
-| **OTF Web (current)** | 262 / 0.5 | 300 / 0.6 | 394 / 1.0 | 497 / 2.2 | 779 / 5.3 | **1320 / 15.1** |
+| OTF Web (+ static adopt) | 165 / 0.3 | 218 / 0.4 | 293 / 0.9 | 414 / 1.9 | 695 / 4.9 | 1280 / 16.1 |
+| OTF Web (+ linear MDX parse) | 162 / 0.3 | 206 / 0.4 | 303 / 0.7 | 407 / 1.2 | 642 / 2.3 | 1245 / 5.0 |
+| **OTF Web (current)** | **140 / 0.3** | **156 / 0.3** | **202 / 0.5** | **263 / 0.8** | **426 / 1.4** | **712 / 2.9** |
 | Astro | 395 / 5.8 † | 417 / 1.2 | 484 / 1.4 | 555 / 1.6 | 592 / 2.2 | 943 / 3.7 |
 | Vite | 260 / 0.7 | 332 / 0.9 | 424 / 1.3 | 581 / 2.2 | 840 / 4.0 | 1490 / 8.6 |
 | TanStack Start | 507 / 1.6 | 546 / 2.1 | 606 / 3.0 | 990 / 4.9 | 1485 / 9.0 | 2022 / 19.0 |
@@ -88,6 +93,15 @@ build.
 
 † Cold-cache first run — 1.1 s warm. Single runs, so read the shape of each row
 rather than its individual cells.
+
+**Read the four OTF Web rows as one sweep and the other four tools as another.**
+The last three OTF Web rows were re-measured together, on the same machine and
+fixture, by compiling the *same* site with three compiler builds — so the deltas
+between them are apples to apples. The other tools were not re-run; their cells
+are the earlier sweep's. The "+ static adopt" row is the previous "current" row
+re-measured (it read 1320 MB / 15.1 s then, 1280 / 16.1 now), which is about the
+run-to-run spread this benchmark has always had and is worth keeping in mind
+before reading anything into a single cell.
 
 ## What the numbers say
 
@@ -126,20 +140,51 @@ took the adopt path from ~72,000 emitted lines to ~2,950 and the module from
 29.8 MB to 19.8 MB — and since the bundler's cost grows faster than linearly with
 input, a 34% smaller module made the build **3.5× faster**.
 
-**Where we stand, and where we don't.** At real docs-page sizes we are the
-fastest and leanest here — while building a hydration bundle neither Vite nor
-Astro produces. At 2.3 MB we are third on time and second on memory, ahead of
-both TanStack Start and Next.js; before the second fix we were last on time, and
-by a wide margin.
+**The third fix: not parsing the page quadratically.** Two thirds of the remaining
+time at 2.3 MB was not code generation at all — it was reading the Markdown. The
+`markdown-rs` crate batches edits to its event list through an `EditMap`, and
+`EditMap::add` scanned that list linearly on every call while the list itself grew
+with the document, making parse time quadratic. Every construct paid it; 8,000 GFM
+table rows took 13.7 s. `crates/otfw_markdown` is a fork carrying the one-function
+fix (a position→index lookup — see its `FORK.md`), which takes those same rows to
+213 ms and puts `mdx_to_jsx` back on a flat 2× per doubling. Emitted JSX is
+byte-identical across the repo's 78 `.md`/`.mdx` files.
 
-**Astro still builds that page 4× faster** (3.7 s against 15.1 s). What is left is
-the CSR build path — a `document.createElement` per node, which the hydrate module
-carries as its rebuild fallback and which is now most of the remaining 19.8 MB.
-Emitting static subtrees as cloned templates would close much of the gap. It is not
-done here because `template.innerHTML` re-parses markup and the HTML parser
-restructures invalid nesting (a `<p>` wrapping a block element gets hoisted out)
-where `createElement` does not — so it changes CSR rendering for every app, not
-just large pages, and deserves its own verification pass.
+**The fourth fix: cloning static markup instead of building it.** What was left
+after that was the CSR build path — a `document.createElement` per node, which the
+hydrate module carries as its SPA-navigation rebuild fallback and which was most of
+the remaining 19.8 MB. Static subtrees are now serialized once into a `<template>`
+and `cloneNode`d, taking the module to **5.1 MB** (343,286 → 33,773 lines) and the
+*shipped* client chunk for the page from **2.02 MB to 608 KB**.
+
+The reason this had been deferred is real: `template.innerHTML` re-parses markup and
+the HTML parser restructures things `createElement` leaves alone — a `<p>` wrapping
+a block element is hoisted out, a bare `<tr>` grows a `<tbody>`, non-table content
+inside a table is foster-parented in front of it. So the compiler proves the parser
+is a no-op before serializing anything (`codegen::static_tree::template_html`), and
+anything it cannot prove keeps the per-node build. What makes that tractable is that
+the input is JSX: every element is explicitly closed and properly nested, which
+takes the adoption agency algorithm — misnested formatting elements, the hardest
+case — off the table entirely, leaving the elements that close *themselves*
+(`<p>`, `<li>`, `<a>`, `<button>`, headings), the table content model, raw-text
+elements and foreign content as an enumerable list of rules.
+
+The verification is `packages/web-cli/tests/e2e/template-parity.mjs`: it compiles
+each fixture twice — normally and with `OTFWC_NO_TEMPLATES=1` — and requires the two
+DOM trees to be indistinguishable in headless Chromium, by `outerHTML` and node for
+node. That env var is also the escape hatch if the analysis is ever wrong for some
+app's markup.
+
+**Where we stand.** At 2.3 MB we are now the fastest and leanest of the five —
+2.9 s against Astro's 3.7 s, 712 MB against its 943 MB — while building a hydration
+bundle neither Astro nor Vite produces at all. Across the whole ladder the row is
+now roughly linear in page size, which is the property that matters: the earlier
+rows were not slow so much as accelerating.
+
+Three of these four fixes were ours and one was in a dependency, which is worth
+recording on its own: "our build is slow at scale" turned out to be four unrelated
+causes, and the single largest was a linear scan in someone else's crate that no
+amount of work on our code generator would have touched.
 
 ## How reproducible is this?
 
@@ -156,8 +201,10 @@ whole process tree — is defined by code you can read rather than by a claim.
 1. **The five projects are not vendored.** You rebuild them from the notes below.
 2. **Dependency versions float.** They were installed with plain `npm i`, so a run
    next month resolves different versions. The majors used are in the table above.
-3. **The compiler is a local build.** The "current" row is `cargo build --release`
-   at the commit that added the static-subtree fix, not a published version.
+3. **The compiler is a local build.** The last three OTF Web rows are
+   `cargo build --release` at the commits that added the static-subtree adopt fix,
+   the `crates/otfw_markdown` fork, and template cloning — none of them a published
+   version. The three were run against one site; only the compiler binary differed.
 
 So treat the table as *evidence*, not proof: independently checkable, but not yet
 byte-for-byte replayable. Closing the gap means vendoring the five project
