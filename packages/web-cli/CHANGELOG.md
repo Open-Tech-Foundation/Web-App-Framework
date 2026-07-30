@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Tests
+
+- **New browser e2e (`tests/e2e/template-parity.mjs`) — the verification pass CSR template cloning
+  rests on.** `@opentf/web-compiler` now stamps static subtrees from a hoisted `<template>` instead
+  of emitting a `createElement` per node, which is only a legal rewrite where the HTML parser
+  leaves markup alone — and it often does not (`<p><div/></p>` re-parses as two siblings, a bare
+  `<tr>` grows a `<tbody>`, non-table content inside a table is foster-parented out in front of
+  it). Nothing in the existing suites would catch that: they assert what the compiler *emits*, not
+  what a real engine builds from it.
+
+  Each fixture is compiled twice — normally, and with `OTFWC_NO_TEMPLATES=1` — and both are built
+  in headless Chromium and required to be indistinguishable, by `outerHTML` and node for node
+  after `normalize()`. Fixtures cover docs prose, canonical tables, static/reactive interleaving,
+  and a set of markup the compiler's analysis must refuse. It also asserts that stamping actually
+  happened, so a silently disabled optimization can't pass by matching itself.
+
+  Runs as the eighth suite in `test:e2e`; skips cleanly without Chromium, like its siblings.
+
 ## [1.23.1] - 2026-07-30
 
 _Dependency updates._
