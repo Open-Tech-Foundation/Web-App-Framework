@@ -1,0 +1,29 @@
+# tasks.toml — the workspace root anchor and config for `tsr`.
+# Docs: https://tsr.opentechf.org/docs
+
+[workspace]
+members = ["packages/*", "playground", "benchmarks/*", "website"]
+
+# --- website ------------------------------------------------------------------
+# The site's toolchain is pinned to bun 1.2.15 rather than whatever `bun` resolves
+# to on PATH.
+#
+# Cloudflare Workers' builder cannot read bun `lockfileVersion: 2`, and bun ≥ 1.4
+# writes v2. Worse, an older bun does not *downgrade* a v2 lockfile — it reports
+# "Unknown lockfile version", ignores the file, and resolves the tree from scratch.
+# So one stray `bun install` in website/ both breaks the deploy and silently moves
+# every dependency to whatever the ranges now allow. These tasks are the supported
+# way in; use them instead of calling bun directly.
+#
+# Pinning lives here rather than in a mise config so the version travels with the
+# task that needs it — nothing else in the repo wants an old bun, and the packages
+# and playground are developed against the current one.
+
+[tasks.site-install]
+run = "mise exec bun@1.2.15 -- bun install --cwd website"
+
+[tasks.site]
+run = "mise exec bun@1.2.15 -- bun run --cwd website dev"
+
+[tasks.site-build]
+run = "mise exec bun@1.2.15 -- bun run --cwd website build:ssg"
