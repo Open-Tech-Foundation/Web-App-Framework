@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`template(html)`** (`runtime/dom.js`) — compiles a static subtree into a `<template>` once and
+  returns a function that stamps `cloneNode(true)` copies of it. CSR codegen emits one hoisted
+  `const` per distinct static subtree in a module and calls it where it used to emit a
+  `createElement` per node; see `@opentf/web-compiler`'s changelog for what that is worth on a
+  large page. The parse is deferred to the first call so importing a compiled module never
+  touches `document`.
+
+  Not a general-purpose `innerHTML`: the compiler only routes markup here after proving the HTML
+  parser rebuilds it exactly as `createElement` would, and handing it author markup would
+  reintroduce every reparenting rule that analysis exists to avoid.
+
 ## [0.25.0] - 2026-07-29
 
 ### Performance

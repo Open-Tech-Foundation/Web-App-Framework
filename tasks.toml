@@ -61,13 +61,14 @@ parallel = true
 #
 # These stay **sequential** deliberately, unlike `test` and `ci`. Every suite takes its HTTP
 # port from the OS (`port: 0`), but the Chrome debugging ports are not that clean: the three
-# web-docs suites draw `9000 + random(1000)`, while three web-cli suites hardcode theirs —
-# 9333 (hydrate-browser), 9334 (lifecycle-hooks), 9355 (runtime-browser). Overlapping the two
-# groups can collide whenever a web-docs suite happens to draw a web-cli port, and each suite
-# spawns its own Chrome besides. Flip `parallel` on once every suite takes its debugging port
-# from the OS too — the fixed three are the blocker, not the random ones.
+# web-docs suites draw `9000 + random(1000)`, while four web-cli suites hardcode theirs —
+# 9333 (hydrate-browser), 9334 (lifecycle-hooks), 9355 (runtime-browser), 9357
+# (template-parity). Overlapping the two groups can collide whenever a web-docs suite happens
+# to draw a web-cli port, and each suite spawns its own Chrome besides. Flip `parallel` on
+# once every suite takes its debugging port from the OS too — the fixed four are the blocker,
+# not the random ones.
 #
-# The seven web-cli suites are still one step: their chain lives in that package's own
+# The eight web-cli suites are still one step: their chain lives in that package's own
 # `test:e2e` script.
 [tasks.test-e2e-cli]
 deps = ["build-compiler"]

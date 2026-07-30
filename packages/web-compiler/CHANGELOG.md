@@ -4,6 +4,27 @@
 
 ### Performance
 
+- **The CSR build path stamps static subtrees from a hoisted `<template>`** instead of emitting a
+  `document.createElement` + `setAttribute` + `appendChild` for every node. This was the last
+  large item in the generated module: the hydrate target carries the build path as its
+  SPA-navigation/rebuild fallback, so a docs page paid for the whole document twice — once as the
+  adopt walk, once as a per-node rebuild.
+
+  For the 2.3 MB MDX page in [the SSG build benchmark](../../benchmarks/ssg-build/README.md) the
+  emitted module drops from **19.8 MB to 5.1 MB** (343,286 → 33,773 lines), the shipped client
+  chunk from **2.02 MB to 608 KB**, and `otfw build --ssg` from **5.0 s to 2.9 s** with peak
+  memory down from 1245 MB to 712 MB. Rendered HTML is unchanged — `dist/` is byte-identical
+  apart from content hashes.
+
+  Cloning a template is only a legal rewrite where the HTML parser leaves markup alone, and it
+  often does not: `template.innerHTML` re-parses, so `<p><div/></p>` becomes two siblings, a bare
+  `<tr>` grows a `<tbody>`, and non-table content inside a table is foster-parented out in front
+  of it — none of which `createElement` does. `codegen::static_tree::template_html` serializes a
+  subtree only after proving the parser is a no-op on it, and anything else keeps the per-node
+  build. `packages/web-cli/tests/e2e/template-parity.mjs` compiles each fixture *both* ways and
+  requires the two DOM trees to be indistinguishable in headless Chromium; `OTFWC_NO_TEMPLATES=1`
+  is the escape hatch if that analysis is ever wrong for some app's markup.
+
 - **MDX parsing is linear in page length again.** `mdx_to_jsx` was superlinear — a docs page cost
   ~3× more per doubling rather than 2× — and the cause was not in this crate: `markdown-rs`
   1.0.0's `EditMap::add` scans its pending-edit list on every call, and that list grows with the

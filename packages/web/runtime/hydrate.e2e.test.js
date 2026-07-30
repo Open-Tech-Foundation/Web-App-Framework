@@ -50,6 +50,7 @@ import {
   runBuild,
   skipNode,
   skipSlot,
+  template,
 } from "./index.js";
 // Side effect: registers the real <web-internal-portal> custom element used by the Portal test.
 import "./portal.js";
@@ -290,6 +291,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
       signal,
       bindChild,
       hydrateChild,
+      template,
       cursor,
       claimElement,
       claimText,
@@ -481,6 +483,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
       bindText,
       bindList,
       hydrateList,
+      template,
       cursor,
       claimElement,
       claimText,
@@ -598,6 +601,7 @@ describe.skipIf(!hasBin)("hydration construct matrix (ssg → hydrate, no rebuil
   // harmless (loadModule injects by name, unused ones are just ignored).
   const ALL = {
     signal,
+    template,
     bindText,
     bindAttr,
     bindChild,

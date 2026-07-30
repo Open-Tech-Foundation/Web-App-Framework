@@ -44,7 +44,7 @@ use otfw_ir::ExpressionId;
 
 use crate::codegen::csr::{
     self, emit_build_item_fn, emit_build_node_fn, event_options, is_event, is_listener, js_string,
-    substitute_branches_pub, ComponentView,
+    substitute_branches_pub, ComponentView, Template,
 };
 use crate::codegen::static_tree;
 use crate::codegen::tags;
@@ -120,6 +120,10 @@ pub fn emit_module(
     //    they use a separate `hydrate` factory, below). Owned strings live here so the
     //    `ComponentView::Adopt(&str)` borrows stay valid through the csr call.
     let mut adopt_bodies: Vec<Option<String>> = Vec::with_capacity(components.len());
+    // Static subtrees stamped from a hoisted `<template>` by the CSR build functions
+    // embedded in the adopt bodies and page factories below. They are handed to the CSR
+    // module emitter so the declarations land at module scope, ahead of every `define`.
+    let mut templates: Vec<Template> = Vec::new();
     for c in components {
         if c.is_page {
             adopt_bodies.push(None);
@@ -129,6 +133,7 @@ pub fn emit_module(
         let body = e.component_adopt(c);
         if e.errors.is_empty() {
             merge_uses(&mut uses, &e.uses);
+            templates.extend(e.templates);
             adopt_bodies.push(Some(body));
         } else {
             // Can't adopt this component's view yet → `RebuildIfServerChildren`: discard the
@@ -151,11 +156,9 @@ pub fn emit_module(
         })
         .collect();
 
-    let base = csr::emit_module_with_adopt(components, module_stmts, module_exprs, &views);
-    let mut code = base.code;
-    errors.extend(base.errors);
-
-    // 2. Append a `hydrate` adopt factory for every page we can adopt.
+    // 2. A `hydrate` adopt factory for every page we can adopt. Built *before* the CSR
+    // module even though it is appended after it: the CSR call is what hoists the
+    // module's template declarations, and these factories stamp from them too.
     let mut page_bodies = Vec::new();
     for c in components {
         if !c.is_page {
@@ -170,11 +173,17 @@ pub fn emit_module(
         let body = e.page(c);
         if e.errors.is_empty() {
             merge_uses(&mut uses, &e.uses);
+            templates.extend(e.templates);
             page_bodies.push(body);
         } else {
             errors.extend(e.errors);
         }
     }
+
+    let base =
+        csr::emit_module_with_adopt(components, module_stmts, module_exprs, &views, &templates);
+    let mut code = base.code;
+    errors.extend(base.errors);
 
     if !code.ends_with('\n') {
         code.push('\n');
@@ -250,6 +259,10 @@ struct Emitter<'a> {
     /// name is recorded here so a view reference to it — a `{body}` hole or a bare identifier
     /// in a dynamic-node branch — adopts the server subtree in place instead of rebuilding it.
     value_locals: Vec<String>,
+    /// Static subtrees the CSR build functions spliced in here stamp from a hoisted
+    /// `<template>`. They are handed to `csr::emit_module_with_adopt` so the `const`
+    /// lands at module scope ahead of every `customElements.define`.
+    templates: Vec<Template>,
 }
 
 impl<'a> Emitter<'a> {
@@ -264,6 +277,7 @@ impl<'a> Emitter<'a> {
             base: lowered.ir.id.export.clone(),
             list_counter: 0,
             value_locals: Vec::new(),
+            templates: Vec::new(),
         }
     }
 
@@ -345,7 +359,8 @@ impl<'a> Emitter<'a> {
         // Top-level $effect callbacks run for the page's lifetime (page disposal: none).
         // Embedded JSX substitutes as inline CSR builders (effects build fresh nodes).
         for cb in lowered.effects.clone() {
-            let code = csr::effect_code_pub(lowered, &cb);
+            let (code, tmpls) = csr::effect_code_pub(lowered, &cb);
+            self.templates.extend(tmpls);
             self.bind(format!("effect({code})"));
         }
 
@@ -357,17 +372,20 @@ impl<'a> Emitter<'a> {
         // factory does, but do NOT push the error here: the dual module's csr part
         // already reports it, and an error in this emitter would drop the page's
         // hydrate factory entirely (falling back to a CSR rebuild) over a warning.
-        let dom_hooks =
+        let (dom_hooks, tmpls) =
             csr::dom_hook_closures_pub(lowered, &root, csr::dom_hook_root_error(lowered).is_none());
+        self.templates.extend(tmpls);
         if !lowered.on_mounts.is_empty() || !lowered.on_cleanups.is_empty() || !dom_hooks.is_empty()
         {
             self.line("const __lifecycle = { mounts: [], cleanups: [] };".into());
             for cb in &lowered.on_cleanups {
-                let code = csr::effect_code_pub(lowered, cb);
+                let (code, tmpls) = csr::effect_code_pub(lowered, cb);
+                self.templates.extend(tmpls);
                 self.line(format!("__lifecycle.cleanups.push({code});"));
             }
             for cb in &lowered.on_mounts {
-                let code = csr::effect_code_pub(lowered, cb);
+                let (code, tmpls) = csr::effect_code_pub(lowered, cb);
+                self.templates.extend(tmpls);
                 self.line(format!("__lifecycle.mounts.push({code});"));
             }
             for closure in dom_hooks {
@@ -439,16 +457,19 @@ impl<'a> Emitter<'a> {
         // adopt branch (and inside `__build`) — not here — because its callbacks close over
         // the component's locals, which live in each path's own scope.
         for cb in lowered.effects.clone() {
-            let code = csr::effect_code_pub(lowered, &cb);
+            let (code, tmpls) = csr::effect_code_pub(lowered, &cb);
+            self.templates.extend(tmpls);
             self.bind(format!("effect({code})"));
         }
         for obj in &lowered.exposes {
-            let code = csr::effect_code_pub(lowered, obj);
+            let (code, tmpls) = csr::effect_code_pub(lowered, obj);
+            self.templates.extend(tmpls);
             self.line(format!("Object.assign(this, ({code}));"));
         }
         if let Some(sink) = self.sink {
             for cb in &lowered.on_cleanups {
-                let code = csr::effect_code_pub(lowered, cb);
+                let (code, tmpls) = csr::effect_code_pub(lowered, cb);
+                self.templates.extend(tmpls);
                 self.line(format!("{sink}.push({code});"));
             }
         }
@@ -568,7 +589,9 @@ impl<'a> Emitter<'a> {
             self.list_counter += 1;
             let build_fn = format!("{}_vbuild{}", self.base, n);
             let adopt_fn = format!("{}_vadopt{}", self.base, n);
-            for l in csr::emit_build_node_fn(self.lowered, &build_fn, node) {
+            let (build_lines, tmpls) = csr::emit_build_node_fn(self.lowered, &build_fn, node);
+            self.templates.extend(tmpls);
+            for l in build_lines {
                 self.line(l);
             }
             self.emit_value_adopt_fn(&adopt_fn, node);
@@ -810,7 +833,10 @@ impl<'a> Emitter<'a> {
         self.emit_adopt_item_fn(&adopt_fn, item, item_param, index_param, preamble);
         // The CSR build for items reconciled in *after* first paint — the same subtree the
         // component/page's own CSR arm builds, so no new helper imports are introduced.
-        for l in emit_build_item_fn(self.lowered, &build_fn, item, item_param, index_param, preamble) {
+        let (build_lines, tmpls) =
+            emit_build_item_fn(self.lowered, &build_fn, item, item_param, index_param, preamble);
+        self.templates.extend(tmpls);
+        for l in build_lines {
             self.line(l);
         }
 
@@ -842,7 +868,9 @@ impl<'a> Emitter<'a> {
             let n = self.list_counter;
             self.list_counter += 1;
             let build_fn = format!("{}_node{}", self.base, n);
-            for l in emit_build_node_fn(self.lowered, &build_fn, branch) {
+            let (build_lines, tmpls) = emit_build_node_fn(self.lowered, &build_fn, branch);
+            self.templates.extend(tmpls);
+            for l in build_lines {
                 self.line(l);
             }
             calls.push(format!("{build_fn}()"));
@@ -903,7 +931,9 @@ impl<'a> Emitter<'a> {
             let adopt_fn = format!("{}_hnode{}", self.base, n);
             let build_fn = format!("{}_node{}", self.base, n);
             self.emit_adopt_node_fn(&adopt_fn, branch);
-            for l in emit_build_node_fn(self.lowered, &build_fn, branch) {
+            let (build_lines, tmpls) = emit_build_node_fn(self.lowered, &build_fn, branch);
+            self.templates.extend(tmpls);
+            for l in build_lines {
                 self.line(l);
             }
             // The adopt fn claims off the shared region cursor `__ic`; the build fn takes none.

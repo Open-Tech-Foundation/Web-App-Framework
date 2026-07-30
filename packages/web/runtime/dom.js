@@ -110,6 +110,36 @@ export function toText(value) {
   return value == null || value === false ? "" : String(value);
 }
 
+/**
+ * Compile a static subtree once, then stamp copies of it.
+ *
+ * CSR codegen hoists one `const t = template("<p …>…</p>")` per distinct static
+ * subtree in a module and calls `t()` where it would otherwise have emitted a
+ * `createElement` + `setAttribute` + `appendChild` for every node. Parsing happens
+ * on the first call and `cloneNode(true)` — a single engine-side copy — on every
+ * call, including the first.
+ *
+ * The parse is deferred rather than done at module scope so importing a compiled
+ * module never touches `document`: the hydrate bundle is a browser artifact, but
+ * module evaluation order is not something a runtime helper should depend on.
+ *
+ * The compiler only emits this for markup it has proven the HTML parser rebuilds
+ * exactly as `createElement` would (`codegen::static_tree::template_html`) — a
+ * template is *not* a general-purpose `innerHTML`, and passing it author markup
+ * would reintroduce every reparenting rule that analysis exists to avoid.
+ */
+export function template(html) {
+  let node;
+  return () => {
+    if (node === undefined) {
+      const el = document.createElement("template");
+      el.innerHTML = html;
+      node = el.content.firstChild;
+    }
+    return node.cloneNode(true);
+  };
+}
+
 /** Sentinel for "nothing written yet" — distinct from any real attribute value. */
 const UNSET = Symbol("unset");
 

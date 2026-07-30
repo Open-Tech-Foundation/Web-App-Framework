@@ -20,8 +20,25 @@ use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
 use otfw_ir::ExpressionId;
 
+use crate::codegen::static_tree;
 use crate::codegen::tags;
 use crate::lower::{module_shell, BodyItem, EffectCb, ExprTable, Lowered, SignalDecl};
+
+/// How many build statements a static subtree must replace before a hoisted
+/// `<template>` is worth it. A clone costs one module-level `const` plus a call, so
+/// below this the per-node build is both smaller and one less indirection.
+const TEMPLATE_MIN_STMTS: usize = 3;
+
+/// `OTFWC_NO_TEMPLATES=1` compiles every static subtree node by node.
+///
+/// Templating rests on an analysis of when the HTML parser leaves markup alone
+/// (`codegen::static_tree`); this is the way out if that analysis is ever wrong for
+/// some app's markup, and it is what
+/// `packages/web-cli/tests/e2e/template-parity.mjs` compiles the *other* build of
+/// each fixture with so the two DOMs can be diffed in a real engine.
+fn templates_disabled() -> bool {
+    std::env::var_os("OTFWC_NO_TEMPLATES").is_some_and(|v| v != "0")
+}
 
 /// The SVG namespace; elements under `<svg>` are created with `createElementNS`
 /// (SPEC §5.8).
@@ -58,6 +75,9 @@ struct Uses {
     host: bool,
     set_prop: bool,
     read_context: bool,
+    /// A static subtree is stamped from a hoisted `<template>` rather than built node
+    /// by node (see [`Emitter::emit_template`]).
+    template: bool,
     /// The dual component's adopt/build discriminator + per-component mismatch recovery
     /// (hydrate target only; a pure-CSR `Build` component references none of these).
     is_hydrating: bool,
@@ -91,6 +111,7 @@ impl Uses {
         self.host |= o.host;
         self.set_prop |= o.set_prop;
         self.read_context |= o.read_context;
+        self.template |= o.template;
         self.is_hydrating |= o.is_hydrating;
         self.hydration_mismatch |= o.hydration_mismatch;
         self.report_error |= o.report_error;
@@ -141,6 +162,9 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
     if uses.read_context {
         names.push("readContext");
     }
+    if uses.template {
+        names.push("template");
+    }
     if uses.is_hydrating {
         names.push("isHydrating");
     }
@@ -174,7 +198,8 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
 /// Emit a page/layout as a factory function returning the root DOM node.
 pub fn emit_page(lowered: &Lowered) -> CsrModule {
     let (e, body) = page_body(lowered);
-    let code = format!("{}{}{}", e.user_imports(), e.imports(), body);
+    let code =
+        format!("{}{}{}{}", e.user_imports(), e.imports(), render_templates(&e.templates), body);
     let mut errors = lowered.errors.clone();
     errors.extend(e.errors);
     CsrModule { code, errors }
@@ -231,9 +256,14 @@ fn page_body(lowered: &Lowered) -> (Emitter<'_>, String) {
 /// [`Emitter::dom_hook_closures`] for the hydrate backend (which has no CSR
 /// emitter). Helper imports for callbacks embedding JSX are covered by the dual
 /// module's CSR arm, like [`effect_code_pub`].
-pub(crate) fn dom_hook_closures_pub(lowered: &Lowered, host: &str, observers: bool) -> Vec<String> {
+pub(crate) fn dom_hook_closures_pub(
+    lowered: &Lowered,
+    host: &str,
+    observers: bool,
+) -> (Vec<String>, Vec<Template>) {
     let mut e = Emitter::new(lowered, Disposal::None);
-    e.dom_hook_closures(host, observers)
+    let closures = e.dom_hook_closures(host, observers);
+    (closures, e.templates)
 }
 
 /// The observer hooks need an Element to observe; a page whose root is a
@@ -254,7 +284,8 @@ pub(crate) fn dom_hook_root_error(lowered: &Lowered) -> Option<String> {
 /// Emit a UI component as a Custom Element class + `customElements.define`.
 pub fn emit_component(lowered: &Lowered) -> CsrModule {
     let (e, body) = component_body(lowered);
-    let code = format!("{}{}{}", e.user_imports(), e.imports(), body);
+    let code =
+        format!("{}{}{}{}", e.user_imports(), e.imports(), render_templates(&e.templates), body);
     let mut errors = lowered.errors.clone();
     errors.extend(e.errors);
     CsrModule { code, errors }
@@ -612,20 +643,26 @@ pub fn emit_module(
     module_stmts: &[BodyItem],
     module_exprs: &ExprTable,
 ) -> CsrModule {
-    emit_module_inner(components, module_stmts, module_exprs, &[])
+    emit_module_inner(components, module_stmts, module_exprs, &[], &[])
 }
 
 /// Like `emit_module`, but each component may carry a [`ComponentView`] (aligned with
 /// `components` by index) so the hydrate backend can splice an adopt body into the
 /// `connectedCallback`. Pages ignore their slot; a missing/empty slot is `Build` (CSR).
 /// csr stays hydration-agnostic — it only places the caller's body behind the switch.
+///
+/// `extra_templates` are hoisted alongside the ones this module's own units register:
+/// the hydrate backend's adopt bodies and page factories embed CSR build functions
+/// (via [`emit_build_item_fn`] / [`emit_build_node_fn`]) whose stamped subtrees need
+/// their `const` declared here, ahead of every `customElements.define`.
 pub(crate) fn emit_module_with_adopt(
     components: &[Lowered],
     module_stmts: &[BodyItem],
     module_exprs: &ExprTable,
     views: &[ComponentView],
+    extra_templates: &[Template],
 ) -> CsrModule {
-    emit_module_inner(components, module_stmts, module_exprs, views)
+    emit_module_inner(components, module_stmts, module_exprs, views, extra_templates)
 }
 
 /// Emit a standalone build function for a **list item** — `function name(itemSig, index)
@@ -643,11 +680,11 @@ pub(crate) fn emit_build_item_fn(
     item_param: &str,
     index_param: Option<&str>,
     preamble: &[String],
-) -> Vec<String> {
+) -> (Vec<String>, Vec<Template>) {
     let mut e = Emitter::new(lowered, Disposal::None);
     e.base = fn_name.to_string();
     e.build_item_fn(fn_name, item, item_param, index_param, preamble);
-    e.lines
+    (e.lines, e.templates)
 }
 
 /// Emit a standalone build function for a **conditional/dynamic-node branch** —
@@ -656,11 +693,15 @@ pub(crate) fn emit_build_item_fn(
 /// change selects a different branch (adoption can only claim the branch the server
 /// rendered). Returns the function's source lines; `base` is set to the unique `fn_name`
 /// so nested builders inside get collision-free names. See [`emit_build_item_fn`].
-pub(crate) fn emit_build_node_fn(lowered: &Lowered, fn_name: &str, node: &ViewNode) -> Vec<String> {
+pub(crate) fn emit_build_node_fn(
+    lowered: &Lowered,
+    fn_name: &str,
+    node: &ViewNode,
+) -> (Vec<String>, Vec<Template>) {
     let mut e = Emitter::new(lowered, Disposal::None);
     e.base = fn_name.to_string();
     e.build_fn(fn_name, node, "", &[]);
-    e.lines
+    (e.lines, e.templates)
 }
 
 /// Substitute node-builder calls into a JSX-embedding expression template (the
@@ -674,9 +715,10 @@ pub(crate) fn substitute_branches_pub(template: &str, calls: &[String]) -> Strin
 /// node-builder IIFEs — for the hydrate backend. Effects always *build* fresh
 /// nodes (SSG doesn't run effects, so there is nothing to adopt); helper imports
 /// are covered by the dual module's CSR arm, like [`emit_build_node_fn`].
-pub(crate) fn effect_code_pub(lowered: &Lowered, cb: &EffectCb) -> String {
+pub(crate) fn effect_code_pub(lowered: &Lowered, cb: &EffectCb) -> (String, Vec<Template>) {
     let mut e = Emitter::new(lowered, Disposal::None);
-    e.effect_code(cb)
+    let code = e.effect_code(cb);
+    (code, e.templates)
 }
 
 fn emit_module_inner(
@@ -684,11 +726,16 @@ fn emit_module_inner(
     module_stmts: &[BodyItem],
     module_exprs: &ExprTable,
     views: &[ComponentView],
+    extra_templates: &[Template],
 ) -> CsrModule {
     let mut combined = Uses::default();
     let mut errors = Vec::new();
     let mut bodies = Vec::new();
     let mut defines = Vec::new();
+    let mut templates: Vec<Template> = extra_templates.to_vec();
+    if !templates.is_empty() {
+        combined.template = true;
+    }
     for (i, c) in components.iter().enumerate() {
         // Lowering diagnostics (skipped unsupported constructs, bad hook arity, …)
         // surface alongside codegen errors so the CLI's warning channel sees them.
@@ -696,6 +743,7 @@ fn emit_module_inner(
         if c.is_page {
             let (e, body) = page_body(c);
             combined.merge(&e.uses);
+            templates.extend(e.templates);
             errors.extend(e.errors);
             bodies.push(body);
         } else {
@@ -708,6 +756,7 @@ fn emit_module_inner(
             let view = views.get(i).copied().unwrap_or(ComponentView::Build);
             let (e, body, define) = component_body_ex(c, c.is_default_export, view);
             combined.merge(&e.uses);
+            templates.extend(e.templates);
             errors.extend(e.errors);
             bodies.push(body);
             defines.push(define);
@@ -728,6 +777,7 @@ fn emit_module_inner(
     }
     let module_code = me.render("");
     combined.merge(&me.uses);
+    templates.extend(me.templates.clone());
     errors.extend(me.errors.clone());
 
     let mut code = String::new();
@@ -738,6 +788,9 @@ fn emit_module_inner(
         }
         code.push_str(&import_header(&combined, &first.runtime_imports));
     }
+    // Ahead of the module's own statements, every class, and every `define` — see
+    // `render_templates` on why the ordering is load-bearing.
+    code.push_str(&render_templates(&templates));
     if !module_code.is_empty() {
         code.push_str(&module_code);
         code.push('\n');
@@ -775,6 +828,54 @@ struct Emitter<'a> {
     /// Whether the current element context is inside an `<svg>` subtree, so
     /// descendants are created with `createElementNS` (SPEC §5.8).
     in_svg: bool,
+    /// Static subtrees this unit stamps from a hoisted `<template>`, as
+    /// `(const name, HTML)` — drained by the module assembler (see [`Template`]).
+    templates: Vec<Template>,
+}
+
+/// One hoisted `const <name> = template("<html>");`.
+///
+/// The name is derived from a hash of the HTML rather than a counter, so units that
+/// never see each other — the page factory, each component class, and the standalone
+/// build functions the hydrate backend asks for — agree on a name for identical markup
+/// without having to share a counter. Deduplication then falls out of the name.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct Template {
+    pub name: String,
+    pub html: String,
+}
+
+impl Template {
+    fn new(html: String) -> Self {
+        // FNV-1a over the markup. Not cryptographic and does not need to be: a
+        // collision between two *different* subtrees in one module would emit two
+        // `const`s with one name, which is a syntax error at bundle time rather than
+        // a silently wrong render.
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in html.as_bytes() {
+            hash ^= u64::from(*b);
+            hash = hash.wrapping_mul(0x1000_0000_01b3);
+        }
+        Self { name: format!("_tmpl${hash:016x}"), html }
+    }
+}
+
+/// Render hoisted template declarations, deduped by name and ordered for stability.
+/// They must precede every `customElements.define` in the module: defining a tag
+/// synchronously upgrades a matching server-rendered element and runs its
+/// `connectedCallback`, so a `const` declared after the class is still in its temporal
+/// dead zone when the build path stamps from it.
+pub(crate) fn render_templates(templates: &[Template]) -> String {
+    let mut seen: Vec<&str> = Vec::new();
+    let mut out = String::new();
+    for t in templates {
+        if seen.contains(&t.name.as_str()) {
+            continue;
+        }
+        seen.push(&t.name);
+        out.push_str(&format!("const {} = template({});\n", t.name, js_string(&t.html)));
+    }
+    out
 }
 
 impl<'a> Emitter<'a> {
@@ -790,6 +891,7 @@ impl<'a> Emitter<'a> {
             base,
             list_counter: 0,
             in_svg: false,
+            templates: Vec::new(),
         }
     }
 
@@ -1058,8 +1160,37 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// A static subtree worth stamping from a hoisted `<template>` instead of building
+    /// node by node: the expression that clones it, or `None` to build it as before.
+    ///
+    /// Three things have to hold. The subtree must be provably parser-neutral
+    /// ([`static_tree::template_html`] — the analysis that keeps this from changing what
+    /// any app renders). It must be big enough that one hoisted `const` plus a call beats
+    /// the statements it replaces, so a lone `<br/>` or `<span>hi</span>` stays inline.
+    /// And it must not sit inside an `<svg>`, where the CSR path builds through
+    /// `createElementNS` and the HTML parser would not.
+    fn template_expr(&mut self, node: &ViewNode) -> Option<String> {
+        let too_small = static_tree::build_stmt_count(node) < TEMPLATE_MIN_STMTS;
+        if templates_disabled() || self.in_svg || too_small {
+            return None;
+        }
+        let html = static_tree::template_html(node)?;
+        self.uses.template = true;
+        let tmpl = Template::new(html);
+        let call = format!("{}()", tmpl.name);
+        if !self.templates.contains(&tmpl) {
+            self.templates.push(tmpl);
+        }
+        Some(call)
+    }
+
     /// Emit the statements that build `node` and return the variable holding it.
     fn emit_node(&mut self, node: &ViewNode) -> String {
+        if let Some(clone) = self.template_expr(node) {
+            let var = self.fresh("el");
+            self.line(format!("const {var} = {clone};"));
+            return var;
+        }
         match node {
             ViewNode::Element { tag, props, children } => {
                 let var = self.fresh("el");
@@ -1321,6 +1452,11 @@ impl<'a> Emitter<'a> {
     /// Append `child` to `parent`, inlining static text-node creation and
     /// wiring lists directly into the parent (no intermediate node).
     fn emit_append(&mut self, parent: &str, child: &ViewNode) {
+        // A stamped subtree needs no local binding — append the clone directly.
+        if let Some(clone) = self.template_expr(child) {
+            self.line(format!("{parent}.appendChild({clone});"));
+            return;
+        }
         match child {
             ViewNode::Text(text) => {
                 self.line(format!(
@@ -1727,21 +1863,68 @@ mod tests {
     }
 
     #[test]
-    fn page_emits_static_factory_without_imports() {
+    fn a_static_page_stamps_one_template_and_needs_no_reactive_helpers() {
         let m = emit_page(&lower(
             "export function App() { return <div class=\"x\"><span>hi</span></div>; }",
         ));
         assert!(m.is_complete(), "unexpected errors: {:?}", m.errors);
         assert_eq!(
             m.code,
-            "export function App() {\n  \
-             const el0 = document.createElement(\"div\");\n  \
-             el0.setAttribute(\"class\", \"x\");\n  \
-             const el1 = document.createElement(\"span\");\n  \
-             el1.appendChild(document.createTextNode(\"hi\"));\n  \
-             el0.appendChild(el1);\n  \
+            "import { template } from \"@opentf/web\";\n\
+             const _tmpl$eaae55edd2ef4669 = \
+             template(\"<div class=\\\"x\\\"><span>hi</span></div>\");\n\
+             export function App() {\n  \
+             const el0 = _tmpl$eaae55edd2ef4669();\n  \
              return el0;\n}\n"
         );
+    }
+
+    #[test]
+    fn a_subtree_too_small_to_pay_for_a_template_is_still_built_node_by_node() {
+        // `<span>hi</span>` is two statements; a hoisted const plus a call is not cheaper.
+        let m = emit_page(&lower("export function App() { return <span>hi</span>; }"));
+        assert!(m.is_complete(), "unexpected errors: {:?}", m.errors);
+        assert_eq!(
+            m.code,
+            "export function App() {\n  \
+             const el0 = document.createElement(\"span\");\n  \
+             el0.appendChild(document.createTextNode(\"hi\"));\n  \
+             return el0;\n}\n"
+        );
+    }
+
+    #[test]
+    fn markup_the_html_parser_would_restructure_is_not_folded_into_one_template() {
+        // `<p><div/></p>` re-parses as `<p></p><div></div>`, so the pair cannot be one
+        // template. The `<p>` goes back to the build path; its child is stamped and
+        // *appended*, which is not a parse and so cannot be restructured. Same DOM either
+        // way — the rule only has to stop the two from being serialized together.
+        let m = emit_page(&lower(
+            "export function App() { return <p class=\"a\"><div id=\"b\">x</div></p>; }",
+        ));
+        assert!(m.is_complete(), "unexpected errors: {:?}", m.errors);
+        assert!(m.code.contains("document.createElement(\"p\")"), "p is built:\n{}", m.code);
+        assert!(!m.code.contains("template(\"<p"), "p is never serialized:\n{}", m.code);
+    }
+
+    #[test]
+    fn an_svg_subtree_keeps_createElementNS() {
+        // The HTML parser applies its own SVG attribute-case table; `setAttribute` does not.
+        let m = emit_page(&lower(
+            "export function App() { return <svg viewBox=\"0 0 8 8\"><circle cx=\"4\" cy=\"4\" r=\"2\"/></svg>; }",
+        ));
+        assert!(m.is_complete(), "unexpected errors: {:?}", m.errors);
+        assert!(!m.code.contains("template("), "must not be templated:\n{}", m.code);
+        assert!(m.code.contains("createElementNS"), "code:\n{}", m.code);
+    }
+
+    #[test]
+    fn identical_static_subtrees_share_one_template() {
+        let m = emit_page(&lower(
+            "export function App() { return <div><p class=\"n\">same</p><p class=\"n\">same</p></div>; }",
+        ));
+        assert!(m.is_complete(), "unexpected errors: {:?}", m.errors);
+        assert_eq!(m.code.matches("= template(").count(), 1, "one declaration:\n{}", m.code);
     }
 
     #[test]
@@ -2161,8 +2344,13 @@ mod tests {
         ));
         assert!(m.is_complete(), "errors: {:?}", m.errors);
         assert!(m.code.contains("export default function ("), "factory:\n{}", m.code);
-        assert!(m.code.contains("createElement(\"main\")"), "builds view:\n{}", m.code);
-        assert!(!m.code.contains("<main"), "no raw JSX:\n{}", m.code);
+        // The whole view is static, so it is stamped from one template rather than built.
+        assert!(
+            m.code.contains("template(\"<main><h1>Hi</h1></main>\")"),
+            "builds view:\n{}",
+            m.code
+        );
+        assert!(!m.code.contains("return (<"), "no raw JSX:\n{}", m.code);
     }
 
     #[test]

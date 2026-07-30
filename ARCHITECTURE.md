@@ -350,7 +350,12 @@ Each backend is a **pure function of the IRs / Project Graph**. Adding a target
 = adding a consumer; Stages 1–3 never change.
 
 - **CSR** _(implemented — `codegen/csr.rs`)_ — build skeleton + resolve slots by
-  path + wire effects.
+  path + wire effects. A subtree that is fully static is **stamped from a hoisted
+  `<template>`** rather than built node by node — but only where
+  `codegen/static_tree.rs` can prove the HTML parser reconstructs it exactly as
+  `createElement` would, since `template.innerHTML` re-parses and the parser
+  restructures markup (`<p>` wrapping a block element, a `<tr>` without a `<tbody>`,
+  non-table content inside a table). Everything else keeps the per-node build.
 - **Hydrate** _(Phase 2 — designed in [`docs/HYDRATION.md`](docs/HYDRATION.md))_ —
   adopt the existing server skeleton by path (no node creation) + wire effects.
   Differs from CSR **only in node acquisition** (adopt vs create); the reactivity

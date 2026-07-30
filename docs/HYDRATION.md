@@ -196,10 +196,20 @@ slotted content (whose reactivity it owns), while the component itself steps ove
 ### 3.2 `hydrate.rs` codegen backend — adopt, don't create _(implemented for pages)_
 
 Sibling to `csr.rs`. The crucial observation: **CSR and Hydrate differ only in node
-acquisition.** CSR does `createElement` + `appendChild`; Hydrate adopts the existing
-node from a DOM cursor (`claimElement`/`claimText`/`skipNode`). The **reactivity wiring
-is identical** — it calls the same runtime helpers (`bindText`, `bindAttr`, event
-listeners, `effect`) on the claimed nodes.
+acquisition.** CSR does `createElement` + `appendChild` (or, for a static subtree the
+HTML parser is provably a no-op on, one `cloneNode` off a hoisted `<template>` —
+`csr::Emitter::template_expr`); Hydrate adopts the existing node from a DOM cursor
+(`claimElement`/`claimText`/`skipNode`). The **reactivity wiring is identical** — it
+calls the same runtime helpers (`bindText`, `bindAttr`, event listeners, `effect`) on
+the claimed nodes.
+
+Both halves of that now treat a static subtree as one unit, which is what keeps a large
+docs page's module small: the adopt walk claims its root and stops, and the build path —
+which this target still carries for SPA navigation and mismatch recovery — stamps it.
+Because the template declarations are module-scope `const`s and `customElements.define`
+upgrades a server-rendered host *synchronously*, they are emitted ahead of every class
+and every `define` (the temporal-dead-zone hazard §3.4 already documents for sibling
+component classes).
 
 **What "not a copy" means in practice:** the CSR `Emitter` was *not* refactored into a
 Create/Adopt-parameterized walker (that touches CSR's hot path and risks regressions).
