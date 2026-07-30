@@ -209,6 +209,21 @@ the adopt-walk is its own small pass (it must be — claiming is structurally di
 from creating). The shared surface is the runtime contract, which is what actually
 guarantees server/client agreement.
 
+**The walk stops at static subtrees.** A subtree that is compile-time constant —
+plain elements and text, static attributes only, and no ref, `on*`, spread,
+component, hole, list or `{children}` slot anywhere below it
+(`codegen::static_tree::is_static`) — is claimed at its root and not descended into.
+Two properties make that sound: `claimElement` already advances the cursor past the
+element's *whole* subtree (the same reason a child component is not walked into,
+§3.2 below), and `emit_prop` skips `PropValue::Static` because those attributes are
+already serialized in the server HTML. So descending emitted a `cursor` plus a
+`claimElement`/`skipNode` per node purely to arrive back where it started. Note the
+tradeoff: nothing inside such a subtree is verified against the server DOM any more,
+so a backend disagreement *inside* static markup would no longer surface as a
+mismatch — the cursor still lands correctly, because claiming the root is what moves
+it. This is what keeps a large docs page's client module from growing a walk step per
+node (benchmarks/ssg-build).
+
 Output shapes (the hydrate target is a **dual module** — it emits the full CSR output
 *and* the adopt path, so one client bundle both hydrates first paint and CSR-renders
 client navigations):
