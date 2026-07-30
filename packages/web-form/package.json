@@ -1,6 +1,6 @@
 {
   "name": "@opentf/web-form",
-  "version": "1.20.0",
+  "version": "1.21.0",
   "description": "A high-performance, path-based reactive forms engine for the native-first OTF Web.",
   "main": "index.js",
   "module": "index.js",

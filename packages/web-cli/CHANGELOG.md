@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-07-30
+
 ### Tests
 
 - **New browser e2e (`tests/e2e/template-parity.mjs`) — the verification pass CSR template cloning
