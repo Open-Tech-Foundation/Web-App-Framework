@@ -7,4 +7,5 @@
 pub mod csr;
 pub mod hydrate;
 pub mod ssg;
+pub mod static_tree;
 pub mod tags;

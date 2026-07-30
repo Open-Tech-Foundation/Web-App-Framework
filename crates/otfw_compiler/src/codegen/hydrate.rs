@@ -46,6 +46,7 @@ use crate::codegen::csr::{
     self, emit_build_item_fn, emit_build_node_fn, event_options, is_event, is_listener, js_string,
     substitute_branches_pub, ComponentView,
 };
+use crate::codegen::static_tree;
 use crate::codegen::tags;
 use crate::lower::{BodyItem, ExprTable, Lowered, SignalDecl};
 
@@ -655,6 +656,16 @@ impl<'a> Emitter<'a> {
                 let var = self.fresh("el");
                 self.uses.claim_element = true;
                 self.line(format!("const {var} = claimElement({cur}, {});", js_string(tag)));
+                // A fully static subtree needs nothing below this line: its attributes are
+                // already serialized into the server HTML (`emit_prop` skips `Static`), and
+                // claiming an element advances `{cur}` past its entire subtree — the same
+                // reason a child component isn't walked into. Descending would emit a
+                // `cursor` plus a `claimElement`/`skipNode` per node only to arrive back
+                // here, which is what made a large static page's module enormous. The
+                // binding stays because root positions (page, list item, branch) use it.
+                if static_tree::is_static(node) {
+                    return var;
+                }
                 for prop in props {
                     self.emit_prop(&var, prop);
                 }
@@ -1781,6 +1792,10 @@ mod tests {
         assert!(m.code.contains("const __c0 = cursor(this);"), "adopt walk present:\n{}", m.code);
         assert!(m.code.contains("claimElement(__c0, \"div\");"), "claim the view root:\n{}", m.code);
         assert!(m.code.contains("skipSlot(__c2);"), "step over the {{children}} slot:\n{}", m.code);
+        // `<b>x</b>` is fully static, so claiming it covers its whole subtree — no cursor
+        // into it and no `skipNode` for its text.
+        assert!(!m.code.contains("cursor(el3)"), "static child not walked into:\n{}", m.code);
+        assert!(!m.code.contains("skipNode"), "no per-node skip inside static markup:\n{}", m.code);
         // Build arm (client nav) still captures the call-site children.
         // The build arm can also run over a server-rendered host (mismatch recovery), so its
         // capture prefers the slot nodes rescued from the markers.
@@ -1789,7 +1804,7 @@ mod tests {
             "build-arm capture:\n{}",
             m.code,
         );
-        assert!(m.code.contains("import { cursor, claimElement, skipNode, skipSlot }"), "skipSlot imported:\n{}", m.code);
+        assert!(m.code.contains("import { cursor, claimElement, skipSlot }"), "skipSlot imported:\n{}", m.code);
     }
 
     #[test]

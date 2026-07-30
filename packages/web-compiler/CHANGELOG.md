@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **The hydrate backend no longer walks into fully static subtrees.** Adopting a page emitted a
+  `cursor` plus a `claimElement`/`skipNode` per node, all the way down — even through markup
+  that cannot change. Claiming an element already advances the cursor past its whole subtree
+  (the same reason a child component isn't walked into) and static attributes are already
+  serialized in the server HTML, so for a static subtree the walk did a great deal of work to
+  arrive back where it started. A static subtree now costs one `claimElement`.
+
+  This is what made a large docs page's client module enormous. For a 2.3 MB MDX page the
+  adopt path collapsed from ~72,000 emitted lines to ~2,950, cutting the module from 29.8 MB
+  to 19.8 MB — and because the bundler's cost grows faster than linearly with input, the whole
+  `otfw build --ssg` went from **53.9 s to 15.2 s** with peak memory down from 1461 MB to
+  1170 MB. Rendered HTML is unchanged (byte-identical `dist/` apart from content hashes).
+
 ## [0.13.0] - 2026-07-30
 
 ### Fixed
