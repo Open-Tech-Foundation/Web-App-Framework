@@ -4,6 +4,12 @@ Performance benchmark suite for OTF Web. The goal is the comparison promised in
 the root README: OTF Web vs. other frameworks across **rendering**, **update
 latency**, and (later) **memory**.
 
+> This file covers the **runtime** benchmark — how fast a page updates in the
+> browser. For **build** cost — peak memory and wall time for `otfw build --ssg`
+> against Astro, Next.js, TanStack Start and Vite — see
+> [`ssg-build/README.md`](./ssg-build/README.md). The two are independent; neither
+> says anything about the other.
+
 > **Status:** four cases run through one harness — **OTF Web**, **React**,
 > **Solid**, and **Svelte 5** — with an automated runner, 4× CPU throttling,
 > and a significance-aware side-by-side comparison. Timing is still the
