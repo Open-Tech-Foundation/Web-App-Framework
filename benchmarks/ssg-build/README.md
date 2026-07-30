@@ -55,19 +55,21 @@ structure (288 `<table>`, 344 `<pre>`, 320 `<h2>` at 8×).
 ## Results
 
 Intel i7-8700K (12 threads), 16 GB RAM, Linux 6.12, Node 24.14. Peak RSS sampled
-across the whole process tree at 50 Hz.
+across the whole process tree at 50 Hz. One run per cell. The two tables come from
+separate sweeps, so the same tool's 72 KB cell differs by a few percent between
+them (OTF Web reads 254 MB in one and 262 MB in the other) — that spread is the
+run-to-run noise floor, and no claim here rests on a margin near it. See
+[How reproducible is this?](#how-reproducible-is-this) before quoting any of it.
 
 ### At the real page size (72 KB)
 
-Best of 3 warm runs.
-
 | | peak RSS | wall |
 |---|---|---|
-| **OTF Web** | 267 MB | **0.51 s** |
-| Vite (no client bundle) | **259 MB** | 0.67 s |
-| Astro (no client bundle) | 385 MB | 1.11 s |
-| TanStack Start | 488 MB | 1.64 s |
-| Next.js | 1227 MB | 3.57 s |
+| **OTF Web** | **254 MB** | **0.50 s** |
+| Vite (no client bundle) | 260 MB | 0.77 s |
+| Astro (no client bundle) | 416 MB | 1.23 s |
+| TanStack Start | 510 MB | 1.96 s |
+| Next.js | 1226 MB | 3.78 s |
 
 ### As one page grows
 
@@ -76,16 +78,16 @@ build.
 
 | | 72 KB | 145 KB | 289 KB | 578 KB | 1.2 MB | 2.3 MB |
 |---|---|---|---|---|---|---|
-| OTF Web (0.12, pre-fix) | 312 MB / 0.6 s | **SIGSEGV** | **SIGSEGV** | **SIGSEGV** | — | — |
-| OTF Web (with the fix) | 268 / 0.5 | 320 / 0.8 | 375 / 1.4 | 604 / 3.9 | 867 / 10.3 | 1720 / 47.2 |
-| Astro | 395 / 5.8 † | 417 / 1.2 | 484 / 1.4 | 555 / 1.6 | 592 / 2.2 | 946 / 3.4 |
-| Vite | 260 / 0.7 | 332 / 0.9 | 424 / 1.3 | 581 / 2.2 | 840 / 4.0 | 1489 / 8.2 |
-| TanStack Start | 507 / 1.6 | 546 / 2.1 | 606 / 3.0 | 990 / 4.9 | 1485 / 9.0 | 2043 / 18.4 |
-| Next.js | 1252 / 3.6 | 1343 / 4.1 | 1457 / 5.0 | 1666 / 7.3 | 2069 / 13.1 | 3125 / 30.2 |
+| OTF Web (0.12, no SSG fold) | 312 MB / 0.6 s | **SIGSEGV** | **SIGSEGV** | **SIGSEGV** | — | — |
+| OTF Web (0.13, SSG fold only) | 268 / 0.5 | 320 / 0.8 | 375 / 1.4 | 604 / 3.9 | 867 / 10.3 | 1720 / 47.2 |
+| **OTF Web (current)** | 262 / 0.5 | 300 / 0.6 | 394 / 1.0 | 497 / 2.2 | 779 / 5.3 | **1320 / 15.1** |
+| Astro | 395 / 5.8 † | 417 / 1.2 | 484 / 1.4 | 555 / 1.6 | 592 / 2.2 | 943 / 3.7 |
+| Vite | 260 / 0.7 | 332 / 0.9 | 424 / 1.3 | 581 / 2.2 | 840 / 4.0 | 1490 / 8.6 |
+| TanStack Start | 507 / 1.6 | 546 / 2.1 | 606 / 3.0 | 990 / 4.9 | 1485 / 9.0 | 2022 / 19.0 |
+| Next.js | 1252 / 3.6 | 1343 / 4.1 | 1457 / 5.0 | 1666 / 7.3 | 2069 / 13.1 | 2977 / 31.3 |
 
-† Cold-cache first run — 1.1 s warm, which is why the table above uses best of 3.
-Single runs are kept here so the ladder is one uninterrupted sweep per tool; read
-the shape of each row, not its individual cells.
+† Cold-cache first run — 1.1 s warm. Single runs, so read the shape of each row
+rather than its individual cells.
 
 ## What the numbers say
 
@@ -113,18 +115,69 @@ helped.** None of these tools streams SSG output — Astro writes complete files
 exactly as we do, and it is the fastest at scale. The cost lived in parsing the
 *generated program*, not in holding the *rendered HTML*.
 
+**The second fix: not walking into static markup.** The crash fix left a separate
+problem — 47 s to build a 2.3 MB page, the slowest of the five. The build log
+billed 40.6 s of that to "Compiling routes & components", and the cause was the
+hydrate backend's output size: 29.8 MB of JS for a 2.3 MB page, which the bundler
+then had to parse. It emitted a `cursor` plus a `claimElement`/`skipNode` per node
+even through markup that cannot change, though claiming an element already
+advances the cursor past its whole subtree. Skipping the walk for static subtrees
+took the adopt path from ~72,000 emitted lines to ~2,950 and the module from
+29.8 MB to 19.8 MB — and since the bundler's cost grows faster than linearly with
+input, a 34% smaller module made the build **3.5× faster**.
+
 **Where we stand, and where we don't.** At real docs-page sizes we are the
-fastest here and second-leanest, behind only Vite's no-client-bundle floor —
-while building a hydration bundle neither Vite nor Astro produces. That lead
-holds to roughly 300 KB. **Astro overtakes us from ~580 KB upward**, and our
-**wall time degrades superlinearly on very large single pages** — 47 s at 2.3 MB
-against Astro's 3.4 s. That is not the SSG path: the build log bills 40.6 s of it to
-"Compiling routes & components", and the cause is the hydrate backend's output
-size — 29.8 MB of JS for a 2.3 MB page, against 5.4 MB from the SSG backend —
-which the bundler must then parse. Tracked as a known limitation; it does not
-bite at the page sizes real docs sites use.
+fastest and leanest here — while building a hydration bundle neither Vite nor
+Astro produces. At 2.3 MB we are third on time and second on memory, ahead of
+both TanStack Start and Next.js; before the second fix we were last on time, and
+by a wide margin.
+
+**Astro still builds that page 4× faster** (3.7 s against 15.1 s). What is left is
+the CSR build path — a `document.createElement` per node, which the hydrate module
+carries as its rebuild fallback and which is now most of the remaining 19.8 MB.
+Emitting static subtrees as cloned templates would close much of the gap. It is not
+done here because `template.innerHTML` re-parses markup and the HTML parser
+restructures invalid nesting (a `<p>` wrapping a block element gets hoisted out)
+where `createElement` does not — so it changes CSR rendering for every app, not
+just large pages, and deserves its own verification pass.
+
+## How reproducible is this?
+
+Be precise about what these numbers are, because "we measured it" and "you can
+check it" are different claims.
+
+**Reproducible today:** the *method*. The harness and the fixture generator are
+committed, the fixture is a public file at a named commit, every project's
+configuration is written out below, and the measured quantity — peak RSS of the
+whole process tree — is defined by code you can read rather than by a claim.
+
+**Not reproducible today:** the *exact table*, from a single command. Three gaps:
+
+1. **The five projects are not vendored.** You rebuild them from the notes below.
+2. **Dependency versions float.** They were installed with plain `npm i`, so a run
+   next month resolves different versions. The majors used are in the table above.
+3. **The compiler is a local build.** The "current" row is `cargo build --release`
+   at the commit that added the static-subtree fix, not a published version.
+
+So treat the table as *evidence*, not proof: independently checkable, but not yet
+byte-for-byte replayable. Closing the gap means vendoring the five project
+skeletons with lockfiles and adding a runner — worth doing before quoting these
+numbers anywhere outside this repo.
+
+**One check that has been done.** The whole set was rebuilt from scratch in a
+second, independent session and the four non-otfw tools landed within a few
+percent of the first run — Astro 946→943 MB / 3.4→3.7 s, Vite 1489→1490 MB /
+8.2→8.6 s, TanStack 2043→2022 MB / 18.4→19.0 s, Next.js 3125→2977 MB / 30.2→31.3 s
+at 2.3 MB. Different `node_modules`, same machine and fixture. That is the
+strongest evidence available short of a pinned runner: the measurements are stable
+and not an artifact of one setup.
 
 ## Reproducing
+
+The fixture is `website/app/spec/page.mdx` from
+[Open-Tech-Foundation/STF](https://github.com/Open-Tech-Foundation/STF) at commit
+`12468ad` (CC0 1.0). Any later revision works — it just stops being the same
+fixture, so record which one you used.
 
 `measure.py` is the harness — it runs a command, samples peak RSS across the
 process tree, and reports wall time:

@@ -127,8 +127,9 @@ export default function HomePage() {
         <p className="text-center text-xs text-[var(--text-muted)] max-w-2xl mx-auto">
           Not all equal work: <span className="mono">astro</span> and <span className="mono">vite</span> ship
           no client JS for these pages, while OTF Web, Next.js and TanStack Start also build a hydration
-          bundle. Build time grows superlinearly on multi-megabyte single pages — a known limitation.
-          Method, the full 72&nbsp;KB→2.3&nbsp;MB ladder, and every caveat:{" "}
+          bundle. On a single page in the megabytes the lead goes the other way — Astro builds a
+          2.3&nbsp;MB page about 4× faster than we do. Method, the full 72&nbsp;KB→2.3&nbsp;MB ladder,
+          and every caveat:{" "}
           <a
             href="https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/benchmarks/ssg-build/README.md"
             className="underline hover:text-[var(--text-main)]"
