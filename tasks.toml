@@ -20,10 +20,13 @@ members = ["packages/*", "playground", "benchmarks/*", "website"]
 # and playground are developed against the current one.
 
 [tasks.site-install]
-run = "mise exec bun@1.2.15 -- bun install --cwd website"
+run = "mise exec bun@1.2.15 -- bun install"
+dir = "website"
 
 [tasks.site]
-run = "mise exec bun@1.2.15 -- bun run --cwd website dev"
+run = "mise exec bun@1.2.15 -- bun run dev"
+dir = "website"
 
 [tasks.site-build]
-run = "mise exec bun@1.2.15 -- bun run --cwd website build:ssg"
+run = "mise exec bun@1.2.15 -- bun run build:ssg"
+dir = "website"
