@@ -14,8 +14,8 @@ state changes update only the exact DOM node bound to them.
 
 ## Why OTF Web
 
-- **Zero-VDOM** — the compiler emits the precise `createElement` and update calls your
-  view needs. No reconciliation loop at runtime.
+- **Zero-VDOM** — the compiler emits the exact DOM calls your view needs and binds each
+  update to the node it touches. No reconciliation loop at runtime.
 - **Native components** — every component is a real `HTMLElement`. It works in any
   page, with or without a framework.
 - **Fine-grained signals** — `$state`, `$derived`, and `$effect` macros wire
