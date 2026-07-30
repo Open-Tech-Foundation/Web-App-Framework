@@ -2,7 +2,7 @@ import { Link } from "@opentf/web";
 import BenchmarkTable from "./components/BenchmarkTable.jsx";
 import InstallTabs from "./components/InstallTabs.jsx";
 import ReactiveTrace from "./components/ReactiveTrace.jsx";
-import { benchmark, capabilities } from "./home-data.js";
+import { benchmark, capabilities, ssgBenchmark } from "./home-data.js";
 
 export const metadata = {
   // Absolute: the homepage keeps its full title instead of the "%s — OTF Web" template.
@@ -108,6 +108,33 @@ export default function HomePage() {
         <p className="text-center text-xs text-[var(--text-muted)]">
           Bold marks a winner only when the margin beats the ~{resolutionMs}&nbsp;ms timing resolution — anything closer is a tie.
           Indicative, not a head-to-head. Run it yourself: <span className="mono">bun run bench all</span>.
+        </p>
+      </section>
+
+      {/* SSG build benchmark — build cost, not runtime */}
+      <section className="py-12 space-y-8">
+        <div className="text-center space-y-3">
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Cheap to build, too.</h2>
+          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
+            What it costs to <em>build</em> a static site — not to run one. Five toolchains, each
+            pre-rendering the same 72&nbsp;KB MDX docs page. Peak memory and wall time, lower is better.
+          </p>
+        </div>
+
+        <div className="max-w-3xl mx-auto bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
+          <BenchmarkTable report={ssgBenchmark} rowHeader="Metric" />
+        </div>
+        <p className="text-center text-xs text-[var(--text-muted)] max-w-2xl mx-auto">
+          Not all equal work: <span className="mono">astro</span> and <span className="mono">vite</span> ship
+          no client JS for these pages, while OTF Web, Next.js and TanStack Start also build a hydration
+          bundle. Build time grows superlinearly on multi-megabyte single pages — a known limitation.
+          Method, the full 72&nbsp;KB→2.3&nbsp;MB ladder, and every caveat:{" "}
+          <a
+            href="https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/benchmarks/ssg-build/README.md"
+            className="underline hover:text-[var(--text-main)]"
+          >
+            benchmarks/ssg-build
+          </a>.
         </p>
       </section>
 

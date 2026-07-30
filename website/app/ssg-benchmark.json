@@ -1,0 +1,26 @@
+{
+  "measuredAt": "2026-07-30",
+  "env": "Intel i7-8700K (12 threads), 16 GB RAM, Linux 6.12, Node 24.14",
+  "fixture": "One route rendering a real 72 KB MDX docs page (1751 lines, 43 code blocks, 298 table rows)",
+  "engines": ["otfw", "astro", "next", "tanstack", "vite"],
+  "highlightEngine": "otfw",
+  "shipsClientJs": {
+    "otfw": true,
+    "astro": false,
+    "next": true,
+    "tanstack": true,
+    "vite": false
+  },
+  "rows": [
+    {
+      "label": "Peak build memory (MB)",
+      "values": { "otfw": 267, "astro": 385, "next": 1227, "tanstack": 488, "vite": 259 },
+      "best": "vite"
+    },
+    {
+      "label": "Build time (s)",
+      "values": { "otfw": 0.51, "astro": 1.11, "next": 3.57, "tanstack": 1.64, "vite": 0.67 },
+      "best": "otfw"
+    }
+  ]
+}

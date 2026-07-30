@@ -1,7 +1,11 @@
-// Renders the generated benchmark report (app/benchmark-report.json, written by
-// `bun run bench all`) as the homepage comparison table. Pure presentation — the
-// medians and the per-row winner (`best`, timing-resolution rule included) come
-// from the runner, so the table can't drift from the last recorded run.
+// Renders a benchmark report as a homepage comparison table. Pure presentation —
+// the values and the per-row winner (`best`) come from the report, so a table
+// can't drift from the run it was recorded from.
+//
+// Used for both homepage tables: the runtime report (app/benchmark-report.json,
+// written by `bun run bench all`, whose `best` already applies the
+// timing-resolution tie rule) and the SSG build report (app/ssg-benchmark.json).
+// `rowHeader` names what the rows are, since those differ — operations vs metrics.
 
 const HEAD_CLS = "px-4 py-3 text-xs font-bold uppercase tracking-widest text-right";
 const CELL_CLS = "px-4 py-3 text-right font-mono";
@@ -45,7 +49,7 @@ export default function BenchmarkTable(props) {
       <table className="w-full text-left border-collapse text-sm">
         <thead>
           <tr className="bg-[var(--bg-surface)] border-b border-[var(--border)]">
-            <th className="px-6 py-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">Operation</th>
+            <th className="px-6 py-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest">{props.rowHeader ?? "Operation"}</th>
             {columns.map((col) => (
               <th key={col.engine} className={col.cls}>{col.engine}</th>
             ))}

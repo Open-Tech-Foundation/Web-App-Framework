@@ -3,13 +3,22 @@
 // truthful — every status here is checked against the actual codebase.
 
 import benchmarkReport from "./benchmark-report.json";
+import ssgBenchmarkReport from "./ssg-benchmark.json";
 
-// --- Benchmark (generated) ---------------------------------------------------
+// --- Runtime benchmark (generated) -------------------------------------------
 // `bun run bench all` writes app/benchmark-report.json — medians, per-row winner,
 // and the timing-resolution tie rule all come from the runner (see
 // benchmarks/README.md for the methodology and its limits) — and the homepage
 // renders that report as-is, so the table can't drift from the last recorded run.
 export const benchmark = benchmarkReport;
+
+// --- SSG build benchmark -----------------------------------------------------
+// Build cost, not runtime: peak memory and wall time to build the same 72 KB MDX
+// docs page. Recorded by hand from benchmarks/ssg-build (five separate toolchains,
+// so there is no single runner to generate it) — methodology, the full 70 KB→2.2 MB
+// ladder, and the caveats that belong with any of these numbers are in
+// benchmarks/ssg-build/README.md.
+export const ssgBenchmark = ssgBenchmarkReport;
 
 // --- Capabilities & roadmap (grouped; statuses verified against the codebase) -
 //     status: "supported" | "partial" | "beta" | "planned"
