@@ -25,6 +25,10 @@
   requires the two DOM trees to be indistinguishable in headless Chromium; `OTFWC_NO_TEMPLATES=1`
   is the escape hatch if that analysis is ever wrong for some app's markup.
 
+  **Requires `@opentf/web` ≥ 0.26.0**, which exports the `template` helper the emitted modules now
+  import. A compiled module names it in its import header, so an app on this compiler with an
+  older runtime fails at module load, not at render — these two must be released together.
+
 - **MDX parsing is linear in page length again.** `mdx_to_jsx` was superlinear — a docs page cost
   ~3× more per doubling rather than 2× — and the cause was not in this crate: `markdown-rs`
   1.0.0's `EditMap::add` scans its pending-edit list on every call, and that list grows with the
