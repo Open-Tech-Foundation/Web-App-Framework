@@ -11,7 +11,7 @@
   },
   "scripts": {
     "test": "bun test tests/",
-    "test:e2e": "bun tests/e2e/serve.mjs && bun tests/e2e/build-data.mjs && bun tests/e2e/build-metadata.mjs && bun tests/e2e/worker-assets.mjs && bun tests/e2e/hydrate-browser.mjs && bun tests/e2e/lifecycle-hooks-browser.mjs && bun tests/e2e/runtime-browser.mjs && bun tests/e2e/template-parity.mjs"
+    "test:e2e": "bun tests/e2e/serve.mjs && bun tests/e2e/build-data.mjs && bun tests/e2e/build-metadata.mjs && bun tests/e2e/worker-assets.mjs && bun tests/e2e/hydrate-browser.mjs && bun tests/e2e/lifecycle-hooks-browser.mjs && bun tests/e2e/runtime-browser.mjs && bun tests/e2e/template-parity.mjs && bun tests/e2e/reparse-browser.mjs"
   },
   "files": [
     "src"
