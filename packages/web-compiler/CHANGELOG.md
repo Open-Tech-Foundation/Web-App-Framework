@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-31
+
 ### Fixed
 
 - **Server HTML now re-parses into the tree the hydrate walk was generated against.** The claim
