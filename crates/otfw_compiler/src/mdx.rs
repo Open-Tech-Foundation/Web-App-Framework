@@ -228,6 +228,11 @@ impl Emit {
     /// GFM table: first row is the header (`<th>` cells), the rest are `<td>`.
     /// Per-column alignment (the `:--:` delimiter row) becomes an inline
     /// `style="text-align:…"` on each cell; `AlignKind::None` adds nothing.
+    ///
+    /// The table ships inside the same `.otfw-table-wrap` scroll container the
+    /// `<Table>` component uses, so a wide table scrolls itself instead of
+    /// overflowing the prose column and running under the "On this page" TOC.
+    /// `tabindex="0"` keeps that scroll area reachable by keyboard.
     fn emit_table(&mut self, table: &markdown::mdast::Table) -> String {
         use markdown::mdast::AlignKind;
         let align_attr = |col: usize| match table.align.get(col) {
@@ -258,7 +263,9 @@ impl Emit {
                 body.push_str(&format!("<tr>{cells}</tr>"));
             }
         }
-        format!("<table>{head}<tbody>{body}</tbody></table>")
+        format!(
+            "<div class=\"otfw-table-wrap\" tabindex=\"0\"><table>{head}<tbody>{body}</tbody></table></div>"
+        )
     }
 
     /// Re-serialize an MDX JSX element (or a fragment when `name` is `None`).
@@ -594,6 +601,17 @@ mod tests {
         assert!(out.contains("<th style=\"text-align:center\">B</th>"), "{out}");
         assert!(out.contains("<th style=\"text-align:right\">C</th>"), "{out}");
         assert!(out.contains("<td style=\"text-align:center\">2</td>"), "{out}");
+    }
+
+    #[test]
+    fn table_sits_in_a_scroll_wrapper() {
+        let src = "| A | B |\n| --- | --- |\n| 1 | 2 |";
+        let out = mdx_to_jsx(src, "doc.mdx").unwrap();
+        assert!(
+            out.contains("<div class=\"otfw-table-wrap\" tabindex=\"0\"><table>"),
+            "{out}"
+        );
+        assert!(out.contains("</table></div>"), "{out}");
     }
 
     #[test]

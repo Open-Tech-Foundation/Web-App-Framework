@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Wide tables scroll instead of running under the TOC.** The theme drops the table's own block
+  margin when it sits in a `.otfw-table-wrap` (the compiler now emits that wrapper for MDX tables,
+  so the two no longer stack) and gives the wrapper a focus ring for its keyboard-reachable
+  scroll area. `<Table>` is focusable for the same reason.
+
 ## [0.23.0] - 2026-07-30
 
 _Dependency updates._

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **MDX GFM tables now emit the `.otfw-table-wrap` scroll container** instead of a bare `<table>`.
+  A table whose columns do not fit the prose width used to overflow the content column and run
+  under the "On this page" TOC; it now scrolls inside its own box. The wrapper is `tabindex="0"`
+  so the scroll area is keyboard reachable.
+
 ## [0.14.0] - 2026-07-30
 
 ### Performance
