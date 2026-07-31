@@ -19,7 +19,7 @@ use otfw_ir::reactivity::SignalKind;
 use otfw_ir::view::{Prop, PropValue, ViewNode};
 use otfw_ir::ExpressionId;
 
-use crate::codegen::tags;
+use crate::codegen::{static_tree, tags};
 use crate::lower::{BodyItem, ExprTable, Lowered, SignalDecl};
 
 /// HTML void elements (no closing tag).
@@ -431,9 +431,64 @@ impl<'a> Emitter<'a> {
         if VOID.contains(&tag) {
             return pieces;
         }
-        pieces.extend(self.concat(children));
+        // The parser drops one newline directly after `<pre>`/`<listing>`, so when the
+        // content itself starts with one, write a second: the parser eats that one and
+        // the content keeps its first line. Only literal text can start with a newline in
+        // the served bytes — a hole is preceded by its `<!--$-->` marker, which is not a
+        // newline, so the parser has nothing to eat and the value survives untouched.
+        if static_tree::eats_leading_newline(tag)
+            && matches!(children.first(), Some(ViewNode::Text(t)) if t.starts_with('\n'))
+        {
+            pieces.push(js_string("\n"));
+        }
+        if static_tree::is_raw_text(tag) {
+            pieces.extend(self.raw_text(tag, children));
+        } else {
+            pieces.extend(self.concat(children));
+        }
         pieces.push(js_string(&format!("</{tag}>")));
         pieces
+    }
+
+    /// The content of a raw-text element (`<script>`, `<style>`, `<textarea>`, `<title>`).
+    ///
+    /// Two things are different in here. **No hydration markers**: the tokenizer does not
+    /// parse markup inside these elements, so a `<!--$-->` would be served as those literal
+    /// characters — visible in the textarea, in the page title, in the stylesheet — and the
+    /// adopt walk would then look for a marker comment that is really text. The claim side
+    /// takes the element's single text node directly instead (`claimRawText`). **Escaping
+    /// follows the tokenizer**: `<textarea>`/`<title>` are *escapable* raw text and still
+    /// resolve character references, so their content is escaped like any other text; in
+    /// `<script>`/`<style>` an escape would show through literally (`a &gt; b` in a
+    /// stylesheet), so the value is written verbatim — matching what the CSR path puts in
+    /// the element's text node.
+    fn raw_text(&mut self, tag: &str, children: &[ViewNode]) -> Vec<String> {
+        let escapable = static_tree::is_escapable_raw_text(tag);
+        children
+            .iter()
+            .map(|child| match child {
+                ViewNode::Text(text) => {
+                    js_string(&if escapable { escape_text(text) } else { text.clone() })
+                }
+                ViewNode::Dynamic { expr } => {
+                    let code = self.code(*expr);
+                    if escapable {
+                        self.server.insert("ssgText");
+                        format!("ssgText({code})")
+                    } else {
+                        self.server.insert("ssgRawText");
+                        format!("ssgRawText({code})")
+                    }
+                }
+                _ => {
+                    self.errors.push(format!(
+                        "SSG: <{tag}> can only contain text — its content is not parsed as \
+                         markup, so anything else in it would be served as literal characters"
+                    ));
+                    js_string("")
+                }
+            })
+            .collect()
     }
 
     fn component_use(&mut self, name: &str, props: &[Prop], children: &[ViewNode]) -> String {
@@ -692,6 +747,44 @@ mod tests {
             m.code
         );
         assert!(m.code.contains("ssgText(t.value.icon)"), "item reads the marker:\n{}", m.code);
+    }
+
+    #[test]
+    fn raw_text_elements_carry_no_hole_markers() {
+        // Their content is not parsed as markup, so a `<!--$-->` would be served as those
+        // literal characters — visible in the textarea, in the title, in the stylesheet.
+        let m = emit(
+            "export default function P(){ let v=$state(\"a\"); return <form>\
+             <textarea>{v}</textarea><title>{v}</title><style>{v}</style></form>; }",
+            true,
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(!m.code.contains("<!--$-->"), "no markers in raw text:\n{}", m.code);
+        // Escapable raw text still resolves character references, so it is escaped;
+        // `<style>`/`<script>` content is written verbatim (an entity would show through).
+        assert!(m.code.contains("<textarea>\" + ssgText(v.value)"), "code:\n{}", m.code);
+        assert!(m.code.contains("<style>\" + ssgRawText(v.value)"), "code:\n{}", m.code);
+    }
+
+    #[test]
+    fn markup_inside_a_raw_text_element_is_rejected() {
+        let m = emit(
+            "export default function P(){ let v=$state(\"a\"); return <textarea><b>{v}</b></textarea>; }",
+            true,
+        );
+        assert!(!m.is_complete());
+        assert!(m.errors[0].contains("<textarea> can only contain text"), "{:?}", m.errors);
+    }
+
+    #[test]
+    fn a_pre_hole_is_not_padded_with_a_newline() {
+        // The parser eats one newline off a `<pre>` start tag, so serialized content that
+        // begins with one gets a second (`ssg::element`). A hole never does: its `<!--$-->`
+        // marker is what follows the tag, and a comment is not a newline. Padding anyway
+        // would insert a blank first line into every server-rendered `<pre>`.
+        let m = emit("export default function P(){ let v=$state(\"x\"); return <pre>{v}</pre>; }", true);
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("\"<pre><!--$-->\""), "code:\n{}", m.code);
     }
 
     #[test]

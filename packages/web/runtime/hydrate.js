@@ -292,6 +292,33 @@ export function claimText(cur) {
 }
 
 /**
+ * Claim the text node of a **raw text** element (`<textarea>`, `<title>`, `<style>`,
+ * `<script>`) — the one place a text hole carries no `<!--$-->…<!--/-->` markers.
+ *
+ * The tokenizer does not parse markup inside these elements, so a marker comment written
+ * in there comes back as literal characters (it would be *visible* in a textarea, and the
+ * walk would be hunting for a comment node that is really text). The SSG backend
+ * therefore emits the content bare (`ssg::raw_text`), and everything written between the
+ * tags — however many static and dynamic pieces — arrives as a single text node. That
+ * node is the whole content, so it is claimed from the element rather than off a cursor;
+ * the compiler only emits this call for the one-hole shape, which `reparse_hazard` is
+ * what guarantees. A server-rendered empty value leaves no text node at all, so one is
+ * created to bind onto.
+ */
+export function claimRawText(el) {
+  const node = el.firstChild;
+  if (node) {
+    if (node.nodeType !== TEXT) {
+      throw new HydrationMismatch(`expected raw text in <${el.tagName.toLowerCase()}>, found ${describe(node)}`);
+    }
+    return node;
+  }
+  const text = document.createTextNode("");
+  el.appendChild(text);
+  return text;
+}
+
+/**
  * Adopt a **JSX-value hole** — a `{expr}` whose value is a JSX-value local (`const x =
  * <T/>`), server-rendered in place between the text-hole markers `<!--$-->…<!--/-->`
  * (docs/HYDRATION.md §3.1, 2.1e). Unlike {@link claimText} — which treats a node-valued

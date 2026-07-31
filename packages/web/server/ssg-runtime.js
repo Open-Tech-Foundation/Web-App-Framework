@@ -136,6 +136,25 @@ export function ssgText(v) {
   return escapeHtml(String(v));
 }
 
+/**
+ * A dynamic hole inside a **raw text** element (`<script>`, `<style>`): written verbatim.
+ *
+ * The tokenizer does not parse markup — or character references — in there, so escaping
+ * would be served literally (`a &gt; b` in a stylesheet is the entity, not `>`), and the
+ * CSR path, which puts the value in the element's text node, doesn't escape either. The
+ * one sequence that must not survive is the element's own closing tag: `</script` inside
+ * the value would end the element early and spill the rest into the document. It is
+ * written as `<\/script`, which the tokenizer no longer recognizes as an end tag and
+ * which JavaScript reads back identically inside the string literal such a sequence
+ * almost always sits in. `<textarea>`/`<title>` are *escapable* raw text — they resolve
+ * character references — so their holes go through `ssgText` instead.
+ */
+export function ssgRawText(v) {
+  if (v == null || v === false || v === true) return "";
+  if (Array.isArray(v)) return v.map(ssgRawText).join("");
+  return String(v).replace(/<\/(script|style|textarea|title|xmp|iframe|noembed|noframes)/gi, "<\\/$1");
+}
+
 /** Render an array.map list to concatenated HTML. */
 export function ssgList(arr, fn) {
   return (Array.isArray(arr) ? arr : []).map(fn).join("");

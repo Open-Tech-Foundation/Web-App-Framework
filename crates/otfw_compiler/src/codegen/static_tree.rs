@@ -162,8 +162,29 @@ fn is_heading(tag: &str) -> bool {
 
 /// The parser drops one newline immediately after these start tags, so a serializer
 /// has to write an extra one to preserve content that begins with a line break.
-fn eats_leading_newline(tag: &str) -> bool {
+pub fn eats_leading_newline(tag: &str) -> bool {
     matches!(tag, "pre" | "listing")
+}
+
+/// Elements whose content the tokenizer does **not** parse as markup: raw text
+/// (`script`, `style`, …) and escapable raw text (`textarea`, `title`). A comment
+/// written inside one comes back as literal characters, so the hydration text-hole
+/// markers can't go there and the SSG backend has to emit the content bare
+/// (`ssg::raw_text_mode`).
+pub fn is_raw_text(tag: &str) -> bool {
+    matches!(
+        tag,
+        "script" | "style" | "textarea" | "title" | "xmp" | "iframe" | "noembed" | "noframes"
+            | "noscript" | "plaintext"
+    )
+}
+
+/// Raw text (`script`, `style`, …) vs *escapable* raw text (`textarea`, `title`).
+/// The escapable kind still resolves character references, so its content is escaped
+/// like any other text; the raw kind is emitted verbatim (escaping would show through
+/// literally — `<style>a &gt; b</style>` renders the entity, not `>`).
+pub fn is_escapable_raw_text(tag: &str) -> bool {
+    matches!(tag, "textarea" | "title")
 }
 
 /// Which enclosing elements are still open, for the rules that depend on it.
@@ -178,6 +199,45 @@ struct Ctx<'a> {
     /// An `<li>` / `<dd>`|`<dt>` is open in list-item scope.
     in_li: bool,
     in_item: bool,
+    /// A `<form>` is open: the form element pointer makes the parser ignore a nested one.
+    in_form: bool,
+    /// Inside SVG/MathML, where the HTML insertion modes (and every rule above) are
+    /// replaced by the foreign-content ones — nesting is taken at face value there.
+    foreign: bool,
+}
+
+impl<'a> Ctx<'a> {
+    /// Would *unknown* element content here risk closing something the walk assumes is
+    /// still open?
+    ///
+    /// Only inside a `<p>`. The other implied-end-tag rules fire on a specific start tag
+    /// — a second `<a>` closes an `<a>`, a second `<button>` a `<button>`, a second
+    /// `<li>` an `<li>` — and content shaped like that is invalid markup nobody writes,
+    /// whereas `<p>` is closed by *any* of the many block-level tags in [`CLOSES_P`], so
+    /// content that merely starts with a `<div>` is enough. Treating `<a>`/`<li>` as
+    /// fragile too would refuse `<a>{children}</a>` — the `Link` component, and with it
+    /// every nav on every page.
+    fn fragile(&self) -> bool {
+        self.in_p
+    }
+
+    /// Is the insertion point inside a table's own structure, where anything that is
+    /// not a table part gets foster-parented out in front of the table?
+    fn in_table_structure(&self) -> bool {
+        self.parent.is_some_and(|p| table_children(p).is_some())
+    }
+}
+
+/// What question the walk is answering.
+#[derive(Clone, Copy, PartialEq)]
+enum Mode {
+    /// May this subtree be serialized once and `cloneNode`d in place of the per-node
+    /// `createElement` build? Static input only, and byte-identical or nothing.
+    Clone,
+    /// Do the SSG bytes for this view re-parse into the tree the hydrate claim walk
+    /// was generated against? Dynamic content is allowed — the question is only
+    /// whether the parser *restructures* what the server wrote.
+    Adopt,
 }
 
 /// The HTML for a static subtree, when a `<template>` clone of it is identical to what
@@ -195,7 +255,7 @@ pub fn template_html(node: &ViewNode) -> Option<String> {
     if TABLE_PART.contains(&tag.as_str()) {
         return None;
     }
-    if !is_static(node) || !round_trips(node, Ctx::default()) {
+    if !is_static(node) || walk(node, Ctx::default(), Mode::Clone).is_err() {
         return None;
     }
     let mut out = String::new();
@@ -223,68 +283,250 @@ pub fn build_stmt_count(node: &ViewNode) -> usize {
     }
 }
 
-/// Whether `node` survives `template.innerHTML` unchanged, given what is open above it.
-fn round_trips(node: &ViewNode, ctx: Ctx) -> bool {
+/// Why the SSG bytes for `view` would not re-parse into the tree a hydrate claim walk
+/// is generated against — `None` when the parser leaves the markup alone and the walk
+/// can safely adopt it.
+///
+/// This is [`template_html`]'s analysis asked in the other direction. There, the input
+/// is static and the bar is a byte-identical clone; here the input is a whole view —
+/// holes, lists, components — and the bar is *structural*: the parser must not insert,
+/// move or drop a node relative to what the SSG backend serialized, because the claim
+/// walk addresses nodes positionally. Content the walk cannot see through (a component's
+/// own view, a `{children}` slot) is treated as arbitrary element content: fine in an
+/// ordinary parent, refused where an implied end tag or foster parenting could fire.
+pub fn reparse_hazard(view: &ViewNode) -> Option<String> {
+    walk(view, Ctx::default(), Mode::Adopt).err()
+}
+
+/// The shared parser model. `Mode::Clone` answers "byte-identical after a re-parse?"
+/// for a static subtree; `Mode::Adopt` answers "same tree shape?" for a whole view.
+fn walk(node: &ViewNode, ctx: Ctx, mode: Mode) -> Result<(), String> {
     match node {
         // CR is normalized to LF by the input stream preprocessor, and NUL becomes
         // U+FFFD; a `createTextNode` keeps both. Nothing else in text is at risk once
         // `&`, `<` and `>` are escaped.
-        ViewNode::Text(text) => !text.contains('\r') && !text.contains('\0'),
-        ViewNode::Element { tag, props, children } => {
-            let tag = tag.as_str();
-            if !is_safe_name(tag) || NEVER.contains(&tag) {
-                return false;
+        ViewNode::Text(text) => {
+            if mode == Mode::Clone && (text.contains('\r') || text.contains('\0')) {
+                return Err("text carrying a carriage return or NUL".into());
             }
-            // A void element's children would be silently dropped by the parser.
-            if VOID.contains(&tag) && !children.is_empty() {
-                return false;
+            if ctx.in_table_structure() && !text.trim().is_empty() {
+                return Err(table_text_err(ctx));
             }
-            // Table parts are ignored outside a table, and a table's children are
-            // rebuilt into the canonical shape — so both directions have to match.
-            let parent_model = ctx.parent.and_then(table_children);
-            match (TABLE_PART.contains(&tag), parent_model) {
-                (true, Some(allowed)) if allowed.contains(&tag) => {}
-                (false, None) => {}
-                _ => return false,
-            }
-            // Inside a table's structure, only the elements above may appear —
-            // stray text is foster-parented out in front of the table.
-            let all_elements = children.iter().all(|c| matches!(c, ViewNode::Element { .. }));
-            if table_children(tag).is_some() && !all_elements {
-                return false;
-            }
-            // The self-closing cases: each of these ends an open element of its own
-            // kind rather than nesting inside it.
-            if (ctx.in_p && CLOSES_P.contains(&tag))
-                || (ctx.in_a && tag == "a")
-                || (ctx.in_button && tag == "button")
-                || (ctx.in_li && tag == "li")
-                || (ctx.in_item && matches!(tag, "dd" | "dt"))
-                // `<h2>` directly inside `<h1>` pops the h1 (the rule fires only when
-                // the heading is the *current* node, so any element between them is
-                // enough to make it safe).
-                || (is_heading(tag) && ctx.parent.is_some_and(is_heading))
-            {
-                return false;
-            }
-            if !props_round_trip(props) {
-                return false;
-            }
-            let barrier = SCOPE_BARRIER.contains(&tag);
-            let child_ctx = Ctx {
-                parent: Some(tag),
-                in_p: !barrier && (ctx.in_p || tag == "p"),
-                in_a: !FORMAT_MARKER.contains(&tag) && (ctx.in_a || tag == "a"),
-                // `<button>` bounds button scope, but it is also what the search is
-                // *for* — the walk stops at the enclosing button by matching it — so it
-                // does not shield a button nested inside it the way it shields a `<p>`.
-                in_button: (!barrier || tag == "button") && (ctx.in_button || tag == "button"),
-                in_li: !ITEM_BARRIER.contains(&tag) && (ctx.in_li || tag == "li"),
-                in_item: !ITEM_BARRIER.contains(&tag) && (ctx.in_item || matches!(tag, "dd" | "dt")),
-            };
-            children.iter().all(|c| round_trips(c, child_ctx))
+            Ok(())
         }
-        _ => false,
+        ViewNode::Element { tag, props, children } => element(tag, props, children, ctx, mode),
+        // Below here the node is dynamic: only the adopt walk has anything to say.
+        _ if mode == Mode::Clone => Err("dynamic content".into()),
+        // A text hole renders text — safe anywhere the parser accepts text.
+        ViewNode::Dynamic { .. } => {
+            if ctx.in_table_structure() {
+                return Err(table_text_err(ctx));
+            }
+            Ok(())
+        }
+        // Regions the server brackets with marker comments (`<!--[-->…<!--]-->`): inside a
+        // table the parser relocates rows into an implied section but leaves the comments
+        // where they were, so the markers no longer bracket the content they opened.
+        // A region the server brackets with marker comments (`<!--[-->…<!--]-->`). The
+        // markers themselves are safe wherever a comment is — what matters is what the
+        // region renders, so the item / branch views are walked in this position.
+        ViewNode::List { item, .. } => walk(item, ctx, mode),
+        ViewNode::DynamicNode { branches, .. } => {
+            branches.iter().try_for_each(|b| walk(b, ctx, mode))
+        }
+        // Content this view cannot see: a component's own markup, or whatever the parent
+        // slotted in. Either can start with a block element, which is exactly what closes
+        // an open `<p>`/`<a>`/`<button>`/`<li>` early (the island-in-a-paragraph case).
+        ViewNode::Component { .. } | ViewNode::Children => {
+            // A component's host is an unknown tag, which a table's insertion modes
+            // foster-parent out in front of the table. A `{children}` slot contributes no
+            // element of its own — only its markers, which a table keeps where they were
+            // — so the parent's content is left to the parent's own walk.
+            if ctx.in_table_structure() && matches!(node, ViewNode::Component { .. }) {
+                return Err(table_text_err(ctx));
+            }
+            if ctx.fragile() {
+                return Err(format!(
+                    "{} inside <p>: content the parser hoists out would close the <p> early",
+                    node_label(node)
+                ));
+            }
+            if ctx.parent.is_some_and(|p| matches!(p, "select" | "optgroup")) {
+                return Err(format!(
+                    "{} inside <{}>: the parser drops everything but options there",
+                    node_label(node),
+                    ctx.parent.unwrap()
+                ));
+            }
+            Ok(())
+        }
+        ViewNode::Fragment(children) => children.iter().try_for_each(|c| walk(c, ctx, mode)),
+    }
+}
+
+fn element(
+    tag: &str,
+    props: &[Prop],
+    children: &[ViewNode],
+    ctx: Ctx,
+    mode: Mode,
+) -> Result<(), String> {
+    if !is_safe_name(tag) {
+        return Err(format!("<{tag}>: the tokenizer does not read that name back"));
+    }
+    // Inside SVG/MathML the HTML content model does not apply at all; the parser takes
+    // the nesting as written, so only the foreign-content entry itself is checked.
+    if ctx.foreign {
+        return children.iter().try_for_each(|c| walk(c, child_ctx(tag, ctx, true), mode));
+    }
+    if mode == Mode::Clone {
+        if NEVER.contains(&tag) {
+            return Err(format!("<{tag}>: the parser handles it specially"));
+        }
+    } else if let Some(reason) = adopt_refuses(tag, ctx) {
+        return Err(reason);
+    }
+    // A void element's children would be silently dropped by the parser.
+    if VOID.contains(&tag) && !children.is_empty() {
+        return Err(format!("<{tag}> with children: it is a void element, so they are dropped"));
+    }
+    // Raw text comes back as exactly one text node — no markup inside it is parsed, so
+    // the claim walk has one node to work with however many children were written.
+    // `ssg::raw_text_mode` emits the content bare (no hole markers) for the same reason.
+    if mode == Mode::Adopt
+        && is_raw_text(tag)
+        && (children.len() > 1
+            || children.iter().any(|c| !matches!(c, ViewNode::Text(_) | ViewNode::Dynamic { .. })))
+    {
+        return Err(format!(
+            "<{tag}> with more than one piece of content: its text is not parsed as \
+             markup, so the pieces come back as a single text node"
+        ));
+    }
+    // Table parts are ignored outside a table, and a table's children are rebuilt into
+    // the canonical shape — so both directions have to match.
+    let parent_model = ctx.parent.and_then(table_children);
+    match (TABLE_PART.contains(&tag), parent_model) {
+        (true, Some(allowed)) if allowed.contains(&tag) => {}
+        (true, Some(_)) => {
+            // The one that actually happens: rows written straight under the table. The
+            // parser wraps them in an implied section — and a region's markers stay behind
+            // in the table while its rows move into it.
+            let hint = if tag == "tr" { " — wrap them in a <tbody>" } else { "" };
+            return Err(format!(
+                "<{tag}> directly inside <{}>: the parser rebuilds the table's structure \
+                 around it{hint}",
+                ctx.parent.unwrap_or_default()
+            ));
+        }
+        (true, None) => return Err(format!("<{tag}> outside a table: the parser drops it")),
+        (false, Some(_)) => return Err(table_text_err(ctx)),
+        (false, None) => {}
+    }
+    // The self-closing cases: each of these ends an open element of its own kind
+    // rather than nesting inside it.
+    let closes = if ctx.in_p && CLOSES_P.contains(&tag) {
+        Some("p")
+    } else if ctx.in_a && tag == "a" {
+        Some("a")
+    } else if ctx.in_button && tag == "button" {
+        Some("button")
+    } else if ctx.in_li && tag == "li" {
+        Some("li")
+    } else if ctx.in_item && matches!(tag, "dd" | "dt") {
+        Some("dd/dt")
+    // `<h2>` directly inside `<h1>` pops the h1 (the rule fires only when the heading
+    // is the *current* node, so any element between them is enough to make it safe).
+    } else if is_heading(tag) && ctx.parent.is_some_and(is_heading) {
+        Some("heading")
+    } else {
+        None
+    };
+    if let Some(open) = closes {
+        return Err(format!("<{tag}> inside <{open}>: the parser closes the <{open}> before it"));
+    }
+    if ctx.in_form && tag == "form" {
+        return Err("<form> inside <form>: the parser ignores the nested one".into());
+    }
+    if ctx.parent.is_some_and(|p| matches!(p, "select" | "optgroup")) && !select_allows(tag) {
+        return Err(format!(
+            "<{tag}> inside <{}>: the parser drops everything but options there",
+            ctx.parent.unwrap()
+        ));
+    }
+    if mode == Mode::Clone && !props_round_trip(props) {
+        return Err(format!("<{tag}>: an attribute the parser reads back differently"));
+    }
+    // Inside a table's structure, only table parts may appear — stray text is
+    // foster-parented out in front of the table.
+    if mode == Mode::Clone
+        && table_children(tag).is_some()
+        && !children.iter().all(|c| matches!(c, ViewNode::Element { .. }))
+    {
+        return Err(format!("<{tag}> with non-element children"));
+    }
+    let foreign = matches!(tag, "svg" | "math");
+    children.iter().try_for_each(|c| walk(c, child_ctx(tag, ctx, foreign), mode))
+}
+
+fn child_ctx<'a>(tag: &'a str, ctx: Ctx<'a>, foreign: bool) -> Ctx<'a> {
+    if foreign {
+        return Ctx { parent: Some(tag), foreign: true, ..Ctx::default() };
+    }
+    let barrier = SCOPE_BARRIER.contains(&tag);
+    Ctx {
+        parent: Some(tag),
+        in_p: !barrier && (ctx.in_p || tag == "p"),
+        in_a: !FORMAT_MARKER.contains(&tag) && (ctx.in_a || tag == "a"),
+        // `<button>` bounds button scope, but it is also what the search is *for* — the
+        // walk stops at the enclosing button by matching it — so it does not shield a
+        // button nested inside it the way it shields a `<p>`.
+        in_button: (!barrier || tag == "button") && (ctx.in_button || tag == "button"),
+        in_li: !ITEM_BARRIER.contains(&tag) && (ctx.in_li || tag == "li"),
+        in_item: !ITEM_BARRIER.contains(&tag) && (ctx.in_item || matches!(tag, "dd" | "dt")),
+        in_form: ctx.in_form || tag == "form",
+        foreign: false,
+    }
+}
+
+/// Tags the *adopt* walk refuses outright — the subset of [`NEVER`] whose special
+/// handling changes the tree's shape (rather than only its bytes, which is what the
+/// clone path additionally cares about).
+fn adopt_refuses(tag: &str, ctx: Ctx) -> Option<String> {
+    let reason = match tag {
+        // A nested template's children land in its `.content` fragment, not the tree.
+        "template" => "the parser puts its children in a document fragment",
+        // Renamed by the tokenizer: `<image>` is inserted as `img`.
+        "image" => "the parser inserts it as <img>",
+        // Dropped, merged into the existing document, or relocated.
+        "html" | "head" | "body" | "frame" | "frameset" => "the parser relocates it",
+        // Imply an end tag on a sibling start tag of their own kind.
+        "nobr" | "rb" | "rp" | "rt" | "rtc" | "plaintext" => "the parser implies an end tag for it",
+        _ => return None,
+    };
+    let _ = ctx;
+    Some(format!("<{tag}>: {reason}"))
+}
+
+/// A start tag the parser keeps inside `<select>`/`<optgroup>` (everything else is a
+/// parse error and is ignored).
+fn select_allows(tag: &str) -> bool {
+    matches!(tag, "option" | "optgroup" | "hr" | "script")
+}
+
+fn table_text_err(ctx: Ctx) -> String {
+    format!(
+        "content inside <{}> that is not a table part: the parser moves it out in front \
+         of the table",
+        ctx.parent.unwrap_or_default()
+    )
+}
+
+fn node_label(node: &ViewNode) -> &'static str {
+    match node {
+        ViewNode::Component { .. } => "a component",
+        ViewNode::Children => "a {children} slot",
+        _ => "dynamic content",
     }
 }
 
@@ -647,4 +889,140 @@ mod tests {
         assert_eq!(build_stmt_count(&el("br", vec![], vec![])), 1);
         assert_eq!(build_stmt_count(&el("div", vec![], vec![el("br", vec![], vec![])])), 3);
     }
+
+    // ── reparse_hazard (the hydrate gate) ────────────────────────────────────
+    //
+    // Same parser model, asked of a *dynamic* view: does the server HTML come back
+    // as the tree the positional claim walk was generated against?
+
+    fn hole() -> ViewNode {
+        ViewNode::Dynamic { expr: ExpressionId(0) }
+    }
+
+    fn component(name: &str) -> ViewNode {
+        ViewNode::Component { name: name.into(), props: vec![], children: vec![] }
+    }
+
+    fn list(item: ViewNode) -> ViewNode {
+        ViewNode::List {
+            source: ExpressionId(0),
+            source_branches: vec![],
+            item_param: "it".into(),
+            index_param: None,
+            item: Box::new(item),
+            key: None,
+            preamble: vec![],
+        }
+    }
+
+    #[test]
+    fn an_ordinary_reactive_view_adopts() {
+        let tree = wrap(vec![
+            el("p", vec![], vec![text("count "), hole()]),
+            el("ul", vec![], vec![list(el("li", vec![], vec![hole()]))]),
+            el(
+                "table",
+                vec![],
+                vec![el("tbody", vec![], vec![el("tr", vec![], vec![el("td", vec![], vec![hole()])])])],
+            ),
+            component("Card"),
+        ]);
+        assert_eq!(reparse_hazard(&tree), None);
+    }
+
+    #[test]
+    fn a_block_element_in_a_paragraph_is_a_hazard() {
+        let tree = wrap(vec![el("p", vec![], vec![hole(), el("div", vec![], vec![text("x")])])]);
+        assert!(reparse_hazard(&tree).is_some_and(|r| r.contains("<div> inside <p>")));
+    }
+
+    #[test]
+    fn an_island_in_a_paragraph_is_a_hazard() {
+        // The component's *own* view may start with a block element, which closes the
+        // `<p>` and hoists the host out of it — leaving the walk nothing to claim.
+        let tree = wrap(vec![el("p", vec![], vec![text("a "), component("Box"), text(" b")])]);
+        assert!(reparse_hazard(&tree).is_some_and(|r| r.contains("a component inside <p>")));
+        // …but the same island as a sibling of the paragraph is fine.
+        let sibling = wrap(vec![el("p", vec![], vec![text("a")]), component("Box")]);
+        assert_eq!(reparse_hazard(&sibling), None);
+    }
+
+    #[test]
+    fn unknown_content_inside_an_anchor_or_list_item_still_adopts() {
+        // `<a>{children}</a>` is the `Link` component, and `<li><Icon/></li>` is every
+        // nav. Neither is at risk: an `<a>` is closed only by another `<a>` start tag (a
+        // `<div>` inside one is valid HTML the parser keeps), and an `<li>` only by
+        // another `<li>` — unlike `<p>`, which any block-level tag ends.
+        assert_eq!(reparse_hazard(&wrap(vec![el("a", vec![], vec![ViewNode::Children])])), None);
+        assert_eq!(
+            reparse_hazard(&wrap(vec![el("ul", vec![], vec![el("li", vec![], vec![component("Icon")])])])),
+            None
+        );
+        assert_eq!(reparse_hazard(&wrap(vec![el("button", vec![], vec![component("Icon")])])), None);
+    }
+
+    #[test]
+    fn implied_end_tags_are_hazards() {
+        for (outer, inner) in [("a", "a"), ("button", "button"), ("li", "li"), ("form", "form")] {
+            let tree = wrap(vec![el(outer, vec![], vec![el(inner, vec![], vec![hole()])])]);
+            assert!(
+                reparse_hazard(&tree).is_some(),
+                "<{inner}> inside <{outer}> must refuse adoption"
+            );
+        }
+    }
+
+    #[test]
+    fn a_table_the_parser_rebuilds_is_a_hazard() {
+        // A bare `<tr>` under `<table>` gains an implied `<tbody>` (lowering normalizes
+        // the static shape; a dynamic one still has to be refused).
+        let bare_row = el("table", vec![], vec![el("tr", vec![], vec![el("td", vec![], vec![hole()])])]);
+        assert!(reparse_hazard(&bare_row).is_some());
+        // A list region directly inside the table: the rows move into an implied section
+        // but the `<!--[-->`/`<!--]-->` markers do not follow them.
+        let rows = el("table", vec![], vec![list(el("tr", vec![], vec![el("td", vec![], vec![hole()])]))]);
+        assert!(reparse_hazard(&rows).is_some_and(|r| r.contains("<tbody>")));
+        // Wrapped in a section, the same list adopts.
+        let wrapped = el(
+            "table",
+            vec![],
+            vec![el("tbody", vec![], vec![list(el("tr", vec![], vec![el("td", vec![], vec![hole()])]))])],
+        );
+        assert_eq!(reparse_hazard(&wrapped), None);
+    }
+
+    #[test]
+    fn raw_text_holds_one_piece_of_content() {
+        // One hole is adoptable (`claimRawText` binds the element's single text node)…
+        assert_eq!(reparse_hazard(&wrap(vec![el("textarea", vec![], vec![hole()])])), None);
+        // …but static text *and* a hole come back as one merged text node.
+        let mixed = wrap(vec![el("textarea", vec![], vec![text("a"), hole()])]);
+        assert!(mixed.clone().pipe_hazard().contains("single text node"));
+        // An element inside raw text is not markup at all.
+        let markup = wrap(vec![el("title", vec![], vec![el("b", vec![], vec![text("x")])])]);
+        assert!(reparse_hazard(&markup).is_some());
+    }
+
+    #[test]
+    fn foreign_content_is_taken_as_written() {
+        // Inside SVG the HTML content model does not apply: `<title>` there is a real
+        // element, and nothing implies an end tag.
+        let svg = wrap(vec![el(
+            "svg",
+            vec![],
+            vec![el("title", vec![], vec![text("t")]), el("g", vec![], vec![el("path", vec![], vec![])])],
+        )]);
+        assert_eq!(reparse_hazard(&svg), None);
+    }
+
+    /// Test helper: the hazard reason, panicking when the shape was accepted.
+    trait PipeHazard {
+        fn pipe_hazard(self) -> String;
+    }
+    impl PipeHazard for ViewNode {
+        fn pipe_hazard(self) -> String {
+            reparse_hazard(&self).expect("expected a reparse hazard")
+        }
+    }
 }
+

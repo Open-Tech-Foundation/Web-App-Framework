@@ -81,6 +81,7 @@ struct Uses {
     cursor: bool,
     claim_element: bool,
     claim_text: bool,
+    claim_raw_text: bool,
     skip_node: bool,
     hydrate_list: bool,
     hydrate_child: bool,
@@ -94,6 +95,7 @@ fn merge_uses(into: &mut Uses, from: &Uses) {
     into.cursor |= from.cursor;
     into.claim_element |= from.claim_element;
     into.claim_text |= from.claim_text;
+    into.claim_raw_text |= from.claim_raw_text;
     into.skip_node |= from.skip_node;
     into.hydrate_list |= from.hydrate_list;
     into.hydrate_child |= from.hydrate_child;
@@ -209,6 +211,9 @@ fn claim_import(uses: &Uses) -> String {
     if uses.claim_text {
         names.push("claimText");
     }
+    if uses.claim_raw_text {
+        names.push("claimRawText");
+    }
     if uses.skip_node {
         names.push("skipNode");
     }
@@ -313,6 +318,25 @@ impl<'a> Emitter<'a> {
         out
     }
 
+    /// Refuse to adopt a view the HTML parser would restructure on the way back in.
+    ///
+    /// The claim walk addresses server nodes **positionally**, which assumes the bytes the
+    /// SSG backend wrote re-parse into the tree they were generated from. Markup that
+    /// trips a content-model rule (`<p><div>`, `<table><tr>`, `<a><a>`, an island inside a
+    /// `<p>`) does not: the parser moves, wraps or drops a node, and the walk then throws a
+    /// `HydrationMismatch` at whatever claim happens to land on the difference — discarding
+    /// the whole route's server DOM at runtime, with a message about the symptom rather than
+    /// the cause. Catching it here turns that into a clean CSR build plus a diagnostic that
+    /// names the shape (see `static_tree::reparse_hazard`).
+    fn check_reparse(&mut self, lowered: &Lowered) {
+        if let Some(reason) = static_tree::reparse_hazard(&lowered.ir.view) {
+            self.errors.push(format!(
+                "hydrate: {reason} — the HTML parser rebuilds that, so the server DOM \
+                 can't be adopted; rendering it on the client instead"
+            ));
+        }
+    }
+
     // ── the page shell ──────────────────────────────────────────────────────────
 
     /// Emit a page/layout as a hydrate factory pair (docs/HYDRATION.md §3.4, 2.1c):
@@ -326,6 +350,7 @@ impl<'a> Emitter<'a> {
     ///
     /// Both return the claimed root node.
     fn page(&mut self, lowered: &Lowered) -> String {
+        self.check_reparse(lowered);
         if !lowered.props.is_empty() {
             self.errors.push("hydrate: page/factory props not supported yet".into());
         }
@@ -432,6 +457,7 @@ impl<'a> Emitter<'a> {
     /// is shared (csr emits it after the switch). A view it can't walk pushes an error →
     /// caller falls back to rebuild.
     fn component_adopt(&mut self, lowered: &Lowered) -> String {
+        self.check_reparse(lowered);
         self.emit_prop_aliases();
         self.emit_prop_snapshots();
         self.emit_rest();
@@ -691,6 +717,20 @@ impl<'a> Emitter<'a> {
                 }
                 for prop in props {
                     self.emit_prop(&var, prop);
+                }
+                // Raw text (`<textarea>`, `<title>`, `<style>`, `<script>`): its content is
+                // not markup, so there are no hole markers to claim and no cursor to walk —
+                // everything written between the tags is one text node. Bind the hole onto
+                // it directly. `reparse_hazard` has already refused every shape but a lone
+                // static text or a lone hole, so this is the whole content.
+                if static_tree::is_raw_text(tag) {
+                    if let [ViewNode::Dynamic { expr }] = children.as_slice() {
+                        let text = self.fresh("t");
+                        self.uses.claim_raw_text = true;
+                        self.line(format!("const {text} = claimRawText({var});"));
+                        self.bind(format!("bindText({text}, () => ({}))", self.code(*expr)));
+                    }
+                    return var;
                 }
                 if !children.is_empty() {
                     let child_cur = self.fresh("__c");
@@ -1330,6 +1370,51 @@ mod tests {
         let hyd = hydrate_fn(&m.code);
         assert!(hyd.contains("groups.push((() => {"), "inline builder in adopt effect:\n{}", hyd);
         assert!(hyd.contains("setProp(c0, \"group\", (group));"), "loop local prop:\n{}", hyd);
+    }
+
+    #[test]
+    fn markup_the_parser_restructures_is_not_adopted() {
+        // A `<div>` inside a `<p>`: the parser closes the paragraph and hoists the div out,
+        // so the positional claim walk would be addressing nodes that moved. The page keeps
+        // its CSR factory and loses only the `hydrate` one — a clean build, not a mismatch
+        // thrown halfway through the walk.
+        let m = emit("export default function P(){ let n=$state(0); return <p>c {n}<div>x</div></p>; }");
+        assert!(!m.is_complete());
+        assert!(m.errors[0].contains("<div> inside <p>"), "{:?}", m.errors);
+        assert_eq!(hydrate_fn(&m.code), "", "no adopt factory for a view that can't be adopted");
+        assert!(m.code.contains("export default function ()"), "csr factory still emitted");
+    }
+
+    #[test]
+    fn an_island_inside_a_paragraph_is_not_adopted() {
+        // The component's own view may open with a block element, which closes the `<p>`
+        // and leaves the host hoisted out of it and empty.
+        let m = emit("export default function P(){ let n=$state(0); return <p>a <Box/> {n}</p>; }");
+        assert!(!m.is_complete());
+        assert!(m.errors[0].contains("a component inside <p>"), "{:?}", m.errors);
+    }
+
+    #[test]
+    fn a_normalized_table_still_adopts() {
+        // Lowering inserts the `<tbody>` the parser would imply, so the common
+        // `<table><tr>` shape is adoptable rather than refused.
+        let m = emit(
+            "export default function P(){ let n=$state(0); return <table><tr><td>{n}</td></tr></table>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(hydrate_fn(&m.code).contains("claimElement(__c2, \"tbody\")"), "{}", hydrate_fn(&m.code));
+    }
+
+    #[test]
+    fn a_raw_text_hole_binds_the_elements_own_text_node() {
+        // No `<!--$-->` markers exist inside a `<textarea>` (the tokenizer would hand them
+        // back as literal text), so the hole is claimed from the element itself.
+        let m = emit("export default function P(){ let v=$state(\"a\"); return <textarea>{v}</textarea>; }");
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        assert!(hyd.contains("claimRawText("), "raw-text claim:\n{}", hyd);
+        assert!(!hyd.contains("claimText("), "no marker claim inside raw text:\n{}", hyd);
+        assert!(m.code.contains("import { cursor, claimElement, claimRawText }"), "import:\n{}", m.code);
     }
 
     /// Lower in **component** mode (the default export becomes a Custom Element class,
