@@ -269,16 +269,23 @@ export function spread(el, obj, asProps) {
 export function bindText(node, fn) {
   let inserted = [];
   let lastText; // undefined sentinel — toText() never returns undefined
+  let lastNodeValue; // the node/array/marker currently rendered, for the re-run check
   return effect(() => {
     const value = fn();
+
+    // A server `{__html}` marker (see `isHtmlMarker`) renders as the nodes it describes —
+    // and it is immutable, so re-running with the same marker keeps what is already there
+    // instead of re-parsing it (which would tear down and re-upgrade any island inside).
+    if (isHtmlMarker(value) && value === lastNodeValue) return;
 
     // Primitive text: the common case. Skip the write when the rendered string
     // is unchanged (a shared dependency can re-run this effect with the same
     // result), so unchanged text nodes don't churn.
-    if (!(value instanceof Node) && !Array.isArray(value)) {
+    if (!(value instanceof Node) && !Array.isArray(value) && !isHtmlMarker(value)) {
       const text = toText(value);
       if (text === lastText) return;
       lastText = text;
+      lastNodeValue = undefined;
       for (const n of inserted) {
         if (n.parentNode) n.parentNode.removeChild(n);
       }
@@ -287,9 +294,10 @@ export function bindText(node, fn) {
       return;
     }
 
-    // Node / array value (e.g. JSX stored as a value): insert before the stable
+    // Node / array / marker value (e.g. JSX stored as a value): insert before the stable
     // text anchor. Reset the text memo so a later primitive value re-applies.
     lastText = undefined;
+    lastNodeValue = value;
     for (const n of inserted) {
       if (n.parentNode) n.parentNode.removeChild(n);
     }
@@ -328,8 +336,27 @@ export function bindAttr(el, name, fn) {
   });
 }
 
+/**
+ * Is this the server's stand-in for a JSX value — `{ __html }`?
+ *
+ * A JSX value the server can't hand over as a DOM node (a component prop whose value is
+ * an element, `<Tabs tabs={[{ content: <CodeBlock/> }]} />`, or JSX embedded in a list's
+ * data) is rendered to its HTML and crosses to the client inside the hydration payload as
+ * this marker — `ssgText` splices it raw on the server, and the client has to do the same
+ * or it would stringify to `[object Object]` in the middle of the page.
+ */
+const isHtmlMarker = (v) => v !== null && typeof v === "object" && typeof v.__html === "string";
+
+/** Parse a trusted server-rendered HTML string into the nodes it describes. */
+function htmlToNodes(html) {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  return [...tpl.content.childNodes];
+}
+
 /** Flatten a reactive child value into DOM nodes: nodes pass through, arrays
- * recurse, nullish/booleans render nothing, primitives become text nodes. */
+ * recurse, nullish/booleans render nothing, `{__html}` markers are parsed back into
+ * the nodes the server rendered, and primitives become text nodes. */
 function toNodes(value) {
   if (value == null || typeof value === "boolean") return [];
   if (Array.isArray(value)) {
@@ -338,6 +365,7 @@ function toNodes(value) {
     return out;
   }
   if (value instanceof Node) return [value];
+  if (isHtmlMarker(value)) return htmlToNodes(value.__html);
   return [document.createTextNode(String(value))];
 }
 

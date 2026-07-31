@@ -54,7 +54,19 @@ export function endHydrationCollect() {
  * `undefined`, and anything cyclic/DOM/signal-shaped, so only plain data crosses.
  */
 function collectHydrationProps(props) {
-  if (!_collect || props == null || typeof props !== "object") return null;
+  if (!_collect) return null;
+  const safe = jsonSafeProps(props);
+  if (!safe) return null;
+  const id = _collect.length;
+  _collect.push(safe);
+  return id;
+}
+
+/** A component's props with everything the payload can't carry dropped, or `null` when
+ * nothing is left to send. A JSON round-trip drops functions, `undefined`, and anything
+ * cyclic/DOM/signal-shaped. */
+function jsonSafeProps(props) {
+  if (props == null || typeof props !== "object") return null;
   let safe;
   try {
     safe = JSON.parse(JSON.stringify(props));
@@ -62,9 +74,25 @@ function collectHydrationProps(props) {
     return null; // cyclic / non-serializable → client falls back to attributes/defaults
   }
   if (!safe || typeof safe !== "object" || Object.keys(safe).length === 0) return null;
-  const id = _collect.length;
-  _collect.push(safe);
-  return id;
+  return safe;
+}
+
+/**
+ * An island's props as an inline `data-hp` attribute — the fallback for one rendered
+ * *outside* a route render.
+ *
+ * A JSX value held in module-level data (`export const tabs = [{ content: <CodeBlock/> }]`,
+ * the MDX idiom) is rendered when the module is imported, before any `beginHydrationCollect`
+ * bracket, so there is no payload to record its props in and no `data-h` id to key them by.
+ * The markup is then spliced into whatever page reads it (see `ssgText`) and re-parsed on
+ * the client, where the island would upgrade with no props at all and blank its own
+ * content. Carrying the props on the host keeps that markup self-contained: it hydrates
+ * correctly wherever it ends up, at the cost of a few bytes on those hosts only.
+ */
+function inlineHydrationProps(props) {
+  const safe = jsonSafeProps(props);
+  if (!safe) return "";
+  return JSON.stringify(safe).replace(/[&"<]/g, (c) => (c === "&" ? "&amp;" : c === '"' ? "&quot;" : "&lt;"));
 }
 
 /** Escape text content for HTML. */
@@ -182,7 +210,14 @@ export function ssgComponent(tag, props, children) {
   const cls = render && render.hostClass;
   const id = collectHydrationProps(props);
   let attrs = cls ? ` class="${cls}"` : "";
-  if (id != null) attrs += ` data-h="${id}"`;
+  if (id != null) {
+    attrs += ` data-h="${id}"`;
+  } else {
+    // Rendered outside a route render (module-level JSX-as-value): carry the props on
+    // the host itself so the markup hydrates wherever it is spliced in.
+    const inline = inlineHydrationProps(props);
+    if (inline) attrs += ` data-hp="${inline}"`;
+  }
   return `<${tag}${attrs}>${inner}</${tag}>`;
 }
 

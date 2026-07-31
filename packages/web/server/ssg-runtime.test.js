@@ -65,11 +65,24 @@ describe("ssgComponent + hydration collector", () => {
     expect(JSON.parse(endHydrationCollect())).toEqual([{ label: "hi" }]); // no onClick
   });
 
-  test("does not stamp ids or collect when not in a render (no beginHydrationCollect)", () => {
+  test("carries props inline when rendered outside a render (no beginHydrationCollect)", () => {
+    // Module-level JSX-as-value (`export const tabs = [{ content: <CodeBlock/> }]`) renders
+    // at import time, before any collect bracket: there is no payload to key an id into, so
+    // the props ride on the host and the markup stays self-contained wherever it is spliced.
     const tag = register("web-off", () => "x");
     const html = ssgComponent(tag, { label: "hi" }, "");
-    expect(html).not.toContain("data-h");
+    expect(html).not.toContain("data-h=");
+    expect(html).toContain('data-hp="{&quot;label&quot;:&quot;hi&quot;}"');
     expect(endHydrationCollect()).toBe(""); // nothing was collecting
+  });
+
+  test("an inline prop value can't break out of its attribute", () => {
+    const tag = register("web-off-xss", () => "x");
+    const html = ssgComponent(tag, { s: '"><img src=x onerror=alert(1)>' }, "");
+    expect(html).not.toContain("<img");
+    // The quote that would close the attribute and the `<` that would start a tag are
+    // both entities, so the whole value stays inside `data-hp="…"`.
+    expect(html.match(/data-hp="[^"]*"/)[0]).toContain("\\&quot;>&lt;img");
   });
 
   test("escapes `<` so a prop value can't break out of the payload <script>", () => {

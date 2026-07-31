@@ -203,12 +203,22 @@ function hydrationPayload() {
  * its prop signals, falling back to attributes/defaults when it returns `null`.
  */
 export function hydrationProps(el) {
+  if (!el || typeof el.getAttribute !== "function") return null;
   const data = hydrationPayload();
-  if (!data || !el || typeof el.getAttribute !== "function") return null;
-  const id = el.getAttribute("data-h");
-  if (id == null) return null;
-  const entry = data[+id];
-  return entry == null ? null : entry;
+  const id = data ? el.getAttribute("data-h") : null;
+  if (id != null) {
+    const entry = data[+id];
+    if (entry != null) return entry;
+  }
+  // An island whose markup was rendered before the route render carries its own props
+  // instead of an id into the payload (`inlineHydrationProps`).
+  const inline = el.getAttribute("data-hp");
+  if (inline == null) return null;
+  try {
+    return JSON.parse(inline);
+  } catch {
+    return null;
+  }
 }
 
 /** Reset the cached payload (tests only — a fresh document between cases). */
