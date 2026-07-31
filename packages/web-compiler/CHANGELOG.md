@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-31
+
 ### Fixed
 
 - **MDX GFM tables now emit the `.otfw-table-wrap` scroll container** instead of a bare `<table>`.

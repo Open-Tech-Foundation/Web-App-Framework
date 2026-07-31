@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-07-31
+
 ### Fixed
 
 - **Wide tables scroll instead of running under the TOC.** The theme drops the table's own block

@@ -70,7 +70,7 @@
     },
     "packages/web-cli": {
       "name": "@opentf/web-cli",
-      "version": "1.24.0",
+      "version": "1.24.1",
       "bin": {
         "otfw": "./src/cli.js",
       },
@@ -87,11 +87,11 @@
     },
     "packages/web-compiler": {
       "name": "@opentf/web-compiler",
-      "version": "0.14.0",
+      "version": "0.15.0",
     },
     "packages/web-docs": {
       "name": "@opentf/web-docs",
-      "version": "0.23.0",
+      "version": "0.24.0",
       "dependencies": {
         "pagefind": "^1.5.2",
       },
