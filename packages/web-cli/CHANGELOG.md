@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Compiler warnings reach the terminal again** (`src/shared.js` talks to `otfwc serve`, whose
+  reply frames carry only the emitted code). The one-shot `otfwc build` path printed its
+  non-fatal diagnostics, but the serve protocol — the only path the toolchain actually uses —
+  dropped them, so every "this view can't be adopted, building it on the client instead"
+  fallback was invisible in `otfw build` and `otfw dev`. They now print to stderr, one line per
+  distinct diagnostic per module (a form with eight spread props reported the same unsupported
+  shape eight times).
+
+### Tests
+
+- **New browser e2e (`tests/e2e/reparse-browser.mjs`) — SSG → parser → hydrate parity.** The
+  hydrate backend claims server nodes positionally, which assumes the bytes the SSG backend wrote
+  re-parse into the tree they were generated from; the failures when they don't are invisible to
+  every other tier, because happy-dom implements neither the `<pre>` newline rule nor RCDATA, and
+  the compiler's own tests reason about the parser rather than running one. Each fixture is
+  rendered through the SSG backend in Bun and checked in headless Chromium: served bytes (no
+  hydration marker inside raw text, `textarea.value` is the value, the stylesheet is unescaped),
+  the parsed server tree against the DOM the CSR backend builds from the same source, and
+  adoption as a compile-time decision — an unreshaped view exposes a `hydrate` factory that
+  discards zero server nodes, a reshaped one exposes none at all, and the suite proves the parser
+  really does reshape it so the refusal is earned rather than assumed.
+
 ## [1.24.1] - 2026-07-31
 
 _Dependency updates._

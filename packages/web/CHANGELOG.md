@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A JSX value held in data no longer renders as `[object Object]`** (`runtime/dom.js`). A JSX
+  value the server cannot hand over as a DOM node — a component prop holding an element
+  (`<Tabs tabs={[{ label, content: <CodeBlock/> }]} />`, the MDX idiom) or JSX embedded in a
+  list's data — is rendered to HTML and crosses to the client in the hydration payload as an
+  `{ __html }` marker. `ssgText` splices it raw on the server; the client had no counterpart, so
+  it fell through to `String(value)` and the page showed a literal `[object Object]` where every
+  tab panel should have been. The island cannot repair itself either: a prop read into a local is
+  a snapshot (SPEC §1), so the parent's later `setProp` with the real nodes changes nothing.
+
+  `toNodes`/`bindText` now parse the marker back into the nodes the server rendered, and skip the
+  work when an unchanged marker re-runs — it is immutable, and re-parsing would tear down and
+  re-upgrade the islands inside it.
+
+- **Islands inside such markup keep their props** (`server/ssg-runtime.js`, `runtime/hydrate.js`).
+  JSX in module-level data is rendered when the module is imported — before any
+  `beginHydrationCollect` bracket — so there is no payload entry to key by `data-h`, and the
+  re-parsed copy upgraded with no props at all and blanked its own content. Those hosts now carry
+  their JSON-safe props inline as `data-hp`, which `hydrationProps` falls back to, so the markup
+  hydrates correctly wherever it is spliced in.
+
+- **Raw-text elements are served as raw text** (`server/ssg-runtime.js`, `runtime/hydrate.js`).
+  `<textarea>`, `<title>`, `<style>` and `<script>` are RCDATA/raw text: the tokenizer does not
+  parse markup in them, so the `<!--$-->…<!--/-->` hole markers were served as those literal
+  characters — visible in the textarea, in the tab title and in the stylesheet, to a crawler and
+  to a no-JS visitor. New `ssgRawText` writes a `<script>`/`<style>` hole verbatim (an escape
+  would show through: `a &gt; b` is the entity, not `>`) with the element's own closing tag
+  broken up so a value cannot end it early, and new `claimRawText` binds the element's single
+  text node on hydration instead of hunting for markers that cannot exist there.
+
 ## [0.26.0] - 2026-07-30
 
 ### Added

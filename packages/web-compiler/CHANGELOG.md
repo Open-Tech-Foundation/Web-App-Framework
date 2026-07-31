@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Server HTML now re-parses into the tree the hydrate walk was generated against.** The claim
+  walk addresses nodes positionally, so it assumes what the SSG backend serialized is what the
+  browser's parser hands back. Where it isn't, the walk threw a `HydrationMismatch` about a
+  symptom (`expected <tr>, found <tbody>`) at whatever claim happened to land on the difference,
+  and the route's server DOM was discarded and rebuilt. Two of these were wrong in the *served
+  HTML* too, before any hydration:
+
+  - **Raw text carries no markers.** `<textarea>`, `<title>`, `<style>` and `<script>` are
+    RCDATA/raw text, so a `<!--$-->` written in them was served as those literal characters.
+    Their content is emitted bare and escaped the way the tokenizer expects — escapable raw text
+    escaped, `<script>`/`<style>` verbatim, so `a > b` in a stylesheet stays `a > b` — and the
+    hole binds the element's own text node (`claimRawText`). Markup inside a raw-text element is
+    now a compile error.
+  - **The implied `<tbody>` is inserted in lowering.** A bare `<tr>` under `<table>` is wrapped in
+    the section the parser would imply, in the shared lowering, so SSG, CSR and the claim walk all
+    describe the same tree — a pure CSR build produced no `tbody` at all, leaving `table > tr`
+    selectors matching on one path and not the other.
+  - **Anything else the parser reshapes is refused up front.** `<p><div>`, an island inside a
+    `<p>` (whose own view may open with a block element), `<a><a>`, `<form><form>`, a dynamic
+    region directly inside `<table>`: `codegen::static_tree` already modelled these rules for the
+    CSR template-clone path, and the hydrate backend now asks the same model
+    (`reparse_hazard`). The view falls back to a clean client build and the compiler says which
+    shape and why. The refusal is deliberately narrow — an `<a>` is closed only by another `<a>`,
+    an `<li>` only by another `<li>`, so `<a>{children}</a>` (the `Link` component, and with it
+    every nav) still adopts; only `<p>`, which any block-level tag ends, makes content the view
+    cannot see through hazardous.
+
+- **`otfwc serve` prints its non-fatal warnings.** The reply frame carries only the emitted code,
+  so every diagnostic raised while compiling through the long-lived server process was dropped —
+  which is why the known non-adoptable shapes (spread props, JSX-as-value) read as silent
+  rebuilds. They go to stderr, which the toolchain inherits.
+
 ## [0.15.0] - 2026-07-31
 
 ### Fixed
