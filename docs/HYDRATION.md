@@ -405,6 +405,45 @@ hydration helper. Loader/query data (Phase 3) will ride the **same** channel.
 > (lists/conditionals/`{children}` done in 2.1a–2.1d) are the structural-region axis; data hydration is orthogonal
 > to them.
 
+### 3.8 The server's bytes must re-parse into the tree they were written as _(implemented)_
+
+Every claim in §3.1 rests on one assumption: what the SSG backend serialized is what the
+browser's HTML parser hands back. The parser is not a passthrough. It inserts, moves and
+drops nodes to satisfy content models, and it does not parse markup inside raw-text
+elements at all. Where the two disagree, a positional claim walk is addressing nodes that
+are no longer where it left them — and the failure surfaces at whatever claim happens to
+land on the difference, as a `HydrationMismatch` about a symptom (`expected <tr>, found
+<tbody>`) rather than the cause, discarding the route's server DOM.
+
+`codegen::static_tree` already modelled these rules for the CSR `<template>`-clone
+optimization (`template_html`); the same model now answers the hydrate question too
+(`reparse_hazard`), with three consequences:
+
+- **Raw text carries no markers.** `<textarea>`, `<title>`, `<style>`, `<script>` and
+  friends are RCDATA/raw text: a `<!--$-->` written in there is served as those literal
+  characters — *visible* in the textarea, in the tab title, in the stylesheet, to a
+  crawler and to a no-JS visitor. This was a **served-HTML** bug, not only a hydration
+  one. The SSG backend now emits their content bare (`ssg::raw_text`), escaped the way the
+  tokenizer expects (escapable raw text is escaped; `<script>`/`<style>` are verbatim, so
+  `a > b` in a stylesheet stays `a > b`), and the claim side takes the element's single
+  text node directly (`claimRawText`) instead of hunting for markers.
+- **The implied `<tbody>` is inserted in lowering.** A bare `<tr>` under `<table>` is
+  wrapped in the section the parser would imply — in the *shared* lowering, so SSG, CSR and
+  the claim walk all describe the same tree (a pure CSR build produced no `tbody` at all,
+  so `table > tr` selectors used to match on one path and not the other).
+- **Anything else the parser reshapes is refused at compile time.** `<p><div>`, an island
+  inside a `<p>` (whose own view may open with a block element), `<a><a>`, `<form><form>`,
+  a dynamic region directly inside `<table>`: the view is not adoptable, the page/component
+  falls back to a clean CSR build, and the compiler says which shape and why. The refusal is
+  deliberately narrow — an `<a>` is closed only by another `<a>`, an `<li>` only by another
+  `<li>`, so `<a>{children}</a>` (the `Link` component) still adopts; only `<p>`, which any
+  block-level tag ends, makes *unknown* content hazardous.
+
+**Diagnostics have to be visible to exist.** `otfwc serve` — the path the toolchain always
+uses — dropped the compiler's non-fatal warnings on the floor, so every "this view can't be
+adopted" fallback was silent. It now prints them (deduplicated, prefixed with the module),
+which is what makes the open items in §6 observable in an ordinary `otfw build`.
+
 ---
 
 ## 4. Phasing
@@ -467,6 +506,15 @@ whitespace nodes, double mounts). The bar:
   client-built node to its nearest custom-element ancestor so a regression names the component.
   Post-fix that measure reads 53/62, with the remainder accounted for by the open items in §6.
 
+  **Parser-reshape coverage (§3.8)** — `packages/web-cli/tests/e2e/reparse-browser.mjs`. The
+  route-level audit finds these but cannot say *why*; this suite pins the mechanism per shape.
+  For each fixture it renders the SSG HTML in Bun and, in headless Chromium, asserts the served
+  bytes are honest (no marker inside raw text; `textarea.value` is the value), that the parsed
+  server tree has the same shape as the DOM the CSR backend builds from the same source, and
+  that adoption is decided at compile time — an unreshaped fixture exposes a `hydrate` factory
+  that discards zero server nodes, a reshaped one exposes none at all (and the suite proves the
+  parser really does reshape it, so the refusal is earned rather than assumed).
+
 ---
 
 ## 6. Sub-design decisions & open items
@@ -521,7 +569,15 @@ whitespace nodes, double mounts). The bar:
   to a clean CSR build. The remaining first-paint rebuilds on the docs site are all this.
 - **A JSX value in a non-positional shape** — `const map = { a: <A/> }`, `const tabs = [<A/>, <B/>]`
   — stays on the rebuild fallback. Only shapes where every node sits in a *node position* (a bare
-  node, a conditional's branches) can have adopt calls substituted into them.
+  node, a conditional's branches) can have adopt calls substituted into them. The *value* now
+  crosses correctly, which it did not before: the server renders such a node to HTML and passes
+  it as an `{ __html }` marker (`ssgText` splices it raw), and the client runtime materializes
+  that marker back into nodes — previously it fell through to `String(value)` and the page
+  rendered a literal `[object Object]` wherever the data was read (an MDX `<Tabs tabs={[{ content:
+  <CodeBlock/> }]} />` panel, say). Islands *inside* such markup are self-contained too: JSX held
+  in module-level data is rendered at import time, before any `beginHydrationCollect` bracket, so
+  those hosts carry their props inline as `data-hp` instead of an id into the payload. The subtree
+  is still rebuilt rather than adopted — that is what this open item is about.
 - **A client-derived island has nothing to adopt.** `<Toc>` builds its outline from the rendered
   headings at `onMount`, so the server ships an empty `<nav>` and the outline pops in (CLS).
   Fixing it means feeding the page's `toc` export in as data rather than reading the DOM —
