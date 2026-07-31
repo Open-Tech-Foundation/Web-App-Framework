@@ -312,8 +312,22 @@ fn serve() -> ExitCode {
             _ => Target::Csr,
         };
         match compile_module(&id, source, as_component, target) {
-            // Warnings are non-fatal and not consumed by the toolchain; drop them.
-            Ok((code, _warnings)) => write_frame(&mut writer, true, code.as_bytes()),
+            // Warnings are non-fatal, so the reply frame carries only the code — but they
+            // still have to reach the developer. The toolchain inherits this process's
+            // stderr, so printing them here is what surfaces a diagnostic (a view that
+            // can't be adopted, say) in `otfw build` / `otfw dev` output; dropping them
+            // made every such fallback silent, since the CLI only ever runs `otfwc serve`.
+            Ok((code, warnings)) => {
+                // One line per distinct diagnostic: a module with eight spread props
+                // reports the same unsupported shape eight times, which is noise.
+                let mut seen = std::collections::BTreeSet::new();
+                for w in &warnings {
+                    if seen.insert(w.as_str()) {
+                        eprintln!("warning: {id}: {w}");
+                    }
+                }
+                write_frame(&mut writer, true, code.as_bytes())
+            }
             Err(msg) => write_frame(&mut writer, false, msg.as_bytes()),
         }
     }
