@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.25.0] - 2026-07-31
+
 ### Fixed
 
 - **Compiler warnings reach the terminal again** (`src/shared.js` talks to `otfwc serve`, whose

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-07-31
+
 ### Fixed
 
 - **A JSX value held in data no longer renders as `[object Object]`** (`runtime/dom.js`). A JSX
