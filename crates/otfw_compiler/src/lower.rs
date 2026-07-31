@@ -2301,6 +2301,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         if is_component {
             ViewNode::Component { name, props, children }
         } else {
+            let children = if name == "table" { imply_tbody(children) } else { children };
             ViewNode::Element { tag: name, props, children }
         }
     }
@@ -2570,6 +2571,54 @@ impl<'a, 'r> Lowerer<'a, 'r> {
 /// expression (`Foo`, `Foo.Bar`); host elements are lowercase (`div`).
 fn is_component_name(name: &str) -> bool {
     name.contains('.') || name.chars().next().is_some_and(|c| c.is_uppercase())
+}
+
+/// Wrap runs of bare `<tr>` children of a `<table>` in the `<tbody>` the HTML parser
+/// would insert (HTML §13.2.6.4.9, "in table": a `tr` start tag inserts an implied
+/// `tbody` first).
+///
+/// This is a *shared lowering* normalization rather than a per-backend one because the
+/// backends otherwise disagree about a table nobody wrote a section for. SSG serializes
+/// `<table><tr>`, the browser parses it back as `<table><tbody><tr>` — one extra element
+/// the positional claim walk was not generated against, so hydration threw a mismatch and
+/// rebuilt the route — while a pure CSR build (`createElement` + `appendChild`) produces
+/// no `tbody` at all, leaving `table > tr` selectors matching on one path and not the
+/// other. Inserting the section here makes all three the same tree.
+///
+/// Only the shape the parser is unambiguous about is normalized: a *static* `<tr>`
+/// element directly under the table. A dynamic region there (a `{rows.map(…)}` whose
+/// items are rows) is left alone and refused by `static_tree::reparse_hazard`, which
+/// tells the author to write the `<tbody>` — wrapping it here would be a guess about
+/// what the region renders.
+fn imply_tbody(children: Vec<ViewNode>) -> Vec<ViewNode> {
+    if !children.iter().any(|c| matches!(c, ViewNode::Element { tag, .. } if tag == "tr")) {
+        return children;
+    }
+    let mut out: Vec<ViewNode> = Vec::with_capacity(children.len());
+    // Whether the last node pushed is a section *this* function opened. Consecutive rows
+    // share it, the way the parser groups them; anything else closes it — including an
+    // authored `<tbody>`, which a following bare row does not join (the parser implies a
+    // fresh section for it).
+    let mut implied_open = false;
+    for child in children {
+        if !matches!(&child, ViewNode::Element { tag, .. } if tag == "tr") {
+            implied_open = false;
+            out.push(child);
+            continue;
+        }
+        match out.last_mut() {
+            Some(ViewNode::Element { children: rows, .. }) if implied_open => rows.push(child),
+            _ => {
+                out.push(ViewNode::Element {
+                    tag: "tbody".into(),
+                    props: Vec::new(),
+                    children: vec![child],
+                });
+                implied_open = true;
+            }
+        }
+    }
+    out
 }
 
 /// Normalize JSX text per the JSX whitespace rules (matching Babel's
@@ -3131,6 +3180,44 @@ mod tests {
         let ViewNode::Element { tag, children, .. } = &lowered.ir.view else { panic!() };
         assert_eq!(tag, "ul");
         assert_eq!(children.len(), 1, "whitespace between tags should be dropped");
+    }
+
+    #[test]
+    fn bare_table_rows_get_the_implied_tbody() {
+        let lowered = lower("export function App() { return <table><tr><td>a</td></tr><tr><td>b</td></tr></table>; }");
+        let ViewNode::Element { tag, children, .. } = &lowered.ir.view else { panic!() };
+        assert_eq!(tag, "table");
+        // Both rows land in *one* implied section, the way the parser groups them.
+        assert_eq!(children.len(), 1);
+        let ViewNode::Element { tag, children: rows, .. } = &children[0] else { panic!() };
+        assert_eq!(tag, "tbody");
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn authored_table_sections_are_left_alone() {
+        let lowered = lower(
+            "export function App() { return <table><thead><tr><th>h</th></tr></thead>\
+             <tbody><tr><td>a</td></tr></tbody></table>; }",
+        );
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        let tags: Vec<&str> = children
+            .iter()
+            .map(|c| match c {
+                ViewNode::Element { tag, .. } => tag.as_str(),
+                _ => "?",
+            })
+            .collect();
+        assert_eq!(tags, ["thead", "tbody"]);
+    }
+
+    #[test]
+    fn a_row_after_an_authored_section_opens_its_own() {
+        // The parser closes the `<tbody>` and implies a fresh one for the stray row.
+        let lowered =
+            lower("export function App() { return <table><tbody><tr><td>a</td></tr></tbody><tr><td>b</td></tr></table>; }");
+        let ViewNode::Element { children, .. } = &lowered.ir.view else { panic!() };
+        assert_eq!(children.len(), 2, "the stray row must not join the authored section");
     }
 
     #[test]
