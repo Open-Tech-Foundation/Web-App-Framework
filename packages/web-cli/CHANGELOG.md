@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [1.24.1] - 2026-07-31
+
+_Dependency updates._
+
 ## [1.24.0] - 2026-07-30
 
 ### Tests
