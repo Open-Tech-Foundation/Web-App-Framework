@@ -1,12 +1,18 @@
 # Benchmarks
 
-Performance benchmark suite for OTF Web. The goal is the comparison promised in
-the root README: OTF Web vs. other frameworks across **rendering**, **update
+Performance benchmark suite for OTF Web, covering **rendering**, **update
 latency**, and (later) **memory**.
 
-> This file covers the **runtime** benchmark — how fast a page updates in the
-> browser. For **build** cost — peak memory and wall time for `otfw build --ssg`
-> against Astro, Next.js, TanStack Start and Vite — see
+> **What is being compared here: libraries, not frameworks.** The cases are the
+> React, Solid and Svelte 5 *libraries* (`react`+`react-dom`, `solid-js`,
+> `svelte`) — not Next.js, SolidStart or SvelteKit. What they are matched against
+> is OTF Web's **rendering layer**: the case is a single page of reactive list
+> updates, so no router, build step or SSG code runs on any side. That is the
+> honest comparand for these operations, but it means a win or loss here says
+> nothing about OTF Web *as a framework*.
+>
+> The framework-level comparison is **build** cost — peak memory and wall time for
+> `otfw build --ssg` against Astro, Next.js, TanStack Start and Vite — in
 > [`ssg-build/README.md`](./ssg-build/README.md). The two are independent; neither
 > says anything about the other.
 
@@ -155,9 +161,10 @@ Each non-OTF case carries its own `build.mjs` (the OTF case uses the real `otfw`
 toolchain) and a verbatim copy of `_bench.js`. The runner is engine-agnostic: it
 only relies on the in-page contract below.
 
-## Adding a framework
+## Adding a case
 
-Each framework is a sibling directory under `benchmarks/` that implements the
+Each case (a rendering library, or a framework's rendering layer) is a sibling
+directory under `benchmarks/` that implements the
 **same operation set** and exposes the **same in-page contract** so one runner
 drives them all:
 

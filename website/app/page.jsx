@@ -97,10 +97,12 @@ export default function HomePage() {
         <div className="text-center space-y-3">
           <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Runtime performance</h2>
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            Measured against React, Solid, and Svelte 5 across the standard
-            js-framework-benchmark operation set: one shared harness, production builds,
-            4× CPU throttling. Figures are median milliseconds, pooled across
-            {" "}{benchmark.runs ?? 3} full runs; lower is better.
+            A <em>rendering-layer</em> comparison: OTF Web&rsquo;s runtime against the React,
+            Solid, and Svelte 5 <strong>libraries</strong> — not against Next.js, SolidStart
+            or SvelteKit. The case is one page of reactive list updates, so no router, build
+            or SSG code is exercised on any side. Standard js-framework-benchmark operation
+            set, one shared harness, production builds, 4× CPU throttling. Figures are median
+            milliseconds, pooled across {benchmark.runs ?? 3} full runs; lower is better.
           </p>
         </div>
 
@@ -122,9 +124,11 @@ export default function HomePage() {
         <div className="text-center space-y-3">
           <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Build cost</h2>
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            The cost of <em>building</em> a static site, not of serving one. Five toolchains
-            pre-rendering the same 72&nbsp;KB MDX documentation page, compared on peak memory
-            and wall-clock time; lower is better.
+            The cost of <em>building</em> a static site, not of serving one. This is the
+            <strong> framework-level</strong> comparison — Astro, Next.js and TanStack Start
+            are full frameworks, Vite a build tool — where the table above compares rendering
+            libraries. Five toolchains pre-rendering the same 72&nbsp;KB MDX documentation
+            page, compared on peak memory and wall-clock time; lower is better.
           </p>
         </div>
 

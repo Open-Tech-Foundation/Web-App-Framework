@@ -69,20 +69,30 @@ updates, so `{cond ? <A/> : <B/>}` reads like React but updates surgically.
 
 ## Performance
 
-Standard [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark) ops vs React, Solid, and Svelte 5 through one shared harness — run `bun run bench all` (median ms, lower is better):
+A **rendering-layer** comparison: OTF Web's runtime against the React, Solid and Svelte 5
+*libraries* — not Next.js, SolidStart or SvelteKit. The case is one page of reactive list
+updates, so no router, build step or SSG code runs on any side. Standard
+[js-framework-benchmark](https://github.com/krausest/js-framework-benchmark) ops through one
+shared harness, production builds, 4× CPU throttling; median ms pooled over 3 runs, lower is
+better. Bold marks a margin above the ~8.3 ms timing resolution — most rows are ties.
 
 | operation | otfw | react | solid | svelte |
 | --- | --: | --: | --: | --: |
-| create 1,000 rows | 83.4 | 83.4 | **83.2** | 83.3 |
-| create 10,000 rows | **716.8** | 877.2 | 718.1 | 735.2 |
-| append 1,000 to 1,000 | 66.8 | 69.8 | **66.6** | **66.6** |
-| update every 10th (1k) | 33.4 | **28.8** | 31.5 | 33.4 |
-| swap 2 rows (1k) | 33.3 | 52.6 | 33.3 | **33.2** |
-| select row (1k) | 36.2 | **23.5** | 33.3 | 33.4 |
-| remove row (1k) | 33.4 | **23.9** | 33.3 | 33.3 |
-| clear 10,000 rows | 50.1 | 73.9 | **49.1** | 49.7 |
+| create 1,000 rows | 261.1 | 274.1 | **244.3** | 257.6 |
+| create 10,000 rows | 2627.8 | 3338.6 | 2542.2 | 2548.8 |
+| append 1,000 to 1,000 | 295.8 | 286.1 | 270.1 | 267.4 |
+| update every 10th (1k) | 91.8 | 93.8 | 108.9 | 92.5 |
+| swap 2 rows (1k) | 33 | 246.4 | 31.1 | 31.3 |
+| select row (1k) | 26.1 | 27.3 | 30 | 29 |
+| remove row (1k) | 40.4 | 39.9 | 37.5 | 36.1 |
+| clear 10,000 rows | 178.6 | 260.9 | 164 | 165.3 |
 
-> Indicative only — a frame-quantized timer (~16.6 ms floor); see [methodology &amp; caveats](benchmarks/README.md).
+OTF Web leads no operation here: Solid takes `create 1,000 rows` and the other seven are
+ties. It is well clear of React on `swap 2 rows` (33 vs 246) and `clear 10,000` (179 vs 261).
+
+Reproduce with `bun run bench all` a few times, then `bun benchmarks/aggregate.mjs --latest 3`
+— a single run's margins on the create rows are smaller than its own run-to-run drift, so the
+fastest label there turns over between runs. See [methodology &amp; caveats](benchmarks/README.md).
 
 ## Ecosystem
 
