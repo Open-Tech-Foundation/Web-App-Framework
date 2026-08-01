@@ -12,6 +12,10 @@ export const metadata = {
   canonical: "/",
 };
 
+// Every benchmark caveat lives on /benchmarks; the landing page states the claim in a
+// line and links there, so a figure is never shown without its qualifications a click away.
+const METHOD_LINK = "text-[var(--accent)] font-semibold hover:underline whitespace-nowrap";
+
 // Status pill styles, keyed by capability status. Theme-aware translucent fills.
 const STATUS = {
   supported: {
@@ -84,9 +88,8 @@ export default function HomePage() {
         <div className="text-center space-y-3">
           <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">How an update propagates</h2>
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            There is no virtual tree and no reconciliation pass. Changing a value
-            propagates along its dependency path alone and writes to the specific DOM
-            nodes bound to it — every other node is left untouched.
+            No virtual tree, no reconciliation pass. A change writes only to the DOM nodes
+            bound to it.
           </p>
         </div>
         <ReactiveTrace />
@@ -97,25 +100,17 @@ export default function HomePage() {
         <div className="text-center space-y-3">
           <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Runtime performance</h2>
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            A <em>rendering-layer</em> comparison: OTF Web&rsquo;s runtime against the React,
-            Solid, and Svelte 5 <strong>libraries</strong> — not against Next.js, SolidStart
-            or SvelteKit. The case is one page of reactive list updates, so no router, build
-            or SSG code is exercised on any side. Standard js-framework-benchmark operation
-            set, one shared harness, production builds, 4× CPU throttling. Figures are median
-            milliseconds, pooled across {benchmark.runs ?? 3} full runs; lower is better.
+            Our runtime against the React, Solid and Svelte&nbsp;5 <strong>libraries</strong>.
+            Median ms over {benchmark.runs ?? 3} pooled runs, 4× throttled; lower is better.
           </p>
         </div>
 
         <div className="max-w-3xl mx-auto bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
           <BenchmarkTable report={benchmark} />
         </div>
-        <p className="text-center text-xs text-[var(--text-muted)]">
-          A result is bolded only where the margin exceeds the ~{resolutionMs}&nbsp;ms timing resolution; anything
-          closer is reported as a tie — which most of these operations are. Runs are pooled because a single
-          run&rsquo;s margins on the create rows are smaller than its own run-to-run drift, so the fastest
-          label there turns over between runs. These figures are indicative rather than a controlled
-          head-to-head. To reproduce: <span className="mono">bun run bench all</span> a few times, then{" "}
-          <span className="mono">bun benchmarks/aggregate.mjs --latest 3</span>.
+        <p className="text-center text-sm text-[var(--text-muted)]">
+          Bold beats the ~{resolutionMs}&nbsp;ms timing resolution; the rest are ties.{" "}
+          <Link href="/benchmarks" className={METHOD_LINK}>Method &amp; caveats →</Link>
         </p>
       </section>
 
@@ -124,33 +119,17 @@ export default function HomePage() {
         <div className="text-center space-y-3">
           <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Build cost</h2>
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            The cost of <em>building</em> a static site, not of serving one. This is the
-            <strong> framework-level</strong> comparison — Astro, Next.js and TanStack Start
-            are full frameworks, Vite a build tool — where the table above compares rendering
-            libraries. Five toolchains pre-rendering the same 72&nbsp;KB MDX documentation
-            page, compared on peak memory and wall-clock time; lower is better.
+            Building a static site, not serving one — against Astro, Next.js, TanStack Start
+            and Vite. Peak memory and wall time; lower is better.
           </p>
         </div>
 
         <div className="max-w-3xl mx-auto bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
           <BenchmarkTable report={ssgBenchmark} rowHeader="Metric" />
         </div>
-        <p className="text-center text-xs text-[var(--text-muted)] max-w-2xl mx-auto">
-          The columns do not represent equal work: <span className="mono">astro</span> and{" "}
-          <span className="mono">vite</span> ship no client JavaScript for these pages, whereas OTF Web,
-          Next.js and TanStack Start additionally build a hydration bundle. They also come from two
-          separate runs — the OTF Web column was re-measured after the build fixes in{" "}
-          <span className="mono">@opentf/web-compiler</span>, while the other four are from the original
-          sweep and were not re-run, so small gaps should be treated as noise. The advantage now holds
-          across the size ladder (a 2.3&nbsp;MB page builds in 2.9&nbsp;s against Astro&rsquo;s
-          3.7&nbsp;s), where it previously reversed beyond roughly a megabyte. Full method, the
-          complete 72&nbsp;KB→2.3&nbsp;MB ladder, and all caveats:{" "}
-          <a
-            href="https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/benchmarks/ssg-build/README.md"
-            className="underline hover:text-[var(--text-main)]"
-          >
-            benchmarks/ssg-build
-          </a>.
+        <p className="text-center text-sm text-[var(--text-muted)]">
+          The columns do not represent equal work.{" "}
+          <Link href="/benchmarks" className={METHOD_LINK}>Method &amp; caveats →</Link>
         </p>
       </section>
 
@@ -181,7 +160,7 @@ export default function HomePage() {
       <section className="py-12">
         <div className="max-w-4xl mx-auto text-center bg-[var(--bg-surface)] border border-[var(--border)] rounded-3xl px-8 py-16 space-y-6">
           <h2 className="text-3xl md:text-4xl font-black tracking-tight text-[var(--text-main)]">Start building</h2>
-          <p className="text-[var(--text-muted)] max-w-xl mx-auto">Scaffold a project, then follow the guides from an empty directory to a compiled, signal-driven application.</p>
+          <p className="text-[var(--text-muted)] max-w-xl mx-auto">Scaffold a project and follow the guides from an empty directory to a compiled app.</p>
           <div className="flex justify-center gap-4 flex-wrap">
             <Link href="/docs" className="transition-all active:scale-95">
               <span className="inline-flex items-center gap-2 bg-[var(--text-main)] text-[var(--bg-main)] px-7 py-3 rounded-xl font-bold hover:opacity-90 shadow-lg">Read the docs</span>
