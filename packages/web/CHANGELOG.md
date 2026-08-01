@@ -17,6 +17,16 @@
   attributes that must be in the markup before any script runs, and the provider uses it to
   emit `data-otfw-ctx`.
 
+- **`ErrorBoundary`'s `reset()` can now recover from a fix made after the failure**
+  (`runtime/error-boundary.js`). `reset()` replayed a `cloneNode(true)` snapshot taken at
+  mount. A clone is a different element from the one the parent's reactive prop bindings
+  target, so a prop corrected in response to the error never reached the rebuilt subtree —
+  and on a server-rendered page the clone still carried `data-h`, making the rebuilt
+  component re-read its frozen *server-time* props from the hydration payload. Retry
+  therefore threw on the same stale value forever. The boundary now retains the live child
+  nodes and re-inserts them, so the rebuilt subtree renders against current props; the
+  re-insert is deferred one microtask so each child's disconnect teardown completes first.
+
 ## [0.27.0] - 2026-07-31
 
 ### Fixed

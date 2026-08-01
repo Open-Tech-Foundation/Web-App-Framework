@@ -66,9 +66,14 @@ export class ErrorBoundaryElement extends HTMLElement {
   connectedCallback() {
     if (this._mounted) return;
     this._mounted = true;
-    // Snapshot the children before they connect (and possibly throw) so reset()
-    // can rebuild a pristine subtree.
-    this._blueprint = Array.from(this.childNodes).map((n) => n.cloneNode(true));
+    // Hold the *live* child nodes — not clones. reset() re-inserts these same
+    // nodes, which is what lets a rebuilt subtree see the fix: the parent's
+    // reactive prop bindings target these exact elements, so any prop written
+    // after the failure is already on them. A clone is a different element, cut
+    // off from those bindings — and on an SSR page it still carries `data-h`, so
+    // it would re-read its *server-time* props from the hydration payload and
+    // throw on the same stale value forever.
+    this._blueprint = Array.from(this.childNodes);
   }
 
   // Invoked by handleError when a descendant throws during render/mount. Deferred
@@ -95,9 +100,18 @@ export class ErrorBoundaryElement extends HTMLElement {
   reset() {
     if (!this._failed) return;
     this._failed = false;
-    // Re-clone the blueprint: the rebuilt subtree connects fresh and may throw
-    // again (→ catch), or render cleanly if the cause is gone.
-    this.replaceChildren(...this._blueprint.map((n) => n.cloneNode(true)));
+    // Deferred for the same reason the fallback swap is: tearing the broken
+    // subtree down queued each child's disconnect teardown on the microtask
+    // queue, and those must run (clearing `_mounted`) before the nodes go back
+    // in — otherwise a re-inserted child is treated as a move and never renders.
+    // Microtask order guarantees it: the teardowns were queued first.
+    queueMicrotask(() => {
+      if (this._failed) return; // failed again before the retry landed
+      // Re-insert the original nodes: each child reconnects and renders afresh,
+      // now reading whatever props it currently holds — it may throw again
+      // (→ catch) or render cleanly if the cause is gone.
+      this.replaceChildren(...this._blueprint);
+    });
   }
 }
 
