@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Static props on framework built-ins are no longer dropped by the hydrate walk**
+  (`codegen/hydrate.rs`). The adopt walk deliberately skips re-applying a static component
+  prop, because a compiled component recovers it in its generated constructor from the
+  serialized island payload. Hand-written built-ins (`web-internal-*`, `web-link`) have no
+  such constructor, so for them the prop was not deferred — it was lost. The visible case
+  was `<ContextProvider context={Ctx} value="high-contrast">`, which published `undefined`
+  to its entire subtree on every server-rendered page, silently disabling nested context
+  overrides. Statics are now re-applied on built-in hosts; compiled components are
+  unchanged.
+
 ## [0.16.0] - 2026-07-31
 
 ### Fixed

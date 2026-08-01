@@ -761,8 +761,12 @@ impl<'a> Emitter<'a> {
                     tags::use_tag_expr(name, &self.lowered.module_components, &format!("{name}Element"));
                 self.uses.claim_element = true;
                 self.line(format!("const {var} = claimElement({cur}, {tag_expr});"));
+                // Hand-written built-ins have no compiler-generated constructor, so they
+                // cannot recover static props from the hydration payload the way a compiled
+                // component does — their statics must be re-applied here.
+                let builtin = tags::builtin_tag(name).is_some();
                 for prop in props {
-                    self.emit_component_prop(&var, prop);
+                    self.emit_component_prop(&var, prop, builtin);
                 }
                 if !children.is_empty() {
                     self.emit_slotted_children(&var, children);
@@ -1089,7 +1093,11 @@ impl<'a> Emitter<'a> {
     /// the server attributes (skipped); dynamic data goes through `setProp` (reactive),
     /// `on*` is a callback property, `on*:mod` an event listener (mirrors
     /// `csr::emit_component_prop`, dynamic-only).
-    fn emit_component_prop(&mut self, el: &str, prop: &Prop) {
+    ///
+    /// `builtin` marks a hand-written runtime element (`web-internal-*`, `web-link`). Those
+    /// have no generated constructor reading the hydration payload, so their static props
+    /// have to be applied here or they are simply lost on a server-rendered page.
+    fn emit_component_prop(&mut self, el: &str, prop: &Prop, builtin: bool) {
         if prop.name == "ref" {
             if let PropValue::Dynamic(expr) = &prop.value {
                 self.line(format!("{}.value = {el};", self.code(*expr)));
@@ -1101,11 +1109,29 @@ impl<'a> Emitter<'a> {
             return;
         }
         match &prop.value {
-            // A static prop is carried by the serialized island payload and read by the
-            // upgrading component's constructor (rich value, no flash) — nothing to
-            // re-apply during adoption. (`ssgComponent` reflects nothing onto the host tag;
-            // the payload, not host attributes, is how declared props cross to the client.)
-            PropValue::Static(_) | PropValue::Boolean => {}
+            // A static prop on a compiled component is carried by the serialized island
+            // payload and read by the upgrading component's constructor (rich value, no
+            // flash) — nothing to re-apply during adoption. (`ssgComponent` reflects nothing
+            // onto the host tag; the payload, not host attributes, is how declared props
+            // cross to the client.) A built-in has no such constructor, so skipping here
+            // would drop the prop entirely — e.g. `<ContextProvider value="high-contrast">`
+            // would publish `undefined` to its subtree on every server-rendered page.
+            // (`setProp` is already imported by the CSR half — the adopt code renders the
+            // same view as the build code, which emits `setProp` for this very prop.)
+            PropValue::Static(value) => {
+                if builtin {
+                    self.line(format!(
+                        "setProp({el}, {}, {});",
+                        js_string(&prop.name),
+                        js_string(value)
+                    ));
+                }
+            }
+            PropValue::Boolean => {
+                if builtin {
+                    self.line(format!("setProp({el}, {}, true);", js_string(&prop.name)));
+                }
+            }
             PropValue::Dynamic(expr) => {
                 let code = self.code(*expr);
                 if is_listener(&prop.name) {
@@ -1952,6 +1978,31 @@ mod tests {
         let hyd = hydrate_fn(&m.code);
         assert!(hyd.contains("claimElement(__c2, Badge.tag);"), "claim host:\n{}", hyd);
         assert!(!hyd.contains("setProp(c3"), "no static-prop re-application in adopt:\n{}", hyd);
+    }
+
+    #[test]
+    fn page_adopt_walk_re_applies_static_props_on_built_ins() {
+        // The payload-carries-statics rule above holds only for *compiled* components,
+        // which read it back in their generated constructor. A hand-written built-in has
+        // no such constructor, so skipping its statics dropped them outright: a
+        // `<ContextProvider value="…">` published `undefined` to its whole subtree on
+        // every server-rendered page.
+        let m = emit(
+            "import { ContextProvider } from \"@opentf/web\"; import { Ctx } from \"./ctx\"; \
+             export default function P(){ return <div><ContextProvider context={Ctx} value=\"high-contrast\"><span>x</span></ContextProvider></div>; }",
+        );
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        let hyd = hydrate_fn(&m.code);
+        assert!(
+            hyd.contains("claimElement(__c2, \"web-internal-context-provider\");"),
+            "claim the built-in host:\n{}",
+            hyd
+        );
+        assert!(
+            hyd.contains("setProp(c3, \"value\", \"high-contrast\");"),
+            "static prop re-applied on a built-in:\n{}",
+            hyd
+        );
     }
 
     #[test]
