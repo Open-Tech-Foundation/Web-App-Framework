@@ -99,8 +99,8 @@ export default function HomePage() {
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
             Measured against React, Solid, and Svelte 5 across the standard
             js-framework-benchmark operation set: one shared harness, production builds,
-            4× CPU throttling. Figures are median milliseconds over 10–12 samples; lower
-            is better.
+            4× CPU throttling. Figures are median milliseconds, pooled across
+            {" "}{benchmark.runs ?? 3} full runs; lower is better.
           </p>
         </div>
 
@@ -109,8 +109,11 @@ export default function HomePage() {
         </div>
         <p className="text-center text-xs text-[var(--text-muted)]">
           A result is bolded only where the margin exceeds the ~{resolutionMs}&nbsp;ms timing resolution; anything
-          closer is reported as a tie. These figures are indicative rather than a controlled head-to-head.
-          To reproduce them: <span className="mono">bun run bench all</span>.
+          closer is reported as a tie — which most of these operations are. Runs are pooled because a single
+          run&rsquo;s margins on the create rows are smaller than its own run-to-run drift, so the fastest
+          label there turns over between runs. These figures are indicative rather than a controlled
+          head-to-head. To reproduce: <span className="mono">bun run bench all</span> a few times, then{" "}
+          <span className="mono">bun benchmarks/aggregate.mjs --latest 3</span>.
         </p>
       </section>
 

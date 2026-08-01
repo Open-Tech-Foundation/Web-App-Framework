@@ -1,6 +1,11 @@
 {
-  "generatedAt": "2026-07-04T11:04:52.270Z",
-  "source": "benchmarks/results/comparison-2026-07-04T11-04-52-270Z.json",
+  "generatedAt": "2026-08-01T08:07:30.390Z",
+  "source": [
+    "benchmarks/results/comparison-2026-08-01T07-45-34-960Z.json",
+    "benchmarks/results/comparison-2026-08-01T07-59-42-995Z.json",
+    "benchmarks/results/comparison-2026-08-01T08-05-16-324Z.json"
+  ],
+  "method": "Median of the pooled samples of 3 full runs (bun run bench all) on one machine.",
   "engines": [
     "otfw",
     "react",
@@ -9,84 +14,85 @@
   ],
   "highlightEngine": "otfw",
   "resolutionMs": 8.333333333333334,
+  "runs": 3,
   "rows": [
     {
       "label": "create 1,000 rows",
       "values": {
-        "otfw": 243.35,
-        "react": 278.7,
-        "solid": 257.75,
-        "svelte": 258.6
+        "otfw": 261.15,
+        "react": 274.05,
+        "solid": 244.3,
+        "svelte": 257.55
       },
-      "best": "otfw"
+      "best": "solid"
     },
     {
       "label": "create 10,000 rows",
       "values": {
-        "otfw": 2808.3,
-        "react": 3389.7,
-        "solid": 2516.3,
-        "svelte": 2463.6
+        "otfw": 2627.8,
+        "react": 3338.6,
+        "solid": 2542.2,
+        "svelte": 2548.8
       },
-      "best": "svelte"
+      "best": null
     },
     {
       "label": "append 1,000 to 1,000",
       "values": {
-        "otfw": 305.1,
-        "react": 304.55,
-        "solid": 262.7,
-        "svelte": 257.5
+        "otfw": 295.8,
+        "react": 286.15,
+        "solid": 270.1,
+        "svelte": 267.45
       },
       "best": null
     },
     {
       "label": "update every 10th (1k)",
       "values": {
-        "otfw": 93.9,
-        "react": 98.45,
-        "solid": 120.95,
-        "svelte": 88.75
+        "otfw": 91.85,
+        "react": 93.85,
+        "solid": 108.9,
+        "svelte": 92.5
       },
       "best": null
     },
     {
       "label": "swap 2 rows (1k)",
       "values": {
-        "otfw": 34.3,
-        "react": 254.4,
-        "solid": 30.7,
-        "svelte": 31.3
+        "otfw": 33,
+        "react": 246.45,
+        "solid": 31.15,
+        "svelte": 31.25
       },
       "best": null
     },
     {
       "label": "select row (1k)",
       "values": {
-        "otfw": 25.25,
-        "react": 27.55,
-        "solid": 28.05,
-        "svelte": 28.95
+        "otfw": 26.15,
+        "react": 27.3,
+        "solid": 30,
+        "svelte": 29
       },
       "best": null
     },
     {
       "label": "remove row (1k)",
       "values": {
-        "otfw": 37.95,
-        "react": 42.1,
-        "solid": 41.5,
-        "svelte": 42.1
+        "otfw": 40.35,
+        "react": 39.9,
+        "solid": 37.55,
+        "svelte": 36.15
       },
       "best": null
     },
     {
       "label": "clear 10,000 rows",
       "values": {
-        "otfw": 195.2,
-        "react": 260.7,
-        "solid": 157.7,
-        "svelte": 162.4
+        "otfw": 178.6,
+        "react": 260.9,
+        "solid": 164,
+        "svelte": 165.3
       },
       "best": null
     }

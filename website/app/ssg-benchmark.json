@@ -1,6 +1,6 @@
 {
-  "measuredAt": "2026-07-31 (otfw); 2026-07-04 (astro, next, tanstack, vite)",
-  "measurementNote": "The otfw column was re-measured after the linear-MDX-parse and template-cloning build fixes; the other four toolchains were not re-run and carry the original sweep's numbers. See benchmarks/ssg-build/README.md.",
+  "measuredAt": "2026-07-31 (otfw, re-verified 2026-08-01); 2026-07-04 (astro, next, tanstack, vite)",
+  "measurementNote": "The otfw column was re-measured after the linear-MDX-parse and template-cloning build fixes, and re-verified on 2026-08-01 across the whole 72 KB–2.3 MB ladder with unchanged results (the 72 KB cell read 122–140 MB between two runs, which is this benchmark's noise floor for that cell). The other four toolchains were not re-run and carry the original sweep's numbers. See benchmarks/ssg-build/README.md.",
   "env": "Intel i7-8700K (12 threads), 16 GB RAM, Linux 6.12, Node 24.14",
   "fixture": "One route rendering a real 72 KB MDX docs page (1751 lines, 43 code blocks, 298 table rows)",
   "engines": [
