@@ -97,6 +97,30 @@ the DevTools Protocol (no Playwright/Puppeteer install), collects the in-page
 results, writes `benchmarks/results/<case>-<timestamp>.json`, and prints a
 Markdown table.
 
+### Pooling runs for the website table
+
+**One run is not enough to name a winner.** On the create rows OTF Web, Solid and
+Svelte sit within about 20 ms of each other while the double-rAF quantum is 8.3 ms,
+and each engine's own median drifts a few percent between runs — Solid's swung 13%
+(231–262 ms) across three back-to-back runs on an idle machine. Those three runs
+named three different winners for "create 1,000 rows". Bolding any single run is
+reporting a coin flip.
+
+So the homepage table pools runs:
+
+```bash
+bun run bench all                      # repeat a few times
+bun benchmarks/aggregate.mjs --latest 3   # → website/app/benchmark-report.json
+```
+
+`aggregate.mjs` pools the raw *samples* of the named runs and takes the median of
+the pool — the same median-over-samples statistic `run.mjs` reports, at N≈30 rather
+than N≈10, with the identical timing-resolution tie rule. It prints each run's own
+median per cell and the spread between them, so a cell that is still moving is
+visible rather than averaged into false precision. `bun run bench all` on its own
+also writes the report (single run), which is fine for a quick local check but
+should not be what gets published.
+
 ### Manual run (no runner)
 
 ```bash
