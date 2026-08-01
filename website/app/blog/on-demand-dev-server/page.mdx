@@ -9,41 +9,41 @@ cover: /blog/cover-on-demand.svg
 tags: internals, toolchain, performance
 ---
 
-A dev server has one job before anything else: get out of your way. If `dev` takes
-fifteen seconds to come up, every restart is a context switch. OTF Web's dev server
-now boots in about **40 milliseconds** on our docs site — not by doing the same work
-faster, but by doing **less work, later**.
+A development server's first obligation is to stay out of the way. When `dev` takes
+fifteen seconds to start, every restart becomes a context switch. On our documentation
+site, the OTF Web dev server now starts in roughly **40 milliseconds** — achieved not by
+performing the same work faster, but by performing **less work, later**.
 
 ## The old shape: compile everything, then serve
 
-The first version bundled the whole app up front. Every route, every component, every
-MDX page went through the compiler before the first request was answered. Two things
-made that slow:
+The initial implementation bundled the entire application up front: every route, every
+component, and every MDX page passed through the compiler before the first request was
+answered. Two factors made this slow:
 
-1. **A process per file.** The compiler ran as a subprocess invoked once per module,
+1. **One process per file.** The compiler ran as a subprocess invoked once per module,
    so startup paid the binary-startup cost dozens of times, serially.
-2. **Eager compilation.** Even though routes were code-split, *all* of them were
-   compiled at boot — you paid for 34 routes to look at one.
+2. **Eager compilation.** Although routes were code-split, *all* of them were compiled
+   at boot — the cost of 34 routes was incurred to view one.
 
-## Step one: one compiler, not hundreds
+## Step one: one compiler process, not hundreds
 
-The first fix was to stop spawning. The compiler gained a long-lived `serve` mode that
-reads compile requests on stdin and writes results on stdout, staying up across
-requests:
+The first change was to stop spawning processes. The compiler gained a long-lived
+`serve` mode that reads compile requests on stdin and writes results on stdout,
+remaining resident across requests:
 
 ```text
 <id_len> <source_len> <component> <ssg>\n  <id bytes><source bytes>
 → OK <len>\n<code>     or     ERR <len>\n<message>
 ```
 
-One process compiles every module. That alone took the initial bundle from ~16.7s to
-~3.1s — the binary-startup cost is paid once.
+A single process now compiles every module. That change alone reduced the initial bundle
+from ~16.7s to ~3.1s, because the binary-startup cost is paid once.
 
-## Step two: compile only what's requested
+## Step two: compile only what is requested
 
-The remaining 3.1s was all the routes we hadn't looked at yet. So the dev server
-stopped bundling up front and started serving like the browser asks — module by
-module:
+The remaining 3.1s was spent on routes that had not been visited. The dev server
+therefore stopped bundling up front and began serving the way the browser asks for
+work — module by module:
 
 - `/@fw.js` — the runtime, bundled once and shared by every chunk through an import
   map (so the router and signal registry are a single instance).
@@ -52,20 +52,20 @@ module:
 - `/__route/<id>.js` — one route, compiled the first time you navigate to it, then
   cached.
 
-Startup compiles nothing. The first paint pays for the entry and the runtime; each
-route pays its own way on first visit, then serves from memory in well under a
+Startup compiles nothing. First paint pays for the entry and the runtime; each route
+pays its own cost on first visit and is subsequently served from memory in well under a
 millisecond.
 
-## The piece that makes hot reload precise: a module graph
+## What makes hot reload precise: a module graph
 
-On-demand serving raises a question: when a file changes, *what do you invalidate?*
-Drop too much and you recompile the world; drop too little and you serve stale code.
+On-demand serving raises a question: when a file changes, *what should be invalidated?*
+Invalidating too much recompiles the world; invalidating too little serves stale code.
 
-The answer is a **module graph** — nodes are modules, edges are imports, each node
-carries a content fingerprint. When a file changes, the graph answers "what
-transitively imports this?" and the dev server drops exactly those cached chunks. Edit
-a component used by one post and that post's chunk recompiles; an unrelated route stays
-warm.
+The answer is a **module graph**, in which nodes are modules, edges are imports, and
+each node carries a content fingerprint. When a file changes, the graph answers "what
+transitively imports this?" and the dev server drops exactly those cached chunks.
+Editing a component used by a single post recompiles that post's chunk; unrelated routes
+stay warm.
 
 ```text
 edit  app/components/CounterDemo.jsx
@@ -73,14 +73,15 @@ edit  app/components/CounterDemo.jsx
   → drop those route chunks, reload
 ```
 
-The same graph is what will drive incremental builds and the client/server split as the
-toolchain grows. It's the quiet foundation under the fast feeling.
+The same graph will drive incremental builds and the client/server split as the
+toolchain matures. It is the underlying structure that makes the rest possible.
 
-## Where this is going
+## Direction
 
-The dev server is still a stepping stone — the long-term home for the graph and the
-build orchestration is the Rust toolchain, where it can share data structures with the
-bundler instead of serializing across a boundary. But the shape is set: **start
-instantly, compile on demand, invalidate precisely.**
+The dev server remains an intermediate step. The long-term home for the graph and for
+build orchestration is the Rust toolchain, where both can share data structures with the
+bundler rather than serializing across a process boundary. The principles, however, are
+settled: **start instantly, compile on demand, invalidate precisely.**
 
-If you've used the dev server and something felt slow, we want to hear about it.
+If you have used the dev server and found any operation slow, we would like to hear
+about it.

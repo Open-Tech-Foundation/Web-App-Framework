@@ -82,11 +82,11 @@ export default function HomePage() {
       {/* Reactive trace — watch a change flow through the signal graph to the DOM */}
       <section className="py-24 space-y-12">
         <div className="text-center space-y-3">
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Watch a change flow.</h2>
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">How an update propagates</h2>
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            Fine-grained signals, no virtual DOM. Edit a value and the update travels only
-            the dependency path it has to — flashing the exact DOM nodes it owns, and
-            nothing else.
+            There is no virtual tree and no reconciliation pass. Changing a value
+            propagates along its dependency path alone and writes to the specific DOM
+            nodes bound to it — every other node is left untouched.
           </p>
         </div>
         <ReactiveTrace />
@@ -95,10 +95,12 @@ export default function HomePage() {
       {/* Benchmark */}
       <section className="py-12 space-y-8">
         <div className="text-center space-y-3">
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Fast where it counts.</h2>
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Runtime performance</h2>
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            The standard js-framework-benchmark operation set vs React, Solid, and Svelte 5 — one shared harness,
-            production builds, 4× CPU throttle. Median ms over 10–12 samples, lower is better.
+            Measured against React, Solid, and Svelte 5 across the standard
+            js-framework-benchmark operation set: one shared harness, production builds,
+            4× CPU throttling. Figures are median milliseconds over 10–12 samples; lower
+            is better.
           </p>
         </div>
 
@@ -106,18 +108,20 @@ export default function HomePage() {
           <BenchmarkTable report={benchmark} />
         </div>
         <p className="text-center text-xs text-[var(--text-muted)]">
-          Bold marks a winner only when the margin beats the ~{resolutionMs}&nbsp;ms timing resolution — anything closer is a tie.
-          Indicative, not a head-to-head. Run it yourself: <span className="mono">bun run bench all</span>.
+          A result is bolded only where the margin exceeds the ~{resolutionMs}&nbsp;ms timing resolution; anything
+          closer is reported as a tie. These figures are indicative rather than a controlled head-to-head.
+          To reproduce them: <span className="mono">bun run bench all</span>.
         </p>
       </section>
 
       {/* SSG build benchmark — build cost, not runtime */}
       <section className="py-12 space-y-8">
         <div className="text-center space-y-3">
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Cheap to build, too.</h2>
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Build cost</h2>
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            What it costs to <em>build</em> a static site — not to run one. Five toolchains, each
-            pre-rendering the same 72&nbsp;KB MDX docs page. Peak memory and wall time, lower is better.
+            The cost of <em>building</em> a static site, not of serving one. Five toolchains
+            pre-rendering the same 72&nbsp;KB MDX documentation page, compared on peak memory
+            and wall-clock time; lower is better.
           </p>
         </div>
 
@@ -125,14 +129,15 @@ export default function HomePage() {
           <BenchmarkTable report={ssgBenchmark} rowHeader="Metric" />
         </div>
         <p className="text-center text-xs text-[var(--text-muted)] max-w-2xl mx-auto">
-          Not all equal work: <span className="mono">astro</span> and <span className="mono">vite</span> ship
-          no client JS for these pages, while OTF Web, Next.js and TanStack Start also build a hydration
-          bundle. Read the columns as two runs, not one: ours was re-measured after the build fixes in{" "}
-          <span className="mono">@opentf/web-compiler</span>, the other four are the original sweep and
-          were not re-run — so treat small gaps as noise. The lead holds up the ladder now (a
-          2.3&nbsp;MB page builds in 2.9&nbsp;s against Astro&rsquo;s 3.7&nbsp;s), where it used to
-          reverse past about a megabyte. Method, the full 72&nbsp;KB→2.3&nbsp;MB ladder, and every
-          caveat:{" "}
+          The columns do not represent equal work: <span className="mono">astro</span> and{" "}
+          <span className="mono">vite</span> ship no client JavaScript for these pages, whereas OTF Web,
+          Next.js and TanStack Start additionally build a hydration bundle. They also come from two
+          separate runs — the OTF Web column was re-measured after the build fixes in{" "}
+          <span className="mono">@opentf/web-compiler</span>, while the other four are from the original
+          sweep and were not re-run, so small gaps should be treated as noise. The advantage now holds
+          across the size ladder (a 2.3&nbsp;MB page builds in 2.9&nbsp;s against Astro&rsquo;s
+          3.7&nbsp;s), where it previously reversed beyond roughly a megabyte. Full method, the
+          complete 72&nbsp;KB→2.3&nbsp;MB ladder, and all caveats:{" "}
           <a
             href="https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/benchmarks/ssg-build/README.md"
             className="underline hover:text-[var(--text-main)]"
@@ -146,7 +151,7 @@ export default function HomePage() {
       <section className="py-24 space-y-12">
         <div className="text-center space-y-3">
           <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">Capabilities &amp; roadmap</h2>
-          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">A transparent look at what ships today and what's next.</p>
+          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">What ships today, and what is planned next.</p>
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -168,8 +173,8 @@ export default function HomePage() {
       {/* CTA */}
       <section className="py-12">
         <div className="max-w-4xl mx-auto text-center bg-[var(--bg-surface)] border border-[var(--border)] rounded-3xl px-8 py-16 space-y-6">
-          <h2 className="text-3xl md:text-4xl font-black tracking-tight text-[var(--text-main)]">Build something native-first.</h2>
-          <p className="text-[var(--text-muted)] max-w-xl mx-auto">Scaffold a project in seconds and read the guides to go from zero to a compiled, signal-driven app.</p>
+          <h2 className="text-3xl md:text-4xl font-black tracking-tight text-[var(--text-main)]">Start building</h2>
+          <p className="text-[var(--text-muted)] max-w-xl mx-auto">Scaffold a project, then follow the guides from an empty directory to a compiled, signal-driven application.</p>
           <div className="flex justify-center gap-4 flex-wrap">
             <Link href="/docs" className="transition-all active:scale-95">
               <span className="inline-flex items-center gap-2 bg-[var(--text-main)] text-[var(--bg-main)] px-7 py-3 rounded-xl font-bold hover:opacity-90 shadow-lg">Read the docs</span>

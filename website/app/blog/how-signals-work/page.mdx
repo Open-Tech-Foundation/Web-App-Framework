@@ -18,13 +18,13 @@ const doubled = $derived(count * 2);
 ```
 
 Reading `count` inside a binding subscribes that binding to it. Reassigning `count`
-notifies exactly its subscribers — `doubled`, and any DOM node showing either value.
-Nothing else on the page is visited.
+notifies precisely its subscribers — `doubled`, and any DOM node displaying either
+value. No other part of the page is visited.
 
-That's the whole idea behind "zero-VDOM": the dependency graph already knows what to
-update, so there's nothing to diff.
+This is the substance of the zero-VDOM model: the dependency graph already records what
+must be updated, so there is nothing to diff.
 
 ## Why it matters
 
-No diffing means no per-frame reconciliation work that scales with your view size —
-updates scale with what actually changed.
+Without diffing there is no per-update reconciliation pass whose cost scales with the
+size of the view. Update cost scales with what actually changed.
