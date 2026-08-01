@@ -104,6 +104,35 @@ describe("ssgComponent + hydration collector", () => {
     expect(html).not.toContain("data-h");
     expect(endHydrationCollect()).toBe("");
   });
+
+  test("a renderer's hostAttrs land on the host tag", () => {
+    // The escape hatch built-ins need when an attribute has to be in the served
+    // HTML before any script runs — see `web-internal-context-provider`, resolved
+    // by `closest()` at custom-element upgrade time (server/builtins.js).
+    const render = (_p, children) => children;
+    render.hostAttrs = (p) => (p.context ? ` data-otfw-ctx="${p.context.id}"` : "");
+    defineSSG("web-hostattrs", render);
+    expect(ssgComponent("web-hostattrs", { context: { id: "otfw-ctx-3" } }, "x")).toContain(
+      'data-otfw-ctx="otfw-ctx-3"',
+    );
+    expect(ssgComponent("web-hostattrs", {}, "x")).not.toContain("data-otfw-ctx");
+  });
+});
+
+describe("built-in SSG renderers", () => {
+  test("ContextProvider publishes its context id as a host attribute", async () => {
+    // Without this attribute in the markup, consumer elements — which upgrade before
+    // the enclosing component's hydrate code assigns the `context` prop — resolve no
+    // provider and silently bind to the context default for the life of the page.
+    await import("./builtins.js");
+    const html = ssgComponent(
+      "web-internal-context-provider",
+      { context: { id: "otfw-ctx-0" }, value: "high-contrast" },
+      "<span>x</span>",
+    );
+    expect(html).toContain('data-otfw-ctx="otfw-ctx-0"');
+    expect(html).toContain("<span>x</span>");
+  });
 });
 
 describe("ssgText", () => {

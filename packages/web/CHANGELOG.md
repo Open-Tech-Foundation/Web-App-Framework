@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`<ContextProvider>` now works on server-rendered pages** (`server/builtins.js`,
+  `server/ssg-runtime.js`). `readContext` resolves a consumer's provider with
+  `closest('[data-otfw-ctx~=…]')`, but the SSG renderer emitted the provider as a bare
+  passthrough that dropped every prop — so the marker attribute was absent from the served
+  HTML. Consumers are Custom Elements that upgrade the moment their definition is
+  registered, which happens *before* the enclosing component's hydrate code assigns the
+  provider's `context` prop; finding no provider, every consumer on the page silently bound
+  to the context **default** and never saw a provided value again. Context therefore worked
+  under client rendering and was inert after hydration — values never propagated and nested
+  providers never overrode. SSG renderers may now declare a `hostAttrs(props)` hook for
+  attributes that must be in the markup before any script runs, and the provider uses it to
+  emit `data-otfw-ctx`.
+
 ## [0.27.0] - 2026-07-31
 
 ### Fixed

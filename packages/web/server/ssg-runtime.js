@@ -15,9 +15,13 @@ const UNITLESS = new Set([
 
 const registry = {};
 
-/** Register a component's SSG renderer under its Custom Element tag. */
+/**
+ * Register a component's SSG renderer under its Custom Element tag. Returns the
+ * renderer so a caller can attach the optional `hostClass` / `hostAttrs` hooks.
+ */
 export function defineSSG(tag, render) {
   registry[tag] = render;
+  return render;
 }
 
 // ── hydration props collector (compiler-driven data hydration) ────────────────
@@ -210,6 +214,10 @@ export function ssgComponent(tag, props, children) {
   const cls = render && render.hostClass;
   const id = collectHydrationProps(props);
   let attrs = cls ? ` class="${cls}"` : "";
+  // A renderer may need an attribute on the *host* to be present in the served HTML,
+  // before any script runs — see `web-internal-context-provider`, whose subtree is
+  // resolved by `closest()` at custom-element upgrade time.
+  if (render && render.hostAttrs) attrs += render.hostAttrs(props || {}) || "";
   if (id != null) {
     attrs += ` data-h="${id}"`;
   } else {

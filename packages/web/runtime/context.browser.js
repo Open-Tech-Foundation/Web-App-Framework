@@ -98,6 +98,56 @@ describe("context", () => {
     p.remove();
   });
 
+  // Regression (hydration): on a server-rendered page the consumer's definition is
+  // registered — and every matching element in the document upgrades — *before* the
+  // enclosing component's hydrate code runs and assigns the provider's `context`
+  // prop. `readContext` resolves providers with `closest()`, so unless the server
+  // already wrote `data-otfw-ctx` into the markup, the consumer finds nothing and
+  // binds to the context default forever. The SSG renderer emits that attribute
+  // (server/builtins.js `hostAttrs`); this proves it is what rescues the ordering.
+  test("a consumer upgrading before the provider's props are set still binds to it", () => {
+    const Theme = createContext("default-theme");
+    const captured = {};
+
+    // Server markup: the provider carries its token, but no script has run, so its
+    // `context`/`value` properties are still unset.
+    const host = document.createElement("div");
+    host.innerHTML =
+      `<web-internal-context-provider data-otfw-ctx="${Theme.id}">` +
+      `<web-ctx-late></web-ctx-late>` +
+      `</web-internal-context-provider>`;
+    document.body.appendChild(host);
+    const p = host.firstElementChild;
+
+    // The consumer upgrades here — before the provider is given its value below.
+    customElements.define(
+      "web-ctx-late",
+      class extends HTMLElement {
+        connectedCallback() {
+          enterHost(this);
+          try {
+            captured.theme = readContext(Theme);
+            effect(() => (this.textContent = String(captured.theme.value)));
+          } finally {
+            exitHost();
+          }
+        }
+      },
+    );
+    customElements.upgrade(host);
+
+    // It must have resolved the *provider's* signal, not the context default — so the
+    // value the hydrate pass assigns a moment later reaches it.
+    p.context = Theme;
+    p.value = "light";
+    expect(captured.theme.value).toBe("light");
+    expect(host.querySelector("web-ctx-late").textContent).toBe("light");
+
+    p.value = "solar"; // and it stays reactive
+    expect(host.querySelector("web-ctx-late").textContent).toBe("solar");
+    host.remove();
+  });
+
   test("the host stack restores the parent host after a nested pop", () => {
     const A = document.createElement("div");
     const B = document.createElement("div");

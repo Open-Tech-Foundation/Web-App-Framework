@@ -16,7 +16,15 @@ import { defineSSG } from "./ssg-runtime.js";
 // regions nest, and the label is what lets each side find its own pair (see ssg.rs).
 const slot = (tag, children) => `<!--c[${tag}-->${children ?? ""}<!--c]${tag}-->`;
 const passthrough = (tag) => defineSSG(tag, (_props, children) => slot(tag, children));
-passthrough("web-internal-context-provider");
+// The provider has to carry its context token in the *served HTML*. Consumers are
+// Custom Elements that upgrade the moment their definition is registered — which
+// happens before the enclosing component's hydrate code runs and assigns the
+// `context` prop. `readContext` resolves the provider with `closest()`, so if the
+// attribute is not already in the markup at upgrade time, every consumer on the page
+// silently binds to the context *default* and never sees a provided value again.
+const contextProvider = passthrough("web-internal-context-provider");
+contextProvider.hostAttrs = (props) =>
+  props && props.context && props.context.id ? ` data-otfw-ctx="${props.context.id}"` : "";
 passthrough("web-internal-portal");
 passthrough("web-internal-error-boundary");
 // RawHtml: emit the trusted HTML string inline (MDX highlighted code blocks).
