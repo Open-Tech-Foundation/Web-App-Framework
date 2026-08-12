@@ -126,6 +126,37 @@ The dev server injects an error overlay (Next.js-style) for:
   events (render, effect, mount, route). A successful navigation sends
   `otfw:error-clear` and dismisses the overlay.
 
+A compile error stays up until the build succeeds: a module that fails to compile is
+served as a stub that renders without throwing, so the navigation that follows is
+"successful" and would otherwise dismiss the panel a moment after it appeared.
+
+### Reading the panel
+
+A compile error shows **where** in its header — the file relative to your project, plus
+line and column — and a code frame with a caret under the offending span:
+
+```text
+app/blog/page.mdx:12:9   parse error: Unexpected token
+
+10 | export default function Post() {
+11 |   let count = $state(0);
+12 |   const =
+   |         ^
+13 |   return <article>{count}</article>;
+```
+
+The same position is printed in the terminal running `otfw dev`, in the
+`path:line:column` form editors can jump to. Compiler rejections that are not syntax
+errors — mutating a `$state` value in place, a callback `ref`, a component that builds
+JSX but never returns it — are located the same way.
+
+Runtime stack traces are rewritten to name the source file each dev chunk was built
+from, instead of the internal `/__route/…` URL. The `line:column` in those frames is
+labelled `(chunk:…)` because it is a position in the served chunk: the compiler does not
+emit source maps yet, so a runtime frame identifies the module, not the source line.
+An `.mdx`/`.md` module compiles through generated JSX, so a compile error in one reports
+a position in that JSX and says so.
+
 `<ErrorBoundary>` catches user-visible failures but still **reports** to the overlay
 before rendering fallback UI — boundaries contain crashes; they do not hide them from
 developers. See [Error boundaries](/docs/core-concepts/error-boundary).

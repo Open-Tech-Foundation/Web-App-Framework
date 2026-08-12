@@ -30,6 +30,12 @@ otfw serve          # build, then server-render each route per request (SSR)
 - **`dev`** — bundles the route graph through Rolldown with the compiler as a
   transform, serves it, and live-reloads on change. Picks port 3000, scanning
   upward if it's taken; an explicit `--port` fails fast if busy.
+
+  It watches `app/`, `public/`, `index.html`, `otfw.config.*`, and any module your
+  pages import from outside `app/` — including a workspace package linked into the
+  project. Routes, loaders and config picked up live; only a rebuilt compiler binary
+  needs a restart. A failed build shows an overlay with the file, line, column and a
+  code frame, and clears itself as soon as the build succeeds.
 - **`build`** — emits `dist/` from your `index.html`, compiling and hashing local
   stylesheets (TailwindCSS v4 supported out of the box).
 - **`build --ssg`** — additionally pre-renders each route with `getStaticPaths`

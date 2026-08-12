@@ -12,13 +12,15 @@
 //                        with `@opentf/web` external, then cached in memory.
 //
 // So startup compiles the entry + runtime only; each route's cost is paid the first
-// time it's visited. The module graph (`otfwc graph`) drives HMR: on a file change
-// it tells us exactly which cached chunks to drop before a reload. Tailwind/CSS and
-// `public/` assets are served as before. Project root = cwd, like `vite`/`next dev`.
+// time it's visited. Each chunk records the files it was built from (the bundler's own
+// dependency set, including what plugins generated their modules from), so a file
+// change drops exactly the chunks that came from it before the browser reloads.
+// Tailwind/CSS and `public/` assets are served as before. Project root = cwd, like
+// `vite`/`next dev`.
 
 import { rolldown } from "rolldown";
 import { existsSync, mkdirSync, readFileSync, statSync, watch, writeFileSync } from "node:fs";
-import { dirname, extname, join } from "node:path";
+import { dirname, extname, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { compileCss, usesTailwind } from "./tailwind.js";
@@ -26,6 +28,7 @@ import { overlayClient } from "./overlay.js";
 import {
   EXTENSIONS,
   MIME,
+  CONFIG_FILENAMES,
   assertNoRouteConflicts,
   buildApiBundle,
   buildLoaderBundle,
@@ -41,6 +44,7 @@ import {
   loadProject,
   matchProxyTarget,
   moduleGraph,
+  moduleReloader,
   otfwPlugin,
   proxyRequest,
   readHtmlShell,
@@ -127,29 +131,93 @@ export async function runDev() {
   }
   assertNoRouteConflicts(appDir, exclude);
 
-  const config = await loadConfig(root);
-  const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
+  const devDir = join(root, ".dev");
+  const publicDir = join(root, "public");
+  // Build plugins that read JS data files (a docs `_meta.js`) get this instead of a
+  // plain `import()`, which would pin the file's first version for the whole session.
+  const importFresh = moduleReloader(devDir);
+  // The config is re-read on every `otfw.config.*` edit (see `reloadConfig`), so
+  // everything derived from it — the docs plugins, the proxy table, the i18n/nav
+  // options baked into the entry — is `let`, not `const`.
+  let config = await loadConfig(root);
+  let docsPlugins = await loadDocsPlugins(root, appDir, config, exclude, importFresh);
   // Dev proxy (SPEC §11 / deployment): forward configured path prefixes to a
   // separately-running backend instead of handling them in-process. This is how a
   // provider-agnostic app reaches bindings the dev server can't host itself — e.g.
   // `proxy: { "/api": "http://localhost:8787" }` to a local `wrangler dev` for D1.
-  const proxyRules = resolveProxyRules(config);
+  let proxyRules = resolveProxyRules(config);
 
-  const devDir = join(root, ".dev");
-  mkdirSync(devDir, { recursive: true });
   const entryFile = join(devDir, "entry.js");
   const loaderRoutes = () => discoverLoaders(appDir, exclude).map((f) => loaderRoutePath(f, appDir));
-  const writeEntry = () =>
+  // Re-discover the pages on disk. Returns whether the set changed — a new or
+  // deleted page/layout changes the route table baked into the entry.
+  function syncPages() {
+    const fresh = discoverPages(appDir, exclude);
+    if (fresh.length === pages.length && fresh.every((p, i) => p === pages[i])) return false;
+    pages.length = 0;
+    pages.push(...fresh);
+    return true;
+  }
+  // (Re)generate the dev entry. Called before every entry build rather than only on
+  // startup, so the route table is always what's on disk right now and the file is
+  // recreated if `.dev/` disappeared underneath us (a `git clean`, a temp sweeper, a
+  // stray `rm -rf`). Without that, one missing file used to wedge the server in a
+  // permanent "Cannot resolve entry module .dev/entry.js" until it was restarted.
+  function writeEntry() {
+    syncPages();
+    mkdirSync(devDir, { recursive: true });
     writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl, config?.i18n, config?.nav, loaderRoutes()));
+  }
   writeEntry();
 
   let server;
   const publish = (msg) => server?.publish("hmr", JSON.stringify(msg));
-  const compileErrors = new Map();
+
+  // Two error sources, kept apart so one can't erase the other: `moduleErrors` are
+  // otfwc diagnostics for a single module (the bundle still succeeds — the plugin
+  // substitutes a stub), `buildErrors` are bundler-level failures for a whole chunk
+  // (unresolved import, missing entry). A bundle-level failure breaks everything the
+  // chunk contains, so it's reported first.
+  const moduleErrors = new Map();
+  const buildErrors = new Map();
+  const firstError = () => [...buildErrors.values(), ...moduleErrors.values()][0] ?? null;
+
+  // Terminal diagnostics carry ANSI color; the overlay renders text, where the escape
+  // codes show up as `[31m` noise around the message.
+  const plain = (s) => String(s ?? "").replace(/\u001b\[[0-9;]*m/g, "");
+  // A diagnostic on the wire: where it happened (project-relative, so the overlay can
+  // show `app/blog/page.jsx:12:4` rather than a machine-specific absolute path), what
+  // happened, and the code frame around it when the compiler located one.
+  // The bundler locates its own errors, in its own rendering (`╭─[ app/x.jsx:1:15 ]`).
+  // Lifting that position into the same fields means the overlay header reads the same
+  // whoever reported the problem.
+  const BUNDLER_LOC = /\u256d\u2500\[\s*([^\s\]]+):(\d+):(\d+)/;
+  const errorFrame = (file, { message, line, column, frame, note } = {}) => {
+    const text = plain(message);
+    const found = line ? null : BUNDLER_LOC.exec(text);
+    return {
+      type: "error",
+      kind: "compile",
+      id: file,
+      file: found?.[1] ?? (file.startsWith(root + sep) ? file.slice(root.length + 1) : file),
+      line: line ?? (found ? Number(found[2]) : null),
+      column: column ?? (found ? Number(found[3]) : null),
+      message: text,
+      frame: frame ? plain(frame) : null,
+      note: note ?? null,
+    };
+  };
 
   // One persistent compiler (one `otfwc serve` child) shared by every build below.
   const otfw = otfwPlugin(otfwc, {
-    onResult: (id, err) => (err ? compileErrors.set(id, err) : compileErrors.delete(id)),
+    onResult: (id, diag) => {
+      if (!diag) return moduleErrors.delete(id);
+      const msg = errorFrame(id, diag);
+      moduleErrors.set(id, msg);
+      // Surface it while the browser is waiting on this very chunk — the request
+      // resolves to a stub, so nothing else would tell the page what went wrong.
+      publish(msg);
+    },
   });
   const css = cssPlugin();
   // Rewrite `new Worker(new URL("./w.js", …))` → a `/__worker/…` dev URL (bundled
@@ -197,11 +265,20 @@ export async function runDev() {
       return { code: applyNewUrlEdits(code, edits), moduleSideEffects: true };
     },
   };
-  const plugins = [...docsPlugins, otfw, css, devWorkerAssets];
+  // Rebuilt whenever the config changes (the docs/blog plugins come from it); every
+  // build below reads this binding at call time, so a reload is picked up at once.
+  let plugins = [...docsPlugins, otfw, css, devWorkerAssets];
 
   // Bundle `input` to a single ESM string in memory (no disk). `external` ids are
   // left as bare imports (resolved by the browser via the import map / route URLs).
   // `alias` lets the runtime build resolve its own `@opentf/web` self-imports.
+  //
+  // Returns the code plus `deps`: every file this chunk was built from. That is the
+  // bundler's own answer — each module it linked, *and* each file a plugin declared
+  // through `addWatchFile`. The second half is what a module crawl can't know: the
+  // docs sidebar and blog index are generated from the file tree by a plugin, so the
+  // chunk holding them depends on page frontmatter and `_meta.*` files it never
+  // imports. Invalidation keys off this set (see `invalidateFile`).
   async function bundle({ input, external, alias }) {
     const b = await rolldown({
       input,
@@ -214,7 +291,10 @@ export async function runDev() {
     });
     try {
       const { output } = await b.generate({ format: "esm", codeSplitting: false });
-      return output[0].code;
+      // Virtual module ids (`\0…`) aren't files; drop them.
+      const deps = new Set((await b.watchFiles).filter((f) => f && !f.startsWith("\0")));
+      watchSourceDirs(deps);
+      return { code: output[0].code, deps };
     } finally {
       await b.close();
     }
@@ -226,8 +306,10 @@ export async function runDev() {
     return bundle({ input: webEntry, alias: { "@opentf/web": webEntry } });
   }
   // The app entry: route loaders point at `/__route/…` (external — fetched lazily)
-  // and `@opentf/web` is external (→ import map → /@fw.js).
+  // and `@opentf/web` is external (→ import map → /@fw.js). The entry source is
+  // regenerated first so the route table can never be stale (or the file missing).
   async function buildEntry() {
+    writeEntry();
     return bundle({
       input: entryFile,
       external: (id) => id === "@opentf/web" || id.startsWith(ROUTE_PREFIX),
@@ -244,39 +326,65 @@ export async function runDev() {
   }
 
   // Everything is built on first request and cached (Vite-style), so startup does no
-  // compilation at all. `null` means "needs (re)building".
-  let fwCode = null;
-  let entryCode = null;
-  const routeCache = new Map(); // route file → compiled chunk
-  const workerCache = new Map(); // worker file → compiled chunk
+  // compilation at all. A cache entry is `{ code, deps }`; `null` / absent means
+  // "needs (re)building".
+  let fwChunk = null;
+  let entryChunk = null;
+  const routeCache = new Map(); // route file → { code, deps }
+  const workerCache = new Map(); // worker file → { code, deps }
 
   // A build error becomes a thrown-on-load stub so the overlay shows it in place.
   const errorStub = (id, msg) =>
     `throw new Error(${JSON.stringify(`Compile error in ${id}\n\n${msg}`)});`;
+  // The whole diagnostic as one block of text — position line, message, code frame.
+  const diagText = (m) =>
+    (m.line ? `${m.file}:${m.line}:${m.column}\n` : "") + m.message + (m.frame ? `\n\n${m.frame}` : "");
 
-  // Compile `file` (framework / entry / route) on demand, surfacing a compile error
-  // as a thrown-on-load stub. `build` is the matching builder.
+  // Compile `file` (framework / entry / route) on demand, surfacing a build failure
+  // as a thrown-on-load stub. `build` is the matching builder. The stub is never
+  // cached by the callers below: a failed build leaves nothing behind, so the next
+  // request retries it — otherwise a transient failure (a half-written file, a
+  // missing directory) would stick until the server was restarted.
   async function compileOnce(file, build) {
     try {
-      const code = await build(file);
-      compileErrors.delete(file);
-      return code;
+      const chunk = await build(file);
+      buildErrors.delete(file);
+      return { chunk, code: chunk.code };
     } catch (e) {
-      const msg = e?.message ?? String(e);
-      compileErrors.set(file, msg);
-      publish({ type: "error", kind: "compile", id: file, message: msg });
-      return errorStub(file, msg);
+      // A bundler failure already reads well (it comes with its own code frame), so
+      // it goes out as the message — minus the terminal colors, which the overlay
+      // would otherwise print literally.
+      const msg = errorFrame(file, { message: e?.message ?? String(e) });
+      buildErrors.set(file, msg);
+      publish(msg);
+      return { chunk: null, code: errorStub(file, diagText(msg)) };
     }
   }
-  const serveFramework = async () => (fwCode ??= await compileOnce(webEntry, buildFramework));
-  const serveEntry = async () => (entryCode ??= await compileOnce(entryFile, buildEntry));
+  async function serveFramework() {
+    if (fwChunk) return fwChunk.code;
+    const { chunk, code } = await compileOnce(webEntry, buildFramework);
+    if (chunk) fwChunk = chunk;
+    return code;
+  }
+  async function serveEntry() {
+    if (entryChunk) return entryChunk.code;
+    const { chunk, code } = await compileOnce(entryFile, buildEntry);
+    if (chunk) entryChunk = chunk;
+    return code;
+  }
   async function serveRoute(file) {
-    if (!routeCache.has(file)) routeCache.set(file, await compileOnce(file, buildRoute));
-    return routeCache.get(file);
+    const hit = routeCache.get(file);
+    if (hit) return hit.code;
+    const { chunk, code } = await compileOnce(file, buildRoute);
+    if (chunk) routeCache.set(file, chunk);
+    return code;
   }
   async function serveWorker(file) {
-    if (!workerCache.has(file)) workerCache.set(file, await compileOnce(file, buildWorker));
-    return workerCache.get(file);
+    const hit = workerCache.get(file);
+    if (hit) return hit.code;
+    const { chunk, code } = await compileOnce(file, buildWorker);
+    if (chunk) workerCache.set(file, chunk);
+    return code;
   }
 
   // API routes (SPEC §11) are plain server modules under app/api/. In dev they're
@@ -377,79 +485,209 @@ export async function runDev() {
     loadersBuilt = false;
   }
 
-  // The module graph powers precise invalidation; build it in the background so it
-  // never blocks startup. Until it's ready, a change clears every cache (safe).
-  let graph = { has: () => false, affected: () => new Set() };
-  const refreshGraph = () =>
-    moduleGraph(otfwc, webEntry, [...pages, webEntry]).then((g) => (graph = g));
-  refreshGraph();
+  // Re-read `otfw.config.*` and everything derived from it. A JS config is bundled
+  // to a versioned file first (`loadConfig`'s `bust`) because the runtime's ESM cache
+  // would otherwise hand back the module as it was when the server started.
+  let configVersion = 0;
+  async function reloadConfig() {
+    config = await loadConfig(root, { bust: ++configVersion, cacheDir: devDir });
+    docsPlugins = await loadDocsPlugins(root, appDir, config, exclude, importFresh);
+    plugins = [...docsPlugins, otfw, css, devWorkerAssets];
+    proxyRules = resolveProxyRules(config);
+    for (const r of proxyRules) console.log(`  ↪ proxy ${r.prefix} → ${r.target}`);
+  }
 
-  // On a change, drop only the cached chunks the edited file reaches (its graph
-  // dependents); a reload then rebuilds them on demand. An unknown file (e.g. a
-  // workspace package we treat as external) clears everything to be safe.
-  function onChange(file) {
-    refreshGraph();
-    const hit = graph.has(file) ? graph.affected(file) : null;
-    if (!hit) {
-      fwCode = entryCode = null;
-      routeCache.clear();
-      workerCache.clear();
-    } else {
-      if (hit.has(webEntry)) fwCode = null;
-      if (file === entryFile || pages.includes(file)) entryCode = null;
-      for (const f of [...routeCache.keys()]) if (hit.has(f)) routeCache.delete(f);
-      // The module graph doesn't trace worker scripts (they're a separate bundle),
-      // so a worker edit lands here as an "unknown reach"; clear the worker cache
-      // whenever anything the edit touches is a worker file or the graph is unsure.
-      for (const f of [...workerCache.keys()]) if (hit.has(f) || f === file) workerCache.delete(f);
-    }
-    if (compileErrors.size > 0) {
-      const [id, message] = [...compileErrors][0];
-      publish({ type: "error", kind: "compile", id, message });
-    } else {
-      publish({ type: "reload" });
+  // Nothing is built yet at startup, so no chunk has reported its dependencies —
+  // crawl the module graph once, in the background, purely to learn which source
+  // directories to watch. From then on every build reports its own (see `bundle`).
+  moduleGraph(otfwc, webEntry, [...pages, webEntry])
+    .then((g) => watchSourceDirs(g.files()))
+    .catch(() => {});
+
+  function clearAllCaches() {
+    fwChunk = entryChunk = null;
+    routeCache.clear();
+    workerCache.clear();
+  }
+
+  // Drop exactly the cached chunks that were built from `file` — each one knows the
+  // files it came from, so this covers a plain import, a CSS or JSON import, and a
+  // file a plugin generated its module from (docs sidebar, blog index).
+  //
+  // A file no built chunk mentions is one we can't reason about: it was just created
+  // (nothing could have listed it yet — and a generated module may well be about to
+  // include it, as the docs sidebar does for a new page), or just deleted, or simply
+  // isn't part of any chunk. Only the first two matter and both need a rebuild, so
+  // clear everything; it costs one recompile of whatever the next page load touches.
+  // `public/` is exempt: assets are served straight from disk, never bundled.
+  function invalidateFile(file) {
+    let known = false;
+    const drop = (chunk) => chunk?.deps.has(file) && (known = true);
+    if (drop(fwChunk)) fwChunk = null;
+    if (drop(entryChunk)) entryChunk = null;
+    // A chunk's dependency set includes its own entry module, so editing a worker
+    // script drops that worker's chunk through the same check as anything else.
+    for (const [f, chunk] of routeCache) if (drop(chunk)) routeCache.delete(f);
+    for (const [f, chunk] of workerCache) if (drop(chunk)) workerCache.delete(f);
+    if (!known && !file.startsWith(publicDir + sep)) clearAllCaches();
+  }
+
+  // ---------------------------------------------------------------- file watching
+  //
+  // Watched: `app/` (recursively), the project root (`index.html`, `otfw.config.*`),
+  // `public/`, and the directory of every module in the graph that lives outside
+  // `app/` — a shared `lib/`/`src/` module is a normal part of an app and editing it
+  // has to rebuild too. Directories that only ever hold generated or vendored files
+  // are skipped so we don't burn watch descriptors (or reload) on them.
+  const IGNORED_DIRS = new Set([
+    "node_modules", ".git", ".hg", ".svn", "dist", "target", "coverage",
+    ".dev", ".otfw", ".otfw-ssg", ".otfw-api", ".otfw-api-build", ".otfw-loaders", ".otfw-loaders-build",
+  ]);
+  // Editors write through temp/backup files (`.file.swp`, `file~`, `#file#`, vim's
+  // `4913` probe); reacting to those means reloading on every keystroke-flush.
+  const TEMP_FILE_RE = /(^|\/)(\.#|~\$)|(\.(swp|swx|tmp|temp)|~)$|(^|\/)4913$/;
+  const isIgnored = (p) => p.split(sep).some((seg) => IGNORED_DIRS.has(seg));
+
+  const watchers = new Map(); // directory → FSWatcher
+  function watchDir(dir, { recursive = false, accept = () => true } = {}) {
+    if (watchers.has(dir) || !existsSync(dir)) return;
+    try {
+      const w = watch(dir, { recursive }, (_evt, name) => {
+        if (!name || isIgnored(name) || TEMP_FILE_RE.test(name)) return;
+        const file = join(dir, name);
+        if (accept(file, name)) queueChange(file);
+      });
+      w.on?.("error", (e) => console.error(`⚠ file watcher stopped for ${dir}: ${e?.message ?? e}`));
+      watchers.set(dir, w);
+    } catch (e) {
+      console.error(`⚠ could not watch ${dir}: ${e?.message ?? e}`);
     }
   }
 
-  // Watch app sources; a new page/layout file regenerates the route table.
-  const watcher = watch(appDir, { recursive: true }, (_evt, name) => {
-    if (!name) return;
-    const file = join(appDir, name);
-    // An API endpoint/middleware edit (any `route.*` / `_middleware.*` file) rebuilds
-    // the API bundle on the next request and triggers a reload.
-    if (/^(route|_middleware)\.(jsx?|tsx?)$/.test(name.split("/").pop())) {
-      invalidateApi();
-      publish({ type: "reload" });
-      return;
-    }
-    // A loader edit rebuilds the loader bundle on the next data request; a new or
-    // deleted loader.* also changes the route set baked into the entry, so the
-    // entry is rewritten and its cached chunk dropped (a stale set would make SPA
-    // nav skip the fetch — or fetch a 404).
-    if (/^loader\.(js|ts)$/.test(name.split("/").pop())) {
-      invalidateLoaders();
-      writeEntry();
-      entryCode = null;
-      publish({ type: "reload" });
-      return;
-    }
-    if (/\.(mdx|md|[jt]sx|css)$/.test(name)) {
-      if (/^(page|layout|404)\.(mdx|md|[jt]sx)$/.test(name.split("/").pop()) && !pages.includes(file)) {
-        const fresh = discoverPages(appDir, exclude);
-        pages.length = 0;
-        pages.push(...fresh);
-        writeEntry();
-      }
-      onChange(file);
-    }
+  // App sources — every file under `app/`, not just the ones we can name: a page can
+  // import a `.json` fixture, an `.svg`, a local `.wasm`.
+  watchDir(appDir, { recursive: true });
+  // The project root, shallow: only the two files that change what the server serves.
+  // A `public/` created later shows up here too, and gets its own watcher.
+  watchDir(root, {
+    accept: (file, name) => {
+      if (name === "public") watchDir(publicDir, { recursive: true });
+      return name === "index.html" || CONFIG_FILENAMES.includes(name);
+    },
   });
+  watchDir(publicDir, { recursive: true });
+
+  // Watch the directories holding the app's modules outside `app/` — a shared `lib/`
+  // or `src/`, and (in a monorepo) a workspace package linked into the app, where the
+  // module's real path is outside the project root. Installed dependencies and
+  // generated output are skipped: anything whose path crosses an ignored directory.
+  // Called with each build's dependency set, so a directory starts being watched as
+  // soon as something in it is first pulled into a chunk.
+  function watchSourceDirs(files) {
+    for (const id of files) {
+      const dir = dirname(id);
+      if (isIgnored(dir) || dir === appDir) continue;
+      if (dir.startsWith(appDir + sep)) continue; // covered by the recursive app watcher
+      watchDir(dir);
+    }
+  }
+
+  // Filesystem events arrive in bursts — one save can fire several, and a `git
+  // checkout` fires hundreds. Collect them and handle the batch once, so the browser
+  // gets a single reload rather than one per event.
+  const FLUSH_MS = 40;
+  // …but a stream of events that never pauses (a big checkout, a formatter walking the
+  // tree) must not defer the reload forever, so the debounce is capped.
+  const FLUSH_MAX_MS = 500;
+  const pending = new Set();
+  let flushTimer = null;
+  let queuedAt = 0;
+  let flushChain = Promise.resolve();
+  function queueChange(file) {
+    pending.add(file);
+    const now = Date.now();
+    if (!queuedAt) queuedAt = now;
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(
+      () => {
+        flushTimer = null;
+        queuedAt = 0;
+        flushChain = flushChain.then(flush).catch((e) => console.error(`✗ reload failed: ${e?.message ?? e}`));
+      },
+      Math.max(0, Math.min(FLUSH_MS, queuedAt + FLUSH_MAX_MS - now)),
+    );
+  }
+
+  const basename = (p) => p.split(sep).pop();
+  const IS_API = (n) => /^(route|_middleware)\.(jsx?|tsx?)$/.test(n);
+  const IS_LOADER = (n) => /^loader\.(js|ts)$/.test(n);
+
+  async function flush() {
+    const files = [...pending];
+    pending.clear();
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      const name = basename(file);
+      const inRootDir = dirname(file) === root;
+      // A config change can alter anything — the route table (i18n/nav), the docs
+      // plugins, the proxy table — so re-read it and rebuild from scratch.
+      if (inRootDir && CONFIG_FILENAMES.includes(name)) {
+        await reloadConfig();
+        clearAllCaches();
+        invalidateApi();
+        invalidateLoaders();
+        continue;
+      }
+      // `index.html` is read from disk per request; nothing to invalidate.
+      if (inRootDir && name === "index.html") continue;
+      // An API endpoint/middleware edit rebuilds the API bundle on the next request.
+      if (IS_API(name)) {
+        invalidateApi();
+        continue;
+      }
+      // A loader edit rebuilds the loader bundle on the next data request; a new or
+      // deleted loader.* also changes the route set baked into the entry (a stale set
+      // would make SPA nav skip the fetch — or fetch a 404), which `buildEntry`
+      // regenerates because the entry cache is dropped below.
+      if (IS_LOADER(name)) {
+        invalidateLoaders();
+        continue;
+      }
+      invalidateFile(file);
+    }
+
+    // The entry is cheap to rebuild and depends on the whole route table (pages,
+    // loaders, guard, i18n/nav config), so it's always regenerated — that is what
+    // keeps a deleted page from lingering in the route map.
+    entryChunk = null;
+
+    // Any diagnostic we're still holding describes code that no longer exists on
+    // disk. Drop it (along with the chunks it was recorded for, which may be cached
+    // error stubs) and let the reload's fresh compile decide what's broken now —
+    // otherwise a fixed error keeps being replayed and the page never reloads.
+    if (moduleErrors.size > 0 || buildErrors.size > 0) {
+      moduleErrors.clear();
+      buildErrors.clear();
+      clearAllCaches();
+    }
+
+    publish({ type: "reload" });
+  }
+
+  const closeWatchers = () => {
+    for (const w of watchers.values()) {
+      try {
+        w.close();
+      } catch {}
+    }
+    watchers.clear();
+  };
   // Ctrl+C is the normal way to stop a dev server, so treat it as a clean shutdown
   // (exit 0) rather than the conventional 130 — otherwise `bun run dev` reports it as
   // a failure. The compiler child is torn down by its own `exit` hook.
   const shutdown = () => {
-    try {
-      watcher.close();
-    } catch {}
+    closeWatchers();
     invalidateApi();
     invalidateLoaders();
     process.exit(0);
@@ -457,9 +695,7 @@ export async function runDev() {
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
   process.once("exit", () => {
-    try {
-      watcher.close();
-    } catch {}
+    closeWatchers();
     invalidateApi();
     invalidateLoaders();
   });
@@ -469,7 +705,9 @@ export async function runDev() {
   const injected =
     `<script type="importmap">{"imports":{"@opentf/web":"/@fw.js"}}</script>\n` +
     `<script type="module" src="/bundle.js"></script>\n` +
-    `<script>${overlayClient}</script>\n`;
+    // The overlay decodes chunk URLs back to file paths; the root lets it show them
+    // relative to the project, as an editor would.
+    `<script>window.__otfwRoot=${JSON.stringify(root)};${overlayClient}</script>\n`;
 
   const buildHtml = () => injectBeforeBody(readHtmlShell(root), injected);
 
@@ -507,10 +745,10 @@ export async function runDev() {
     websocket: {
       open: (ws) => {
         ws.subscribe("hmr");
-        if (compileErrors.size > 0) {
-          const [id, message] = [...compileErrors][0];
-          ws.send(JSON.stringify({ type: "error", kind: "compile", id, message }));
-        }
+        // A page that loads *after* a failed build still needs to see the error.
+        // (`flush` clears stale diagnostics, so what's here is the current state.)
+        const err = firstError();
+        if (err) ws.send(JSON.stringify(err));
       },
     },
     async fetch(req, srv) {
