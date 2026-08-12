@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-08-12
+
 ### Fixed
 
 - **A `_meta.js` edit reaches the sidebar under `otfw dev`** (`build/docs-nav-plugin.js`). The

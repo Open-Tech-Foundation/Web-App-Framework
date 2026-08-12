@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-12
+
 ### Fixed
 
 - **Scaffolded `.gitignore` covers the loader build directories.** The SPA, Fullstack and
