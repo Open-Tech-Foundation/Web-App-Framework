@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-08-12
+
 ### Fixed
 
 - **`<ContextProvider>` now works on server-rendered pages** (`server/builtins.js`,
