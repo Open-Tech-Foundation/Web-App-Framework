@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Scaffolded `.gitignore` covers the loader build directories.** The SPA, Fullstack and
+  Docs templates listed the toolchain's other working directories but not `.otfw-loaders`
+  / `.otfw-loaders-build`, so a project with a route loader showed them as untracked files
+  whenever a build or dev server was interrupted before its cleanup ran.
+
 ## [0.16.0] - 2026-07-08
 
 ### Added
