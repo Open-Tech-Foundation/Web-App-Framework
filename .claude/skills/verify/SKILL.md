@@ -22,11 +22,15 @@ OTFWC_BIN=$REPO/target/debug/otfwc bun run dev   # port 3005
 ```
 
 Gotchas:
-- **Routes are scanned at server startup** — a route dir added while the server runs 404s;
-  restart the server.
-- Rebuilding `otfwc` requires a dev-server restart too (long-lived `otfwc serve` process).
+- **Rebuilding `otfwc` requires a dev-server restart** — the compiler runs as one long-lived
+  `otfwc serve` child, started with the server.
+- Everything else is picked up live: routes added or deleted while the server runs, sources
+  outside `app/` (`lib/`, a linked workspace package), `index.html`, `public/`, and
+  `otfw.config.*`. Each change publishes a reload over the HMR socket.
 - Add scratch routes under `playground/app/<name>/page.jsx` (+ sibling component files);
   delete them after verification.
+- Pick an explicit high `--port` when scripting a check: the default 3000 is often already
+  a developer's own server, and requests (and reloads) would go to the wrong one.
 
 ## Drive it headless
 No puppeteer/playwright in the repo. Raw CDP works well with Bun's WebSocket:

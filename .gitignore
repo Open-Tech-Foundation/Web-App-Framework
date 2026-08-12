@@ -38,6 +38,12 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .otfw-ssg
 .otfw-api
 .otfw-api-build
+.otfw-loaders
+.otfw-loaders-build
+
+# generated app the dev-server e2e builds and tears down
+packages/web-cli/tests/e2e/.dev-hmr-app
+packages/web-cli/tests/e2e/.dev-docs-app
 
 # IntelliJ based IDEs
 .idea

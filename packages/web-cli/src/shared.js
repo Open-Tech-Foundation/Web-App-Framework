@@ -5,7 +5,7 @@
 // `otfwc` IR compiler as a Rolldown `transform` plugin, and let Rolldown link the
 // module graph. This module holds everything they have in common.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -236,11 +236,70 @@ function ensureCompiler(otfwc, workspace) {
   if (b.exitCode !== 0) process.exit(b.exitCode);
 }
 
+/** The config filenames a project may use, in precedence order. */
+export const CONFIG_FILENAMES = ["otfw.config.json", "otfw.config.js", "otfw.config.mjs"];
+
+/**
+ * Re-import a JS module after it changed on disk. The runtime's ESM cache is keyed by
+ * file path and ignores a `?v=` query (Bun), so the only way to re-evaluate a module is
+ * to import a genuinely new path. Bundling to a versioned file (rather than copying it)
+ * inlines the module's own relative imports, so the copy's location can't change how
+ * they resolve. Returns the URL to import — the original file if bundling fails.
+ *
+ * `slot` namespaces the generated file, so two callers (the project config, a docs
+ * `_meta.js`) can't overwrite each other's copy.
+ */
+async function freshModuleUrl(file, cacheDir, bust, slot) {
+  const dir = join(cacheDir, slot);
+  const name = `${bust}.mjs`;
+  try {
+    rmSync(dir, { recursive: true, force: true });
+    await build({
+      input: file,
+      platform: "node",
+      // Keep npm/node imports external — the module may pull in real dependencies.
+      external: (id) => !id.startsWith(".") && !id.startsWith("/"),
+      output: { dir, format: "esm", entryFileNames: name },
+      checks: { pluginTimings: false },
+    });
+    return pathToFileURL(join(dir, name)).href;
+  } catch (e) {
+    console.warn(`⚠ could not re-bundle ${file}: ${e?.message ?? e}`);
+    return pathToFileURL(file).href;
+  }
+}
+
+/**
+ * A `(file) => Promise<module>` that always reflects what is on disk, for the dev
+ * server to hand to build plugins that read JS data files (the docs `_meta.js`, say).
+ * A plain `import()` would hand back the module as it was when the server started —
+ * see {@link freshModuleUrl} — and re-bundling on every build would be wasteful, so
+ * the result is memoized on the file's size + mtime and only redone when it changes.
+ */
+export function moduleReloader(cacheDir) {
+  const cache = new Map(); // file → { key, mod }
+  let version = 0;
+  return async function importFresh(file) {
+    const st = statSync(file);
+    const key = `${st.size}:${st.mtimeMs}`;
+    const hit = cache.get(file);
+    if (hit?.key === key) return hit.mod;
+    const slot = `mod-${Buffer.from(file).toString("base64url").slice(-24)}`;
+    const mod = await import(await freshModuleUrl(file, cacheDir, ++version, slot));
+    cache.set(file, { key, mod });
+    return mod;
+  };
+}
+
 /**
  * Load the optional project config (`otfw.config.{json,js,mjs}`) as a plain object.
  * Read by the build for the site URL (SEO) and the `docs` block (docs generator).
+ *
+ * `bust` (with `cacheDir`) re-reads a JS config that has changed on disk — the dev
+ * server passes an incrementing version so a config edit takes effect without a
+ * restart. Without it the module is imported once and cached by the runtime.
  */
-export async function loadConfig(root) {
+export async function loadConfig(root, { bust = 0, cacheDir = join(root, ".dev") } = {}) {
   const json = join(root, "otfw.config.json");
   if (existsSync(json)) {
     try {
@@ -253,7 +312,8 @@ export async function loadConfig(root) {
     const p = join(root, name);
     if (existsSync(p)) {
       try {
-        return (await import(pathToFileURL(p).href)).default ?? {};
+        const href = bust ? await freshModuleUrl(p, cacheDir, bust, "config") : pathToFileURL(p).href;
+        return (await import(href)).default ?? {};
       } catch (e) {
         console.warn(`⚠ could not load ${name}: ${e?.message ?? e}`);
       }
@@ -345,8 +405,12 @@ export function proxyRequest(req, target) {
  * generator (a `docs` block in otfw.config). Resolved from `@opentf/web-docs`
  * (the app's own dependency); returns null when docs aren't configured or the
  * package isn't installed, so the core toolchain stays untouched for normal apps.
+ *
+ * `importModule` (dev only) is how the nav generator re-reads a `_meta.js` that
+ * changed since the server started — see {@link moduleReloader}. Omitted for a
+ * one-shot build, where a plain `import()` reads each file exactly once anyway.
  */
-export async function loadDocsPlugins(root, appDir, config, exclude = new Set()) {
+export async function loadDocsPlugins(root, appDir, config, exclude = new Set(), importModule) {
   const docs = config?.docs;
   const blog = config?.blog;
   if (!docs && !blog) return [];
@@ -358,7 +422,7 @@ export async function loadDocsPlugins(root, appDir, config, exclude = new Set())
     const plugins = [];
     // Resolves `@opentf/web-docs/nav` to a section map — one generated tree per top-level
     // folder under app/. Any folder with a DocsLayout becomes a section automatically.
-    if (docs) plugins.push(docsNavPlugin({ appDir, exclude }));
+    if (docs) plugins.push(docsNavPlugin({ appDir, exclude, importModule }));
     // Resolves `@opentf/web-docs/posts` to the generated post list.
     if (blog) plugins.push(blogPostsPlugin({ appDir, contentDir: blog.dir ?? "blog", exclude }));
     // Resolves `@opentf/web-docs/updated` to the per-page last-updated map (every route),
@@ -1014,13 +1078,13 @@ export async function moduleGraph(otfwc, webEntry, roots) {
   const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
   if (exitCode !== 0) {
     console.error(`✗ otfwc graph failed:\n${await new Response(proc.stderr).text()}`);
-    return { affected: () => new Set(), has: () => false };
+    return { affected: () => new Set(), has: () => false, files: () => [] };
   }
   let modules = [];
   try {
     modules = JSON.parse(stdout).modules;
   } catch {
-    return { affected: () => new Set(), has: () => false };
+    return { affected: () => new Set(), has: () => false, files: () => [] };
   }
   // Reverse adjacency: target → importers, for transitive-dependents queries.
   const importers = new Map();
@@ -1034,6 +1098,9 @@ export async function moduleGraph(otfwc, webEntry, roots) {
   const ids = new Set(modules.map((m) => m.id));
   return {
     has: (id) => ids.has(id),
+    // Every module in the graph — the dev server watches their directories so an
+    // edit to a file outside `app/` (a shared `lib/`, `src/`, … module) rebuilds too.
+    files: () => [...ids],
     affected(file) {
       const out = new Set();
       const queue = [file];
@@ -1048,6 +1115,37 @@ export async function moduleGraph(otfwc, webEntry, roots) {
       return out;
     },
   };
+}
+
+/**
+ * Turn an `ERR` reply payload into an `Error` carrying the compiler's diagnostic.
+ * The payload is the JSON object `Diag::json` writes — `{ file, message, line,
+ * column, frame, note }` — so the position survives as data all the way to the browser
+ * overlay instead of being flattened into prose. An older compiler (or a protocol
+ * error) sends a bare string; that still works, it just has no position.
+ *
+ * `error.message` is the one-line human form (`path:line:col message`), `error.diag`
+ * the structured fields, and `error.text` the full terminal rendering with the frame.
+ */
+export function compileError(payload) {
+  let d = null;
+  if (payload.startsWith("{")) {
+    try {
+      d = JSON.parse(payload);
+    } catch {}
+  }
+  if (!d?.message) {
+    const err = new Error(payload);
+    err.diag = { message: payload };
+    err.text = payload;
+    return err;
+  }
+  const where = d.line ? `${d.file}:${d.line}:${d.column}` : d.file;
+  const err = new Error(`${where}: ${d.message}`);
+  err.diag = d;
+  err.text =
+    `${where}: ${d.message}\n` + (d.note ? `note: ${d.note}\n` : "") + (d.frame ? `\n${d.frame}` : "");
+  return err;
 }
 
 /**
@@ -1117,7 +1215,7 @@ export function startCompilerServer(otfwc) {
         buf = buf.slice(nl + 1 + len);
         const job = queue.shift();
         if (status === "OK") job.resolve(payload);
-        else job.reject(new Error(payload));
+        else job.reject(compileError(payload));
       }
     } finally {
       pumping = false;
@@ -1163,8 +1261,9 @@ export function startCompilerServer(otfwc) {
  * layout / 404 modules become factories; everything else a Custom Element. On a
  * compile error it emits a diagnostic stub (so one bad route doesn't sink the
  * build) unless `failOnError` is set (production builds should fail loudly).
- * `onResult(id, errorMessageOrNull)` is called per module so the dev server can
- * push compile diagnostics to the error overlay and clear them once fixed.
+ * `onResult(id, diagnosticOrNull)` is called per module so the dev server can push
+ * compile diagnostics to the error overlay and clear them once fixed. The diagnostic
+ * is the compiler's structured one (`{ file, message, line, column, frame, note }`).
  *
  * Compilation runs through one persistent `otfwc serve` process per plugin instance
  * (see `startCompilerServer`). `target` picks the codegen backend: `"csr"` (the live
@@ -1185,16 +1284,19 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr
         // Side effects (e.g. customElements.define) must survive bundling.
         return { code: out, moduleSideEffects: true };
       } catch (e) {
-        const msg = e?.message ?? String(e);
-        onResult?.(id, msg);
+        // `text` is the diagnostic as a terminal/overlay would show it — the position
+        // line plus a code frame; `diag` is the same thing as fields, for the overlay.
+        const text = e?.text ?? e?.message ?? String(e);
+        const diag = e?.diag ?? { file: id, message: e?.message ?? String(e) };
+        onResult?.(id, diag);
         if (failOnError) {
-          this.error(`otfwc failed for ${id}:\n${msg}`);
+          this.error(`otfwc failed:\n${text}`);
         }
-        console.error(`✗ otfwc failed for ${id}:\n${msg}`);
+        console.error(`✗ otfwc failed:\n${text}`);
         const stub =
           `export default function () { const pre = document.createElement("pre");` +
           ` pre.style.cssText = "color:#f87171;padding:1rem;white-space:pre-wrap";` +
-          ` pre.textContent = ${JSON.stringify(`Compile error in ${id}\n\n${msg}`)};` +
+          ` pre.textContent = ${JSON.stringify(`Compile error\n\n${text}`)};` +
           ` return pre; }`;
         return { code: stub, moduleSideEffects: true };
       }
