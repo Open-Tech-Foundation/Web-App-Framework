@@ -50,7 +50,8 @@ fn c9_imperative_array_return_diagnoses() {
     // No component is recognized (the JSX is never returned as the view)...
     assert!(lower_module("/app/x.jsx", &parsed.program, src, false).is_none());
     // ...but the near-miss diagnostic explains why and points to `.map()`.
-    let hint = no_component_diagnostic(&parsed.program).expect("a diagnostic");
+    let (at, hint) = no_component_diagnostic(&parsed.program).expect("a diagnostic");
+    assert!((at as usize) < src.len(), "the diagnostic points into the source");
     assert!(hint.contains("SearchHighlight"), "{hint}");
     assert!(hint.contains(".map("), "{hint}");
 }

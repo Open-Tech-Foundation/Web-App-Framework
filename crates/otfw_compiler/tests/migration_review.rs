@@ -60,7 +60,8 @@ fn diagnose(source: &str) -> Option<String> {
     let session = ParseSession::new();
     let parsed = session.parse(Path::new("page.tsx"), source);
     assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
-    function_ref_diagnostic(&parsed.program)
+    // The diagnostic carries its source offset; these tests assert on the message.
+    function_ref_diagnostic(&parsed.program).map(|(_, msg)| msg)
 }
 
 // C6: a function-valued (callback) ref is unsupported and must be rejected up front

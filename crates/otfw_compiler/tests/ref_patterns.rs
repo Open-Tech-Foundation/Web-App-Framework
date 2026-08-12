@@ -179,7 +179,8 @@ fn function_valued_ref_rejected_with_guidance() {
     let session = ParseSession::new();
     let src = "export default function B() { return <input ref={(el) => el.focus()} />; }";
     let parsed = session.parse(Path::new("page.tsx"), src);
-    let hint = function_ref_diagnostic(&parsed.program).expect("rejected");
+    let (at, hint) = function_ref_diagnostic(&parsed.program).expect("rejected");
+    assert_eq!(&src[at as usize..at as usize + 3], "ref", "points at the offending attribute");
     assert!(hint.contains("$ref"), "{hint}");
     assert!(hint.contains("$effect") || hint.contains("onMount"), "{hint}");
 
