@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Every compile diagnostic now says where** (`crates/otfw_cli/src/diagnostic.rs`). A failure
+  used to be a bare sentence — `parse error: Unexpected token` — leaving the developer to find
+  the spot by reading. Each diagnostic now carries the byte offset the compiler already knew
+  about, rendered as `path:line:column` plus a code frame with a caret under the offending
+  span: syntax errors (from the parser's own label), the `$state` in-place mutation rejection,
+  the callback-`ref` rejection, and the "contains JSX but never returns it" near-miss. `otfwc
+  build` prints that; `otfwc serve` replies with the same diagnostic as JSON
+  (`{ file, message, line, column, frame, note }`) so the toolchain can put the position in its
+  error overlay instead of re-parsing prose. A `.mdx`/`.md` module compiles through generated
+  JSX, so its positions are labelled as such rather than pointed at the wrong Markdown line.
+
+### Changed
+
+- **The `serve` protocol's `ERR` frame carries JSON, not a prose message.** Only `@opentf/web-cli`
+  speaks this protocol, and it pins an exact compiler version, so the two release together;
+  a newer CLI still accepts the old plain-string payload (it simply has no position to show).
+
 ### Fixed
 
 - **Static props on framework built-ins are no longer dropped by the hydrate walk**

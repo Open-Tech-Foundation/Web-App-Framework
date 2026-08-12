@@ -671,7 +671,7 @@ fn fn_like_name(stmt: &Statement) -> Option<String> {
 /// array of elements imperatively (`parts.push(<li/>)`) and returns the array, a
 /// pattern that has no place to reactively track the loop. Returns a targeted,
 /// actionable message, or `None` if no such near-miss is present.
-pub fn no_component_diagnostic(program: &Program) -> Option<String> {
+pub fn no_component_diagnostic(program: &Program) -> Option<(u32, String)> {
     for stmt in &program.body {
         // Recognized components are handled elsewhere; only near-misses matter here.
         if component_of(stmt).is_some() {
@@ -683,11 +683,14 @@ pub fn no_component_diagnostic(program: &Program) -> Option<String> {
         if !probe.found {
             continue;
         }
-        return Some(format!(
+        return Some((
+            stmt.span().start,
+            format!(
             "`{name}` contains JSX but never returns it as its view. A component must \
              return its view as JSX directly. To render a list, map inside JSX \
              (`return <>{{items.map((item) => <li>{{item}}</li>)}}</>`) rather than \
              pushing elements into an array and returning the array (SPEC §2.1, §5.4.4)."
+            ),
         ));
     }
     None
@@ -699,9 +702,9 @@ pub fn no_component_diagnostic(program: &Program) -> Option<String> {
 /// miscompile. Returns an actionable diagnostic if any JSX `ref` in the module is a
 /// function, steering to the `$ref` + `$effect`/`onMount`/`onCleanup` (or `$expose`)
 /// patterns that express every callback-ref use case. `None` otherwise.
-pub fn function_ref_diagnostic(program: &Program) -> Option<String> {
+pub fn function_ref_diagnostic(program: &Program) -> Option<(u32, String)> {
     struct Finder {
-        found: bool,
+        found: Option<u32>,
     }
     impl<'a> Visit<'a> for Finder {
         fn visit_jsx_attribute(&mut self, attr: &JSXAttribute<'a>) {
@@ -714,20 +717,21 @@ pub fn function_ref_diagnostic(program: &Program) -> Option<String> {
                         | JSXExpression::FunctionExpression(_)
                 )
             {
-                self.found = true;
+                self.found.get_or_insert(attr.span.start);
             }
             walk::walk_jsx_attribute(self, attr);
         }
     }
-    let mut f = Finder { found: false };
+    let mut f = Finder { found: None };
     f.visit_program(program);
-    f.found.then(|| {
+    f.found.map(|offset| {
+        (offset,
         "a function-valued `ref` (callback ref) is not supported. Assign the node to a \
          `$ref` and drive behavior reactively instead: `let el = $ref(); <input ref={el} />`, \
          then read `el.value` from an `$effect` (re-runs when the node changes), `onMount`, or \
          `onCleanup` — or expose an imperative handle to the parent with `$expose`. \
          See https://web.opentechf.org/docs/core-concepts/templating#refs."
-            .to_string()
+            .to_string())
     })
 }
 
@@ -833,7 +837,7 @@ fn written_shape(call: &CallExpression, decl: &VariableDeclarator) -> Option<Sta
 /// Only bindings declared with `$state(...)` are considered; `$ref`/`$derived`/
 /// `$context` are excluded so DOM writes like `el.scrollTop = 0` on a `$ref`
 /// remain legal.
-pub fn state_mutation_diagnostic(program: &Program, source: &str) -> Option<String> {
+pub fn state_mutation_diagnostic(program: &Program, source: &str) -> Option<(u32, String)> {
     let resolved = crate::semantic::resolve(program);
     let scoping = resolved.semantic.scoping();
 
@@ -989,7 +993,7 @@ struct MutationFinder<'r> {
     scoping: &'r Scoping,
     state_shapes: &'r HashMap<SymbolId, StateShape>,
     source: &'r str,
-    found: Option<String>,
+    found: Option<(u32, String)>,
 }
 
 impl<'r> MutationFinder<'r> {
@@ -1016,13 +1020,16 @@ impl<'r> MutationFinder<'r> {
         } else {
             snippet
         };
-        self.found = Some(format!(
+        self.found = Some((
+            span.start,
+            format!(
             "`{shown}` mutates a `$state` value in place, which does not trigger \
              reactivity — the value inside a signal is replaced, never mutated, so \
              the update is silently lost. Reassign the signal with an immutable \
              update instead (e.g. `list = [...list, item]`, `list = list.filter(…)`, \
              `list = list.toSorted(…)`), or hold the data in a `reactive()` store for \
              direct mutation. See SPEC §3.4."
+            ),
         ));
     }
 }

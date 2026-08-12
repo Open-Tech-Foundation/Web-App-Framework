@@ -31,3 +31,7 @@
 ## Internationalization (i18n) — see [docs/I18N.md](I18N.md)
 * [x] Phase 1 (runtime): locale path-prefix routing, ICU messages (`t()`), `Intl` formatters, per-locale SSG/SSR. `@opentf/web-i18n`.
 * [ ] Phase 2 (compiler): `otfwc` message extraction, key validation, tree-shaking, per-locale inlining.
+
+## Diagnostics & source maps
+* [x] Located compile diagnostics: every compiler failure (syntax, `$state` mutation, callback `ref`, no-component) carries `file:line:column` and a code frame, rendered in the terminal and pushed to the dev overlay as structured fields.
+* [ ] Source maps from `otfwc`: the IR carries no source spans through codegen, so a *runtime* stack frame can only be attributed to the module it came from, not to the original line. Threading spans IR → codegen would let dev chunks ship a map (and `otfw build` an optional one), making browser stacks and breakpoints land in the `.jsx`/`.mdx` source.

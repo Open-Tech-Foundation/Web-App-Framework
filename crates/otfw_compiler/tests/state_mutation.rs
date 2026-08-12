@@ -16,7 +16,8 @@ fn diagnose(source: &str) -> Option<String> {
     let session = ParseSession::new();
     let parsed = session.parse(Path::new("C.tsx"), source);
     assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
-    state_mutation_diagnostic(&parsed.program, source)
+    // The diagnostic carries its source offset; these tests assert on the message.
+    state_mutation_diagnostic(&parsed.program, source).map(|(_, msg)| msg)
 }
 
 /// Assert `source` is rejected and the guidance names the immutable escape hatches.

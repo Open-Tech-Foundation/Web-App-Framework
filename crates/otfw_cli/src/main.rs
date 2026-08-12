@@ -17,6 +17,9 @@ use otfw_compiler::lower::lower_module;
 use otfw_compiler::mdx::mdx_to_jsx;
 use otfw_compiler::parse::ParseSession;
 
+mod diagnostic;
+use diagnostic::Diag;
+
 /// Which codegen backend to run (ARCHITECTURE.md §6). CSR builds the live DOM; SSG
 /// emits HTML strings at build/request time; Hydrate adopts the server DOM.
 #[derive(Clone, Copy)]
@@ -127,8 +130,9 @@ fn graph_cmd(args: &[String]) -> ExitCode {
 }
 
 /// Minimal JSON string encoder (escapes the characters JSON requires); enough for
-/// file paths and hex fingerprints without pulling in a serialization dependency.
-fn json_str(s: &str) -> String {
+/// file paths, diagnostics and hex fingerprints without pulling in a serialization
+/// dependency.
+pub(crate) fn json_str(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for c in s.chars() {
@@ -155,47 +159,61 @@ fn compile_module(
     source: String,
     as_component: bool,
     target: Target,
-) -> Result<(String, Vec<String>), String> {
+) -> Result<(String, Vec<String>), Diag> {
     // MDX front-end: `.mdx`/`.md` lower to JSX source first, then run the normal
     // parse → lower → codegen pipeline (the module id keeps the original extension).
-    let source = if file.ends_with(".mdx") || file.ends_with(".md") {
-        mdx_to_jsx(&source, file).map_err(|e| format!("MDX error in {file}: {e}"))?
+    // Positions below are then offsets into that generated JSX; `generated` records
+    // it so a diagnostic can say so rather than point at a line of Markdown that
+    // isn't where the problem is.
+    let generated = file.ends_with(".mdx") || file.ends_with(".md");
+    let source = if generated {
+        mdx_to_jsx(&source, file).map_err(|e| Diag::new(file, format!("MDX error: {e}")))?
     } else {
         source
+    };
+    // Attach a byte offset (and the code frame it implies) to a diagnostic.
+    let located = |offset: usize, len: usize, msg: String| {
+        let d = Diag::at(file, msg, &source, offset, len);
+        if generated { d.in_generated_source(file) } else { d }
     };
 
     let session = ParseSession::new();
     let parsed = session.parse(Path::new(file), &source);
     if !parsed.is_clean() {
-        let msg = parsed
-            .errors
-            .iter()
-            .map(|e| format!("parse error: {e}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        return Err(msg);
+        // Report the first error: later ones are usually the parser's confusion
+        // cascading from it, and the developer fixes them top-down anyway.
+        let first = parsed.errors.first();
+        let msg = first.map_or_else(
+            || "parse error".to_string(),
+            |e| format!("parse error: {}", e.message),
+        );
+        let span = first.and_then(|e| e.labels.as_slice().first().cloned());
+        return Err(match span {
+            Some(l) => located(l.offset() as usize, l.len() as usize, msg),
+            None => Diag::new(file, msg),
+        });
     }
 
     // A function-valued `ref` is unsupported — fail with actionable guidance rather
     // than miscompiling it into `(fn).value = el`.
-    if let Some(msg) = otfw_compiler::lower::function_ref_diagnostic(&parsed.program) {
-        return Err(format!("{file}: {msg}"));
+    if let Some((at, msg)) = otfw_compiler::lower::function_ref_diagnostic(&parsed.program) {
+        return Err(located(at as usize, 3, msg));
     }
 
     // Mutating a `$state` value in place (`list.push(x)`, `list[0] = x`, …) never
     // notifies its signal — fail with the immutable-update fix rather than silently
     // dropping the update.
-    if let Some(msg) = otfw_compiler::lower::state_mutation_diagnostic(&parsed.program, &source) {
-        return Err(format!("{file}: {msg}"));
+    if let Some((at, msg)) = otfw_compiler::lower::state_mutation_diagnostic(&parsed.program, &source) {
+        return Err(located(at as usize, 1, msg));
     }
 
     let Some(lowered) = lower_module(file, &parsed.program, &source, !as_component) else {
         // Prefer a targeted diagnostic for the common near-miss (JSX built but not
         // returned as the view) over the generic "no component" message.
-        if let Some(hint) = otfw_compiler::lower::no_component_diagnostic(&parsed.program) {
-            return Err(format!("{file}: {hint}"));
+        if let Some((at, hint)) = otfw_compiler::lower::no_component_diagnostic(&parsed.program) {
+            return Err(located(at as usize, 1, hint));
         }
-        return Err(format!("no component (function returning JSX) found in {file}"));
+        return Err(Diag::new(file, "no component (function returning JSX) found"));
     };
 
     let (code, warnings) = match target {
@@ -244,8 +262,8 @@ fn build(file: &str, as_component: bool, from_stdin: bool, target: Target) -> Ex
             }
             ExitCode::SUCCESS
         }
-        Err(msg) => {
-            eprintln!("{msg}");
+        Err(diag) => {
+            eprint!("{}", diag.text());
             ExitCode::FAILURE
         }
     }
@@ -328,7 +346,11 @@ fn serve() -> ExitCode {
                 }
                 write_frame(&mut writer, true, code.as_bytes())
             }
-            Err(msg) => write_frame(&mut writer, false, msg.as_bytes()),
+            // An error frame carries the diagnostic as JSON — file, message, line,
+            // column, code frame — so the dev server can show the position instead of
+            // re-parsing a prose string (the reply protocol is machine-to-machine; the
+            // terminal rendering is `Diag::text`, used by `otfwc build`).
+            Err(diag) => write_frame(&mut writer, false, diag.json().as_bytes()),
         }
     }
     ExitCode::SUCCESS
