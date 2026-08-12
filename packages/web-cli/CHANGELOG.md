@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.26.0] - 2026-08-12
+
 ### Fixed
 
 - **`otfw dev` no longer needs a restart to pick a change up — or to recover from one.** The

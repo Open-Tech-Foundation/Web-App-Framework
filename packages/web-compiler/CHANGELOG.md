@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-12
+
 ### Added
 
 - **Every compile diagnostic now says where** (`crates/otfw_cli/src/diagnostic.rs`). A failure
