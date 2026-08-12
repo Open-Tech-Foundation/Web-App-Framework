@@ -10,6 +10,8 @@ dist
 .otfw-ssg
 .otfw-api
 .otfw-api-build
+.otfw-loaders
+.otfw-loaders-build
 
 # environment files
 .env
