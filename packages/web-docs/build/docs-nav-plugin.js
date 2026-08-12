@@ -30,8 +30,11 @@ const MD_RE = /\.(mdx|md)$/;
  * @param {Object} opts
  * @param {string} opts.appDir       Absolute path to the project's `app/` directory.
  * @param {Set<string>} [opts.exclude] Folder names to skip (mirrors route exclusions).
+ * @param {(file: string) => Promise<any>} [opts.importModule] How to read a `_meta.js`.
+ *   The dev server passes a loader that re-evaluates the file after an edit; a plain
+ *   `import()` cannot, because the runtime caches ESM by path for the process's life.
  */
-export function docsNavPlugin({ appDir, exclude = new Set() } = {}) {
+export function docsNavPlugin({ appDir, exclude = new Set(), importModule } = {}) {
   return {
     name: "otfw-docs-nav",
     resolveId(source) {
@@ -40,7 +43,7 @@ export function docsNavPlugin({ appDir, exclude = new Set() } = {}) {
     },
     async load(id) {
       if (id !== RESOLVED_ID) return null;
-      const watch = [];
+      const ctx = { watch: [], importModule };
       const out = {};
       for (const entry of readdirSync(appDir, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
@@ -48,25 +51,29 @@ export function docsNavPlugin({ appDir, exclude = new Set() } = {}) {
           continue;
         }
         const base = "/" + entry.name;
-        out[base] = await buildSection(join(appDir, entry.name), base, watch, true, exclude);
+        out[base] = await buildSection(join(appDir, entry.name), base, ctx, true, exclude);
       }
-      // Rebuild on changes to meta/page files during `otfw dev`.
-      for (const f of watch) this.addWatchFile?.(f);
+      // The files this tree was generated from. They are not imports, so nothing else
+      // ties them to this module — declaring them is what makes `otfw dev` rebuild the
+      // chunk holding the sidebar when a page's frontmatter or a `_meta.*` changes.
+      for (const f of ctx.watch) this.addWatchFile?.(f);
       return `export default ${JSON.stringify(out)};\n`;
     },
   };
 }
 
 /** Load a folder's `_meta` (ordering + labels). Supports `.js`/`.mjs`/`.json`. */
-async function loadMeta(dir, watch) {
+async function loadMeta(dir, ctx) {
   for (const name of ["_meta.js", "_meta.mjs", "_meta.json"]) {
     const p = join(dir, name);
     if (!existsSync(p)) continue;
-    watch.push(p);
+    ctx.watch.push(p);
     try {
       if (name.endsWith(".json")) return JSON.parse(readFileSync(p, "utf8"));
-      // Cache-bust so `otfw dev` picks up edits.
-      const mod = await import(pathToFileURL(p).href + `?t=${Date.now()}`);
+      // A query string does not bust the ESM cache (Bun keys it by path and ignores
+      // `?t=`), so under `otfw dev` the toolchain supplies a loader that can actually
+      // re-read the file; without one this is a plain, once-per-process import.
+      const mod = await (ctx.importModule?.(p) ?? import(pathToFileURL(p).href));
       return mod.default ?? mod;
     } catch (e) {
       console.warn(`⚠ [@opentf/web-docs] could not load ${p}: ${e?.message ?? e}`);
@@ -113,8 +120,8 @@ function metaLabel(meta, key) {
  * folder's own page is the group node's link (added by `buildNode`), so it is not
  * repeated here. Order + labels come from `_meta`.
  */
-async function buildSection(dir, route, watch, withIndex = false, exclude = new Set()) {
-  const meta = await loadMeta(dir, watch);
+async function buildSection(dir, route, ctx, withIndex = false, exclude = new Set()) {
+  const meta = await loadMeta(dir, ctx);
   const entries = readdirSync(dir, { withFileTypes: true });
   const subdirs = entries
     .filter(
@@ -142,7 +149,7 @@ async function buildSection(dir, route, watch, withIndex = false, exclude = new 
 
   for (const key of ordered) {
     if (key === "index") {
-      watch.push(indexFile);
+      ctx.watch.push(indexFile);
       const fm = MD_RE.test(indexFile) ? readFrontmatter(indexFile) : {};
       items.push(
         clean({
@@ -153,21 +160,21 @@ async function buildSection(dir, route, watch, withIndex = false, exclude = new 
       );
       continue;
     }
-    const node = await buildNode(join(dir, key), `${route}/${key}`, key, meta, watch, exclude);
+    const node = await buildNode(join(dir, key), `${route}/${key}`, key, meta, ctx, exclude);
     if (node) items.push(node);
   }
   return items;
 }
 
 /** Build a single subdirectory node: its own link (if it has a page) + children. */
-async function buildNode(dir, route, key, parentMeta, watch, exclude) {
+async function buildNode(dir, route, key, parentMeta, ctx, exclude) {
   const pf = pageFile(dir);
   let fm = {};
   if (pf) {
-    watch.push(pf);
+    ctx.watch.push(pf);
     if (MD_RE.test(pf)) fm = readFrontmatter(pf);
   }
-  const children = await buildSection(dir, route, watch, false, exclude);
+  const children = await buildSection(dir, route, ctx, false, exclude);
   // A directory that has neither a page nor children contributes nothing.
   if (!pf && children.length === 0) return null;
 

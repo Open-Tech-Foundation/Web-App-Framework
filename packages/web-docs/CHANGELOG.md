@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `_meta.js` edit reaches the sidebar under `otfw dev`** (`build/docs-nav-plugin.js`). The
+  nav generator imported each folder's `_meta` with a `?t=<now>` query to defeat the module
+  cache; Bun keys ESM by path and ignores the query, so the first version read after the server
+  started was the one every rebuild saw — reordering or relabelling a section did nothing until
+  the server was restarted (a `_meta.json` was fine: it is read, not imported). The toolchain now
+  passes an `importModule` loader that can genuinely re-evaluate the file, and the plugin uses it
+  when present. Its `addWatchFile` declarations are also documented for what they are: the only
+  link between the generated sidebar and the page frontmatter it was built from.
+
+  The loader comes from `@opentf/web-cli`, so this needs the release of it that passes one;
+  with an older CLI the plugin falls back to the plain import it used before, and a build (which
+  reads every file once) is unaffected either way.
+
 ## [0.25.0] - 2026-07-31
 
 _Dependency updates._
