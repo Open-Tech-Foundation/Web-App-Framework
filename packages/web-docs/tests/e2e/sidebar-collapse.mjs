@@ -1,8 +1,9 @@
 // Browser e2e for the collapsible sidebar nav groups — the half the happy-dom unit
 // tests (tests/MobileDrawer.test.js) can't cover, because it depends on real CSS: the
 // chevron rotation on `.is-open`, the child list actually gaining layout height when a
-// group expands, and the reduced-motion transition guard. It also drives the toggle by
-// real keyboard input (Enter on a focused <button>) through the DevTools Protocol.
+// group expands, the collapse-all button's placement in the sidebar column, and the
+// reduced-motion transition guard. It also drives the toggle by real keyboard input
+// (Enter on a focused <button>) through the DevTools Protocol.
 //
 // It is self-contained: it builds a tiny harness (sidebar-collapse-harness.js — just
 // <Sidebar>) with the otfwc Bun plugin, serves it with the real theme CSS, and drives
@@ -170,6 +171,24 @@ const linkInfo = (text) => `(() => {
   return { found: true, height: r.height, display: getComputedStyle(a).display };
 })()`;
 
+const collapseAllInfo = `(() => {
+  const b = document.querySelector('.otfw-sidebar-collapse-all');
+  if (!b) return { found: false };
+  const r = b.getBoundingClientRect();
+  const aside = document.querySelector('#otfw-sidebar');
+  const a = aside.getBoundingClientRect();
+  return {
+    found: true, tag: b.tagName, label: b.getAttribute('aria-label'),
+    width: r.width, height: r.height,
+    // sits inside the sidebar column, above the tree
+    insideSidebar: r.left >= a.left - 1 && r.right <= a.right + 1,
+    aboveTree: r.bottom <= document.querySelector('.otfw-sidebar-nav').getBoundingClientRect().top + 1,
+  };
+})()`;
+
+const openGroups = `[...document.querySelectorAll('.otfw-sidebar-group-toggle')]
+  .map(b => (b.getAttribute('aria-expanded') === 'true') ? 1 : 0).reduce((a, b) => a + b, 0)`;
+
 const focusToggle = (label) => `(() => { const b = ${TOGGLE(label)}; if (!b) return false; b.focus(); return document.activeElement === b; })()`;
 
 async function run() {
@@ -242,6 +261,34 @@ async function run() {
     "the reduced-motion media query to neutralize the chevron transition");
   assert(rm.chevronTransitionDuration === "0s", "chevron transition is disabled under reduced motion");
   await client.send("Emulation.setEmulatedMedia", { features: [] });
+
+  // ── Collapse all / expand all ──────────────────────────────────────────────
+  // The button lives in <Sidebar> and the open state in each <SidebarNode>; here we
+  // check the real rendered result — a visible, clickable button in the sidebar column
+  // that empties the tree of open groups and then restores them.
+  console.log("collapse all:");
+  const btn = await evalJS(client, collapseAllInfo);
+  assert(btn.found && btn.tag === "BUTTON", "sidebar renders a collapse-all <button>");
+  assert(btn.width > 0 && btn.height > 0, "the button has layout (it is visible)");
+  assert(btn.insideSidebar && btn.aboveTree, "it sits in the sidebar column above the nav tree");
+  assert(btn.label === "Collapse all sections", "it starts labelled 'Collapse all sections'");
+
+  assert((await evalJS(client, openGroups)) > 0, "some groups are open before pressing it");
+  await evalJS(client, `document.querySelector('.otfw-sidebar-collapse-all').click()`);
+  await waitFor(client, openGroups, (v) => v === 0, "every group to collapse");
+  assert((await evalJS(client, toggleInfo("Guide"))).expanded === "false", "the top-level group collapsed");
+  assert((await evalJS(client, linkInfo("Routing"))).found === false, "its child links left the DOM");
+  assert((await evalJS(client, collapseAllInfo)).label === "Expand all sections",
+    "the button flips to 'Expand all sections'");
+
+  await evalJS(client, `document.querySelector('.otfw-sidebar-collapse-all').click()`);
+  const reopened = await waitFor(client, toggleInfo("Concepts"),
+    (v) => v.found && v.expanded === "true" && v.panelHeight > 0,
+    "the whole tree to expand, nested groups included");
+  assert(reopened.panelHeight > 0, "pressing again expands every group, nested ones too");
+  assert((await evalJS(client, linkInfo("Deep Dive"))).found, "the deepest link is visible after expand all");
+  assert((await evalJS(client, collapseAllInfo)).label === "Collapse all sections",
+    "the button flips back to 'Collapse all sections'");
 
   // ── Auto-expand: loading a deep route opens the branch that holds it ───────
   console.log("active-branch auto-expand (load /docs/guide/concepts/deep):");

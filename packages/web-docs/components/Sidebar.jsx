@@ -15,11 +15,16 @@
 //
 // The drawer closes on navigation, Escape, backdrop click, or a viewport resize up to
 // the desktop breakpoint, and locks body scroll while open.
+//
+// Above the tree sits a single icon button that collapses (or re-expands) every group at
+// once — it drives the nodes through the shared `collapseAll` signal, since they are
+// rendered recursively by SidebarNode.
 
 import { onMount, router } from "@opentf/web";
 
 import SidebarNode from "./SidebarNode.jsx";
 import NavbarLink from "./NavbarLink.jsx";
+import { collapseAll } from "./sidebar-collapse.js";
 
 const DESKTOP_QUERY = "(min-width: 768px)";
 
@@ -35,6 +40,8 @@ export default function Sidebar(props) {
   // navbar hides them and the drawer surfaces them above the section tree, so the whole
   // nav is reachable from one place.
   const navLinks = (props.config && props.config.nav) || [];
+  // The collapse-all button is only meaningful when the tree actually has groups.
+  const hasGroups = nav.some((item) => item.items && item.items.length > 0);
   let open = $state(false);
   const asideRef = $ref();
 
@@ -131,6 +138,53 @@ export default function Sidebar(props) {
               <NavbarLink link={link} />
             ))}
           </nav>
+        ) : null}
+        {hasGroups ? (
+          <div class="otfw-sidebar-tools">
+            <button
+              type="button"
+              class="otfw-sidebar-collapse-all"
+              onclick={() => collapseAll.set(collapseAll.collapsed)}
+              aria-label={collapseAll.collapsed ? "Expand all sections" : "Collapse all sections"}
+              title={collapseAll.collapsed ? "Expand all sections" : "Collapse all sections"}
+            >
+              {() =>
+                collapseAll.collapsed ? (
+                  // chevrons pointing apart — press to expand everything
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m7 9 5-5 5 5" />
+                    <path d="m7 15 5 5 5-5" />
+                  </svg>
+                ) : (
+                  // chevrons pointing together — press to collapse everything
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m7 4 5 5 5-5" />
+                    <path d="m7 20 5-5 5 5" />
+                  </svg>
+                )
+              }
+            </button>
+          </div>
         ) : null}
         <nav class="otfw-sidebar-nav" aria-label="Documentation">
           <ul class="otfw-sidebar-list">

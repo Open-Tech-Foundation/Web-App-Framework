@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Collapse-all button in the docs sidebar** (`Sidebar.jsx`, `SidebarNode.jsx`, new
+  `sidebar-collapse.js`, theme). A small icon button above the nav tree closes every group at
+  once; pressing it again expands the whole tree, nested groups included. It renders only when
+  the tree has groups, and its icon/label flip between "Collapse all sections" and "Expand all
+  sections".
+
+  A press collapses *everything*, the branch you are reading in included — otherwise, on a page
+  inside the only open branch, the press would visibly change nothing. Navigating under a
+  standing collapse-all is the other case: the tree stays collapsed, but the branch holding the
+  new route opens, exactly as it does with the button untouched.
+
+  The button lives in `<Sidebar>` while the open state lives in each recursive `<SidebarNode>`,
+  so the two are coupled through a module-scope signal rather than prop-drilling — the same
+  decoupling the mobile drawer uses for the navbar burger. State is per-session; a reload
+  starts from the derived default.
+
 ## [0.26.0] - 2026-08-12
 
 ### Fixed

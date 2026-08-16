@@ -2,8 +2,13 @@
 // `item.items`. Groups with children get a chevron toggle; the branch containing the
 // active route stays open, and top-level groups start expanded. Open/closed state is
 // per-session only (no persistence) — a reload resets to this derived default.
+//
+// The sidebar's "collapse all" button drives every node at once through the shared
+// `collapseAll` signal (components/sidebar-collapse.js).
 
 import { Link, router } from "@opentf/web";
+
+import { collapseAll } from "./sidebar-collapse.js";
 
 // True when `path` is `node` itself or lives somewhere in its subtree.
 function treeContainsPath(node, path) {
@@ -28,6 +33,23 @@ export default function SidebarNode(props) {
   // Re-open the branch that holds the active route whenever navigation enters it.
   $effect(() => {
     if (hasChildren && containsActive()) expanded = true;
+  });
+
+  // Follow the sidebar's "collapse all" / "expand all" button. A press collapses *every*
+  // group, the active branch included — otherwise, reading a page inside the only open
+  // branch, the press would visibly change nothing. Navigation under a standing
+  // collapse-all is the other case: there the branch holding the new route opens, exactly
+  // as it does without the button. Deciding both here (rather than leaning on the effect
+  // above) keeps the two independent of the order they run in.
+  // A command already standing when this node is created isn't a press — it's the tree
+  // being rebuilt under one.
+  let seenSeq = collapseAll.command ? collapseAll.command.seq : 0;
+  $effect(() => {
+    const cmd = collapseAll.command;
+    if (!hasChildren || !cmd) return;
+    const isPress = cmd.seq !== seenSeq;
+    seenSeq = cmd.seq;
+    expanded = cmd.expanded || (!isPress && containsActive());
   });
 
   const toggle = () => (expanded = !expanded);
