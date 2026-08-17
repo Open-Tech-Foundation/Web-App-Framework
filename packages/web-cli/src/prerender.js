@@ -82,7 +82,9 @@ function escapeXml(s) {
 
 /**
  * Pre-render the app to static HTML files under `outDir`. Returns
- * `{ count, skipped, failed }`.
+ * `{ count, skipped, failed, siteDescription }` — `siteDescription` is the site's own
+ * `<meta name="description">` text (home route, falling back to the root layout's
+ * route-independent metadata), which `llms.txt` uses for its summary line.
  */
 export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, outDir, baseUrl = "", docsPlugins = [], lastUpdated = {}, i18n = null, loaders = null, chunkManifest = null, onCompile, onRender }) {
   const { mod, cleanup } = await buildServerBundle({ root, pages, webEntry, otfwc, docsPlugins, i18n, onCompile });
@@ -103,6 +105,7 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
   const failed = [];
   const rendered = []; // concrete paths that produced an HTML file (for the sitemap)
   let renderedCount = 0;
+  let siteDescription = ""; // the home route's resolved description (see the JSDoc above)
   for (const { path, params, route } of paths) {
     onRender?.(++renderedCount, paths.length);
     for (const locale of locales) {
@@ -125,6 +128,9 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
         const meta = i18nOn
           ? { ...metadata, links: [...(metadata.links || []), ...alternatesFor(path, locales, defaultLocale)] }
           : metadata;
+        if (path === "/" && (!locale || locale === defaultLocale) && typeof metadata?.description === "string") {
+          siteDescription = metadata.description;
+        }
         let head = mod.renderHead(meta, { path: urlPath, baseUrl });
         const preload = preloadFor(route);
         if (preload) head += `\n${preload}`;
@@ -184,6 +190,17 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
   const hasSitemap = writeSitemap(outDir, publicDir, baseUrl, rendered);
   writeRobots(outDir, publicDir, baseUrl, hasSitemap);
 
+  // No "/" route (or it declared no description): fall back to the layout chain's
+  // route-independent metadata — the site-wide description every route inherits.
+  if (!siteDescription) {
+    try {
+      const siteMeta = await mod.resolveMetadata({ route: "/", entry: null });
+      if (typeof siteMeta?.description === "string") siteDescription = siteMeta.description;
+    } catch {
+      /* no root layout metadata */
+    }
+  }
+
   cleanup();
-  return { count: rendered.length, skipped, failed };
+  return { count: rendered.length, skipped, failed, siteDescription };
 }

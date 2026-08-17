@@ -536,9 +536,11 @@ export async function runBlogFeed(root, appDir, config, siteDir, baseUrl, exclud
 /**
  * Generate `/llms.txt` and `/llms-full.txt` for docs/blog sites from the same
  * filesystem route list used by the app build. Project-supplied public files override
- * each output independently.
+ * each output independently. `siteDescription` is the site's own description (resolved
+ * from the app's metadata during the build) — llms.txt summarizes the site with it
+ * rather than with a generic line.
  */
-export async function runLlmsFiles(root, appDir, pages, config, siteDir, baseUrl) {
+export async function runLlmsFiles(root, appDir, pages, config, siteDir, baseUrl, { siteDescription = "" } = {}) {
   if (!config?.docs && !config?.blog) return null;
   const outputs = [
     { file: "llms.txt", render: "renderLlmsTxt" },
@@ -553,7 +555,7 @@ export async function runLlmsFiles(root, appDir, pages, config, siteDir, baseUrl
     for (const out of outputs) {
       const render = mod[out.render];
       if (typeof render !== "function") continue;
-      writeFileSync(join(siteDir, out.file), render({ appDir, pages, baseUrl, config }));
+      writeFileSync(join(siteDir, out.file), render({ appDir, pages, baseUrl, config, siteDescription }));
       written.push(`/${out.file}`);
     }
     return written.length ? { paths: written } : null;

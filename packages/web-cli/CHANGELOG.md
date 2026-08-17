@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **The site's description reaches `llms.txt`** (`build.js`, `prerender.js`, `shared.js`).
+  `runLlmsFiles` passed only the config through, and the config has no description in it, so the
+  generator had nothing to summarize the site with and fell back to a fixed line about OTF Web
+  (see the `@opentf/web-docs` changelog). The description an app already declares in its root
+  layout's `metadata` is now handed to the generator — from the `/` route's resolved metadata
+  during the SSG pass (falling back to the layout chain's route-independent metadata when a site
+  has no home route), and from the shell head under a plain CSR build, where that metadata exists
+  only as rendered HTML by the time the file is written.
+
 ## [1.26.0] - 2026-08-12
 
 ### Fixed

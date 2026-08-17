@@ -96,14 +96,29 @@ function grouped(records) {
   return out;
 }
 
+/**
+ * The site's own one-line description for the `> …` summary line — never a
+ * framework-authored blurb. In order: an explicit `docs.description`, the site-wide
+ * description resolved from the app's metadata (root layout / home route), the home
+ * page's own frontmatter description, the blog feed description, and finally a plain
+ * sentence built from the site title.
+ */
+function siteDescriptionFor({ config, siteDescription, records, title }) {
+  return (
+    config?.docs?.description ||
+    siteDescription ||
+    records.find((record) => record.path === "/")?.description ||
+    config?.blog?.description ||
+    `Documentation for ${title}.`
+  );
+}
+
 const SECTION_ORDER = ["Start Here", "Documentation", "API Reference", "Blog", "Other Routes"];
 
-export function renderLlmsTxt({ appDir, pages = [], baseUrl, config = {} } = {}) {
+export function renderLlmsTxt({ appDir, pages = [], baseUrl, config = {}, siteDescription = "" } = {}) {
   const title = config?.docs?.title || "OTF Web";
   const records = pageRecords({ appDir, pages, baseUrl });
-  const description =
-    config?.docs?.description ||
-    "Documentation, API reference, and blog content for the OTF Web framework.";
+  const description = siteDescriptionFor({ config, siteDescription, records, title });
   const lines = [
     `# ${title}`,
     "",

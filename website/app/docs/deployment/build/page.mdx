@@ -89,6 +89,11 @@ The compact file links to key docs, API, and blog routes; the full file includes
 Markdown content for MD/MDX pages. Drop `public/llms.txt` or `public/llms-full.txt` to
 override either generated file.
 
+The summary line in `llms.txt` is your site's own description: `docs.description` from
+`otfw.config.js` when set, otherwise the description your app already resolves for
+`<meta name="description">` (home route, falling back to the root layout's site-wide
+metadata).
+
 ## Previewing locally
 
 `dist/` is plain static files — serve it with any static server to smoke-test the

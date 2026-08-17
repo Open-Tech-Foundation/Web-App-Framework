@@ -66,6 +66,50 @@ describe("renderLlmsTxt", () => {
     expect(txt).toContain("[llms-full.txt](https://example.com/llms-full.txt)");
     expect(txt).not.toContain("[slug]");
   });
+
+  test("summarizes the site with its own description, not a fixed blurb", () => {
+    const { appDir, pages } = fixture();
+    const txt = renderLlmsTxt({
+      appDir,
+      pages,
+      baseUrl: "https://example.com",
+      config: { docs: { title: "Example" } },
+      siteDescription: "Everything about Example.",
+    });
+
+    expect(txt).toContain("> Everything about Example.");
+    expect(txt).not.toContain("OTF Web framework");
+  });
+
+  test("prefers an explicit docs.description over the resolved site description", () => {
+    const { appDir, pages } = fixture();
+    const txt = renderLlmsTxt({
+      appDir,
+      pages,
+      baseUrl: "https://example.com",
+      config: { docs: { title: "Example", description: "Configured summary." } },
+      siteDescription: "Everything about Example.",
+    });
+
+    expect(txt).toContain("> Configured summary.");
+  });
+
+  test("falls back to the home page description, then to the site title", () => {
+    const { appDir, pages } = fixture();
+    writeFileSync(
+      join(appDir, "page.mdx"),
+      ["---", "title: Home", "description: The Example project.", "---", "", "# Home"].join("\n"),
+    );
+    const home = join(appDir, "page.mdx");
+
+    expect(
+      renderLlmsTxt({ appDir, pages: [...pages, home], baseUrl: "https://example.com", config: { docs: { title: "Example" } } }),
+    ).toContain("> The Example project.");
+
+    expect(
+      renderLlmsTxt({ appDir, pages, baseUrl: "https://example.com", config: { docs: { title: "Example" } } }),
+    ).toContain("> Documentation for Example.");
+  });
 });
 
 describe("renderLlmsFullTxt", () => {

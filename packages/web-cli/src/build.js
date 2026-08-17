@@ -56,6 +56,15 @@ export function resolveBaseUrl(config, argv = process.argv) {
   return "";
 }
 
+// Pull the site-wide description back out of a rendered <head> (CSR builds resolve the
+// root layout's metadata into HTML, not an object) so llms.txt can reuse it.
+function metaDescriptionFrom(head) {
+  const m = /<meta\s+name="description"\s+content="([^"]*)"/i.exec(head ?? "");
+  if (!m) return "";
+  // renderHead's escapeAttr only encodes `&` and `"` — undo exactly those.
+  return m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+}
+
 export function buildRequiresBaseUrl(config, argv = process.argv) {
   return argv.includes("--ssg") || !!config?.docs || !!config?.blog;
 }
@@ -191,11 +200,15 @@ export async function runBuild(options = {}) {
   // root layout's route-independent metadata (favicon/other links, site-wide
   // description, Open Graph site defaults) — but never a per-page title/canonical.
   // SSG/SSR inject a full per-route <head> instead, so this is CSR-only (`!hydrate`).
+  let siteDescription = ""; // the site's own <meta name="description"> (feeds llms.txt)
   if (!hydrate) {
     const layoutHead = await resolveLayoutShellHead({
       root, appDir, pages, webEntry, otfwc, docsPlugins, baseUrl,
     });
-    if (layoutHead) html = injectHead(html, layoutHead);
+    if (layoutHead) {
+      html = injectHead(html, layoutHead);
+      siteDescription = metaDescriptionFrom(layoutHead);
+    }
   }
 
   const script = `<script type="module" src="${bundleHref}"></script>\n`;
@@ -302,7 +315,9 @@ export async function runBuild(options = {}) {
 
   if (config?.docs || config?.blog) {
     const llmsStep = step("Generating LLM context");
-    const llms = await runLlmsFiles(root, appDir, pages, config, outDir, baseUrl);
+    const llms = await runLlmsFiles(root, appDir, pages, config, outDir, baseUrl, {
+      siteDescription: ssg?.siteDescription || siteDescription,
+    });
     if (llms) llmsStep.done(`LLM context — ${llms.paths.join(", ")}`);
     else llmsStep.done("LLM context — skipped");
   }

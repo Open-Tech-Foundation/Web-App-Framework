@@ -20,6 +20,23 @@
   decoupling the mobile drawer uses for the navbar burger. State is per-session; a reload
   starts from the derived default.
 
+### Fixed
+
+- **`llms.txt` describes your site, not this framework** (`build/llms.js`, `config.js`). The
+  summary line under the title fell back to a hardcoded "Documentation, API reference, and blog
+  content for the OTF Web framework." — and nothing ever filled the `docs.description` it read
+  first (the key was undocumented, absent from `DocsConfig` and from the `create-web` template),
+  so *every* generated `llms.txt`, on every site built with the toolchain, advertised OTF Web to
+  the models reading it.
+
+  The line now resolves the site's own description, first hit wins: `docs.description` from
+  `otfw.config.js`, the site-wide description the app already resolves for
+  `<meta name="description">` (passed in by `otfw build` — see the CLI changelog), the home
+  page's frontmatter `description`, `blog.description`, and finally a plain
+  `Documentation for <docs.title>.` — a sentence built from your title rather than a blurb about
+  ours. `docs.description` is documented in the `DocsConfig` typedef for the sites that want to
+  write the line themselves.
+
 ## [0.26.0] - 2026-08-12
 
 ### Fixed

@@ -20,6 +20,9 @@
  *
  * @typedef {Object} DocsConfig
  * @property {string} [title]        Site/product name shown in the navbar.
+ * @property {string} [description]  One-line site summary. Used for the `llms.txt`
+ *                            summary line; when unset it falls back to the site's
+ *                            resolved `<meta name="description">`.
  * @property {string} [version]      Version badge shown next to the brand (e.g. "v0.4.0").
  * @property {string} [logo]         URL of the navbar logo image.
  * @property {string} [homeUrl]      Where the navbar brand links to (default "/").
