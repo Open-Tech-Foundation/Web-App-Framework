@@ -1,4 +1,4 @@
-// Build-time navigation generator (a Rolldown plugin).
+// Build-time navigation generator (a bundler plugin).
 //
 // The sidebar / breadcrumbs / prev-next need the whole documentation tree, which
 // only exists on disk at build time. This plugin scans `app/<dir>` for routes,
@@ -10,14 +10,15 @@
 // Tree node shape: `{ title, path?, order?, items?: Node[] }`. A node with `path`
 // is a link; a node with `items` is a (possibly also linked) group.
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { join, toFileURL } from "runtime:path";
 
+import { exists, readEntries, readNames, readText } from "./host.js";
 import { readFrontmatter } from "./frontmatter.js";
 
 const VIRTUAL_ID = "@opentf/web-docs/nav";
-const RESOLVED_ID = "\0otfw-docs-nav";
+// No NUL sentinel: the bundler marks a module virtual explicitly, and a `\0` in
+// a hook filter is an invalid regex — which silently matches *everything*.
+const RESOLVED_ID = "otfw-virtual:otfw-docs-nav";
 const PAGE_RE = /^page\.(mdx|md|[jt]sx)$/;
 const MD_RE = /\.(mdx|md)$/;
 
@@ -37,27 +38,29 @@ const MD_RE = /\.(mdx|md)$/;
 export function docsNavPlugin({ appDir, exclude = new Set(), importModule } = {}) {
   return {
     name: "otfw-docs-nav",
-    resolveId(source) {
-      if (source === VIRTUAL_ID) return RESOLVED_ID;
-      return null;
+    resolve: {
+      filter: { id: VIRTUAL_ID },
+      handler: (source) => (source === VIRTUAL_ID ? { id: RESOLVED_ID, virtual: true } : null),
     },
-    async load(id) {
-      if (id !== RESOLVED_ID) return null;
-      const ctx = { watch: [], importModule };
-      const out = {};
-      for (const entry of readdirSync(appDir, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
-        if (entry.name.startsWith(".") || entry.name.startsWith("_") || exclude.has(entry.name)) {
-          continue;
+    load: {
+      filter: { id: RESOLVED_ID },
+      async handler(id) {
+        if (id !== RESOLVED_ID) return null;
+        const ctx = { watch: [], importModule };
+        const out = {};
+        for (const entry of await readEntries(appDir)) {
+          if (!entry.isDir) continue;
+          if (entry.name.startsWith(".") || entry.name.startsWith("_") || exclude.has(entry.name)) {
+            continue;
+          }
+          const base = "/" + entry.name;
+          out[base] = await buildSection(join(appDir, entry.name), base, ctx, true, exclude);
         }
-        const base = "/" + entry.name;
-        out[base] = await buildSection(join(appDir, entry.name), base, ctx, true, exclude);
-      }
-      // The files this tree was generated from. They are not imports, so nothing else
-      // ties them to this module — declaring them is what makes `otfw dev` rebuild the
-      // chunk holding the sidebar when a page's frontmatter or a `_meta.*` changes.
-      for (const f of ctx.watch) this.addWatchFile?.(f);
-      return `export default ${JSON.stringify(out)};\n`;
+        // The files this tree was generated from. They are not imports, so nothing else
+        // ties them to this module — declaring them is what makes `otfw dev` rebuild the
+        // chunk holding the sidebar when a page's frontmatter or a `_meta.*` changes.
+        return { code: `export default ${JSON.stringify(out)};\n`, dependsOn: ctx.watch };
+      },
     },
   };
 }
@@ -66,14 +69,14 @@ export function docsNavPlugin({ appDir, exclude = new Set(), importModule } = {}
 async function loadMeta(dir, ctx) {
   for (const name of ["_meta.js", "_meta.mjs", "_meta.json"]) {
     const p = join(dir, name);
-    if (!existsSync(p)) continue;
+    if (!(await exists(p))) continue;
     ctx.watch.push(p);
     try {
-      if (name.endsWith(".json")) return JSON.parse(readFileSync(p, "utf8"));
-      // A query string does not bust the ESM cache (Bun keys it by path and ignores
+      if (name.endsWith(".json")) return JSON.parse(await readText(p));
+      // A query string does not bust the ESM cache (it is keyed by path and ignores
       // `?t=`), so under `otfw dev` the toolchain supplies a loader that can actually
       // re-read the file; without one this is a plain, once-per-process import.
-      const mod = await (ctx.importModule?.(p) ?? import(pathToFileURL(p).href));
+      const mod = await (ctx.importModule?.(p) ?? import(toFileURL(p).href));
       return mod.default ?? mod;
     } catch (e) {
       console.warn(`⚠ [@opentf/web-docs] could not load ${p}: ${e?.message ?? e}`);
@@ -84,8 +87,8 @@ async function loadMeta(dir, ctx) {
 }
 
 /** The `page.*` file directly in `dir`, or null. */
-function pageFile(dir) {
-  for (const name of readdirSync(dir)) {
+async function pageFile(dir) {
+  for (const name of await readNames(dir)) {
     if (PAGE_RE.test(name)) return join(dir, name);
   }
   return null;
@@ -122,11 +125,11 @@ function metaLabel(meta, key) {
  */
 async function buildSection(dir, route, ctx, withIndex = false, exclude = new Set()) {
   const meta = await loadMeta(dir, ctx);
-  const entries = readdirSync(dir, { withFileTypes: true });
+  const entries = await readEntries(dir);
   const subdirs = entries
     .filter(
       (e) =>
-        e.isDirectory() &&
+        e.isDir &&
         !e.name.startsWith(".") &&
         !e.name.startsWith("_") &&
         !exclude.has(e.name),
@@ -136,7 +139,7 @@ async function buildSection(dir, route, ctx, withIndex = false, exclude = new Se
   const items = [];
 
   // The docs root's own landing page (e.g. app/docs/page.mdx → /docs).
-  const indexFile = withIndex ? pageFile(dir) : null;
+  const indexFile = withIndex ? await pageFile(dir) : null;
   const keys = subdirs.slice();
   if (indexFile) keys.unshift("index");
 
@@ -150,7 +153,7 @@ async function buildSection(dir, route, ctx, withIndex = false, exclude = new Se
   for (const key of ordered) {
     if (key === "index") {
       ctx.watch.push(indexFile);
-      const fm = MD_RE.test(indexFile) ? readFrontmatter(indexFile) : {};
+      const fm = MD_RE.test(indexFile) ? await readFrontmatter(indexFile) : {};
       items.push(
         clean({
           title: metaLabel(meta, "index") ?? fm.sidebar_label ?? fm.title ?? "Overview",
@@ -168,11 +171,11 @@ async function buildSection(dir, route, ctx, withIndex = false, exclude = new Se
 
 /** Build a single subdirectory node: its own link (if it has a page) + children. */
 async function buildNode(dir, route, key, parentMeta, ctx, exclude) {
-  const pf = pageFile(dir);
+  const pf = await pageFile(dir);
   let fm = {};
   if (pf) {
     ctx.watch.push(pf);
-    if (MD_RE.test(pf)) fm = readFrontmatter(pf);
+    if (MD_RE.test(pf)) fm = await readFrontmatter(pf);
   }
   const children = await buildSection(dir, route, ctx, false, exclude);
   // A directory that has neither a page nor children contributes nothing.

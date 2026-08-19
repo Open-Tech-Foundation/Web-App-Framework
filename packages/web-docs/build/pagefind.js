@@ -8,15 +8,16 @@
 // `@opentf/web-cli` calls this from `otfw build --ssg` when the project's docs config
 // has `search.provider === "pagefind"`, keeping all docs build logic owned by web-docs.
 
-import { readdir, readFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join, relative } from "runtime:path";
+
+import { readEntries, readText } from "./host.js";
 
 /** Recursively collect every `*.html` file under `dir` (absolute paths). */
 async function htmlFiles(dir) {
   const out = [];
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
+  for (const entry of await readEntries(dir)) {
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...(await htmlFiles(path)));
+    if (entry.isDir) out.push(...(await htmlFiles(path)));
     else if (entry.name.endsWith(".html")) out.push(path);
   }
   return out;
@@ -38,7 +39,7 @@ export async function indexWithPagefind({ siteDir, onProgress }) {
   // Pick the searchable pages up front so progress has a real total.
   const pages = [];
   for (const path of await htmlFiles(siteDir)) {
-    const content = await readFile(path, "utf8");
+    const content = await readText(path);
     if (content.includes("data-pagefind-body")) pages.push({ path, content });
   }
 

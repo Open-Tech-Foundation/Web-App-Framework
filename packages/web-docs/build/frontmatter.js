@@ -5,13 +5,13 @@
 // `key: value` lines, scalars only. Booleans/numbers are coerced; everything else is
 // a string. Nested maps / lists are out of scope (a follow-up, same as the Rust side).
 
-import { readFileSync } from "node:fs";
+import { readText } from "./host.js";
 
 /** Parse the leading frontmatter block of an .mdx/.md file into a flat object. */
-export function readFrontmatter(file) {
+export async function readFrontmatter(file) {
   let source;
   try {
-    source = readFileSync(file, "utf8");
+    source = await readText(file);
   } catch {
     return {};
   }

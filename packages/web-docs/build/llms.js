@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, relative, sep } from "node:path";
+import { dirname, relative, sep } from "runtime:path";
+
+import { exists, readText } from "./host.js";
 
 import { readFrontmatter } from "./frontmatter.js";
 
@@ -26,15 +27,15 @@ function humanize(seg) {
   return seg.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function titleFor(file, path) {
-  const fm = MD_RE.test(file) ? readFrontmatter(file) : {};
+async function titleFor(file, path) {
+  const fm = MD_RE.test(file) ? await readFrontmatter(file) : {};
   if (fm.title) return String(fm.title);
   if (path === "/") return "Home";
   return humanize(path.split("/").filter(Boolean).at(-1) ?? "Home");
 }
 
-function descriptionFor(file) {
-  const fm = MD_RE.test(file) ? readFrontmatter(file) : {};
+async function descriptionFor(file) {
+  const fm = MD_RE.test(file) ? await readFrontmatter(file) : {};
   return fm.description ? String(fm.description) : "";
 }
 
@@ -63,21 +64,25 @@ function sectionFor(path) {
   return "Other Routes";
 }
 
-function pageRecords({ appDir, pages = [], baseUrl }) {
-  return pages
-    .filter((file) => PAGE_RE.test(file))
-    .map((file) => {
-      const path = routePath(appDir, file);
-      if (!path) return null;
-      return {
-        file,
-        path,
-        url: abs(baseUrl, path),
-        title: titleFor(file, path),
-        description: descriptionFor(file),
-        markdown: MD_RE.test(file) && existsSync(file) ? stripMdxBoilerplate(readFileSync(file, "utf8")) : "",
-      };
-    })
+async function pageRecords({ appDir, pages = [], baseUrl }) {
+  const records = await Promise.all(
+    pages
+      .filter((file) => PAGE_RE.test(file))
+      .map(async (file) => {
+        const path = routePath(appDir, file);
+        if (!path) return null;
+        return {
+          file,
+          path,
+          url: abs(baseUrl, path),
+          title: await titleFor(file, path),
+          description: await descriptionFor(file),
+          markdown:
+            MD_RE.test(file) && (await exists(file)) ? stripMdxBoilerplate(await readText(file)) : "",
+        };
+      }),
+  );
+  return records
     .filter(Boolean)
     .sort((a, b) => {
       if (a.path === "/") return -1;
@@ -115,9 +120,9 @@ function siteDescriptionFor({ config, siteDescription, records, title }) {
 
 const SECTION_ORDER = ["Start Here", "Documentation", "API Reference", "Blog", "Other Routes"];
 
-export function renderLlmsTxt({ appDir, pages = [], baseUrl, config = {}, siteDescription = "" } = {}) {
+export async function renderLlmsTxt({ appDir, pages = [], baseUrl, config = {}, siteDescription = "" } = {}) {
   const title = config?.docs?.title || "OTF Web";
-  const records = pageRecords({ appDir, pages, baseUrl });
+  const records = await pageRecords({ appDir, pages, baseUrl });
   const description = siteDescriptionFor({ config, siteDescription, records, title });
   const lines = [
     `# ${title}`,
@@ -148,9 +153,9 @@ export function renderLlmsTxt({ appDir, pages = [], baseUrl, config = {}, siteDe
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }
 
-export function renderLlmsFullTxt({ appDir, pages = [], baseUrl, config = {} } = {}) {
+export async function renderLlmsFullTxt({ appDir, pages = [], baseUrl, config = {} } = {}) {
   const title = config?.docs?.title || "OTF Web";
-  const records = pageRecords({ appDir, pages, baseUrl }).filter((record) => record.markdown);
+  const records = (await pageRecords({ appDir, pages, baseUrl })).filter((record) => record.markdown);
   const lines = [
     `# ${title} Full Documentation`,
     "",

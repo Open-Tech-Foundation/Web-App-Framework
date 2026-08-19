@@ -7,14 +7,17 @@
 // Post shape: `{ slug, path, title, description?, date?, author?, tags?, readingTime,
 // order? }`. Sorted newest-first by `date`; a numeric `order` (frontmatter) overrides.
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join } from "runtime:path";
+
+import { exists, readEntries, readNames, readText } from "./host.js";
 
 import { readFrontmatter } from "./frontmatter.js";
 import { readingTime } from "./reading-time.js";
 
 const VIRTUAL_ID = "@opentf/web-docs/posts";
-const RESOLVED_ID = "\0otfw-blog-posts";
+// No NUL sentinel: the bundler marks a module virtual explicitly, and a `\0` in
+// a hook filter is an invalid regex — which silently matches *everything*.
+const RESOLVED_ID = "otfw-virtual:otfw-blog-posts";
 const PAGE_RE = /^page\.(mdx|md)$/;
 
 /**
@@ -28,15 +31,23 @@ export function blogPostsPlugin({ appDir, contentDir = "blog", exclude = new Set
   const base = "/" + contentDir;
   return {
     name: "otfw-blog-posts",
-    resolveId(source) {
-      return source === VIRTUAL_ID ? RESOLVED_ID : null;
+    resolve: {
+      filter: { id: VIRTUAL_ID },
+      handler: (source) => (source === VIRTUAL_ID ? { id: RESOLVED_ID, virtual: true } : null),
     },
-    load(id) {
-      if (id !== RESOLVED_ID) return null;
-      const watch = [];
-      const posts = existsSync(root) ? collectPosts(root, base, exclude, watch) : [];
-      for (const f of watch) this.addWatchFile?.(f);
-      return `export const posts = ${JSON.stringify(posts)};\nexport default posts;\n`;
+    load: {
+      filter: { id: RESOLVED_ID },
+      async handler(id) {
+        if (id !== RESOLVED_ID) return null;
+        const watch = [];
+        const posts = (await exists(root)) ? await collectPosts(root, base, exclude, watch) : [];
+        // The post list is generated from these files, which nothing imports —
+        // declaring them is what rebuilds the chunk when a post's frontmatter changes.
+        return {
+          code: `export const posts = ${JSON.stringify(posts)};\nexport default posts;\n`,
+          dependsOn: watch,
+        };
+      },
     },
   };
 }
@@ -51,17 +62,17 @@ export function blogPostsPlugin({ appDir, contentDir = "blog", exclude = new Set
  * @param {string} [opts.contentDir]
  * @param {Set<string>} [opts.exclude]
  */
-export function loadPosts({ appDir, contentDir = "blog", exclude = new Set() } = {}) {
+export async function loadPosts({ appDir, contentDir = "blog", exclude = new Set() } = {}) {
   const root = join(appDir, contentDir);
-  if (!existsSync(root)) return [];
+  if (!(await exists(root))) return [];
   return collectPosts(root, "/" + contentDir, exclude, []);
 }
 
-function collectPosts(root, base, exclude, watch) {
+async function collectPosts(root, base, exclude, watch) {
   const posts = [];
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
+  for (const entry of await readEntries(root)) {
     if (
-      !entry.isDirectory() ||
+      !entry.isDir ||
       entry.name.startsWith(".") ||
       entry.name.startsWith("_") ||
       exclude.has(entry.name)
@@ -69,13 +80,13 @@ function collectPosts(root, base, exclude, watch) {
       continue;
     }
     const dir = join(root, entry.name);
-    const page = readdirSync(dir).find((n) => PAGE_RE.test(n));
+    const page = (await readNames(dir)).find((n) => PAGE_RE.test(n));
     if (!page) continue;
 
     const file = join(dir, page);
     watch.push(file);
-    const source = readFileSync(file, "utf8");
-    const fm = readFrontmatter(file);
+    const source = await readText(file);
+    const fm = await readFrontmatter(file);
     posts.push(
       clean({
         slug: entry.name,

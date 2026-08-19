@@ -8,21 +8,16 @@
 // isn't in git history the value is simply null and the UI omits it. This runs in dev
 // and build alike — the displayed time is always the real last content change.
 
-import { execFileSync } from "node:child_process";
-import { dirname } from "node:path";
+import { dirname } from "runtime:path";
+
+import { runOut } from "./host.js";
 
 /** Last git commit (committer ISO-8601) that touched `file`, or null. */
-export function gitLastUpdated(file) {
-  try {
-    const out = execFileSync("git", ["log", "-1", "--format=%cI", "--", file], {
-      cwd: dirname(file),
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    return out || null; // empty = untracked / no history (e.g. a shallow CI clone)
-  } catch {
-    return null; // not a git repo / git unavailable
-  }
+export async function gitLastUpdated(file) {
+  // Empty output = untracked / no history (e.g. a shallow CI clone); null = not a
+  // git repo, or git unavailable. Both mean "omit", so both collapse to null.
+  const out = await runOut("git", ["log", "-1", "--format=%cI", "--", file], dirname(file));
+  return out || null;
 }
 
 /** Normalize a frontmatter override to ISO-8601, or keep the raw string if unparseable. */
@@ -38,7 +33,7 @@ function normalize(value) {
  * @param {*}      [frontmatter]   The frontmatter `lastUpdated` value, if any.
  * @returns {string|null} ISO-8601 (or a raw override string), or null to omit.
  */
-export function resolveLastUpdated(file, frontmatter) {
+export async function resolveLastUpdated(file, frontmatter) {
   if (frontmatter === false) return null; // explicit opt-out for this page
   if (frontmatter != null && frontmatter !== true) return normalize(frontmatter);
   return gitLastUpdated(file);
