@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { serve } from "runtime:http";
+
+import { describe, expect, test } from "./harness.js";
 
 import { matchProxyTarget, proxyRequest, resolveProxyRules } from "../src/shared.js";
 
@@ -53,20 +55,35 @@ describe("matchProxyTarget", () => {
 });
 
 describe("proxyRequest", () => {
+  // A one-response upstream on an ephemeral port. `serve` returns before it binds, so
+  // the port is only known once `addr` resolves.
+  async function upstream(response) {
+    const server = serve({ port: 0 }, () => response());
+    const { port } = await server.addr;
+    return { port, stop: () => server.stop() };
+  }
+
+  const gzip = async (text) =>
+    new Uint8Array(
+      await new Response(
+        new Blob([text]).stream().pipeThrough(new CompressionStream("gzip")),
+      ).arrayBuffer(),
+    );
+
   test("gzipped upstream: encoding headers are stripped so the body is not double-decoded", async () => {
     const payload = JSON.stringify({ todos: ["a", "b"] });
-    const server = Bun.serve({
-      port: 0,
-      fetch: () =>
-        new Response(Bun.gzipSync(payload), {
+    const body = await gzip(payload);
+    const { port, stop } = await upstream(
+      () =>
+        new Response(body, {
           headers: { "content-type": "application/json", "content-encoding": "gzip" },
         }),
-    });
+    );
     try {
       const req = new Request("http://localhost:3000/api/todos", {
         headers: { "accept-encoding": "gzip, deflate, br" },
       });
-      const res = await proxyRequest(req, `http://localhost:${server.port}`);
+      const res = await proxyRequest(req, `http://localhost:${port}`);
       // fetch already decompressed the body; the relayed response must not
       // claim gzip (or the compressed length) or the browser decodes twice.
       expect(res.headers.get("content-encoding")).toBeNull();
@@ -74,21 +91,20 @@ describe("proxyRequest", () => {
       expect(res.headers.get("content-type")).toBe("application/json");
       expect(await res.text()).toBe(payload);
     } finally {
-      server.stop(true);
+      await stop();
     }
   });
 
   test("uncompressed upstream: the response passes through untouched", async () => {
-    const server = Bun.serve({
-      port: 0,
-      fetch: () => new Response("plain", { headers: { "content-type": "text/plain" } }),
-    });
+    const { port, stop } = await upstream(
+      () => new Response("plain", { headers: { "content-type": "text/plain" } }),
+    );
     try {
-      const res = await proxyRequest(new Request("http://localhost:3000/api/x"), `http://localhost:${server.port}`);
+      const res = await proxyRequest(new Request("http://localhost:3000/api/x"), `http://localhost:${port}`);
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("plain");
     } finally {
-      server.stop(true);
+      await stop();
     }
   });
 });

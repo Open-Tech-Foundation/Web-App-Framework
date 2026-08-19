@@ -13,10 +13,10 @@
     "benchmarks/*"
   ],
   "scripts": {
-    "dev": "bun run --cwd playground dev",
+    "dev": "esdev packages/web-cli/src/cli.js dev --root=playground --port=3005",
     "bench": "bun benchmarks/run.mjs",
-    "playground:build": "bun run --cwd playground build",
-    "test": "cargo build && cargo test && bun test packages/web/ packages/web-cli/tests/ packages/create-web/tests/",
+    "playground:build": "esdev packages/web-cli/src/cli.js build --root=playground",
+    "test": "cargo build && cargo test && esdev test packages/web-cli/tests && bun test packages/web/ packages/create-web/tests/",
     "typecheck": "tsc --noEmit",
     "cf:build": "bun scripts/build-website-standalone.mjs",
     "preview": "bun run cf:build && wrangler dev",

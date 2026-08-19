@@ -2,7 +2,7 @@
 // `runPrerender` (SSG) and `runServe` (SSR). These are pure string functions — the
 // glue that turns a render result into a full HTML document.
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "./harness.js";
 
 import {
   entrySource,
@@ -145,34 +145,28 @@ describe("entrySource route-map keys", () => {
   const pages = ["/opt/buildhome/repo/website/app/page.jsx", "/opt/buildhome/repo/website/app/docs/page.jsx"];
   const appDir = "/opt/buildhome/repo/website/app";
 
-  test("keys are app-relative — the build machine's path never ships", () => {
-    const src = entrySource(pages, appDir);
+  test("keys are app-relative — the build machine's path never ships", async () => {
+    const src = await entrySource(pages, appDir);
     expect(src).toContain(`["/app/page.jsx"]: () => import(`);
     expect(src).toContain(`["/app/docs/page.jsx"]: () => import(`);
     expect(src).not.toContain(`["/opt/buildhome`);
   });
 
-  test("the import specifier stays absolute so the bundler can resolve it", () => {
-    const src = entrySource(pages, appDir);
+  test("the import specifier stays absolute so the bundler can resolve it", async () => {
+    const src = await entrySource(pages, appDir);
     expect(src).toContain(`import("/opt/buildhome/repo/website/app/page.jsx")`);
   });
 
-  test("a custom loaderUrl (dev server) still gets the real file path", () => {
-    const src = entrySource(pages, appDir, (p) => `/__route${p.replace(appDir, "")}`);
+  test("a custom loaderUrl (dev server) still gets the real file path", async () => {
+    const src = await entrySource(pages, appDir, (p) => `/__route${p.replace(appDir, "")}`);
     expect(src).toContain(`["/app/docs/page.jsx"]: () => import("/__route/docs/page.jsx")`);
   });
 });
 
 describe("routeChunkManifest", () => {
-  // A miniature Rolldown output: the entry statically pulls in `shared`, each route is
+  // A miniature bundler output: the entry statically pulls in `shared`, each route is
   // its own dynamically-imported chunk, and /docs' page shares a `md` chunk with nobody.
-  const chunk = (fileName, moduleIds, imports = []) => ({
-    type: "chunk",
-    fileName,
-    facadeModuleId: moduleIds[0],
-    moduleIds,
-    imports,
-  });
+  const chunk = (fileName, moduleIds, imports = []) => ({ type: "chunk", fileName, moduleIds, imports });
   const appDir = "/r/app";
   const pages = [
     "/r/app/layout.jsx",
@@ -233,15 +227,15 @@ describe("modulepreloadTags", () => {
 });
 
 describe("entrySource (i18n)", () => {
-  test("threads the i18n config into mountApp", () => {
-    const src = entrySource(["/app/page.jsx"], "/app", undefined, {
+  test("threads the i18n config into mountApp", async () => {
+    const src = await entrySource(["/app/page.jsx"], "/app", undefined, {
       locales: ["en", "fr"],
       defaultLocale: "en",
     });
     expect(src).toContain(`i18n: {"locales":["en","fr"],"defaultLocale":"en"}`);
   });
 
-  test("omits the i18n option when not configured", () => {
-    expect(entrySource(["/app/page.jsx"], "/app")).not.toContain("i18n:");
+  test("omits the i18n option when not configured", async () => {
+    expect(await entrySource(["/app/page.jsx"], "/app")).not.toContain("i18n:");
   });
 });

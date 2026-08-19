@@ -1,9 +1,9 @@
-import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { build } from "runtime:build";
+import { exists } from "runtime:fs";
+import { join } from "runtime:path";
 
-import { build } from "rolldown";
+import { discard, tempDir, writeFile, writeTree } from "./fixture.js";
+import { describe, expect, test } from "./harness.js";
 
 import { resolveNewUrlRef, workerAssetsPlugin } from "../src/shared.js";
 
@@ -11,33 +11,31 @@ import { resolveNewUrlRef, workerAssetsPlugin } from "../src/shared.js";
 // return the entry code, the list of emitted file names, and any plugin warnings.
 // Mirrors the `otfw build` output config (hashed entry/chunk/asset names, esm).
 async function bundleFixture(files) {
-  const dir = mkdtempSync(join(tmpdir(), "otfw-worker-assets-"));
-  const outDir = join(dir, "out");
-  const warnings = [];
+  const dir = await tempDir("otfw-worker-assets");
   try {
-    for (const [name, source] of Object.entries(files)) {
-      writeFileSync(join(dir, name), source);
-    }
-    const result = await build({
-      input: join(dir, "main.js"),
-      onLog: (level, log) => {
-        if (level === "warn") warnings.push(log.message ?? String(log));
-      },
-      plugins: [workerAssetsPlugin()],
-      output: {
-        dir: outDir,
+    await writeTree(dir, files);
+    const bundle = await build({ input: join(dir, "main.js"), plugins: [workerAssetsPlugin()] });
+    try {
+      // Generated, not written: the assertions are about what the bundle contains,
+      // and nothing here needs the files on disk.
+      const { output, warnings } = await bundle.generate({
         format: "esm",
         entryFileNames: "bundle-[hash].js",
         chunkFileNames: "[name]-[hash].js",
         assetFileNames: "[name]-[hash][extname]",
-      },
-    });
-    const names = result.output.map((o) => o.fileName);
-    const entry = result.output.find((o) => o.type === "chunk" && o.isEntry && o.facadeModuleId?.endsWith("main.js"));
-    return { names, entryCode: entry.code, warnings, dir };
+      });
+      const names = output.map((o) => o.fileName);
+      // Emitted worker chunks are entries too, so match the one holding `main.js`.
+      const entry = output.find(
+        (o) =>
+          o.type === "chunk" && o.isEntry && o.moduleIds?.some((m) => m.endsWith("/main.js")),
+      );
+      return { names, entryCode: entry.code, warnings: warnings.map((w) => w.message ?? String(w)) };
+    } finally {
+      await bundle.close();
+    }
   } finally {
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(outDir, { recursive: true, force: true });
+    await discard(dir);
   }
 }
 
@@ -170,11 +168,11 @@ describe("workerAssetsPlugin", () => {
 
 describe("resolveNewUrlRef", () => {
   async function withTemp(fn) {
-    const dir = mkdtempSync(join(tmpdir(), "otfw-resolve-"));
+    const dir = await tempDir("otfw-resolve");
     try {
       return await fn(dir);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      await discard(dir);
     }
   }
 
@@ -182,8 +180,8 @@ describe("resolveNewUrlRef", () => {
     await withTemp(async (dir) => {
       const importer = join(dir, "worker.js");
       const target = join(dir, "program-worker.js");
-      writeFileSync(importer, "");
-      writeFileSync(target, "");
+      await writeFile(importer, "");
+      await writeFile(target, "");
 
       // ctx.resolve wins when it returns an existing, non-external id…
       const viaResolve = await resolveNewUrlRef(
@@ -208,10 +206,10 @@ describe("resolveNewUrlRef", () => {
   test("returns null when the target genuinely does not exist", async () => {
     await withTemp(async (dir) => {
       const importer = join(dir, "worker.js");
-      writeFileSync(importer, "");
+      await writeFile(importer, "");
       const out = await resolveNewUrlRef({ resolve: async () => null }, "./nope.wasm", importer);
       expect(out).toBeNull();
-      expect(existsSync(join(dir, "nope.wasm"))).toBe(false);
+      expect(await exists(join(dir, "nope.wasm"))).toBe(false);
     });
   });
 });

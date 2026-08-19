@@ -62,3 +62,6 @@ packages/web-compiler/bin/
 
 # benchmark result files (generated)
 benchmarks/results/
+
+# test scratch trees (removed on a clean run; left behind by a crash)
+packages/web-cli/tests/otfw-*/
