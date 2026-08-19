@@ -2,16 +2,31 @@
 //
 // Both commands treat the current working directory as the project root (its
 // `index.html` + `app/`), resolve `@opentf/web` via node resolution, run the
-// `otfwc` IR compiler as a Rolldown `transform` plugin, and let Rolldown link the
-// module graph. This module holds everything they have in common.
+// `otfwc` IR compiler as a `transform` plugin, and let the runtime's bundler link
+// the module graph. This module holds everything they have in common.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-import { build } from "rolldown";
+import { build } from "runtime:build";
+import { stat } from "runtime:fs";
+import { dirname, fromFileURL, join, resolve, toFileURL } from "runtime:path";
+import { args, cwd, env, exit, onSignal } from "runtime:process";
+import { Command } from "runtime:system";
 
 import { otfwcPath } from "@opentf/web-compiler";
+
+import {
+  b64url,
+  exists,
+  findUp,
+  mkdirp,
+  packageDir,
+  readBytes,
+  readEntries,
+  readText,
+  resolveFrom,
+  rmrf,
+  run,
+  writeFile,
+} from "./runtime.js";
 
 export const EXTENSIONS = [".jsx", ".tsx", ".js", ".ts", ".mdx", ".md"];
 
@@ -43,9 +58,9 @@ const MODULE_ENTRY_RE = /<script\s+type=["']module["'][^>]*src=[^>]*>\s*<\/scrip
  * The project's `index.html` shell (or {@link DEFAULT_HTML_SHELL}) with the app's
  * module entry script removed — the common starting point for `dev` and `build`.
  */
-export function readHtmlShell(root) {
+export async function readHtmlShell(root) {
   const indexPath = join(root, "index.html");
-  const html = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : DEFAULT_HTML_SHELL;
+  const html = (await exists(indexPath)) ? await readText(indexPath) : DEFAULT_HTML_SHELL;
   return html.replace(MODULE_ENTRY_RE, "");
 }
 
@@ -128,42 +143,33 @@ export function withHtmlLang(shellHtml, locale) {
   return shellHtml.replace(/<html\b/i, `<html lang="${locale}"`);
 }
 
-/** Nearest ancestor directory of `from` (inclusive) that contains `name`. */
-export function findUp(name, from) {
-  let dir = from;
-  while (true) {
-    if (existsSync(join(dir, name))) return dir;
-    const parent = dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
+export { findUp };
+
+async function hasLocalCompilerWorkspace(workspace) {
+  return !!workspace && (await exists(join(workspace, "crates", "otfw_cli", "Cargo.toml")));
 }
 
-function hasLocalCompilerWorkspace(workspace) {
-  return !!workspace && existsSync(join(workspace, "crates", "otfw_cli", "Cargo.toml"));
-}
-
-export function resolveCompiler({
-  cliDir = dirname(fileURLToPath(import.meta.url)),
-  env = process.env,
+export async function resolveCompiler({
+  cliDir = dirname(fromFileURL(import.meta.url)),
+  env: environment = env,
   resolvePackagedCompiler = otfwcPath,
   findWorkspace = findUp,
   ensure = ensureCompiler,
 } = {}) {
-  if (env.OTFWC_BIN) return { otfwc: env.OTFWC_BIN, workspace: null };
+  if (environment.OTFWC_BIN) return { otfwc: environment.OTFWC_BIN, workspace: null };
 
   let packagedError = null;
   try {
-    return { otfwc: resolvePackagedCompiler(), workspace: null };
+    return { otfwc: await resolvePackagedCompiler(), workspace: null };
   } catch (e) {
     packagedError = e;
   }
 
   const installedPackage = cliDir.split(/[\\/]/).includes("node_modules");
-  const workspace = installedPackage ? null : findWorkspace("Cargo.toml", cliDir);
-  if (hasLocalCompilerWorkspace(workspace)) {
+  const workspace = installedPackage ? null : await findWorkspace("Cargo.toml", cliDir);
+  if (await hasLocalCompilerWorkspace(workspace)) {
     const otfwc = join(workspace, "target", "debug", "otfwc");
-    ensure(otfwc, workspace);
+    await ensure(otfwc, workspace);
     return { otfwc, workspace };
   }
 
@@ -174,18 +180,35 @@ export function resolveCompiler({
 }
 
 /**
- * Resolve the project and toolchain: the app being built (cwd), the runtime
- * package, the `otfwc` compiler, and the excluded routes. Exits with a clear
- * message on any hard failure. Source checkouts can build the compiler on demand
- * from this repo's Cargo workspace; published installs use @opentf/web-compiler.
+ * The project to build: the working directory, or the directory `--root=<dir>` names.
+ *
+ * The runtime sandboxes the toolchain to its working directory — nothing it runs can
+ * reach outside, which is why `otfw` in an installed project needs no flag: the
+ * project is where you stand. A workspace that develops its own CLI is one project
+ * containing several: the CLI, the app, and the packages the app links to all live
+ * under the repository root, so the toolchain runs from there and `--root` says which
+ * app to build. Both cases resolve to a directory inside the sandbox.
  */
-export function loadProject() {
-  const root = process.cwd();
+export function projectRoot(argv = args) {
+  const flag = argv.find((a) => a.startsWith("--root="));
+  return flag ? resolve(cwd(), flag.slice("--root=".length)) : cwd();
+}
+
+/**
+ * Resolve the project and toolchain: the app being built, the runtime package, the
+ * `otfwc` compiler, and the excluded routes. Exits with a clear message on any hard
+ * failure. Source checkouts can build the compiler on demand from this repo's Cargo
+ * workspace; published installs use @opentf/web-compiler.
+ */
+export async function loadProject() {
+  const root = projectRoot();
 
   const appDir = join(root, "app");
-  if (!existsSync(appDir)) {
+  if (!(await exists(appDir))) {
     fail(
-      `no app/ directory in ${root}\n  run otfw from your project root (the folder with index.html and app/).`,
+      `no app/ directory in ${root}\n` +
+        `  run otfw from your project root (the folder with index.html and app/),\n` +
+        `  or pass --root=<dir> to point at it.`,
     );
   }
 
@@ -193,34 +216,28 @@ export function loadProject() {
   // dependency or a workspace package — no hardcoded path.
   let webEntry;
   try {
-    webEntry = Bun.resolveSync("@opentf/web", root);
+    webEntry = await resolveFrom("@opentf/web", root);
   } catch {
     fail(`cannot resolve "@opentf/web" from ${root}\n  add it to your dependencies.`);
   }
 
   // Locate the `otfwc` compiler. Explicit overrides win, then the packaged
   // compiler binary, then this repo's local Rust workspace as a source fallback.
-  const { otfwc, workspace } = resolveCompiler();
+  const { otfwc, workspace } = await resolveCompiler();
 
   // Route directories to skip during discovery — comma-separated names in
   // EXCLUDE_ROUTES. None are excluded by default.
-  const exclude = new Set(
-    (process.env.EXCLUDE_ROUTES ?? "").split(",").filter(Boolean),
-  );
+  const exclude = new Set((env.EXCLUDE_ROUTES ?? "").split(",").filter(Boolean));
 
   return { root, appDir, webEntry, otfwc, workspace, exclude };
 }
 
-function ensureCompiler(otfwc, workspace) {
-  if (existsSync(otfwc)) return;
+async function ensureCompiler(otfwc, workspace) {
+  if (await exists(otfwc)) return;
   if (!workspace) fail(`otfwc compiler not found at ${otfwc}`);
   console.log("building compiler (cargo build -p otfw_cli)…");
-  const cargo = Bun.spawnSync(["cargo", "--version"], {
-    cwd: workspace,
-    stdout: "ignore",
-    stderr: "pipe",
-  });
-  if (cargo.error || cargo.exitCode !== 0) {
+  const cargo = await run("cargo", ["--version"], { cwd: workspace, stdout: "null" });
+  if (!cargo.ok) {
     fail(
       `cannot build otfwc because cargo is not available.\n` +
         `  This source checkout needs Rust/Cargo to build ${otfwc}.\n` +
@@ -228,12 +245,12 @@ function ensureCompiler(otfwc, workspace) {
         `  or build with the published @opentf/web-cli package so @opentf/web-compiler can use its prebuilt binary.`,
     );
   }
-  const b = Bun.spawnSync(["cargo", "build", "-p", "otfw_cli"], {
+  const b = await run("cargo", ["build", "-p", "otfw_cli"], {
     cwd: workspace,
     stdout: "inherit",
     stderr: "inherit",
   });
-  if (b.exitCode !== 0) process.exit(b.exitCode);
+  if (!b.ok) exit(b.code ?? 1);
 }
 
 /** The config filenames a project may use, in precedence order. */
@@ -241,7 +258,7 @@ export const CONFIG_FILENAMES = ["otfw.config.json", "otfw.config.js", "otfw.con
 
 /**
  * Re-import a JS module after it changed on disk. The runtime's ESM cache is keyed by
- * file path and ignores a `?v=` query (Bun), so the only way to re-evaluate a module is
+ * file path and ignores a `?v=` query, so the only way to re-evaluate a module is
  * to import a genuinely new path. Bundling to a versioned file (rather than copying it)
  * inlines the module's own relative imports, so the copy's location can't change how
  * they resolve. Returns the URL to import — the original file if bundling fails.
@@ -253,19 +270,22 @@ async function freshModuleUrl(file, cacheDir, bust, slot) {
   const dir = join(cacheDir, slot);
   const name = `${bust}.mjs`;
   try {
-    rmSync(dir, { recursive: true, force: true });
-    await build({
+    await rmrf(dir);
+    const bundle = await build({
       input: file,
       platform: "node",
       // Keep npm/node imports external — the module may pull in real dependencies.
       external: (id) => !id.startsWith(".") && !id.startsWith("/"),
-      output: { dir, format: "esm", entryFileNames: name },
-      checks: { pluginTimings: false },
     });
-    return pathToFileURL(join(dir, name)).href;
+    try {
+      await bundle.write({ dir, format: "esm", entryFileNames: name });
+    } finally {
+      await bundle.close();
+    }
+    return toFileURL(join(dir, name)).href;
   } catch (e) {
     console.warn(`⚠ could not re-bundle ${file}: ${e?.message ?? e}`);
-    return pathToFileURL(file).href;
+    return toFileURL(file).href;
   }
 }
 
@@ -280,11 +300,11 @@ export function moduleReloader(cacheDir) {
   const cache = new Map(); // file → { key, mod }
   let version = 0;
   return async function importFresh(file) {
-    const st = statSync(file);
+    const st = await stat(file);
     const key = `${st.size}:${st.mtimeMs}`;
     const hit = cache.get(file);
     if (hit?.key === key) return hit.mod;
-    const slot = `mod-${Buffer.from(file).toString("base64url").slice(-24)}`;
+    const slot = `mod-${b64url(file).slice(-24)}`;
     const mod = await import(await freshModuleUrl(file, cacheDir, ++version, slot));
     cache.set(file, { key, mod });
     return mod;
@@ -301,18 +321,18 @@ export function moduleReloader(cacheDir) {
  */
 export async function loadConfig(root, { bust = 0, cacheDir = join(root, ".dev") } = {}) {
   const json = join(root, "otfw.config.json");
-  if (existsSync(json)) {
+  if (await exists(json)) {
     try {
-      return JSON.parse(readFileSync(json, "utf8")) ?? {};
+      return JSON.parse(await readText(json)) ?? {};
     } catch (e) {
       console.warn(`⚠ could not parse otfw.config.json: ${e?.message ?? e}`);
     }
   }
   for (const name of ["otfw.config.js", "otfw.config.mjs"]) {
     const p = join(root, name);
-    if (existsSync(p)) {
+    if (await exists(p)) {
       try {
-        const href = bust ? await freshModuleUrl(p, cacheDir, bust, "config") : pathToFileURL(p).href;
+        const href = bust ? await freshModuleUrl(p, cacheDir, bust, "config") : toFileURL(p).href;
         return (await import(href)).default ?? {};
       } catch (e) {
         console.warn(`⚠ could not load ${name}: ${e?.message ?? e}`);
@@ -401,7 +421,7 @@ export function proxyRequest(req, target) {
 }
 
 /**
- * The docs navigation Rolldown plugin, when the project opts into the docs
+ * The docs navigation bundler plugin, when the project opts into the docs
  * generator (a `docs` block in otfw.config). Resolved from `@opentf/web-docs`
  * (the app's own dependency); returns null when docs aren't configured or the
  * package isn't installed, so the core toolchain stays untouched for normal apps.
@@ -415,10 +435,8 @@ export async function loadDocsPlugins(root, appDir, config, exclude = new Set(),
   const blog = config?.blog;
   if (!docs && !blog) return [];
   try {
-    const entry = Bun.resolveSync("@opentf/web-docs/build", root);
-    const { docsNavPlugin, blogPostsPlugin, lastUpdatedPlugin } = await import(
-      pathToFileURL(entry).href
-    );
+    const entry = await resolveFrom("@opentf/web-docs/build", root);
+    const { docsNavPlugin, blogPostsPlugin, lastUpdatedPlugin } = await import(toFileURL(entry).href);
     const plugins = [];
     // Resolves `@opentf/web-docs/nav` to a section map — one generated tree per top-level
     // folder under app/. Any folder with a DocsLayout becomes a section automatically.
@@ -451,9 +469,9 @@ export function wantsLastUpdated(config) {
 export async function runLastUpdated(root, appDir, config, exclude = new Set()) {
   if (!wantsLastUpdated(config)) return {};
   try {
-    const entry = Bun.resolveSync("@opentf/web-docs/build", root);
-    const { loadLastUpdated } = await import(pathToFileURL(entry).href);
-    return loadLastUpdated({ appDir, exclude });
+    const entry = await resolveFrom("@opentf/web-docs/build", root);
+    const { loadLastUpdated } = await import(toFileURL(entry).href);
+    return await loadLastUpdated({ appDir, exclude });
   } catch (e) {
     console.warn(`⚠ last-updated map skipped: ${e?.message ?? e}`);
     return {};
@@ -469,8 +487,8 @@ export async function runLastUpdated(root, appDir, config, exclude = new Set()) 
 export async function runDocsSearchIndex(root, config, siteDir, onProgress) {
   if (config?.docs?.search?.provider !== "pagefind") return null;
   try {
-    const entry = Bun.resolveSync("@opentf/web-docs/build", root);
-    const { indexWithPagefind } = await import(pathToFileURL(entry).href);
+    const entry = await resolveFrom("@opentf/web-docs/build", root);
+    const { indexWithPagefind } = await import(toFileURL(entry).href);
     return await indexWithPagefind({ siteDir, onProgress });
   } catch (e) {
     console.warn(`⚠ Pagefind indexing skipped: ${e?.message ?? e}`);
@@ -495,9 +513,9 @@ export async function runBlogFeed(root, appDir, config, siteDir, baseUrl, exclud
   }
   const contentDir = blog.dir ?? "blog";
   try {
-    const entry = Bun.resolveSync("@opentf/web-docs/build", root);
-    const { loadPosts, renderAtomFeed, renderBlogFeed } = await import(pathToFileURL(entry).href);
-    const posts = loadPosts({ appDir, contentDir, exclude });
+    const entry = await resolveFrom("@opentf/web-docs/build", root);
+    const { loadPosts, renderAtomFeed, renderBlogFeed } = await import(toFileURL(entry).href);
+    const posts = await loadPosts({ appDir, contentDir, exclude });
     const title = blog.title || (config?.docs?.title ? `${config.docs.title} Blog` : "Blog");
     const channel = {
       title,
@@ -518,10 +536,9 @@ export async function runBlogFeed(root, appDir, config, siteDir, baseUrl, exclud
     ];
     const written = [];
     for (const feed of feeds) {
-      if (existsSync(join(root, "public", contentDir, feed.file))) continue; // honor override
+      if (await exists(join(root, "public", contentDir, feed.file))) continue; // honor override
       const out = join(siteDir, contentDir, feed.file);
-      mkdirSync(dirname(out), { recursive: true });
-      writeFileSync(out, feed.render({ posts, baseUrl, feedPath: feed.path, channel }));
+      await writeFile(out, feed.render({ posts, baseUrl, feedPath: feed.path, channel }));
       written.push(feed.path);
     }
     if (!written.length) return null;
@@ -542,20 +559,24 @@ export async function runBlogFeed(root, appDir, config, siteDir, baseUrl, exclud
  */
 export async function runLlmsFiles(root, appDir, pages, config, siteDir, baseUrl, { siteDescription = "" } = {}) {
   if (!config?.docs && !config?.blog) return null;
-  const outputs = [
+  const candidates = [
     { file: "llms.txt", render: "renderLlmsTxt" },
     { file: "llms-full.txt", render: "renderLlmsFullTxt" },
-  ].filter((out) => !existsSync(join(root, "public", out.file)));
+  ];
+  const outputs = [];
+  for (const out of candidates) {
+    if (!(await exists(join(root, "public", out.file)))) outputs.push(out);
+  }
   if (!outputs.length) return null;
 
   try {
-    const entry = Bun.resolveSync("@opentf/web-docs/build", root);
-    const mod = await import(pathToFileURL(entry).href);
+    const entry = await resolveFrom("@opentf/web-docs/build", root);
+    const mod = await import(toFileURL(entry).href);
     const written = [];
     for (const out of outputs) {
       const render = mod[out.render];
       if (typeof render !== "function") continue;
-      writeFileSync(join(siteDir, out.file), render({ appDir, pages, baseUrl, config, siteDescription }));
+      await writeFile(join(siteDir, out.file), await render({ appDir, pages, baseUrl, config, siteDescription }));
       written.push(`/${out.file}`);
     }
     return written.length ? { paths: written } : null;
@@ -566,12 +587,12 @@ export async function runLlmsFiles(root, appDir, pages, config, siteDir, baseUrl
 }
 
 /** Discover file-based routes under `app/`: every page/layout and the 404. */
-export function discoverPages(dir, exclude) {
+export async function discoverPages(dir, exclude) {
   const out = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory() && exclude.has(entry.name)) continue;
+  for (const entry of await readEntries(dir)) {
+    if (entry.isDir && exclude.has(entry.name)) continue;
     const full = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) out.push(...discoverPages(full, exclude));
+    if (entry.isDir) out.push(...(await discoverPages(full, exclude)));
     else if (/^(page|layout|404)\.(mdx|md|[jt]sx)$/.test(entry.name)) out.push(full);
   }
   return out;
@@ -583,14 +604,13 @@ export function discoverPages(dir, exclude) {
  * Returns `{ routes, middleware }` — absolute paths to `route.*` handler modules and
  * to `_middleware.{js,ts}` files (folder middleware) respectively.
  */
-export function discoverApiRoutes(appDir, exclude = new Set()) {
+export async function discoverApiRoutes(appDir, exclude = new Set()) {
   const routes = [];
   const middleware = [];
-  const walk = (dir) => {
-    if (!existsSync(dir)) return;
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        if (!exclude.has(entry.name)) walk(join(dir, entry.name));
+  const walk = async (dir) => {
+    for (const entry of await readEntries(dir)) {
+      if (entry.isDir) {
+        if (!exclude.has(entry.name)) await walk(join(dir, entry.name));
         continue;
       }
       const name = entry.name;
@@ -599,7 +619,7 @@ export function discoverApiRoutes(appDir, exclude = new Set()) {
       else if (/^_middleware\.(jsx?|tsx?)$/.test(name)) middleware.push(full);
     }
   };
-  walk(appDir);
+  await walk(appDir);
   return { routes, middleware };
 }
 
@@ -651,9 +671,10 @@ export function routeChunkManifest({ output, pages, appDir, entryFileName, asset
   const chunks = output.filter((o) => o.type === "chunk");
   const byFile = new Map(chunks.map((c) => [c.fileName, c]));
   const byModule = new Map();
+  // A chunk is found by any module inside it: the bundler reports no facade id, and a
+  // page that got merged into a shared chunk still has to resolve to that chunk.
   for (const c of chunks) {
     for (const id of c.moduleIds || []) if (!byModule.has(id)) byModule.set(id, c);
-    if (c.facadeModuleId) byModule.set(c.facadeModuleId, c);
   }
 
   // Transitive static-import closure of a chunk, as file names, BFS from the chunk itself.
@@ -737,17 +758,16 @@ function apiRoutePath(filePath, appDir) {
  * endpoint. Strictly `js|ts` (no `x` variants): loaders are plain server modules,
  * never JSX. Returns absolute file paths.
  */
-export function discoverLoaders(appDir, exclude = new Set()) {
+export async function discoverLoaders(appDir, exclude = new Set()) {
   const out = [];
-  const walk = (dir) => {
-    if (!existsSync(dir)) return;
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        if (!exclude.has(entry.name)) walk(join(dir, entry.name));
+  const walk = async (dir) => {
+    for (const entry of await readEntries(dir)) {
+      if (entry.isDir) {
+        if (!exclude.has(entry.name)) await walk(join(dir, entry.name));
       } else if (/^loader\.(js|ts)$/.test(entry.name)) out.push(join(dir, entry.name));
     }
   };
-  walk(appDir);
+  await walk(appDir);
   return out;
 }
 
@@ -762,13 +782,13 @@ export function loaderRoutePath(filePath, appDir) {
  * same URL. Returns the conflicting `{ path, page, route }` entries (empty = none).
  * A page and an endpoint cannot own the same path (as in Next.js's App Router).
  */
-export function detectRouteConflicts(appDir, exclude = new Set()) {
+export async function detectRouteConflicts(appDir, exclude = new Set()) {
   const pageByRoute = new Map();
-  for (const p of discoverPages(appDir, exclude)) {
+  for (const p of await discoverPages(appDir, exclude)) {
     if (/\/page\.(mdx|md|jsx|tsx)$/.test(p)) pageByRoute.set(pageRouteFromPath(p, appDir), p);
   }
   const conflicts = [];
-  for (const r of discoverApiRoutes(appDir, exclude).routes) {
+  for (const r of (await discoverApiRoutes(appDir, exclude)).routes) {
     const path = apiRoutePath(r, appDir);
     if (pageByRoute.has(path)) conflicts.push({ path, page: pageByRoute.get(path), route: r });
   }
@@ -780,13 +800,16 @@ export function detectRouteConflicts(appDir, exclude = new Set()) {
  * its folder, so one without a sibling `page.*` — including one placed next to a
  * `route.*` endpoint — has nothing to feed. Returns `{ loader, route, reason }`.
  */
-export function detectLoaderConflicts(appDir, exclude = new Set()) {
+export async function detectLoaderConflicts(appDir, exclude = new Set()) {
   const conflicts = [];
-  for (const loader of discoverLoaders(appDir, exclude)) {
+  const anyExists = async (dir, names) => {
+    for (const n of names) if (await exists(join(dir, n))) return true;
+    return false;
+  };
+  for (const loader of await discoverLoaders(appDir, exclude)) {
     const dir = dirname(loader);
-    const hasPage = ["page.jsx", "page.tsx", "page.mdx", "page.md"].some((f) => existsSync(join(dir, f)));
-    if (hasPage) continue;
-    const hasRoute = ["route.js", "route.ts"].some((f) => existsSync(join(dir, f)));
+    if (await anyExists(dir, ["page.jsx", "page.tsx", "page.mdx", "page.md"])) continue;
+    const hasRoute = await anyExists(dir, ["route.js", "route.ts"]);
     conflicts.push({
       loader,
       route: loaderRoutePath(loader, appDir),
@@ -799,13 +822,13 @@ export function detectLoaderConflicts(appDir, exclude = new Set()) {
 }
 
 /** Print the route/page/loader conflicts and exit — shared by build, dev, and serve. */
-export function assertNoRouteConflicts(appDir, exclude = new Set()) {
-  const conflicts = detectRouteConflicts(appDir, exclude);
+export async function assertNoRouteConflicts(appDir, exclude = new Set()) {
+  const conflicts = await detectRouteConflicts(appDir, exclude);
   if (conflicts.length > 0) {
     const lines = conflicts.map((c) => `  ${c.path}\n    page:  ${c.page}\n    route: ${c.route}`).join("\n");
     fail(`a page and an API route cannot resolve to the same path:\n${lines}\n  Move one to a different folder.`);
   }
-  const loaderConflicts = detectLoaderConflicts(appDir, exclude);
+  const loaderConflicts = await detectLoaderConflicts(appDir, exclude);
   if (loaderConflicts.length > 0) {
     const lines = loaderConflicts.map((c) => `  ${c.route}\n    loader: ${c.loader}\n    ${c.reason}`).join("\n");
     fail(`a loader.* file must sit next to the page.* it feeds:\n${lines}`);
@@ -859,20 +882,20 @@ export function apiEntrySource({ routes, middleware }, appDir, i18n = null) {
  * and no middleware (a middleware-only app still needs the bundle for its pages).
  */
 export async function buildApiBundle({ root, appDir, webEntry, exclude, i18n, tmpName = ".otfw-api", bust }) {
-  const discovered = discoverApiRoutes(appDir, exclude);
+  const discovered = await discoverApiRoutes(appDir, exclude);
   if (discovered.routes.length === 0 && discovered.middleware.length === 0) return null;
 
   const tmp = join(root, tmpName);
-  mkdirSync(tmp, { recursive: true });
+  await mkdirp(tmp);
   const entry = join(tmp, "api-entry.js");
-  writeFileSync(entry, apiEntrySource(discovered, appDir, i18n));
+  await writeFile(entry, apiEntrySource(discovered, appDir, i18n));
 
   const serverApi = join(dirname(webEntry), "server", "index.js");
   // `bust` versions the emitted *filename* so `otfw dev` picks up handler edits on
-  // rebuild — Bun's ESM cache is keyed by file path and ignores a `?v=` query, so
+  // rebuild — the ESM cache is keyed by file path and ignores a `?v=` query, so
   // only a genuinely new path re-evaluates the module.
   const outName = bust ? `api.${bust}.js` : "api.js";
-  await build({
+  const bundle = await build({
     input: entry,
     platform: "node",
     resolve: {
@@ -881,18 +904,21 @@ export async function buildApiBundle({ root, appDir, webEntry, exclude, i18n, tm
     },
     // Keep npm/node builtins external — server handlers resolve them at runtime.
     external: (id) => !id.startsWith(".") && !id.startsWith("/") && !id.startsWith("@opentf/web"),
-    output: { dir: join(tmp, "out"), format: "esm", entryFileNames: outName },
-    checks: { pluginTimings: false },
   });
+  try {
+    await bundle.write({ dir: join(tmp, "out"), format: "esm", entryFileNames: outName });
+  } finally {
+    await bundle.close();
+  }
 
-  const mod = await import(pathToFileURL(join(tmp, "out", outName)).href);
+  const mod = await import(toFileURL(join(tmp, "out", outName)).href);
   return {
     handler: mod.apiHandler,
     apiRoutes: mod.apiRoutes,
     middleware: mod.middleware,
     routes: discovered.routes,
     middlewareFiles: discovered.middleware,
-    cleanup: () => rmSync(tmp, { recursive: true, force: true }),
+    cleanup: () => rmrf(tmp),
   };
 }
 
@@ -907,25 +933,28 @@ export async function buildApiBundle({ root, appDir, webEntry, exclude, i18n, tm
  * when the project has neither API routes nor middleware.
  */
 export async function emitApiBundle({ root, appDir, webEntry, exclude, i18n, outDir }) {
-  const discovered = discoverApiRoutes(appDir, exclude);
+  const discovered = await discoverApiRoutes(appDir, exclude);
   if (discovered.routes.length === 0 && discovered.middleware.length === 0) return null;
 
   const tmp = join(root, ".otfw-api-build");
-  mkdirSync(tmp, { recursive: true });
+  await mkdirp(tmp);
   const entry = join(tmp, "api-entry.js");
-  writeFileSync(entry, apiEntrySource(discovered, appDir, i18n));
+  await writeFile(entry, apiEntrySource(discovered, appDir, i18n));
 
   const serverApi = join(dirname(webEntry), "server", "index.js");
-  mkdirSync(outDir, { recursive: true });
-  await build({
+  await mkdirp(outDir);
+  const bundle = await build({
     input: entry,
     platform: "node",
     resolve: { alias: { "@opentf/web/server": serverApi, "@opentf/web": webEntry }, extensions: EXTENSIONS },
     external: (id) => !id.startsWith(".") && !id.startsWith("/") && !id.startsWith("@opentf/web"),
-    output: { dir: outDir, format: "esm", entryFileNames: "api.js" },
-    checks: { pluginTimings: false },
   });
-  rmSync(tmp, { recursive: true, force: true });
+  try {
+    await bundle.write({ dir: outDir, format: "esm", entryFileNames: "api.js" });
+  } finally {
+    await bundle.close();
+  }
+  await rmrf(tmp);
   return { routes: discovered.routes, middleware: discovered.middleware };
 }
 
@@ -958,19 +987,19 @@ export function loaderEntrySource(loaderFiles, appDir, i18n = null) {
  * modules resolve at runtime from the project's node_modules).
  */
 export async function buildLoaderBundle({ root, appDir, webEntry, exclude, i18n, tmpName = ".otfw-loaders", bust }) {
-  const files = discoverLoaders(appDir, exclude);
+  const files = await discoverLoaders(appDir, exclude);
   if (files.length === 0) return null;
 
   const tmp = join(root, tmpName);
-  mkdirSync(tmp, { recursive: true });
+  await mkdirp(tmp);
   const entry = join(tmp, "loaders-entry.js");
-  writeFileSync(entry, loaderEntrySource(files, appDir, i18n));
+  await writeFile(entry, loaderEntrySource(files, appDir, i18n));
 
   const serverApi = join(dirname(webEntry), "server", "index.js");
-  // Versioned filename, not a `?v=` query — Bun's ESM cache ignores the query for
+  // Versioned filename, not a `?v=` query — the ESM cache ignores the query for
   // file URLs, so only a new path re-evaluates the rebuilt module (see buildApiBundle).
   const outName = bust ? `loaders.${bust}.js` : "loaders.js";
-  await build({
+  const bundle = await build({
     input: entry,
     platform: "node",
     resolve: {
@@ -978,15 +1007,18 @@ export async function buildLoaderBundle({ root, appDir, webEntry, exclude, i18n,
       extensions: EXTENSIONS,
     },
     external: (id) => !id.startsWith(".") && !id.startsWith("/") && !id.startsWith("@opentf/web"),
-    output: { dir: join(tmp, "out"), format: "esm", entryFileNames: outName },
-    checks: { pluginTimings: false },
   });
+  try {
+    await bundle.write({ dir: join(tmp, "out"), format: "esm", entryFileNames: outName });
+  } finally {
+    await bundle.close();
+  }
 
-  const mod = await import(pathToFileURL(join(tmp, "out", outName)).href);
+  const mod = await import(toFileURL(join(tmp, "out", outName)).href);
   return {
     loaders: mod.loaders,
     files,
-    cleanup: () => rmSync(tmp, { recursive: true, force: true }),
+    cleanup: () => rmrf(tmp),
   };
 }
 
@@ -997,33 +1029,37 @@ export async function buildLoaderBundle({ root, appDir, webEntry, exclude, i18n,
  * the app has no loader files.
  */
 export async function emitLoaderBundle({ root, appDir, webEntry, exclude, i18n, outDir }) {
-  const files = discoverLoaders(appDir, exclude);
+  const files = await discoverLoaders(appDir, exclude);
   if (files.length === 0) return null;
 
   const tmp = join(root, ".otfw-loaders-build");
-  mkdirSync(tmp, { recursive: true });
+  await mkdirp(tmp);
   const entry = join(tmp, "loaders-entry.js");
-  writeFileSync(entry, loaderEntrySource(files, appDir, i18n));
+  await writeFile(entry, loaderEntrySource(files, appDir, i18n));
 
   const serverApi = join(dirname(webEntry), "server", "index.js");
-  mkdirSync(outDir, { recursive: true });
-  await build({
+  await mkdirp(outDir);
+  const bundle = await build({
     input: entry,
     platform: "node",
     resolve: { alias: { "@opentf/web/server": serverApi, "@opentf/web": webEntry }, extensions: EXTENSIONS },
     external: (id) => !id.startsWith(".") && !id.startsWith("/") && !id.startsWith("@opentf/web"),
-    output: { dir: outDir, format: "esm", entryFileNames: "loaders.js" },
-    checks: { pluginTimings: false },
   });
-  rmSync(tmp, { recursive: true, force: true });
+  try {
+    await bundle.write({ dir: outDir, format: "esm", entryFileNames: "loaders.js" });
+  } finally {
+    await bundle.close();
+  }
+  await rmrf(tmp);
   return { files };
 }
 
 /** The optional `app/routeGuard.{js,ts}` path, or null. */
-export function findGuard(appDir) {
-  return [join(appDir, "routeGuard.js"), join(appDir, "routeGuard.ts")].find(
-    existsSync,
-  );
+export async function findGuard(appDir) {
+  for (const f of [join(appDir, "routeGuard.js"), join(appDir, "routeGuard.ts")]) {
+    if (await exists(f)) return f;
+  }
+  return undefined;
 }
 
 /**
@@ -1031,7 +1067,7 @@ export function findGuard(appDir) {
  * loaders (so each route code-splits into its own chunk) plus the optional guard.
  *
  * `loaderUrl(filePath)` maps each route file to the specifier its loader imports.
- * The production build imports the file directly (Rolldown code-splits it); the dev
+ * The production build imports the file directly (the bundler code-splits it); the dev
  * server passes a `/__route/…` URL so the route compiles on first navigation.
  *
  * The map *keys* ship in the entry bundle, so they're app-relative (`/app/docs/page.jsx`),
@@ -1040,11 +1076,11 @@ export function findGuard(appDir) {
  * key repeats the build machine's directory prefix once per route (kilobytes on the
  * critical path, and it leaks the CI checkout layout to every visitor).
  */
-export function entrySource(pages, appDir, loaderUrl = (p) => p, i18n = null, nav = null, loaderRoutes = []) {
+export async function entrySource(pages, appDir, loaderUrl = (p) => p, i18n = null, nav = null, loaderRoutes = []) {
   const map = pages
     .map((p) => `    [${JSON.stringify(routeKey(p, appDir))}]: () => import(${JSON.stringify(loaderUrl(p))}),`)
     .join("\n");
-  const guard = findGuard(appDir);
+  const guard = await findGuard(appDir);
   // Thread the i18n config (otfw.config) into `mountApp` so the client router knows
   // the locales and `router.locale` resolves from the URL prefix (docs/I18N.md §6).
   const i18nOpt =
@@ -1072,14 +1108,11 @@ export function entrySource(pages, appDir, loaderUrl = (p) => p, i18n = null, na
  * `roots` are the entries to crawl from (the route/layout files + the runtime).
  */
 export async function moduleGraph(otfwc, webEntry, roots) {
-  const proc = Bun.spawn([otfwc, "graph", `--web=${webEntry}`, ...roots], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  proc.unref(); // a short read-only crawl — never let it hold up shutdown
-  const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-  if (exitCode !== 0) {
-    console.error(`✗ otfwc graph failed:\n${await new Response(proc.stderr).text()}`);
+  // A short read-only crawl. Nothing awaits the child beyond this call, and a child
+  // nobody waits on holds nothing open, so there is no `unref` to do.
+  const { ok, stdout, stderr } = await run(otfwc, ["graph", `--web=${webEntry}`, ...roots]);
+  if (!ok) {
+    console.error(`✗ otfwc graph failed:\n${stderr}`);
     return { affected: () => new Set(), has: () => false, files: () => [] };
   }
   let modules = [];
@@ -1162,24 +1195,25 @@ export function compileError(payload) {
  * is single-threaded, replies arrive in request order, so the head of the queue
  * always pairs with the next frame. The child is killed when this process exits.
  */
+// Every compiler child started in this process, so a one-shot command can shut them
+// all down. It has to: an open reader on a child's stdout keeps the runtime alive, so
+// a build that simply returned would leave `otfw build` hanging after `dist/` is done.
+const compilers = new Set();
+
+/** Stop every `otfwc serve` child. Called at the end of the one-shot commands. */
+export async function closeCompilers() {
+  await Promise.all([...compilers].map((close) => close()));
+  compilers.clear();
+}
+
 export function startCompilerServer(otfwc) {
-  const proc = Bun.spawn([otfwc, "serve"], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "inherit",
-  });
-  // Don't let the long-lived child keep the event loop open: a one-shot `otfw build`
-  // must exit once the bundle is written (the dev server stays alive on its own via
-  // `Bun.serve`). The `exit` handler below still tears the child down, and the child
-  // also sees EOF on its stdin pipe when we go.
-  proc.unref();
-  const reader = proc.stdout.getReader();
   const enc = new TextEncoder();
   const dec = new TextDecoder();
   const queue = []; // { resolve, reject } in request order
   let buf = new Uint8Array(0);
   let pumping = false;
   let dead = false;
+  let started = null;
 
   const append = (a, b) => {
     const out = new Uint8Array(a.length + b.length);
@@ -1192,9 +1226,30 @@ export function startCompilerServer(otfwc) {
     while (queue.length) queue.shift().reject(err);
   };
 
+  // Spawning is async here, so the child is started on the first compile rather than
+  // when the plugin is constructed — a build that never touches a `.jsx` never pays
+  // for it. Nothing awaits the child's exit, so it holds nothing open; when this
+  // process goes, the child sees EOF on its stdin and stops.
+  let reading = null; // the stdout reader, so `close` can release it
+
+  function start() {
+    started ??= new Command(otfwc, {
+      args: ["serve"],
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "inherit",
+    })
+      .spawn()
+      .then((proc) => {
+        reading = proc.stdout.getReader();
+        return { proc, writer: proc.stdin.getWriter(), reader: reading };
+      });
+    return started;
+  }
+
   // Drain reply frames as they arrive, resolving queued requests in order. A frame
   // is `<status> <byteLen>\n` followed by exactly `byteLen` bytes of payload.
-  async function pump() {
+  async function pump(reader) {
     if (pumping) return;
     pumping = true;
     try {
@@ -1224,42 +1279,55 @@ export function startCompilerServer(otfwc) {
     }
   }
 
+  // Replies are paired with requests by position, so the frames must reach the child
+  // in the order their promises were queued. Writing to a `WritableStream` is async,
+  // so the writes are chained rather than merely awaited per call — two concurrent
+  // `compile()`s would otherwise interleave their header and payload bytes.
+  let writes = Promise.resolve();
+
   function compile(id, source, component, target = "csr") {
     if (dead) return Promise.reject(new Error("otfwc serve is not running"));
     return new Promise((resolve, reject) => {
       queue.push({ resolve, reject });
-      const idB = enc.encode(id);
-      const srcB = enc.encode(source);
-      proc.stdin.write(enc.encode(`${idB.length} ${srcB.length} ${component ? 1 : 0} ${target}\n`));
-      proc.stdin.write(idB);
-      proc.stdin.write(srcB);
-      proc.stdin.flush();
-      pump();
+      writes = writes
+        .then(async () => {
+          const { writer, reader } = await start();
+          const idB = enc.encode(id);
+          const srcB = enc.encode(source);
+          await writer.write(enc.encode(`${idB.length} ${srcB.length} ${component ? 1 : 0} ${target}\n`));
+          await writer.write(idB);
+          await writer.write(srcB);
+          pump(reader);
+        })
+        .catch(die);
     });
   }
 
-  const close = () => {
+  async function close() {
+    compilers.delete(close);
     if (dead) return;
     dead = true;
+    if (!started) return;
     try {
-      proc.stdin.end();
-    } catch {}
-    try {
+      const { proc, writer } = await started;
+      try {
+        await writer.close();
+      } catch {}
+      // Releasing the reader matters as much as killing the child: an outstanding
+      // reader on a child's stdout is itself a reason for the runtime to stay up.
+      try {
+        await reading?.cancel();
+      } catch {}
       proc.kill();
     } catch {}
-  };
-  // Clean up the child whenever this process exits — for any reason and at any exit
-  // code. We deliberately don't trap SIGINT/SIGTERM here: a helper shouldn't dictate
-  // the whole process's exit code (that's the command's call), and the child also
-  // receives the terminal's group signal directly. The `exit` hook is enough to avoid
-  // leaking it. (One-shot builds exit when done; the dev server until it's stopped.)
-  process.once("exit", close);
+  }
 
+  compilers.add(close);
   return { compile, close };
 }
 
 /**
- * Rolldown plugin: compile `.jsx`/`.tsx` through the `otfwc` IR compiler. Page /
+ * Bundler plugin: compile `.jsx`/`.tsx` through the `otfwc` IR compiler. Page /
  * layout / 404 modules become factories; everything else a Custom Element. On a
  * compile error it emits a diagnostic stub (so one bad route doesn't sink the
  * build) unless `failOnError` is set (production builds should fail loudly).
@@ -1275,16 +1343,24 @@ export function startCompilerServer(otfwc) {
 export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr" } = {}) {
   const server = startCompilerServer(otfwc);
   return {
+    // The compiler child is not torn down from a hook — the bundler validates hook
+    // names strictly, and there is nothing to tear down per build anyway: one child
+    // serves every build, and it exits on the EOF its stdin gets when we do.
     name: "otfw",
-    async transform(code, id) {
-      if (!/\.(mdx|md|[jt]sx)$/.test(id)) return null;
+    transform: {
+      // Matched on the Rust side, so a module the compiler has no business seeing
+      // never costs a crossing into this isolate.
+      filter: { id: /\.(mdx|md|[jt]sx)$/ },
+      async handler(code, id, ctx) {
       const base = id.split("/").pop().replace(/\.(mdx|md|[jt]sx)$/, "");
       const isPage = base === "page" || base === "layout" || base === "404";
       try {
         const out = await server.compile(id, code, !isPage, target);
         onResult?.(id, null);
+        // otfwc has already lowered the JSX, so the result is plain JavaScript —
+        // saying so keeps the bundler from parsing a `.jsx` id as JSX a second time.
         // Side effects (e.g. customElements.define) must survive bundling.
-        return { code: out, moduleSideEffects: true };
+        return { code: out, type: "js", moduleSideEffects: true };
       } catch (e) {
         // `text` is the diagnostic as a terminal/overlay would show it — the position
         // line plus a code frame; `diag` is the same thing as fields, for the overlay.
@@ -1292,7 +1368,7 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr
         const diag = e?.diag ?? { file: id, message: e?.message ?? String(e) };
         onResult?.(id, diag);
         if (failOnError) {
-          this.error(`otfwc failed:\n${text}`);
+          ctx.error(`otfwc failed:\n${text}`);
         }
         console.error(`✗ otfwc failed:\n${text}`);
         const stub =
@@ -1300,8 +1376,9 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr
           ` pre.style.cssText = "color:#f87171;padding:1rem;white-space:pre-wrap";` +
           ` pre.textContent = ${JSON.stringify(`Compile error\n\n${text}`)};` +
           ` return pre; }`;
-        return { code: stub, moduleSideEffects: true };
+        return { code: stub, type: "js", moduleSideEffects: true };
       }
+      },
     },
   };
 }
@@ -1313,16 +1390,22 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr
 export function cssPlugin() {
   return {
     name: "css",
-    transform(code, id) {
-      if (!id.endsWith(".css")) return null;
-      const inject =
-        `const __s = document.createElement("style");` +
-        ` __s.textContent = ${JSON.stringify(code)};` +
-        ` document.head.appendChild(__s);`;
-      const out = id.endsWith(".module.css")
-        ? `${inject}\nexport default new Proxy({}, { get: (_, k) => k });`
-        : `${inject}\nexport default ${JSON.stringify(code)};`;
-      return { code: out, moduleSideEffects: true };
+    transform: {
+      filter: { id: /\.css$/ },
+      // `pre` so this claims a stylesheet before the runtime's own CSS Modules pass
+      // does: that pass resolves `@import` for real, and an app stylesheet's
+      // `@import "tailwindcss"` is a directive for Tailwind, not a module to fetch.
+      order: "pre",
+      handler(code, id) {
+        const inject =
+          `const __s = document.createElement("style");` +
+          ` __s.textContent = ${JSON.stringify(code)};` +
+          ` document.head.appendChild(__s);`;
+        const out = id.endsWith(".module.css")
+          ? `${inject}\nexport default new Proxy({}, { get: (_, k) => k });`
+          : `${inject}\nexport default ${JSON.stringify(code)};`;
+        return { code: out, type: "js", moduleSideEffects: true };
+      },
     },
   };
 }
@@ -1383,28 +1466,28 @@ export function applyNewUrlEdits(code, edits) {
 
 /**
  * Resolve a `new URL` specifier to an absolute on-disk path from within a plugin
- * `transform` hook. Prefers Rolldown's resolver (`ctx.resolve` with the `new-url`
- * kind) so it follows symlink realpaths, package `exports` maps, and non-standard
+ * `transform` hook. Prefers the bundler's own resolver (`ctx.resolve`) so it follows
+ * symlink realpaths, package `exports` maps, and non-standard
  * `node_modules` layouts — the naive `dirname(importer) + spec` only works when the
  * target is a literal filesystem sibling. Falls back to that join, then returns
  * `null` if the file genuinely isn't there (caller warns — never silently drops).
  */
 export async function resolveNewUrlRef(ctx, spec, importer) {
   try {
-    const r = await ctx.resolve(spec, importer, { kind: "new-url", skipSelf: true });
-    if (r && !r.external && existsSync(r.id)) return r.id;
+    const r = await ctx.resolve(spec, importer);
+    if (r && !r.external && (await exists(r.id))) return r.id;
   } catch {
     // fall through to the filesystem join below
   }
   const abs = join(dirname(importer), spec);
-  return existsSync(abs) ? abs : null;
+  return (await exists(abs)) ? abs : null;
 }
 
 /**
- * Worker & asset plugin (`otfw build`): teaches Rolldown the `new Worker(new URL(…,
+ * Worker & asset plugin (`otfw build`): teaches the bundler the `new Worker(new URL(…,
  * import.meta.url))` / bare `new URL(…, import.meta.url)` convention that the
  * runtime (and user code) uses to reference sibling worker scripts and binary
- * assets (`.wasm`, images, …). Rolldown leaves these as dangling runtime strings,
+ * assets (`.wasm`, images, …). The bundler leaves these as dangling runtime strings,
  * so the referenced file is never emitted and 404s in production. This mirrors
  * what Vite's `vite:worker` + `vite:asset` plugins do:
  *
@@ -1413,7 +1496,7 @@ export async function resolveNewUrlRef(ctx, spec, importer) {
  *   3. emit it — a `new Worker(…)` target as its own `{ type: "chunk" }` entry (so
  *      it's bundled and its own imports, incl. nested workers, recurse through this
  *      same plugin), everything else as a `{ type: "asset" }`,
- *   4. rewrite the expression to the hashed output URL via Rolldown's
+ *   4. rewrite the expression to the hashed output URL via the bundler's
  *      `import.meta.ROLLUP_FILE_URL_<referenceId>` placeholder.
  */
 export function workerAssetsPlugin() {
@@ -1428,20 +1511,24 @@ export function workerAssetsPlugin() {
   let refs;
   return {
     name: "otfw:worker-assets",
-    buildStart() {
-      refs = new Map();
+    start: {
+      handler() {
+        refs = new Map();
+      },
     },
-    async transform(code, id) {
+    transform: {
+      filter: { id: /\.[mc]?[jt]sx?$/ },
+      async handler(code, id, ctx) {
       const found = scanNewUrlRefs(code);
       if (found.length === 0) return null;
 
       const edits = [];
       for (const ref of found) {
-        const abs = await resolveNewUrlRef(this, ref.spec, id);
+        const abs = await resolveNewUrlRef(ctx, ref.spec, id);
         if (!abs) {
           // Never drop it silently: a dangling `new URL` 404s at runtime, and the
           // whole point of this plugin is to make that impossible to ship unnoticed.
-          this.warn(
+          ctx.warn(
             `could not resolve new URL(${JSON.stringify(ref.spec)}, import.meta.url) ` +
               `in ${id} — left as-is; it will 404 at runtime`,
           );
@@ -1450,8 +1537,8 @@ export function workerAssetsPlugin() {
         let refId = refs.get(abs);
         if (refId === undefined) {
           refId = shouldChunkNewUrl(abs, ref.isWorker)
-            ? this.emitFile({ type: "chunk", id: abs, importer: id })
-            : this.emitFile({ type: "asset", name: abs.split("/").pop(), source: readFileSync(abs) });
+            ? ctx.emit({ type: "chunk", id: abs, importer: id })
+            : ctx.emit({ type: "asset", name: abs.split("/").pop(), source: await readBytes(abs) });
           refs.set(abs, refId);
         }
         edits.push({
@@ -1462,6 +1549,7 @@ export function workerAssetsPlugin() {
       }
       if (edits.length === 0) return null;
       return { code: applyNewUrlEdits(code, edits), moduleSideEffects: true };
+      },
     },
   };
 }
@@ -1509,33 +1597,40 @@ export async function buildServerBundle({
   tmpName = ".otfw-ssg",
 }) {
   const tmp = join(root, tmpName);
-  mkdirSync(tmp, { recursive: true });
+  await mkdirp(tmp);
   const entry = join(tmp, "ssg-entry.js");
-  writeFileSync(entry, serverEntrySource(pages, i18n));
+  await writeFile(entry, serverEntrySource(pages, i18n));
 
   const serverApi = join(dirname(webEntry), "server", "index.js");
-  await build({
+  const bundle = await build({
     input: entry,
     resolve: {
       alias: { "@opentf/web/server": serverApi, "@opentf/web": webEntry },
       extensions: EXTENSIONS,
     },
+    // The runtime guards its dev diagnostics on `process.env.NODE_ENV`, and there is
+    // no `process` global here to read it at runtime — so it has to be folded away at
+    // bundle time. Server render is a production render.
+    define: { "process.env.NODE_ENV": '"production"' },
     plugins: [
       ...docsPlugins,
       otfwPlugin(otfwc, { failOnError: true, target: "ssg", onResult: (id) => onCompile?.(id) }),
       cssPlugin(),
     ],
-    output: { dir: join(tmp, "out"), format: "esm", entryFileNames: "server.js" },
-    checks: { pluginTimings: false },
   });
+  try {
+    await bundle.write({ dir: join(tmp, "out"), format: "esm", entryFileNames: "server.js" });
+  } finally {
+    await bundle.close();
+  }
 
   // The runtime defines `class … extends HTMLElement` at load (for CSR custom
   // elements). Server render never instantiates them, but the base class must
   // exist so the class definitions evaluate. A bare stub suffices — no DOM
   // (customElements stays undefined, so elements self-register only in the browser).
   globalThis.HTMLElement ??= class {};
-  const mod = await import(pathToFileURL(join(tmp, "out", "server.js")).href);
-  return { mod, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
+  const mod = await import(toFileURL(join(tmp, "out", "server.js")).href);
+  return { mod, cleanup: () => rmrf(tmp) };
 }
 
 /**
@@ -1570,5 +1665,5 @@ export async function resolveLayoutShellHead({ root, appDir, pages, webEntry, ot
 
 function fail(msg) {
   console.error(`✗ ${msg}`);
-  process.exit(1);
+  exit(1);
 }

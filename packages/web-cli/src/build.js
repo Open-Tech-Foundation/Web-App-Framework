@@ -1,25 +1,20 @@
 // `otfw build` — the production build.
 //
-// One-shot Rolldown bundle (minified, content-hashed, code-split per route) with
+// One-shot bundle (minified, content-hashed, code-split per route) with
 // the `otfwc` compiler as a transform plugin, Tailwind stylesheets compiled to
 // hashed CSS files, and a static `dist/` emitted from the project's index.html.
 
-import { build } from "rolldown";
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { build } from "runtime:build";
+import { hash as digest } from "runtime:hashing";
+import { basename, join, toFileURL } from "runtime:path";
+import { args, exit } from "runtime:process";
 
+import { copyTree, exists, mkdirp, readText, rmrf, writeFile } from "./runtime.js";
 import { compileCss, usesTailwind } from "./tailwind.js";
 import {
   EXTENSIONS,
   assertNoRouteConflicts,
+  closeCompilers,
   cssPlugin,
   discoverLoaders,
   discoverPages,
@@ -34,6 +29,7 @@ import {
   loadDocsPlugins,
   loadProject,
   otfwPlugin,
+  projectRoot,
   readHtmlShell,
   routeChunkManifest,
   workerAssetsPlugin,
@@ -45,11 +41,11 @@ import {
 } from "./shared.js";
 import { fmtMs, step } from "./reporter.js";
 
-const hash = (s) => Bun.hash(s).toString(16).padStart(16, "0").slice(0, 8);
+const hash = (s) => digest("xxhash64", s, "hex").padStart(16, "0").slice(0, 8);
 
 // Site origin for absolute canonical / sitemap/feed URLs. Priority: `--base-url=`
 // flag, then `otfw.config` (`{ site: { url } }`).
-export function resolveBaseUrl(config, argv = process.argv) {
+export function resolveBaseUrl(config, argv = args) {
   const flag = argv.find((a) => a.startsWith("--base-url="));
   if (flag) return flag.slice("--base-url=".length).replace(/\/+$/, "");
   if (config?.site?.url) return String(config.site.url).replace(/\/+$/, "");
@@ -65,11 +61,11 @@ function metaDescriptionFrom(head) {
   return m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 }
 
-export function buildRequiresBaseUrl(config, argv = process.argv) {
+export function buildRequiresBaseUrl(config, argv = args) {
   return argv.includes("--ssg") || !!config?.docs || !!config?.blog;
 }
 
-function requireBaseUrl(config, argv = process.argv) {
+function requireBaseUrl(config, argv = args) {
   const baseUrl = resolveBaseUrl(config, argv);
   if (baseUrl || !buildRequiresBaseUrl(config, argv)) return baseUrl;
   console.error(
@@ -80,43 +76,42 @@ function requireBaseUrl(config, argv = process.argv) {
       `  })\n\n` +
       `  Or pass --base-url=https://example.com`,
   );
-  process.exit(1);
+  exit(1);
 }
 
 export async function runBuild(options = {}) {
-  const projectRoot = process.cwd();
-  const config = await loadConfig(projectRoot);
+  const config = await loadConfig(projectRoot());
   const baseUrl = requireBaseUrl(config);
-  const { root, appDir, webEntry, otfwc, exclude } = loadProject();
+  const { root, appDir, webEntry, otfwc, exclude } = await loadProject();
   const t0 = performance.now();
 
-  const pages = discoverPages(appDir, exclude);
+  const pages = await discoverPages(appDir, exclude);
   if (pages.length === 0) {
     console.error(`✗ no page.jsx files found under ${appDir}`);
-    process.exit(1);
+    exit(1);
   }
-  assertNoRouteConflicts(appDir, exclude);
+  await assertNoRouteConflicts(appDir, exclude);
 
   // Build the client for hydration when there will be server markup to adopt — the
   // SSR server (`runBuild({ hydrate: true })`) and `--ssg` pre-rendered pages. A
   // plain CSR build mounts into an empty `#app`, so it keeps the leaner CSR bundle.
-  const hydrate = options.hydrate ?? process.argv.includes("--ssg");
+  const hydrate = options.hydrate ?? args.includes("--ssg");
 
   // Docs generator: resolve `@opentf/web-docs/nav` to the build-time nav tree when
   // the project has a `docs` config block.
   const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
 
   const outDir = join(root, "dist");
-  rmSync(outDir, { recursive: true, force: true });
-  mkdirSync(join(outDir, "assets"), { recursive: true });
+  await rmrf(outDir);
+  await mkdirp(join(outDir, "assets"));
 
   // Write the app entry into a temp dir, then bundle it.
   const tmp = join(root, ".otfw");
-  mkdirSync(tmp, { recursive: true });
+  await mkdirp(tmp);
   const entry = join(tmp, "entry.js");
-  const loaderFiles = discoverLoaders(appDir, exclude);
+  const loaderFiles = await discoverLoaders(appDir, exclude);
   const loaderRoutes = loaderFiles.map((f) => loaderRoutePath(f, appDir));
-  writeFileSync(entry, entrySource(pages, appDir, undefined, config?.i18n, config?.nav, loaderRoutes));
+  await writeFile(entry, await entrySource(pages, appDir, undefined, config?.i18n, config?.nav, loaderRoutes));
 
   console.log("\n  OTF Web — production build\n");
 
@@ -125,12 +120,13 @@ export async function runBuild(options = {}) {
   // is what drives the live progress line.
   const buildStep = step("Compiling routes & components");
   let compiled = 0;
-  const result = await build({
+  const bundle = await build({
     input: entry,
     resolve: { alias: { "@opentf/web": webEntry }, extensions: EXTENSIONS },
     // Folds the runtime's `DEV` flag to `false` so its dev-only diagnostics
     // (SPEC §5.4.4) are dropped by the minifier below rather than shipped.
-    transform: { define: { "process.env.NODE_ENV": '"production"' } },
+    define: { "process.env.NODE_ENV": '"production"' },
+    minify: true,
     plugins: [
       ...docsPlugins,
       otfwPlugin(otfwc, {
@@ -140,28 +136,30 @@ export async function runBuild(options = {}) {
       }),
       cssPlugin(),
       // Emit `new Worker(new URL(…))` scripts + `new URL(…)` assets (.wasm, …) that
-      // Rolldown would otherwise leave as dangling 404 references. Runs after the
+      // the bundler would otherwise leave as dangling 404 references. Runs after the
       // compiler so it scans emitted JS.
       workerAssetsPlugin(),
     ],
-    output: {
+  });
+  let result;
+  try {
+    result = await bundle.write({
       dir: join(outDir, "assets"),
       format: "esm",
       entryFileNames: "bundle-[hash].js",
       chunkFileNames: "[name]-[hash].js",
       assetFileNames: "[name]-[hash][extname]",
-      minify: true,
-    },
-    // The compiler runs a subprocess per file, so it dominates plugin time by design;
-    // silence Rolldown's plugin-timing advisory rather than print it every build.
-    checks: { pluginTimings: false },
-  });
-  rmSync(tmp, { recursive: true, force: true });
+    });
+  } finally {
+    await bundle.close();
+  }
+  await rmrf(tmp);
 
-  // The app entry — matched by its module id, not just `isEntry`, because emitted
-  // worker chunks (workerAssetsPlugin) are entries too and must not be picked here.
+  // The app entry — matched by the module it contains, not just `isEntry`, because
+  // emitted worker chunks (workerAssetsPlugin) are entries too and must not be picked
+  // here. Chunks carry their module ids; there is no facade id to match on.
   const entryChunk =
-    result.output.find((o) => o.type === "chunk" && o.facadeModuleId === entry) ??
+    result.output.find((o) => o.type === "chunk" && o.isEntry && o.moduleIds?.includes(entry)) ??
     result.output.find((o) => o.type === "chunk" && o.isEntry);
   const bundleHref = `/assets/${entryChunk.fileName}`;
 
@@ -178,7 +176,7 @@ export async function runBuild(options = {}) {
   // client was built for hydration, stamp the `#app` sentinel so the client adopts
   // the server markup (this shell is also the SSG pre-render template, so each
   // pre-rendered page inherits the sentinel).
-  let html = readHtmlShell(root);
+  let html = await readHtmlShell(root);
   if (hydrate) html = stampHydrateSentinel(html);
 
   // Compile each local <link rel="stylesheet" href="/..."> and rewrite the href.
@@ -187,12 +185,12 @@ export async function runBuild(options = {}) {
   for (const [, href] of links) {
     if (!href.startsWith("/")) continue; // leave external/CDN links alone
     const src = join(root, href);
-    if (!existsSync(src)) continue;
-    const raw = readFileSync(src, "utf8");
+    if (!(await exists(src))) continue;
+    const raw = await readText(src);
     const css = usesTailwind(raw) ? await compileCss(src, raw, root) : raw;
     const name = basename(href).replace(/\.css$/, "");
     const out = `${name}-${hash(css)}.css`;
-    writeFileSync(join(outDir, "assets", out), css);
+    await writeFile(join(outDir, "assets", out), css);
     html = html.replaceAll(href, `/assets/${out}`);
   }
 
@@ -213,13 +211,12 @@ export async function runBuild(options = {}) {
 
   const script = `<script type="module" src="${bundleHref}"></script>\n`;
   html = injectBeforeBody(html, script);
-  writeFileSync(join(outDir, "index.html"), html);
+  await writeFile(join(outDir, "index.html"), html);
 
   // Persist the manifest for `otfw serve`: SSR renders each navigation at request time,
   // so it needs the same route → chunk mapping the SSG pass uses below.
   if (chunkManifest) {
-    mkdirSync(join(outDir, "server"), { recursive: true });
-    writeFileSync(join(outDir, "server", "preload.json"), JSON.stringify(chunkManifest));
+    await writeFile(join(outDir, "server", "preload.json"), JSON.stringify(chunkManifest));
   }
 
   const chunks = result.output.filter((o) => o.type === "chunk").length;
@@ -239,14 +236,14 @@ export async function runBuild(options = {}) {
       i18n: config?.i18n,
       outDir: join(outDir, "server"),
     });
-    loaders = (await import(pathToFileURL(join(outDir, "server", "loaders.js")).href)).loaders;
+    loaders = (await import(toFileURL(join(outDir, "server", "loaders.js")).href)).loaders;
     loaderStep.done(`Route loaders — ${loaderFiles.length} → dist/server/loaders.js`);
   }
 
   // SSG: pre-render each route into static HTML using the shell we just composed
   // (so per-route files carry the same bundle + stylesheet links).
   let ssg = null;
-  if (process.argv.includes("--ssg")) {
+  if (args.includes("--ssg")) {
     const { runPrerender } = await import("./prerender.js");
     // Per-page last-updated map (git/frontmatter) for the article:modified_time tag.
     const lastUpdated = await runLastUpdated(root, appDir, config, exclude);
@@ -292,7 +289,7 @@ export async function runBuild(options = {}) {
 
   // Copy the public/ directory (static assets served at the root), if present.
   const publicDir = join(root, "public");
-  if (existsSync(publicDir)) cpSync(publicDir, outDir, { recursive: true });
+  if (await exists(publicDir)) await copyTree(publicDir, outDir);
 
   // Docs search: index the pre-rendered HTML with Pagefind (when SSG + opted in).
   let search = null;
@@ -321,6 +318,11 @@ export async function runBuild(options = {}) {
     if (llms) llmsStep.done(`LLM context — ${llms.paths.join(", ")}`);
     else llmsStep.done("LLM context — skipped");
   }
+
+  // Stop the `otfwc serve` children. Nothing else references them, but an open
+  // reader on a child's stdout keeps the runtime alive — so this is what lets a
+  // finished build actually exit.
+  await closeCompilers();
 
   console.log(`\n  → dist/  ready in ${fmtMs(performance.now() - t0)}\n`);
 }

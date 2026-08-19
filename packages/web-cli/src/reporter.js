@@ -1,16 +1,12 @@
-// Pretty, TTY-aware build reporter. Each phase is a "step" that shows an animated
-// spinner with live detail while it runs, then collapses to a green ✅ line with the
-// elapsed time when done. On a non-interactive stream (CI, piped logs) the spinner and
-// in-place updates are skipped — only the final ✅/✗ line per step is printed — so logs
-// stay clean and free of carriage returns.
+// Build reporter. Each phase is a "step" that announces itself, then collapses to a
+// green ✅ line with the elapsed time when done.
+//
+// There is no in-place spinner: the runtime exposes no raw stdout handle and no TTY
+// flag, only `console`, so an animated line has nothing to rewrite itself with. This
+// is the same output the previous reporter produced on a non-interactive stream (CI,
+// piped logs) — one line in, one line out per phase — now used everywhere.
 
-const TTY = !!process.stdout.isTTY;
-const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-const paint = (code, s) => (TTY ? `\x1b[${code}m${s}\x1b[0m` : s);
-const dim = (s) => paint(2, s);
-const cyan = (s) => paint(36, s);
-const red = (s) => paint(31, s);
+const FRAME_IN = "•";
 
 /** Humanize a millisecond duration: 940ms, 5.2s. */
 export function fmtMs(n) {
@@ -22,48 +18,27 @@ class Step {
     this.label = label;
     this.detail = "";
     this.t0 = performance.now();
-    this.frame = 0;
-    this.timer = null;
-    if (TTY) {
-      this.render();
-      this.timer = setInterval(() => this.render(), 80);
-    } else {
-      process.stdout.write(`  ${dim("•")} ${label}…\n`);
-    }
-  }
-
-  render() {
-    const spinner = cyan(FRAMES[(this.frame = (this.frame + 1) % FRAMES.length)]);
-    const detail = this.detail ? "  " + dim(this.detail) : "";
-    process.stdout.write(`\r\x1b[K  ${spinner} ${this.label}${detail}`);
+    console.log(`  ${FRAME_IN} ${label}…`);
   }
 
   /**
-   * Update the live detail (e.g. the current file or an `N/total` count) and repaint
-   * immediately. The immediate repaint matters because compilation runs synchronous
-   * subprocesses that block the event loop — the `setInterval` tick can't fire during
-   * them, so each `update()` is what actually advances the line.
+   * Record the live detail (the current file, an `N/total` count). Nothing is printed
+   * per update — that would be one line per compiled module — but the last value is
+   * kept so a failure can say how far the phase got.
    */
   update(detail) {
     this.detail = detail || "";
-    if (TTY) this.render();
-  }
-
-  _stop() {
-    if (this.timer) clearInterval(this.timer);
-    if (TTY) process.stdout.write("\r\x1b[K");
   }
 
   /** Finish the step: green ✅ with `msg` (defaults to the label) and elapsed time. */
   done(msg) {
-    this._stop();
-    process.stdout.write(`  ✅ ${msg || this.label}  ${dim(fmtMs(performance.now() - this.t0))}\n`);
+    console.log(`  ✅ ${msg || this.label}  ${fmtMs(performance.now() - this.t0)}`);
   }
 
-  /** Mark the step failed: red ✗ with `msg`. */
+  /** Mark the step failed: red ✗ with `msg`, plus how far it had got. */
   fail(msg) {
-    this._stop();
-    process.stdout.write(`  ${red("✗")} ${msg || this.label}\n`);
+    const where = this.detail ? `  (at ${this.detail})` : "";
+    console.log(`  ✗ ${msg || this.label}${where}`);
   }
 }
 

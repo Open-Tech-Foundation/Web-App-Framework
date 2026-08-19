@@ -24,10 +24,11 @@
 // a clean CSR mount per component. The per-request HTML is real either way (first
 // paint, dynamic content, SEO).
 
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { serve as serveHttp } from "runtime:http";
+import { join, toFileURL } from "runtime:path";
+import { args, exit, onSignal } from "runtime:process";
 
+import { exists, isFile, readBytes, readText } from "./runtime.js";
 import { runBuild } from "./build.js";
 import {
   MIME,
@@ -49,7 +50,8 @@ import {
 // `serve`). Explicit ports are tried once (fail fast if busy); otherwise we
 // default to 3000 and scan upward for a free port — mirroring `otfw dev`.
 function resolvePort() {
-  const argv = process.argv.slice(3);
+  // `args` starts at the subcommand, so the flags are everything after `serve`.
+  const argv = args.slice(1);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if ((a === "--port" || a === "-p") && argv[i + 1]) return { port: Number(argv[i + 1]), explicit: true };
@@ -60,23 +62,26 @@ function resolvePort() {
 
 // Site origin for absolute canonical / OG URLs in the rendered <head>.
 function resolveBaseUrl(config) {
-  const flag = process.argv.find((a) => a.startsWith("--base-url="));
+  const flag = args.find((a) => a.startsWith("--base-url="));
   if (flag) return flag.slice("--base-url=".length).replace(/\/+$/, "");
   if (config?.site?.url) return String(config.site.url).replace(/\/+$/, "");
   return "";
 }
 
-// Start `Bun.serve`, scanning upward for a free port unless one was given explicitly.
-function serve(start, explicit, options) {
+// Start the server, scanning upward for a free port unless one was given explicitly.
+// Binding completes asynchronously, so a busy port surfaces on `addr`, not on the call.
+async function serve(start, explicit, handler) {
   const end = explicit ? start : start + 99;
   for (let port = start; port <= end; port++) {
+    const server = serveHttp({ port }, handler);
     try {
-      return Bun.serve({ ...options, port });
+      const addr = await server.addr;
+      return { server, port: addr.port };
     } catch (e) {
-      if (e?.code === "EADDRINUSE") {
+      if (e?.code === "ERR_ADDRESS_IN_USE") {
         if (explicit) {
           console.error(`✗ port ${port} is already in use (pass a different --port)`);
-          process.exit(1);
+          exit(1);
         }
         continue;
       }
@@ -84,7 +89,7 @@ function serve(start, explicit, options) {
     }
   }
   console.error(`✗ no free port found in ${start}–${end}`);
-  process.exit(1);
+  exit(1);
 }
 
 export async function runServe() {
@@ -92,7 +97,7 @@ export async function runServe() {
   const { port: startPort, explicit: explicitPort } = resolvePort();
   if (!Number.isInteger(startPort) || startPort < 1 || startPort > 65535) {
     console.error(`✗ invalid --port value: ${startPort}`);
-    process.exit(1);
+    exit(1);
   }
 
   // 1. Client build → dist/ (interactive bundle + composed HTML shell). Reusing the
@@ -103,14 +108,14 @@ export async function runServe() {
   await runBuild({ hydrate: true });
 
   // 2. Server render bundle (held live for the process lifetime).
-  const { root, appDir, webEntry, otfwc, exclude } = loadProject();
+  const { root, appDir, webEntry, otfwc, exclude } = await loadProject();
   const distDir = join(root, "dist");
   const shellPath = join(distDir, "index.html");
-  if (!existsSync(shellPath)) {
+  if (!(await exists(shellPath))) {
     console.error(`✗ no dist/index.html — the client build did not produce a shell`);
-    process.exit(1);
+    exit(1);
   }
-  const shell = readFileSync(shellPath, "utf8");
+  const shell = await readText(shellPath);
 
   // Route → code-split chunks, written by the client build. Lets each SSR'd page hint
   // its own chunks with `<link rel="modulepreload">` so the browser fetches them
@@ -118,12 +123,12 @@ export async function runServe() {
   const preloadPath = join(distDir, "server", "preload.json");
   let chunkManifest = null;
   try {
-    if (existsSync(preloadPath)) chunkManifest = JSON.parse(readFileSync(preloadPath, "utf8"));
+    if (await exists(preloadPath)) chunkManifest = JSON.parse(await readText(preloadPath));
   } catch {
     // A malformed/partial manifest costs performance, never correctness — serve without it.
   }
 
-  const pages = discoverPages(appDir, exclude);
+  const pages = await discoverPages(appDir, exclude);
   const config = await loadConfig(root);
   const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
   const baseUrl = resolveBaseUrl(config);
@@ -173,9 +178,9 @@ export async function runServe() {
   // docs/MIDDLEWARE.md), so the composed `apiHandler` would run it twice.
   const apiFile = join(distDir, "server", "api.js");
   let api = null;
-  if (existsSync(apiFile)) {
-    const apiMod = await import(pathToFileURL(apiFile).href);
-    const discovered = discoverApiRoutes(appDir, exclude);
+  if (await exists(apiFile)) {
+    const apiMod = await import(toFileURL(apiFile).href);
+    const discovered = await discoverApiRoutes(appDir, exclude);
     api = {
       handler: apiMod.apiRoutes ?? apiMod.apiHandler,
       middleware: apiMod.middleware,
@@ -189,8 +194,8 @@ export async function runServe() {
   // live; per request it runs the matched page's loader (threaded into the render
   // as `router.data`) and answers the `<path>/__data.json` endpoint.
   const loadersFile = join(distDir, "server", "loaders.js");
-  const loaders = existsSync(loadersFile)
-    ? (await import(pathToFileURL(loadersFile).href)).loaders
+  const loaders = (await exists(loadersFile))
+    ? (await import(toFileURL(loadersFile).href)).loaders
     : null;
 
   const cleanupAll = () => {
@@ -200,29 +205,28 @@ export async function runServe() {
   };
   const shutdown = () => {
     cleanupAll();
-    process.exit(0);
+    exit(0);
   };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
-  process.once("exit", cleanupAll);
+  onSignal("SIGINT", shutdown);
+  onSignal("SIGTERM", shutdown);
 
   // Serve a built asset from dist/ (only regular files; a directory path falls
   // through to SSR). `dist/` already contains hashed assets, copied public/ files,
   // and any stylesheet output.
-  function serveStatic(pathname) {
+  async function serveStatic(pathname) {
     const file = join(distDir, pathname);
     if (!file.startsWith(distDir)) return null; // path-traversal guard
-    if (!existsSync(file) || !statSync(file).isFile()) return null;
+    if (!(await isFile(file))) return null;
     const ext = pathname.split(".").pop();
-    return new Response(readFileSync(file), {
+    return new Response(await readBytes(file), {
       headers: { "content-type": MIME[ext] ?? "application/octet-stream" },
     });
   }
 
   // The 404 response: the pre-built dist/404.html when present, else a bare body.
-  function renderNotFound() {
+  async function renderNotFound() {
     const notFound = join(distDir, "404.html");
-    const body = existsSync(notFound) ? readFileSync(notFound) : "<h1>404 — Not Found</h1>";
+    const body = (await exists(notFound)) ? await readBytes(notFound) : "<h1>404 — Not Found</h1>";
     return new Response(body, { status: 404, headers: { "content-type": "text/html" } });
   }
 
@@ -250,7 +254,7 @@ export async function runServe() {
       }
     }
     const result = await mod.renderRoute(url.pathname, null, url.search, { data });
-    if (!result) return renderNotFound();
+    if (!result) return await renderNotFound();
     const meta = i18nOn
       ? { ...result.metadata, links: [...(result.metadata.links || []), ...alternatesFor(stripLocale(url.pathname))] }
       : result.metadata;
@@ -298,7 +302,7 @@ export async function runServe() {
     // A path with a file extension is an asset request; serve it from dist/. A
     // miss on a real asset is a 404 (don't fall through to the SSR shell).
     if (/\.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== "/") {
-      const asset = serveStatic(url.pathname);
+      const asset = await serveStatic(url.pathname);
       return asset ?? new Response("not found", { status: 404 });
     }
     // Locale detection: a bare path (no locale prefix) whose visitor prefers a
@@ -322,8 +326,7 @@ export async function runServe() {
     }
   }
 
-  const server = serve(startPort, explicitPort, {
-    async fetch(req) {
+  async function handle(req) {
       const url = new URL(req.url);
       // Static assets that exist in dist/ are served directly, outside the
       // middleware pipeline — a root auth guard must not break the login page's
@@ -331,19 +334,23 @@ export async function runServe() {
       // middleware. Dotted paths that are *not* files (an `/api/v1.0` endpoint)
       // fall through into the pipeline like any other request.
       if (/\.[a-z0-9]+$/i.test(url.pathname) && url.pathname !== "/" && !url.pathname.endsWith("/__data.json")) {
-        const asset = serveStatic(url.pathname);
+        const asset = await serveStatic(url.pathname);
         if (asset) return asset;
       }
       const mw = api?.middleware;
       if (mw && mw.size > 0) return mw.run(req, terminal);
       return terminal(req, { url, locals: {} });
-    },
-  });
+  }
+
+  const { server, port } = await serve(startPort, explicitPort, handle);
 
   console.log(`\n  OTF Web SSR server`);
   const mwNote = api?.middlewareFiles?.length ? `, ${api.middlewareFiles.length} middleware` : "";
   const apiNote = api ? `, ${api.routes.length} API routes${mwNote}` : "";
   const loaderNote = loaders ? `, ${loaders.routes.length} loaders` : "";
-  console.log(`  → http://localhost:${server.port}  (${pages.length} routes, server-rendered${apiNote}${loaderNote})`);
+  console.log(`  → http://localhost:${port}  (${pages.length} routes, server-rendered${apiNote}${loaderNote})`);
   console.log(`  ✓ ready in ${Date.now() - bootStart}ms\n`);
+
+  // Hold the process open for the server's lifetime — see the same note in dev.js.
+  await server.finished;
 }

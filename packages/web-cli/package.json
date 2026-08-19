@@ -1,7 +1,7 @@
 {
   "name": "@opentf/web-cli",
   "version": "1.26.0",
-  "description": "OTF Web dev toolchain — the Rolldown-driven CSR dev server, production build, and SSG.",
+  "description": "OTF Web dev toolchain \u2014 the ES-Runtime dev server, production build, and SSG.",
   "type": "module",
   "bin": {
     "otfw": "./src/cli.js"
@@ -10,20 +10,16 @@
     ".": "./src/cli.js"
   },
   "scripts": {
-    "test": "bun test tests/",
     "test:e2e": "bun tests/e2e/serve.mjs && bun tests/e2e/dev-hmr.mjs && bun tests/e2e/dev-docs-hmr.mjs && bun tests/e2e/build-data.mjs && bun tests/e2e/build-metadata.mjs && bun tests/e2e/worker-assets.mjs && bun tests/e2e/hydrate-browser.mjs && bun tests/e2e/lifecycle-hooks-browser.mjs && bun tests/e2e/runtime-browser.mjs && bun tests/e2e/template-parity.mjs && bun tests/e2e/reparse-browser.mjs"
   },
   "files": [
     "src"
   ],
   "engines": {
-    "bun": ">=1.0.0"
+    "esdev": ">=0.4.0"
   },
   "dependencies": {
     "@opentf/web-compiler": "0.17.0",
-    "@tailwindcss/node": "4.2.2",
-    "@tailwindcss/oxide": "4.2.2",
-    "rolldown": "1.0.0-rc.17",
     "tailwindcss": "4.2.2"
   },
   "peerDependencies": {
@@ -34,7 +30,7 @@
     "web",
     "dev-server",
     "ssg",
-    "rolldown",
+    "esdev",
     "toolchain"
   ],
   "repository": {

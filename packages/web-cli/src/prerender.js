@@ -1,10 +1,11 @@
 // SSG pre-render (ARCHITECTURE.md §6): build a *server* bundle of the app with the
-// compiler's SSG backend (HTML-string renderers), then run it in plain Bun to
+// compiler's SSG backend (HTML-string renderers), then run it in-process to
 // render each route to a static HTML file. No DOM — the SSG output is pure string
 // concatenation, so no effects/lifecycle run.
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join } from "runtime:path";
+
+import { exists, writeFile } from "./runtime.js";
 
 import {
   DATA_FILE,
@@ -49,8 +50,8 @@ function absoluteUrl(baseUrl, path) {
 
 // Emit sitemap.xml (absolute <loc> per rendered path) — requires a base URL. A
 // project-supplied public/sitemap.xml takes precedence (it overwrites ours on copy).
-function writeSitemap(outDir, publicDir, baseUrl, paths) {
-  if (existsSync(join(publicDir, "sitemap.xml"))) return false;
+async function writeSitemap(outDir, publicDir, baseUrl, paths) {
+  if (await exists(join(publicDir, "sitemap.xml"))) return false;
   if (!baseUrl) {
     console.warn("⚠ sitemap.xml skipped: no site URL (pass --base-url or set otfw.config)");
     return false;
@@ -61,16 +62,16 @@ function writeSitemap(outDir, publicDir, baseUrl, paths) {
   const xml =
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
-  writeFileSync(join(outDir, "sitemap.xml"), xml);
+  await writeFile(join(outDir, "sitemap.xml"), xml);
   return true;
 }
 
 // Emit a permissive robots.txt referencing the sitemap (honor a public/ override).
-function writeRobots(outDir, publicDir, baseUrl, hasSitemap) {
-  if (existsSync(join(publicDir, "robots.txt"))) return false;
+async function writeRobots(outDir, publicDir, baseUrl, hasSitemap) {
+  if (await exists(join(publicDir, "robots.txt"))) return false;
   let body = "User-agent: *\nAllow: /\n";
   if (baseUrl && hasSitemap) body += `Sitemap: ${absoluteUrl(baseUrl, "/sitemap.xml")}\n`;
-  writeFileSync(join(outDir, "robots.txt"), body);
+  await writeFile(join(outDir, "robots.txt"), body);
   return true;
 }
 
@@ -139,8 +140,7 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
         const iso = lastUpdated[path];
         if (iso) head += `\n<meta property="article:modified_time" content="${escapeXml(iso)}">`;
         const file = htmlPathFor(outDir, urlPath);
-        mkdirSync(dirname(file), { recursive: true });
-        writeFileSync(
+        await writeFile(
           file,
           injectRouteData(
             injectHydrationData(
@@ -156,8 +156,7 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
           // undefined, so a 200 still parses as JSON).
           const dataFile =
             urlPath === "/" ? join(outDir, DATA_FILE) : join(outDir, urlPath, DATA_FILE);
-          mkdirSync(dirname(dataFile), { recursive: true });
-          writeFileSync(dataFile, dataJson || "null");
+          await writeFile(dataFile, dataJson || "null");
         }
         rendered.push(urlPath);
       } catch (e) {
@@ -176,7 +175,7 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
       let head = mod.renderHead({ robots: "noindex", ...result.metadata }, { baseUrl });
       const preload = modulepreloadTags(chunkManifest?.notFound);
       if (preload) head += `\n${preload}`;
-      writeFileSync(
+      await writeFile(
         join(outDir, "404.html"),
         injectHydrationData(injectMarkup(injectHead(shellHtml, head), result.html), result.hydration),
       );
@@ -187,8 +186,8 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
 
   // Crawl infrastructure: sitemap.xml + robots.txt (honoring public/ overrides).
   const publicDir = join(root, "public");
-  const hasSitemap = writeSitemap(outDir, publicDir, baseUrl, rendered);
-  writeRobots(outDir, publicDir, baseUrl, hasSitemap);
+  const hasSitemap = await writeSitemap(outDir, publicDir, baseUrl, rendered);
+  await writeRobots(outDir, publicDir, baseUrl, hasSitemap);
 
   // No "/" route (or it declared no description): fall back to the layout chain's
   // route-independent metadata — the site-wide description every route inherits.

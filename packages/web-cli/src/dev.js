@@ -18,11 +18,14 @@
 // Tailwind/CSS and `public/` assets are served as before. Project root = cwd, like
 // `vite`/`next dev`.
 
-import { rolldown } from "rolldown";
-import { existsSync, mkdirSync, readFileSync, statSync, watch, writeFileSync } from "node:fs";
-import { dirname, extname, join, sep } from "node:path";
-import { pathToFileURL } from "node:url";
+import { build } from "runtime:build";
+import { serve as serveHttp } from "runtime:http";
+import { dirname, extname, join, sep, toFileURL } from "runtime:path";
+import { args, exit, onSignal } from "runtime:process";
+import { watch } from "runtime:watch";
+import { broadcast, upgradeWebSocket } from "runtime:websocket";
 
+import { b64url, exists, isFile, mkdirp, readBytes, readText, unb64url, writeFile } from "./runtime.js";
 import { compileCss, usesTailwind } from "./tailwind.js";
 import { overlayClient } from "./overlay.js";
 import {
@@ -59,7 +62,9 @@ import {
 // honored exactly (fail fast if it's busy); with no flag we default to 3000 and
 // scan upward for a free port.
 function resolvePort() {
-  const argv = process.argv.slice(3); // args after `dev`
+  // `args` already excludes the runtime binary and this script, so it starts at the
+  // subcommand; everything after `dev` is what the flags live in.
+  const argv = args.slice(1);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if ((a === "--port" || a === "-p") && argv[i + 1]) {
@@ -72,18 +77,23 @@ function resolvePort() {
   return { port: 3000, explicit: false };
 }
 
-// Start `Bun.serve`. An explicit port is tried once (busy → fail fast); otherwise
-// scan upward from `start` for the first free port (EADDRINUSE → next).
-function serve(start, explicit, options) {
+// Start the HTTP server. An explicit port is tried once (busy → fail fast); otherwise
+// scan upward from `start` for the first free port.
+//
+// `serve()` returns before the socket is bound, so a busy port surfaces on `addr`
+// rather than from the call — which is where the scan has to look.
+async function serve(start, explicit, handler) {
   const end = explicit ? start : start + 99;
   for (let port = start; port <= end; port++) {
+    const server = serveHttp({ port }, handler);
     try {
-      return Bun.serve({ ...options, port });
+      const addr = await server.addr;
+      return { server, port: addr.port };
     } catch (e) {
-      if (e?.code === "EADDRINUSE") {
+      if (e?.code === "ERR_ADDRESS_IN_USE") {
         if (explicit) {
           console.error(`✗ port ${port} is already in use (pass a different --port)`);
-          process.exit(1);
+          exit(1);
         }
         continue;
       }
@@ -91,15 +101,14 @@ function serve(start, explicit, options) {
     }
   }
   console.error(`✗ no free port found in ${start}–${end}`);
-  process.exit(1);
+  exit(1);
 }
 
 // A route file ↔ its `/__route/<id>.js` URL. The id is the file path, base64url so
 // it survives a URL path segment; decoding recovers the absolute path to compile.
 const ROUTE_PREFIX = "/__route/";
-const toRouteUrl = (file) => `${ROUTE_PREFIX}${Buffer.from(file).toString("base64url")}.js`;
-const fromRouteUrl = (pathname) =>
-  Buffer.from(pathname.slice(ROUTE_PREFIX.length, -".js".length), "base64url").toString("utf8");
+const toRouteUrl = (file) => `${ROUTE_PREFIX}${b64url(file)}.js`;
+const fromRouteUrl = (pathname) => unb64url(pathname.slice(ROUTE_PREFIX.length, -".js".length));
 
 // Worker scripts (`new Worker(new URL("./w.js", import.meta.url))`) and binary
 // assets (`new URL("./x.wasm", import.meta.url)`) get their own dev URLs, same
@@ -108,28 +117,26 @@ const fromRouteUrl = (pathname) =>
 // first dot cleanly separates path from extension when decoding.
 const WORKER_PREFIX = "/__worker/";
 const ASSET_PREFIX = "/__asset/";
-const toWorkerUrl = (file) => `${WORKER_PREFIX}${Buffer.from(file).toString("base64url")}.js`;
-const fromWorkerUrl = (pathname) =>
-  Buffer.from(pathname.slice(WORKER_PREFIX.length, -".js".length), "base64url").toString("utf8");
-const toAssetUrl = (file) => `${ASSET_PREFIX}${Buffer.from(file).toString("base64url")}${extname(file)}`;
-const fromAssetUrl = (pathname) =>
-  Buffer.from(pathname.slice(ASSET_PREFIX.length).split(".")[0], "base64url").toString("utf8");
+const toWorkerUrl = (file) => `${WORKER_PREFIX}${b64url(file)}.js`;
+const fromWorkerUrl = (pathname) => unb64url(pathname.slice(WORKER_PREFIX.length, -".js".length));
+const toAssetUrl = (file) => `${ASSET_PREFIX}${b64url(file)}${extname(file)}`;
+const fromAssetUrl = (pathname) => unb64url(pathname.slice(ASSET_PREFIX.length).split(".")[0]);
 
 export async function runDev() {
   const bootStart = Date.now();
-  const { root, appDir, webEntry, otfwc, exclude } = loadProject();
+  const { root, appDir, webEntry, otfwc, exclude } = await loadProject();
   const { port: startPort, explicit: explicitPort } = resolvePort();
   if (!Number.isInteger(startPort) || startPort < 1 || startPort > 65535) {
     console.error(`✗ invalid --port value: ${startPort}`);
-    process.exit(1);
+    exit(1);
   }
 
-  const pages = discoverPages(appDir, exclude);
+  const pages = await discoverPages(appDir, exclude);
   if (pages.length === 0) {
     console.error(`✗ no page.jsx files found under ${appDir}`);
-    process.exit(1);
+    exit(1);
   }
-  assertNoRouteConflicts(appDir, exclude);
+  await assertNoRouteConflicts(appDir, exclude);
 
   const devDir = join(root, ".dev");
   const publicDir = join(root, "public");
@@ -148,11 +155,12 @@ export async function runDev() {
   let proxyRules = resolveProxyRules(config);
 
   const entryFile = join(devDir, "entry.js");
-  const loaderRoutes = () => discoverLoaders(appDir, exclude).map((f) => loaderRoutePath(f, appDir));
+  const loaderRoutes = async () =>
+    (await discoverLoaders(appDir, exclude)).map((f) => loaderRoutePath(f, appDir));
   // Re-discover the pages on disk. Returns whether the set changed — a new or
   // deleted page/layout changes the route table baked into the entry.
-  function syncPages() {
-    const fresh = discoverPages(appDir, exclude);
+  async function syncPages() {
+    const fresh = await discoverPages(appDir, exclude);
     if (fresh.length === pages.length && fresh.every((p, i) => p === pages[i])) return false;
     pages.length = 0;
     pages.push(...fresh);
@@ -163,15 +171,22 @@ export async function runDev() {
   // recreated if `.dev/` disappeared underneath us (a `git clean`, a temp sweeper, a
   // stray `rm -rf`). Without that, one missing file used to wedge the server in a
   // permanent "Cannot resolve entry module .dev/entry.js" until it was restarted.
-  function writeEntry() {
-    syncPages();
-    mkdirSync(devDir, { recursive: true });
-    writeFileSync(entryFile, entrySource(pages, appDir, toRouteUrl, config?.i18n, config?.nav, loaderRoutes()));
+  async function writeEntry() {
+    await syncPages();
+    await mkdirp(devDir);
+    await writeFile(
+      entryFile,
+      await entrySource(pages, appDir, toRouteUrl, config?.i18n, config?.nav, await loaderRoutes()),
+    );
   }
-  writeEntry();
+  await writeEntry();
 
-  let server;
-  const publish = (msg) => server?.publish("hmr", JSON.stringify(msg));
+  // Every live `/__hmr` socket. There are no server-side topics to subscribe to, so
+  // the set *is* the topic, and `broadcast` sends to all of them in one host crossing.
+  const hmrClients = new Set();
+  const publish = (msg) => {
+    if (hmrClients.size) broadcast(hmrClients, JSON.stringify(msg));
+  };
 
   // Two error sources, kept apart so one can't erase the other: `moduleErrors` are
   // otfwc diagnostics for a single module (the bundle still succeeds — the plugin
@@ -188,20 +203,24 @@ export async function runDev() {
   // A diagnostic on the wire: where it happened (project-relative, so the overlay can
   // show `app/blog/page.jsx:12:4` rather than a machine-specific absolute path), what
   // happened, and the code frame around it when the compiler located one.
-  // The bundler locates its own errors, in its own rendering (`╭─[ app/x.jsx:1:15 ]`).
-  // Lifting that position into the same fields means the overlay header reads the same
-  // whoever reported the problem.
-  const BUNDLER_LOC = /\u256d\u2500\[\s*([^\s\]]+):(\d+):(\d+)/;
+  // The bundler names the module that failed and locates nothing further inside it:
+  // `/abs/app/blog/page.jsx: Unexpected token`. Lifting that path into `file` — and
+  // off the front of the message, where the overlay would only repeat it — makes the
+  // header read the same whoever reported the problem. Only the compiler supplies a
+  // line, a column and a code frame; a bundler error shows the file alone.
+  const BUNDLER_FILE = /^((?:\/|[A-Za-z]:\\)[^\n]+?): (?=\S)/;
+  const relative = (p) => (p.startsWith(root + sep) ? p.slice(root.length + 1) : p);
   const errorFrame = (file, { message, line, column, frame, note } = {}) => {
-    const text = plain(message);
-    const found = line ? null : BUNDLER_LOC.exec(text);
+    let text = plain(message);
+    const found = line ? null : BUNDLER_FILE.exec(text);
+    if (found) text = text.slice(found[0].length);
     return {
       type: "error",
       kind: "compile",
       id: file,
-      file: found?.[1] ?? (file.startsWith(root + sep) ? file.slice(root.length + 1) : file),
-      line: line ?? (found ? Number(found[2]) : null),
-      column: column ?? (found ? Number(found[3]) : null),
+      file: relative(found?.[1] ?? file),
+      line: line ?? null,
+      column: column ?? null,
       message: text,
       frame: frame ? plain(frame) : null,
       note: note ?? null,
@@ -235,14 +254,16 @@ export async function runDev() {
   const devAssetFiles = new Set();
   const devWorkerAssets = {
     name: "otfw:dev-worker-assets",
-    async transform(code, id) {
+    transform: {
+      filter: { id: /\.[mc]?[jt]sx?$/ },
+      async handler(code, id, ctx) {
       const found = scanNewUrlRefs(code);
       if (found.length === 0) return null;
       const edits = [];
       for (const ref of found) {
-        const abs = await resolveNewUrlRef(this, ref.spec, id);
+        const abs = await resolveNewUrlRef(ctx, ref.spec, id);
         if (!abs) {
-          this.warn(
+          ctx.warn(
             `could not resolve new URL(${JSON.stringify(ref.spec)}, import.meta.url) ` +
               `in ${id} — left as-is; it will 404 at runtime`,
           );
@@ -263,6 +284,7 @@ export async function runDev() {
       }
       if (edits.length === 0) return null;
       return { code: applyNewUrlEdits(code, edits), moduleSideEffects: true };
+      },
     },
   };
   // Rebuilt whenever the config changes (the docs/blog plugins come from it); every
@@ -280,20 +302,21 @@ export async function runDev() {
   // chunk holding them depends on page frontmatter and `_meta.*` files it never
   // imports. Invalidation keys off this set (see `invalidateFile`).
   async function bundle({ input, external, alias }) {
-    const b = await rolldown({
+    const b = await build({
       input,
       resolve: { alias: alias || {}, extensions: EXTENSIONS },
       external,
       // Enables the runtime's dev-only diagnostics (SPEC §5.4.4); `otfw build`
       // defines this as "production" so they compile away.
-      transform: { define: { "process.env.NODE_ENV": '"development"' } },
+      define: { "process.env.NODE_ENV": '"development"' },
       plugins,
     });
     try {
-      const { output } = await b.generate({ format: "esm", codeSplitting: false });
-      // Virtual module ids (`\0…`) aren't files; drop them.
-      const deps = new Set((await b.watchFiles).filter((f) => f && !f.startsWith("\0")));
-      watchSourceDirs(deps);
+      const { output, watchFiles } = await b.generate({ format: "esm", codeSplitting: false });
+      // A virtual module has no file behind it and is already left out of
+      // `watchFiles`; guard anyway so a plugin id can never enter the watch set.
+      const deps = new Set(watchFiles.filter((f) => f && f.startsWith("/")));
+      await watchSources(deps);
       return { code: output[0].code, deps };
     } finally {
       await b.close();
@@ -309,7 +332,7 @@ export async function runDev() {
   // and `@opentf/web` is external (→ import map → /@fw.js). The entry source is
   // regenerated first so the route table can never be stale (or the file missing).
   async function buildEntry() {
-    writeEntry();
+    await writeEntry();
     return bundle({
       input: entryFile,
       external: (id) => id === "@opentf/web" || id.startsWith(ROUTE_PREFIX),
@@ -419,7 +442,7 @@ export async function runDev() {
   // createApiHandler / createMiddleware) until the next successful rebuild.
   async function brokenApiStub(err) {
     try {
-      const serverApi = pathToFileURL(join(dirname(webEntry), "server", "index.js")).href;
+      const serverApi = toFileURL(join(dirname(webEntry), "server", "index.js")).href;
       const { createApiHandler, createMiddleware } = await import(serverApi);
       // Strip ANSI color codes — the bundler's terminal diagnostic goes into JSON here.
       const msg = String(err?.message ?? err).replace(/\u001b\[[0-9;]*m/g, "");
@@ -427,7 +450,7 @@ export async function runDev() {
       const stub = Object.fromEntries(
         ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((m) => [m, fail]),
       );
-      const { routes, middleware } = discoverApiRoutes(appDir, exclude);
+      const { routes, middleware } = await discoverApiRoutes(appDir, exclude);
       const handler = createApiHandler(Object.fromEntries(routes.map((f) => [f, stub])), {}, { appDir });
       return {
         handler,
@@ -501,7 +524,7 @@ export async function runDev() {
   // crawl the module graph once, in the background, purely to learn which source
   // directories to watch. From then on every build reports its own (see `bundle`).
   moduleGraph(otfwc, webEntry, [...pages, webEntry])
-    .then((g) => watchSourceDirs(g.files()))
+    .then((g) => watchSources(g.files()))
     .catch(() => {});
 
   function clearAllCaches() {
@@ -548,34 +571,33 @@ export async function runDev() {
   const TEMP_FILE_RE = /(^|\/)(\.#|~\$)|(\.(swp|swx|tmp|temp)|~)$|(^|\/)4913$/;
   const isIgnored = (p) => p.split(sep).some((seg) => IGNORED_DIRS.has(seg));
 
-  const watchers = new Map(); // directory → FSWatcher
-  function watchDir(dir, { recursive = false, accept = () => true } = {}) {
-    if (watchers.has(dir) || !existsSync(dir)) return;
+  // One watcher for the whole server: `runtime:watch` takes many paths and lets the
+  // set grow at runtime, so there is no watcher-per-directory bookkeeping and no
+  // descriptor to leak — `add` is how a directory joins, and the single event stream
+  // carries the absolute path of whatever changed.
+  // Seeded with `app/`, which always exists — `loadProject` refuses a project without
+  // one — because a watcher has to start with at least one path.
+  const watcher = watch([appDir], { recursive: true });
+  const watched = new Set([appDir]);
+
+  async function watchPath(dir, { recursive = true } = {}) {
+    if (watched.has(dir) || !(await exists(dir))) return;
+    watched.add(dir);
     try {
-      const w = watch(dir, { recursive }, (_evt, name) => {
-        if (!name || isIgnored(name) || TEMP_FILE_RE.test(name)) return;
-        const file = join(dir, name);
-        if (accept(file, name)) queueChange(file);
-      });
-      w.on?.("error", (e) => console.error(`⚠ file watcher stopped for ${dir}: ${e?.message ?? e}`));
-      watchers.set(dir, w);
+      await watcher.add(dir);
     } catch (e) {
+      watched.delete(dir);
       console.error(`⚠ could not watch ${dir}: ${e?.message ?? e}`);
     }
   }
 
   // App sources — every file under `app/`, not just the ones we can name: a page can
-  // import a `.json` fixture, an `.svg`, a local `.wasm`.
-  watchDir(appDir, { recursive: true });
-  // The project root, shallow: only the two files that change what the server serves.
-  // A `public/` created later shows up here too, and gets its own watcher.
-  watchDir(root, {
-    accept: (file, name) => {
-      if (name === "public") watchDir(publicDir, { recursive: true });
-      return name === "index.html" || CONFIG_FILENAMES.includes(name);
-    },
-  });
-  watchDir(publicDir, { recursive: true });
+  // import a `.json` fixture, an `.svg`, a local `.wasm`. The project root is watched
+  // too, for `index.html` and `otfw.config.*`; `flush` decides what each event means,
+  // so nothing here has to filter by name.
+  await watchPath(appDir);
+  await watchPath(root, { recursive: false });
+  await watchPath(publicDir);
 
   // Watch the directories holding the app's modules outside `app/` — a shared `lib/`
   // or `src/`, and (in a monorepo) a workspace package linked into the app, where the
@@ -583,14 +605,25 @@ export async function runDev() {
   // generated output are skipped: anything whose path crosses an ignored directory.
   // Called with each build's dependency set, so a directory starts being watched as
   // soon as something in it is first pulled into a chunk.
-  function watchSourceDirs(files) {
+  async function watchSources(files) {
     for (const id of files) {
       const dir = dirname(id);
       if (isIgnored(dir) || dir === appDir) continue;
       if (dir.startsWith(appDir + sep)) continue; // covered by the recursive app watcher
-      watchDir(dir);
+      if (dir.startsWith(root + sep) || dir === root) continue; // covered by the root watcher
+      await watchPath(dir, { recursive: false });
     }
   }
+
+  // Drain the watcher. Events carry absolute paths already, so the only filtering
+  // left is the one the old per-directory callbacks did by hand: generated or
+  // vendored trees, and the temp files editors write through on every save.
+  (async () => {
+    for await (const { path } of watcher) {
+      if (isIgnored(path) || TEMP_FILE_RE.test(path)) continue;
+      queueChange(path);
+    }
+  })().catch((e) => console.error(`⚠ file watching stopped: ${e?.message ?? e}`));
 
   // Filesystem events arrive in bursts — one save can fire several, and a `git
   // checkout` fires hundreds. Collect them and handle the batch once, so the browser
@@ -641,6 +674,11 @@ export async function runDev() {
       }
       // `index.html` is read from disk per request; nothing to invalidate.
       if (inRootDir && name === "index.html") continue;
+      // A `public/` created after startup starts being watched here.
+      if (inRootDir && name === "public") {
+        await watchPath(publicDir);
+        continue;
+      }
       // An API endpoint/middleware edit rebuilds the API bundle on the next request.
       if (IS_API(name)) {
         invalidateApi();
@@ -676,12 +714,10 @@ export async function runDev() {
   }
 
   const closeWatchers = () => {
-    for (const w of watchers.values()) {
-      try {
-        w.close();
-      } catch {}
-    }
-    watchers.clear();
+    try {
+      watcher.close();
+    } catch {}
+    watched.clear();
   };
   // Ctrl+C is the normal way to stop a dev server, so treat it as a clean shutdown
   // (exit 0) rather than the conventional 130 — otherwise `bun run dev` reports it as
@@ -690,15 +726,10 @@ export async function runDev() {
     closeWatchers();
     invalidateApi();
     invalidateLoaders();
-    process.exit(0);
+    exit(0);
   };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
-  process.once("exit", () => {
-    closeWatchers();
-    invalidateApi();
-    invalidateLoaders();
-  });
+  onSignal("SIGINT", shutdown);
+  onSignal("SIGTERM", shutdown);
 
   // Import map (so `@opentf/web` resolves to the shared runtime chunk) + entry + the
   // dev overlay / reload client. The import map must precede the module script.
@@ -709,23 +740,22 @@ export async function runDev() {
     // relative to the project, as an editor would.
     `<script>window.__otfwRoot=${JSON.stringify(root)};${overlayClient}</script>\n`;
 
-  const buildHtml = () => injectBeforeBody(readHtmlShell(root), injected);
+  const buildHtml = async () => injectBeforeBody(await readHtmlShell(root), injected);
 
   async function serveStatic(pathname) {
     // Only serve regular files — a request whose path is a directory (e.g. a route
     // like `/blog` that also exists as `public/blog/`) must fall through to the SPA
     // shell, not try to read the directory.
-    const isFile = (f) => existsSync(f) && statSync(f).isFile();
     let file = join(root, pathname);
     if (!file.startsWith(root)) return null;
-    if (!isFile(file)) {
+    if (!(await isFile(file))) {
       const fromPublic = join(root, "public", pathname);
-      if (!fromPublic.startsWith(join(root, "public") + "/") || !isFile(fromPublic)) return null;
+      if (!fromPublic.startsWith(join(root, "public") + "/") || !(await isFile(fromPublic))) return null;
       file = fromPublic;
     }
     const ext = pathname.split(".").pop();
     if (ext === "css") {
-      const source = readFileSync(file, "utf8");
+      const source = await readText(file);
       const out = usesTailwind(source)
         ? await compileCss(file, source, root).catch((err) => {
             console.error(`✗ tailwind failed for ${pathname}:\n${err?.message ?? err}`);
@@ -734,27 +764,27 @@ export async function runDev() {
         : source;
       return new Response(out, { headers: { "content-type": "text/css" } });
     }
-    return new Response(readFileSync(file), {
+    return new Response(await readBytes(file), {
       headers: { "content-type": MIME[ext] ?? "application/octet-stream" },
     });
   }
 
   const js = (code) => new Response(code, { headers: { "content-type": "text/javascript" } });
 
-  server = serve(startPort, explicitPort, {
-    websocket: {
-      open: (ws) => {
-        ws.subscribe("hmr");
-        // A page that loads *after* a failed build still needs to see the error.
-        // (`flush` clears stale diagnostics, so what's here is the current state.)
-        const err = firstError();
-        if (err) ws.send(JSON.stringify(err));
-      },
-    },
-    async fetch(req, srv) {
+  async function handle(req) {
       const { pathname } = new URL(req.url);
       if (pathname === "/__hmr") {
-        return srv.upgrade(req) ? undefined : new Response("upgrade failed", { status: 400 });
+        const { response, socket } = upgradeWebSocket(req);
+        hmrClients.add(socket);
+        socket.addEventListener("close", () => hmrClients.delete(socket));
+        socket.addEventListener("error", () => hmrClients.delete(socket));
+        // A page that loads *after* a failed build still needs to see the error.
+        // (`flush` clears stale diagnostics, so what's here is the current state.)
+        // The socket queues writes until the handshake completes, so this is safe
+        // to send before the connection is formally open.
+        const err = firstError();
+        if (err) socket.send(JSON.stringify(err));
+        return response;
       }
       if (pathname === "/@fw.js") return js(await serveFramework());
       if (pathname === "/bundle.js") return js(await serveEntry());
@@ -768,14 +798,14 @@ export async function runDev() {
       // worker/asset in a symlinked dependency (real path outside `root`) still serves.
       if (pathname.startsWith(WORKER_PREFIX) && pathname.endsWith(".js")) {
         const file = fromWorkerUrl(pathname);
-        if (!devWorkerFiles.has(file) || !existsSync(file)) return new Response("not found", { status: 404 });
+        if (!devWorkerFiles.has(file) || !(await exists(file))) return new Response("not found", { status: 404 });
         return js(await serveWorker(file));
       }
       if (pathname.startsWith(ASSET_PREFIX)) {
         const file = fromAssetUrl(pathname);
-        if (!devAssetFiles.has(file) || !existsSync(file)) return new Response("not found", { status: 404 });
+        if (!devAssetFiles.has(file) || !(await exists(file))) return new Response("not found", { status: 404 });
         const ext = extname(file).slice(1);
-        return new Response(readFileSync(file), {
+        return new Response(await readBytes(file), {
           headers: { "content-type": MIME[ext] ?? "application/octet-stream" },
         });
       }
@@ -833,16 +863,23 @@ export async function runDev() {
           if (asset) return asset;
           if (/\.[a-z0-9]+$/i.test(path2)) return new Response("not found", { status: 404 });
         }
-        return new Response(buildHtml(), { headers: { "content-type": "text/html" } });
+        return new Response(await buildHtml(), { headers: { "content-type": "text/html" } });
       };
       const mw = api?.middleware;
       if (mw && mw.size > 0) return mw.run(req, terminal);
       return terminal(req, { url: new URL(req.url), locals: {} });
-    },
-  });
+  }
+
+  const { server, port } = await serve(startPort, explicitPort, handle);
 
   console.log(`\n  OTF Web dev server`);
-  console.log(`  → http://localhost:${server.port}  (${pages.length} routes, on-demand)`);
+  console.log(`  → http://localhost:${port}  (${pages.length} routes, on-demand)`);
   for (const r of proxyRules) console.log(`  ↪ proxy ${r.prefix} → ${r.target}`);
   console.log(`  ✓ ready in ${Date.now() - bootStart}ms — routes compile on first visit\n`);
+
+  // A listening server does not by itself keep the runtime alive, and returning from
+  // here would end the process the moment startup finished. Awaiting the server's
+  // lifetime is what makes `otfw dev` a server rather than a one-shot command; it
+  // resolves when `shutdown` stops it.
+  await server.finished;
 }
