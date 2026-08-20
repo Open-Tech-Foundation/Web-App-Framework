@@ -3,62 +3,30 @@
 // unit tests can't cover: the full build → server-bundle → per-request render path,
 // the static-asset serving, the HTTP status codes, and the client-bundle injection.
 //
-//   bun packages/web-cli/tests/e2e/serve.mjs
+//   esdev packages/web-cli/tests/e2e/serve.mjs
 //
-// Needs the workspace otfwc debug build (../../../../target/debug/otfwc; override
-// with OTFWC_BIN) so the fixture's JSX compiles. Exits 0 if every assertion holds,
-// 1 otherwise. The fixture's build artifacts (dist/, temp dirs) are cleaned up.
+// Run from the repository root. Needs the workspace otfwc debug build
+// (target/debug/otfwc; override with OTFWC_BIN) so the fixture's JSX compiles. Exits
+// 0 if every assertion holds, 1 otherwise. The fixture's build artifacts (dist/,
+// temp dirs) are cleaned up.
 
-import { rmSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import {
+  assert,
+  cleanFixture,
+  cli,
+  HERE,
+  run,
+  stop,
+  visibleText,
+  waitForReady,
+} from "./lib.js";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
-const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
-const CLI = ROOT + "packages/web-cli/src/cli.js";
-const FIXTURE = HERE + "fixture";
-const OTFWC = process.env.OTFWC_BIN || ROOT + "target/debug/otfwc";
-
-let passed = 0;
-const ok = (label) => (passed++, console.log(`  ✓ ${label}`));
-function assert(cond, label) {
-  if (!cond) throw new Error(`assertion failed: ${label}`);
-  ok(label);
-}
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// SSG markup interleaves hydration markers (`todo <!--$-->alpha<!--/-->`); strip
-// them so assertions can match the text a browser would show.
-const visibleText = (html) => html.replace(/<!--[^>]*-->/g, "");
-
-// Remove the fixture's generated build output between/after runs.
-function cleanFixture() {
-  for (const d of ["dist", ".otfw", ".otfw-ssg", ".otfw-api", ".otfw-loaders", ".otfw-loaders-build", ".dev"]) {
-    rmSync(`${FIXTURE}/${d}`, { recursive: true, force: true });
-  }
-}
-
-// Read the child's stdout until the "ready" line appears, returning the bound port.
-async function waitForReady(proc, timeoutMs = 60000) {
-  const decoder = new TextDecoder();
-  let buf = "";
-  const deadline = Date.now() + timeoutMs;
-  for await (const chunk of proc.stdout) {
-    buf += decoder.decode(chunk);
-    const m = buf.match(/http:\/\/localhost:(\d+)/);
-    if (m && /ready in/.test(buf)) return Number(m[1]);
-    if (Date.now() > deadline) break;
-  }
-  throw new Error(`server did not become ready in ${timeoutMs}ms:\n${buf}`);
-}
+const FIXTURE = `${HERE}/fixture`;
 
 async function main() {
-  cleanFixture();
+  await cleanFixture(FIXTURE);
 
-  const proc = Bun.spawn(["bun", CLI, "serve"], {
-    cwd: FIXTURE,
-    env: { ...process.env, OTFWC_BIN: OTFWC },
-    stdout: "pipe",
-    stderr: "inherit",
-  });
+  const proc = await cli(["serve"], { root: FIXTURE });
 
   let port;
   try {
@@ -236,15 +204,10 @@ async function main() {
       "setCookie's Set-Cookie header survives to the client",
     );
 
-    console.log(`\n✓ otfw serve e2e — ${passed} assertions passed\n`);
   } finally {
-    proc.kill();
-    await proc.exited.catch(() => {});
-    cleanFixture();
+    await stop(proc);
+    await cleanFixture(FIXTURE);
   }
 }
 
-main().catch((e) => {
-  console.error(`\n✗ ${e?.message ?? e}\n`);
-  process.exit(1);
-});
+await run("otfw serve e2e", main);
