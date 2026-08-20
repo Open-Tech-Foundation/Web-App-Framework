@@ -20,7 +20,8 @@
     "typecheck": "tsc --noEmit",
     "cf:build": "bun scripts/build-website-standalone.mjs",
     "preview": "bun run cf:build && wrangler dev",
-    "deploy": "bun run cf:build && wrangler deploy"
+    "deploy": "bun run cf:build && wrangler deploy",
+    "test:e2e": "esdev packages/web-cli/tests/e2e/all.mjs"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.33.1",

@@ -13,17 +13,15 @@
 import {
   assert,
   b64url,
-  cli,
-  drain,
   mkdirp,
   ROOT,
   rmrf,
   run,
   scratch,
   sleep,
+  startDevServer,
   stop,
   symlink,
-  waitForOutput,
   writeTree,
   writeFile,
 } from "./lib.js";
@@ -63,38 +61,13 @@ async function linkWorkspace() {
   }
 }
 
-// Start the dev server on a free high port. Not the default 3000: a developer's own
-// server (and the browser tab pointed at it) commonly owns that one, and it would
-// answer these requests — or take the reloads meant for this test. A port we pick can
-// still be taken, so a busy one is retried rather than failing the run.
-async function startDevServer(attempts = 5) {
-  for (let i = 0; i < attempts; i++) {
-    const port = PORT_BASE + Math.floor(Math.random() * 2000);
-    const proc = await cli(["dev", `--port=${port}`], { root: APP });
-    try {
-      await waitForOutput(
-        proc.stdout,
-        (buf) => buf.includes(`localhost:${port}`) && /ready in/.test(buf),
-        { what: `the dev server on port ${port}` },
-      );
-    } catch (e) {
-      await stop(proc);
-      if (i === attempts - 1) throw e;
-      continue;
-    }
-    // Keep draining so the child never blocks on a full stdout pipe.
-    void drain(proc.stdout);
-    return { proc, port };
-  }
-}
-
 const routeUrl = (file) => `/__route/${b64url(file)}.js`;
 
 async function main() {
   await scaffold();
   await linkWorkspace();
 
-  const { proc, port } = await startDevServer();
+  const { proc, port } = await startDevServer(APP, { portBase: PORT_BASE });
 
   const BASE = `http://localhost:${port}`;
   const text = async (path) => (await fetch(BASE + path)).text();

@@ -218,6 +218,34 @@ export async function drain(stream) {
   }
 }
 
+/**
+ * Start `otfw dev` on the app at `root`, on a free high port.
+ *
+ * Not the default 3000: a developer's own server (and the browser tab pointed at it)
+ * commonly owns that one, and it would answer these requests — or take the reloads
+ * meant for the test. A port we pick can still be taken, so a busy one is retried.
+ */
+export async function startDevServer(root, { portBase, attempts = 5 } = {}) {
+  for (let i = 0; i < attempts; i++) {
+    const port = portBase + Math.floor(Math.random() * 2000);
+    const proc = await cli(["dev", `--port=${port}`], { root });
+    try {
+      await waitForOutput(
+        proc.stdout,
+        (buf) => buf.includes(`localhost:${port}`) && /ready in/.test(buf),
+        { what: `the dev server on port ${port}` },
+      );
+    } catch (e) {
+      await stop(proc);
+      if (i === attempts - 1) throw e;
+      continue;
+    }
+    // Keep draining so the child never blocks on a full stdout pipe.
+    void drain(proc.stdout);
+    return { proc, port };
+  }
+}
+
 /** The port an `otfw dev`/`otfw serve` child announces once it is listening. */
 export const waitForReady = (proc, timeoutMs) =>
   waitForOutput(
