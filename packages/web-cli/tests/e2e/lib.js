@@ -88,11 +88,27 @@ const ARTIFACTS = [
   ".dev",
 ];
 
-/**
- * A scratch directory for a run, anchored here rather than at the system temp dir:
- * the sandbox is the working directory, so `/tmp` is not somewhere this can write.
- */
-export const tempDir = (prefix) => makeTempDir({ dir: HERE, prefix: `${prefix}-` });
+// Where a test's generated trees go. It has to be inside the sandbox — the working
+// directory is the only place this process may write, so the system temp dir is out —
+// and it has to be at the top of the workspace rather than beside these files: the
+// packages are symlinked into each other's `node_modules`, and a generated app under
+// one of them has a second path that reads as vendored. The dev server ignores
+// anything under `node_modules`, so a watcher event for such an app never arrives.
+const SCRATCH = join(ROOT, ".e2e");
+
+/** A named scratch tree, replacing whatever a previous run left there. */
+export async function scratch(name) {
+  const dir = join(SCRATCH, name);
+  await rmrf(dir);
+  await mkdirp(dir);
+  return dir;
+}
+
+/** A fresh scratch tree with a generated name, for a test that needs more than one. */
+export async function tempDir(prefix) {
+  await mkdirp(SCRATCH);
+  return makeTempDir({ dir: SCRATCH, prefix: `${prefix}-` });
+}
 
 /** Put a fixture app back the way it was checked in. */
 export const cleanFixture = (fixture) =>
@@ -185,6 +201,21 @@ export async function waitForOutput(stream, match, { timeoutMs = 60000, what = "
     reader.releaseLock();
   }
   throw new Error(`never saw ${what} in ${timeoutMs}ms:\n${buf}`);
+}
+
+/**
+ * Read a stream to its end and discard it, so a long-running child never blocks on a
+ * full stdout pipe once the line the test was waiting for has gone by.
+ */
+export async function drain(stream) {
+  const reader = stream.getReader();
+  try {
+    for (;;) if ((await reader.read()).done) return;
+  } catch {
+    /* the child is gone */
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 /** The port an `otfw dev`/`otfw serve` child announces once it is listening. */

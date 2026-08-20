@@ -3,63 +3,63 @@
 // both halves of the loop: the HMR frame the browser is sent, and what the server
 // serves next. These are the cases that used to need a dev-server restart.
 //
-//   bun packages/web-cli/tests/e2e/dev-hmr.mjs
+//   esdev packages/web-cli/tests/e2e/dev-hmr.mjs
 //
-// Needs the workspace otfwc debug build (../../../../target/debug/otfwc; override
-// with OTFWC_BIN). Exits 0 if every assertion holds, 1 otherwise. The generated app
-// lives in a temp directory inside the repo (so `@opentf/web` resolves through the
-// workspace) and is removed on the way out.
+// Run from the repository root. Needs the workspace otfwc debug build
+// (target/debug/otfwc; override with OTFWC_BIN). Exits 0 if every assertion holds, 1
+// otherwise. The generated app lives in a directory inside the repo (so `@opentf/web`
+// resolves through the workspace) and is removed on the way out.
 
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import {
+  assert,
+  b64url,
+  cli,
+  drain,
+  mkdirp,
+  ROOT,
+  rmrf,
+  run,
+  scratch,
+  sleep,
+  stop,
+  symlink,
+  waitForOutput,
+  writeTree,
+  writeFile,
+} from "./lib.js";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
-const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
-const CLI = ROOT + "packages/web-cli/src/cli.js";
-const OTFWC = process.env.OTFWC_BIN || ROOT + "target/debug/otfwc";
-const APP = join(HERE, ".dev-hmr-app");
+let APP; // the generated app, in the workspace scratch tree
 const PORT_BASE = 41000;
 
-let passed = 0;
-const assert = (cond, label) => {
-  if (!cond) throw new Error(`assertion failed: ${label}`);
-  passed++;
-  console.log(`  ✓ ${label}`);
-};
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Long enough for a watcher event to be debounced, handled, and published.
 const SETTLE = 1500;
 
-const write = (rel, source) => {
-  const file = join(APP, rel);
-  mkdirSync(join(file, ".."), { recursive: true });
-  writeFileSync(file, source);
+const write = async (rel, source) => {
+  const file = `${APP}/${rel}`;
+  await writeFile(file, source);
   return file;
 };
 
-function scaffold() {
-  rmSync(APP, { recursive: true, force: true });
-  mkdirSync(APP, { recursive: true });
-  write("package.json", JSON.stringify({ name: "otfw-dev-hmr-app", private: true, type: "module" }) + "\n");
-  write("index.html", `<!doctype html><html><head><title>HMR</title></head><body><div id="app"></div></body></html>\n`);
-  write("app/layout.jsx", `export default function Layout({ children }) { return <main>{children}</main>; }\n`);
-  write("lib/label.js", `export const label = "LIB-1";\n`);
-  write("app/page.jsx", `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>HOME-1 {label}</h1>; }\n`);
-  write("public/asset.txt", "ASSET-1");
+async function scaffold() {
+  APP = await scratch("dev-hmr-app");
+  await writeTree(APP, {
+    "package.json": `${JSON.stringify({ name: "otfw-dev-hmr-app", private: true, type: "module" })}\n`,
+    "index.html": `<!doctype html><html><head><title>HMR</title></head><body><div id="app"></div></body></html>\n`,
+    "app/layout.jsx": `export default function Layout({ children }) { return <main>{children}</main>; }\n`,
+    "lib/label.js": `export const label = "LIB-1";\n`,
+    "app/page.jsx": `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>HOME-1 {label}</h1>; }\n`,
+    "public/asset.txt": "ASSET-1",
+  });
 }
-
 
 // Point the fixture at the workspace packages, so the test exercises this checkout
 // rather than whatever copy of @opentf/* the runtime's global cache happens to hold.
-function linkWorkspace() {
-  const dir = join(APP, "node_modules/@opentf");
-  mkdirSync(dir, { recursive: true });
+async function linkWorkspace() {
+  const dir = `${APP}/node_modules/@opentf`;
+  await mkdirp(dir);
   for (const name of ["web"]) {
-    const target = join(ROOT, "packages", name);
-    const link = join(dir, name);
-    rmSync(link, { recursive: true, force: true });
-    symlinkSync(target, link, "dir");
+    await rmrf(`${dir}/${name}`);
+    await symlink(`${ROOT}/packages/${name}`, `${dir}/${name}`);
   }
 }
 
@@ -70,43 +70,29 @@ function linkWorkspace() {
 async function startDevServer(attempts = 5) {
   for (let i = 0; i < attempts; i++) {
     const port = PORT_BASE + Math.floor(Math.random() * 2000);
-    const proc = Bun.spawn(["bun", CLI, "dev", "--port", String(port)], {
-      cwd: APP,
-      env: { ...process.env, OTFWC_BIN: OTFWC },
-      stdout: "pipe",
-      stderr: "inherit",
-    });
-    const decoder = new TextDecoder();
-    let buf = "";
-    const deadline = Date.now() + 60000;
-    let ready = false;
-    for await (const chunk of proc.stdout) {
-      buf += decoder.decode(chunk);
-      if (buf.includes(`localhost:${port}`) && /ready in/.test(buf)) {
-        ready = true;
-        break;
-      }
-      if (Date.now() > deadline) break;
+    const proc = await cli(["dev", `--port=${port}`], { root: APP });
+    try {
+      await waitForOutput(
+        proc.stdout,
+        (buf) => buf.includes(`localhost:${port}`) && /ready in/.test(buf),
+        { what: `the dev server on port ${port}` },
+      );
+    } catch (e) {
+      await stop(proc);
+      if (i === attempts - 1) throw e;
+      continue;
     }
-    if (ready) {
-      // Keep draining so the child never blocks on a full stdout pipe.
-      (async () => {
-        try {
-          for await (const _ of proc.stdout);
-        } catch {}
-      })();
-      return { proc, port };
-    }
-    proc.kill();
-    if (i === attempts - 1) throw new Error(`dev server did not start on port ${port}:\n${buf}`);
+    // Keep draining so the child never blocks on a full stdout pipe.
+    void drain(proc.stdout);
+    return { proc, port };
   }
 }
 
-const routeUrl = (file) => `/__route/${Buffer.from(file).toString("base64url")}.js`;
+const routeUrl = (file) => `/__route/${b64url(file)}.js`;
 
 async function main() {
-  scaffold();
-  linkWorkspace();
+  await scaffold();
+  await linkWorkspace();
 
   const { proc, port } = await startDevServer();
 
@@ -122,16 +108,18 @@ async function main() {
     return ws;
   };
   const ws = await connect();
+  // Every caller clears `frames` before the edit it is about to make, and awaiting a
+  // write yields — long enough for a fast reload to arrive and be thrown away if this
+  // cleared them again.
   const settle = async (ms = SETTLE) => {
-    frames = [];
     await sleep(ms);
     return frames;
   };
   const reloaded = (f) => f.some((m) => m.type === "reload");
   const errored = (f) => f.some((m) => m.type === "error");
 
-  const page = join(APP, "app/page.jsx");
-  const lib = join(APP, "lib/label.js");
+  const page = `${APP}/app/page.jsx`;
+  const lib = `${APP}/lib/label.js`;
 
   try {
     // Prime the caches the way a first page load does.
@@ -141,37 +129,37 @@ async function main() {
 
     // ---- a page edit refreshes the page ------------------------------------
     frames = [];
-    write("app/page.jsx", `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>HOME-2 {label}</h1>; }\n`);
+    await write("app/page.jsx", `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>HOME-2 {label}</h1>; }\n`);
     assert(reloaded(await settle()), "page edit publishes a reload");
     assert((await text(routeUrl(page))).includes("HOME-2"), "page edit rebuilds the route chunk");
 
     // ---- a module outside app/ is watched too -------------------------------
     frames = [];
-    write("lib/label.js", `export const label = "LIB-2";\n`);
+    await write("lib/label.js", `export const label = "LIB-2";\n`);
     assert(reloaded(await settle()), "a module outside app/ publishes a reload");
     assert((await text(routeUrl(page))).includes("LIB-2"), "a module outside app/ rebuilds its importers");
 
     // ---- a page added while the server runs ---------------------------------
     frames = [];
-    const added = write("app/added/page.jsx", `export default function Added() { return <p>ADDED-1</p>; }\n`);
+    const added = await write("app/added/page.jsx", `export default function Added() { return <p>ADDED-1</p>; }\n`);
     assert(reloaded(await settle()), "a new page publishes a reload");
     assert((await text("/bundle.js")).includes("/app/added/page.jsx"), "a new page enters the route table without a restart");
     assert((await text(routeUrl(added))).includes("ADDED-1"), "a new page compiles on request");
 
     // ---- and removed again --------------------------------------------------
     frames = [];
-    rmSync(join(APP, "app/added"), { recursive: true, force: true });
+    await rmrf(`${APP}/app/added`);
     assert(reloaded(await settle()), "a deleted page publishes a reload");
     assert(!(await text("/bundle.js")).includes("/app/added/page.jsx"), "a deleted page leaves the route table");
 
     // ---- index.html and public/ --------------------------------------------
     frames = [];
-    write("index.html", `<!doctype html><html><head><title>HMR-2</title></head><body><div id="app"></div></body></html>\n`);
+    await write("index.html", `<!doctype html><html><head><title>HMR-2</title></head><body><div id="app"></div></body></html>\n`);
     assert(reloaded(await settle()), "an index.html edit publishes a reload");
     assert((await text("/")).includes("HMR-2"), "the new shell is served");
 
     frames = [];
-    write("public/asset.txt", "ASSET-2");
+    await write("public/asset.txt", "ASSET-2");
     assert(reloaded(await settle()), "a public/ asset edit publishes a reload");
     assert((await text("/asset.txt")).includes("ASSET-2"), "the new asset is served");
 
@@ -179,20 +167,20 @@ async function main() {
     // A JS config is re-imported through a versioned bundle; without that the
     // runtime's ESM cache would keep serving the config as it was at startup.
     frames = [];
-    write("otfw.config.js", `export default { i18n: { locales: ["en", "fr"], defaultLocale: "en" } };\n`);
+    await write("otfw.config.js", `export default { i18n: { locales: ["en", "fr"], defaultLocale: "en" } };\n`);
     assert(reloaded(await settle()), "creating otfw.config.js publishes a reload");
     assert((await text("/bundle.js")).includes(`"fr"`), "the entry picks up the new config");
 
     frames = [];
-    write("otfw.config.js", `export default { i18n: { locales: ["en", "de"], defaultLocale: "en" } };\n`);
+    await write("otfw.config.js", `export default { i18n: { locales: ["en", "de"], defaultLocale: "en" } };\n`);
     assert(reloaded(await settle()), "editing otfw.config.js publishes a reload");
     const reconfigured = await text("/bundle.js");
     assert(reconfigured.includes(`"de"`) && !reconfigured.includes(`"fr"`), "the entry picks up the edited config");
-    rmSync(join(APP, "otfw.config.js"), { force: true });
+    await rmrf(`${APP}/otfw.config.js`);
     await sleep(SETTLE);
 
     // ---- a compile error, and recovering from it ----------------------------
-    write("app/page.jsx", `export default function Home() { const = ; }\n`);
+    await write("app/page.jsx", `export default function Home() { const = ; }\n`);
     await sleep(SETTLE);
     frames = [];
     await text(routeUrl(page)); // the browser asks for the broken chunk
@@ -213,7 +201,7 @@ async function main() {
     }
 
     frames = [];
-    write("app/page.jsx", `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>HOME-3 {label}</h1>; }\n`);
+    await write("app/page.jsx", `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>HOME-3 {label}</h1>; }\n`);
     const afterFix = await settle(2000);
     assert(reloaded(afterFix) && !errored(afterFix), "fixing it publishes a reload, not the stale error");
     assert((await text(routeUrl(page))).includes("HOME-3"), "the fixed module is rebuilt");
@@ -227,7 +215,7 @@ async function main() {
     // ---- a bundler-level failure is located too -----------------------------
     // Rolldown reports its own errors in its own format; the position it prints is
     // lifted into the same fields, so the overlay header reads the same either way.
-    write("app/page.jsx", `import missing from "./nope.js";\nexport default function Home() { return <h1>{missing}</h1>; }\n`);
+    await write("app/page.jsx", `import missing from "./nope.js";\nexport default function Home() { return <h1>{missing}</h1>; }\n`);
     await sleep(SETTLE);
     frames = [];
     await text(routeUrl(page));
@@ -238,16 +226,16 @@ async function main() {
       assert(err.file === "app/page.jsx", `a bundler error names the file (${err.file})`);
       assert(!/\u001b\[/.test(err.message), "a bundler error reaches the overlay without color codes");
     }
-    write("app/page.jsx", `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>HOME-3 {label}</h1>; }\n`);
+    await write("app/page.jsx", `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>HOME-3 {label}</h1>; }\n`);
     await sleep(SETTLE);
 
     // ---- the dev entry heals itself ----------------------------------------
     // `.dev/` is a generated directory: a `git clean`, a temp sweeper or a stray
     // `rm -rf` can take it away mid-session. That used to wedge the server in a
     // permanent "Cannot resolve entry module .dev/entry.js".
-    rmSync(join(APP, ".dev"), { recursive: true, force: true });
+    await rmrf(`${APP}/.dev`);
     frames = [];
-    write("app/page.jsx", `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>HOME-4 {label}</h1>; }\n`);
+    await write("app/page.jsx", `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>HOME-4 {label}</h1>; }\n`);
     await settle();
     const entry = await text("/bundle.js");
     assert(!/Cannot resolve entry|Compile error/i.test(entry), "the entry is regenerated after .dev/ is removed");
@@ -256,24 +244,21 @@ async function main() {
     // ---- a burst of writes is one reload, not one per event -----------------
     frames = [];
     for (let i = 0; i < 5; i++) {
-      write("app/page.jsx", `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>BURST-${i} {label}</h1>; }\n`);
+      await write("app/page.jsx", `import { label } from "../lib/label.js";\nexport default function Home() { return <h1>BURST-${i} {label}</h1>; }\n`);
       await sleep(15);
     }
     await sleep(2000);
     assert(frames.filter((m) => m.type === "reload").length <= 2, "a burst of saves collapses into a single reload");
 
-    console.log(`\n✅ dev-hmr e2e — ${passed} assertions passed`);
   } finally {
     try {
       ws.close();
-    } catch {}
-    proc.kill();
-    rmSync(APP, { recursive: true, force: true });
+    } catch {
+      /* already closed */
+    }
+    await stop(proc);
+    await rmrf(APP);
   }
 }
 
-main().catch((e) => {
-  console.error(`\n❌ dev-hmr e2e failed: ${e?.message ?? e}`);
-  rmSync(APP, { recursive: true, force: true });
-  process.exit(1);
-});
+await run("dev-hmr e2e", main);
