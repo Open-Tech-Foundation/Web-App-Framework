@@ -17,7 +17,9 @@ const cmd = args[0];
 // prints the diagnostics the bundler collected and stops. The JS stack behind them
 // says only which of our own frames happened to be on top; `--trace` keeps it for the
 // times the fault really is in here.
-function reportBuildFailure(err) {
+async function reportBuildFailure(err) {
+  const { quiet } = await import("./reporter.js");
+  quiet();
   const diagnostics = err?.errors ?? [];
   console.error("");
   for (const d of diagnostics) {
@@ -54,7 +56,7 @@ async function run(load) {
     await load();
   } catch (err) {
     if (err?.name !== "BuildError") throw err;
-    reportBuildFailure(err);
+    await reportBuildFailure(err);
   }
 }
 

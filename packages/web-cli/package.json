@@ -16,7 +16,7 @@
     "src"
   ],
   "engines": {
-    "esdev": ">=0.4.0"
+    "esdev": ">=0.5.0"
   },
   "dependencies": {
     "@opentf/web-compiler": "0.17.0",

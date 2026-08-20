@@ -13,6 +13,8 @@ import { Command } from "runtime:system";
 
 import { otfwcPath } from "@opentf/web-compiler";
 
+import { quiet } from "./reporter.js";
+
 import {
   b64url,
   exists,
@@ -1367,6 +1369,9 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr
         const text = e?.text ?? e?.message ?? String(e);
         const diag = e?.diag ?? { file: id, message: e?.message ?? String(e) };
         onResult?.(id, diag);
+        // A build phase may be spinning on the last line of the terminal; take it
+        // back before writing a diagnostic across it.
+        quiet();
         // When the failure stops the build, the diagnostic travels with it and the
         // CLI prints it once, unwrapped — printing here too would show it twice.
         if (failOnError) {
