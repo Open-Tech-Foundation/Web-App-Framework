@@ -1367,6 +1367,8 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr
         const text = e?.text ?? e?.message ?? String(e);
         const diag = e?.diag ?? { file: id, message: e?.message ?? String(e) };
         onResult?.(id, diag);
+        // When the failure stops the build, the diagnostic travels with it and the
+        // CLI prints it once, unwrapped — printing here too would show it twice.
         if (failOnError) {
           ctx.error(`otfwc failed:\n${text}`);
         }

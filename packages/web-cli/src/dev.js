@@ -203,13 +203,20 @@ export async function runDev() {
   // A diagnostic on the wire: where it happened (project-relative, so the overlay can
   // show `app/blog/page.jsx:12:4` rather than a machine-specific absolute path), what
   // happened, and the code frame around it when the compiler located one.
-  // The bundler names the module that failed and locates nothing further inside it:
+  // A bundler error that located nothing inside the module still names it up front:
   // `/abs/app/blog/page.jsx: Unexpected token`. Lifting that path into `file` — and
   // off the front of the message, where the overlay would only repeat it — makes the
-  // header read the same whoever reported the problem. Only the compiler supplies a
-  // line, a column and a code frame; a bundler error shows the file alone.
+  // header read the same whoever reported the problem.
   const BUNDLER_FILE = /^((?:\/|[A-Za-z]:\\)[^\n]+?): (?=\S)/;
   const relative = (p) => (p.startsWith(root + sep) ? p.slice(root.length + 1) : p);
+  // The bundler's code frame opens with its own `[KIND] message` banner, which the
+  // overlay is about to print directly above it. Drop that line and keep the drawing.
+  const bundlerFrame = (diag) => {
+    if (!diag?.frame) return null;
+    const body = plain(diag.frame);
+    const cut = body.indexOf("\n");
+    return cut !== -1 && body.slice(0, cut).includes(diag.message) ? body.slice(cut + 1) : body;
+  };
   const errorFrame = (file, { message, line, column, frame, note } = {}) => {
     let text = plain(message);
     const found = line ? null : BUNDLER_FILE.exec(text);
@@ -374,10 +381,17 @@ export async function runDev() {
       buildErrors.delete(file);
       return { chunk, code: chunk.code };
     } catch (e) {
-      // A bundler failure already reads well (it comes with its own code frame), so
-      // it goes out as the message — minus the terminal colors, which the overlay
-      // would otherwise print literally.
-      const msg = errorFrame(file, { message: e?.message ?? String(e) });
+      // A bundler failure reports the same shape the compiler does, so it reaches the
+      // overlay the same way: the module it happened in, a position inside it, and a
+      // code frame. Only the first diagnostic is shown — the rest are usually the one
+      // broken module reported again through each importer that pulled it in.
+      const [first] = e?.errors ?? [];
+      const msg = errorFrame(first?.id ?? file, {
+        message: first?.message ?? e?.message ?? String(e),
+        line: first?.line,
+        column: first?.column,
+        frame: bundlerFrame(first),
+      });
       buildErrors.set(file, msg);
       publish(msg);
       return { chunk: null, code: errorStub(file, diagText(msg)) };
