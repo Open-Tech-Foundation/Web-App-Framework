@@ -16,116 +16,19 @@
 //      nothing to the log (observers disconnected, matchMedia listener removed).
 //   4. Navigating back rewires fresh hooks with a fresh initial media state.
 //
-//   bun packages/web-cli/tests/e2e/lifecycle-hooks-browser.mjs
+//   esdev packages/web-cli/tests/e2e/lifecycle-hooks-browser.mjs
 //
-// Needs the workspace otfwc debug build (OTFWC_BIN overrides) and Chromium
-// (CHROME_BIN overrides; skips cleanly if absent). Exits 0 if every assertion holds.
+// Run from the repository root. Needs the workspace otfwc debug build (OTFWC_BIN
+// overrides) and Chromium (CHROME_BIN overrides; skips cleanly if absent). Exits 0 if
+// every assertion holds.
 
-import { existsSync, rmSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { assert, cleanFixture, cli, HERE, OTFWC, run, sleep, stop, waitForReady } from "./lib.js";
+import { connectPage, evalJS, requireCompiler, startBrowser } from "./browser.js";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
-const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
-const CLI = ROOT + "packages/web-cli/src/cli.js";
-const FIXTURE = HERE + "fixture";
-const OTFWC = process.env.OTFWC_BIN || ROOT + "target/debug/otfwc";
-const CHROME = process.env.CHROME_BIN || "/usr/bin/chromium";
+const FIXTURE = `${HERE}/fixture`;
 const DEBUG_PORT = 9334;
 
-if (!existsSync(OTFWC)) {
-  console.error(`✗ no otfwc at ${OTFWC} (run \`cargo build\` for the compiler first)`);
-  process.exit(1);
-}
-if (!existsSync(CHROME)) {
-  console.log(`• skipping lifecycle-hooks e2e — no Chromium at ${CHROME} (set CHROME_BIN)`);
-  process.exit(0);
-}
-
-let passed = 0;
-const ok = (label) => (passed++, console.log(`  ✓ ${label}`));
-function assert(cond, label) {
-  if (!cond) throw new Error(`assertion failed: ${label}`);
-  ok(label);
-}
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function cleanFixture() {
-  for (const d of ["dist", ".otfw", ".otfw-ssg", ".otfw-loaders", ".otfw-loaders-build", ".dev"]) {
-    rmSync(`${FIXTURE}/${d}`, { recursive: true, force: true });
-  }
-}
-
-// Read the server's stdout until the "ready" line appears; return the bound port.
-async function waitForReady(proc, timeoutMs = 60000) {
-  const decoder = new TextDecoder();
-  let buf = "";
-  const deadline = Date.now() + timeoutMs;
-  for await (const chunk of proc.stdout) {
-    buf += decoder.decode(chunk);
-    const m = buf.match(/http:\/\/localhost:(\d+)/);
-    if (m && /ready in/.test(buf)) return Number(m[1]);
-    if (Date.now() > deadline) break;
-  }
-  throw new Error(`server did not become ready in ${timeoutMs}ms:\n${buf}`);
-}
-
-async function fetchJSON(url) {
-  for (let i = 0; i < 50; i++) {
-    try {
-      const r = await fetch(url);
-      if (r.ok) return await r.json();
-    } catch {}
-    await sleep(100);
-  }
-  throw new Error(`timed out fetching ${url}`);
-}
-
-// Minimal CDP client (page-target WebSocket), mirroring hydrate-browser.mjs.
-async function connectPage(port) {
-  const targets = await fetchJSON(`http://127.0.0.1:${port}/json`);
-  const page = targets.find((t) => t.type === "page");
-  const ws = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((res, rej) => ((ws.onopen = res), (ws.onerror = rej)));
-  let id = 0;
-  const pending = new Map();
-  const waiters = [];
-  const pageErrors = [];
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.id && pending.has(msg.id)) {
-      const { res, rej } = pending.get(msg.id);
-      pending.delete(msg.id);
-      msg.error ? rej(new Error(msg.error.message)) : res(msg.result);
-    } else if (msg.method) {
-      if (msg.method === "Runtime.consoleAPICalled" && msg.params.type === "error") {
-        const text = msg.params.args.map((a) => a.value || a.description).join(" ");
-        pageErrors.push(text);
-        console.error("  [page error]", text);
-      }
-      if (msg.method === "Runtime.exceptionThrown") {
-        const d = msg.params.exceptionDetails;
-        pageErrors.push(d?.exception?.description || d?.text || "exception");
-      }
-      for (let i = waiters.length - 1; i >= 0; i--) {
-        if (waiters[i].method === msg.method) waiters.splice(i, 1)[0].res(msg.params);
-      }
-    }
-  };
-  const send = (method, params = {}) =>
-    new Promise((res, rej) => {
-      const m = ++id;
-      pending.set(m, { res, rej });
-      ws.send(JSON.stringify({ id: m, method, params }));
-    });
-  const once = (method) => new Promise((res) => waiters.push({ method, res }));
-  return { send, once, pageErrors, close: () => ws.close() };
-}
-
-async function evalJS(client, expression) {
-  const r = await client.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
-  if (r.exceptionDetails) throw new Error(`eval: ${r.exceptionDetails.text} in ${expression}`);
-  return r.result.value;
-}
+await requireCompiler(OTFWC);
 
 // Observers and media queries deliver on rendering frames; in headless mode a screenshot is
 // the simplest way to pump one so the callbacks (and their signal writes) land.
@@ -163,11 +66,8 @@ const PROBE = `(() => ({
   log: [...(window.__hookLog ?? [])],
 }))()`;
 
-async function run(port) {
-  const chrome = Bun.spawn(
-    [CHROME, "--headless=new", `--remote-debugging-port=${DEBUG_PORT}`, "--no-sandbox", "--disable-gpu", "about:blank"],
-    { stdout: "ignore", stderr: "ignore" },
-  );
+async function drive(port) {
+  const chrome = await startBrowser(DEBUG_PORT);
   try {
     const client = await connectPage(DEBUG_PORT);
     await client.send("Page.enable");
@@ -275,25 +175,14 @@ async function run(port) {
 }
 
 async function main() {
-  cleanFixture();
-  const proc = Bun.spawn(["bun", CLI, "serve"], {
-    cwd: FIXTURE,
-    env: { ...process.env, OTFWC_BIN: OTFWC },
-    stdout: "pipe",
-    stderr: "inherit",
-  });
+  await cleanFixture(FIXTURE);
+  const proc = await cli(["serve"], { root: FIXTURE });
   try {
-    const port = await waitForReady(proc);
-    await run(port);
-    console.log(`\n✅ lifecycle-hooks e2e — ${passed} checks passed\n`);
+    await drive(await waitForReady(proc));
   } finally {
-    proc.kill();
-    await proc.exited.catch(() => {});
-    cleanFixture();
+    await stop(proc);
+    await cleanFixture(FIXTURE);
   }
 }
 
-main().catch((e) => {
-  console.error(`\n❌ ${e?.message ?? e}\n`);
-  process.exit(1);
-});
+await run("lifecycle-hooks e2e", main);
