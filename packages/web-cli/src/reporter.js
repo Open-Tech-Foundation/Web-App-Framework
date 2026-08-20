@@ -6,7 +6,10 @@
 // to animate and no width to fit into, so the step prints one line when it starts and
 // one when it ends, which is what a log wants to hold anyway.
 
-import { stdout } from "runtime:process";
+// `stdout` is esdev's, not esrun's: naming it in a static import is a load-time
+// SyntaxError under the runtime a released CLI would run on. Reached through the
+// namespace it is simply absent there, which is the same answer as "no terminal".
+const { stdout } = await import("runtime:process");
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const FRAME_IN = "•";
