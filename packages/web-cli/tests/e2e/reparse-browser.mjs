@@ -20,134 +20,67 @@
 //      removals); one it reshapes exposes none at all, so the router builds cleanly on
 //      the client instead of throwing a `HydrationMismatch` partway through a walk.
 //
-//   bun packages/web-cli/tests/e2e/reparse-browser.mjs
+//   esdev packages/web-cli/tests/e2e/reparse-browser.mjs
 //
-// Needs the workspace otfwc debug build (OTFWC_BIN overrides) and Chromium
-// (CHROME_BIN overrides; skips cleanly if absent). Exits 0 if every assertion holds.
+// Run from the repository root. Needs the workspace otfwc debug build (OTFWC_BIN
+// overrides) and Chromium (CHROME_BIN overrides; skips cleanly if absent). Exits 0 if
+// every assertion holds.
 
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { assert, exec, HERE, OTFWC, readNames, rmrf, ROOT, run, tempDir, writeFile } from "./lib.js";
+import {
+  bundleForBrowser,
+  connectPage,
+  evalJS,
+  requireCompiler,
+  startBrowser,
+} from "./browser.js";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
-const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
-const FIXTURES = HERE + "reparse-fixture";
-// `packages/web/index.js` re-exports `Link` from `.jsx` source only otfwc can compile, so
-// the browser bundle stands its own runtime up from the plain-JS halves (as the other
-// browser e2es do). The SSG half runs in Bun and can use the real server entry.
+const FIXTURES = `${HERE}/reparse-fixture`;
+// `packages/web/index.js` re-exports `Link` from `.jsx` source only otfwc can compile,
+// so the browser bundle stands its own runtime up from the plain-JS halves (as the
+// other browser e2es do). The SSG half runs here and can use the real server entry.
 const WEB_SHIM = ["core/signals.js", "core/reactive.js", "core/errors.js", "runtime/index.js"]
-  .map((f) => `export * from ${JSON.stringify(`${ROOT}packages/web/${f}`)};`)
+  .map((f) => `export * from ${JSON.stringify(`${ROOT}/packages/web/${f}`)};`)
   .join("\n");
-const SERVER_ENTRY = `${ROOT}packages/web/server/index.js`;
-// The SSG module runs in Bun, where the runtime half can't even be imported (it defines
-// Custom Elements at module scope), so its `@opentf/web` specifier resolves to the core
-// signal helpers alone — which is all an SSG render reads.
+const SERVER_ENTRY = `${ROOT}/packages/web/server/index.js`;
+// The SSG module runs in this process, where the runtime half cannot even be imported
+// (it defines Custom Elements at module scope), so its `@opentf/web` specifier
+// resolves to the core signal helpers alone — which is all an SSG render reads.
 const CORE_SHIM = ["core/signals.js", "core/reactive.js", "core/errors.js"]
-  .map((f) => `export * from ${JSON.stringify(`${ROOT}packages/web/${f}`)};`)
+  .map((f) => `export * from ${JSON.stringify(`${ROOT}/packages/web/${f}`)};`)
   .join("\n");
-const OTFWC = process.env.OTFWC_BIN || ROOT + "target/debug/otfwc";
-const CHROME = process.env.CHROME_BIN || "/usr/bin/chromium";
 const PORT = 9358;
 
 // Which fixtures the parser leaves alone (so they must adopt) and which it reshapes.
 const ADOPTS = { rcdata: true, tables: true, inline: true, paragraph: false };
 
-if (!existsSync(OTFWC)) {
-  console.error(`✗ no otfwc at ${OTFWC} (run \`cargo build\` for the compiler first)`);
-  process.exit(1);
-}
-if (!existsSync(CHROME)) {
-  console.log(`• skipping reparse-browser e2e — no Chromium at ${CHROME} (set CHROME_BIN)`);
-  process.exit(0);
-}
-
-let passed = 0;
-function assert(cond, label) {
-  if (!cond) throw new Error(`assertion failed: ${label}`);
-  passed++;
-  console.log(`  ✓ ${label}`);
-}
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+await requireCompiler(OTFWC);
 
 /** Compile one fixture for `target` (csr | ssg | hydrate), pointing its imports at `shims`. */
-function compile(file, target, { web, server }) {
-  const proc = Bun.spawnSync([OTFWC, "build", `--target=${target}`, file]);
-  if (proc.exitCode !== 0) throw new Error(`otfwc ${target} failed for ${file}:\n${proc.stderr}`);
-  return proc.stdout
-    .toString()
+async function compile(file, target, { web, server }) {
+  const { code, out, err } = await exec(OTFWC, ["build", `--target=${target}`, file]);
+  if (code !== 0) throw new Error(`otfwc ${target} failed for ${file}:\n${err}`);
+  return out
     .replaceAll('"@opentf/web/server"', JSON.stringify(server))
     .replaceAll('"@opentf/web"', JSON.stringify(web));
 }
 
-/** Render a fixture's SSG module here in Bun — the HTML a visitor is served. */
+/** Render a fixture's SSG module in this process — the HTML a visitor is served. */
 async function renderSSG(code, dir, name) {
-  const file = join(dir, `${name}.ssg.mjs`);
-  writeFileSync(file, code);
+  const file = `${dir}/${name}.ssg.mjs`;
+  await writeFile(file, code);
   const mod = await import(file);
   return mod.default({});
 }
 
-async function fetchJSON(url) {
-  for (let i = 0; i < 50; i++) {
-    try {
-      const r = await fetch(url);
-      if (r.ok) return await r.json();
-    } catch {}
-    await sleep(100);
-  }
-  throw new Error(`timed out fetching ${url}`);
-}
-
-// Minimal CDP client (page-target WebSocket), mirroring the other e2e suites.
-async function connectPage(port) {
-  const targets = await fetchJSON(`http://127.0.0.1:${port}/json`);
-  const page = targets.find((t) => t.type === "page");
-  const ws = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((res, rej) => ((ws.onopen = res), (ws.onerror = rej)));
-  let id = 0;
-  const pending = new Map();
-  const pageErrors = [];
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.id && pending.has(msg.id)) {
-      const { res, rej } = pending.get(msg.id);
-      pending.delete(msg.id);
-      msg.error ? rej(new Error(msg.error.message)) : res(msg.result);
-    } else if (msg.method === "Runtime.exceptionThrown") {
-      const d = msg.params.exceptionDetails;
-      pageErrors.push(d?.exception?.description || d?.text || "exception");
-    }
-  };
-  const send = (method, params = {}) =>
-    new Promise((res, rej) => {
-      const m = ++id;
-      pending.set(m, { res, rej });
-      ws.send(JSON.stringify({ id: m, method, params }));
-    });
-  return { send, pageErrors, close: () => ws.close() };
-}
-
-async function evalJS(client, expression) {
-  const r = await client.send("Runtime.evaluate", { expression, returnByValue: true });
-  if (r.exceptionDetails) {
-    throw new Error(`eval: ${r.exceptionDetails.exception?.description || r.exceptionDetails.text}`);
-  }
-  return r.result.value;
-}
-
-/**
- * Bundle every fixture's CSR + hydrate modules into one browser IIFE exposing
- * `window.__CASES__ = [{ name, serverHTML, build, hydrate }]`.
- */
 async function bundle(cases, dir) {
   const imports = [];
   const entries = [];
   for (const [i, c] of cases.entries()) {
-    const csr = join(dir, `${c.name}.csr.js`);
-    const hyd = join(dir, `${c.name}.hydrate.js`);
-    writeFileSync(csr, c.csr);
-    writeFileSync(hyd, c.hydrate);
+    const csr = `${dir}/${c.name}.csr.js`;
+    const hyd = `${dir}/${c.name}.hydrate.js`;
+    await writeFile(csr, c.csr);
+    await writeFile(hyd, c.hydrate);
     imports.push(`import build${i} from ${JSON.stringify(csr)};`);
     imports.push(`import * as hyd${i} from ${JSON.stringify(hyd)};`);
     entries.push(
@@ -155,20 +88,15 @@ async function bundle(cases, dir) {
         ` build: build${i}, hydrate: hyd${i}.hydrate }`,
     );
   }
-  const entry = join(dir, "entry.js");
-  writeFileSync(
+  const entry = `${dir}/entry.js`;
+  await writeFile(
     entry,
     `${imports.join("\n")}\n` +
-      `import { beginHydration, endHydration } from ${JSON.stringify(join(dir, "web-shim.js"))};\n` +
+      `import { beginHydration, endHydration } from ${JSON.stringify(`${dir}/web-shim.js`)};\n` +
       `window.__hydration = { beginHydration, endHydration };\n` +
       `window.__CASES__ = [${entries.join(", ")}];\n`,
   );
-  const out = await Bun.build({ entrypoints: [entry], target: "browser", format: "iife" });
-  if (!out.success) {
-    for (const log of out.logs) console.error(`  ${log}`);
-    throw new Error("Bun.build failed for the reparse bundle");
-  }
-  return await out.outputs[0].text();
+  return bundleForBrowser(entry);
 }
 
 // Runs in the page. For each case: parse the server HTML, build the CSR tree from the
@@ -247,14 +175,14 @@ const RUN = `(() => {
 })()`;
 
 async function main() {
-  const files = readdirSync(FIXTURES).filter((f) => f.endsWith(".jsx")).sort();
+  const files = (await readNames(FIXTURES)).filter((f) => f.endsWith(".jsx")).sort();
   if (!files.length) throw new Error(`no fixtures in ${FIXTURES}`);
 
-  const dir = mkdtempSync(join(tmpdir(), "otfw-reparse-"));
-  const web = join(dir, "web-shim.js");
-  writeFileSync(web, WEB_SHIM);
-  const core = join(dir, "web-core.js");
-  writeFileSync(core, CORE_SHIM);
+  const dir = await tempDir("otfw-reparse");
+  const web = `${dir}/web-shim.js`;
+  await writeFile(web, WEB_SHIM);
+  const core = `${dir}/web-core.js`;
+  await writeFile(core, CORE_SHIM);
   const shims = { web, server: SERVER_ENTRY };
   const serverShims = { web: core, server: SERVER_ENTRY };
 
@@ -264,13 +192,13 @@ async function main() {
     cases = [];
     for (const f of files) {
       const name = f.replace(/\.jsx$/, "");
-      const path = join(FIXTURES, f);
-      const serverHTML = await renderSSG(compile(path, "ssg", serverShims), dir, name);
+      const path = `${FIXTURES}/${f}`;
+      const serverHTML = await renderSSG(await compile(path, "ssg", serverShims), dir, name);
       cases.push({
         name,
         serverHTML,
-        csr: compile(path, "csr", shims),
-        hydrate: compile(path, "hydrate", shims),
+        csr: await compile(path, "csr", shims),
+        hydrate: await compile(path, "hydrate", shims),
       });
     }
 
@@ -291,13 +219,10 @@ async function main() {
 
     code = await bundle(cases, dir);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    await rmrf(dir);
   }
 
-  const chrome = Bun.spawn(
-    [CHROME, "--headless=new", `--remote-debugging-port=${PORT}`, "--no-sandbox", "--disable-gpu", "about:blank"],
-    { stdout: "ignore", stderr: "ignore" },
-  );
+  const chrome = await startBrowser(PORT);
   try {
     const client = await connectPage(PORT);
     await client.send("Runtime.enable");
@@ -335,13 +260,10 @@ async function main() {
       throw new Error(`page exceptions:\n    ${client.pageErrors.slice(0, 5).join("\n    ")}`);
     }
     client.close();
-    console.log(`\n✅ reparse-browser — ${passed} assertions across ${results.length} fixtures\n`);
+    console.log(`  (across ${results.length} fixtures)`);
   } finally {
     chrome.kill();
   }
 }
 
-main().catch((e) => {
-  console.error(`\n❌ ${e?.message ?? e}\n`);
-  process.exit(1);
-});
+await run("reparse-browser e2e", main);
