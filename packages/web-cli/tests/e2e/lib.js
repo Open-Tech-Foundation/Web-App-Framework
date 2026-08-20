@@ -203,7 +203,7 @@ export const waitForReady = (proc, timeoutMs) =>
 /** Run an e2e's body, report how it went, and set the exit code accordingly. */
 export function run(name, body) {
   return body().then(
-    () => console.log(`\n✓ ${name} — ${passed()} assertions passed\n`),
+    () => console.log(`\n✓ ${name}${passed() ? ` — ${passed()} assertions passed` : ""}\n`),
     (e) => {
       console.error(`\n✗ ${e?.stack ?? e?.message ?? e}\n`);
       exit(1);
