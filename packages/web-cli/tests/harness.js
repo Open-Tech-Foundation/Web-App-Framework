@@ -1,18 +1,12 @@
 // A `describe`/`test`/`expect` surface over `runtime:test`.
 //
-// The runtime's test module is deliberately five functions wide — `test`, `assert`,
-// `assertEquals`, `assertThrows`, `assertRejects` — with no suites, no lifecycle
-// hooks and no matchers. The suites here predate that and read better with them, so
-// this shim supplies the missing layer rather than flattening every file.
+// The runtime's test module runs a file's tests one at a time and gives it four
+// lifecycle hooks, but no suites and no matchers — and a suite's hooks belong to that
+// suite, which a file-wide hook cannot express. So the tree, the composed labels and
+// the scoped hooks live here, on top of the runtime's ordering.
 //
-// Two behaviours are worth knowing:
-//
-//   * `runtime:test` starts a test the moment it is registered, so an async test runs
-//     concurrently with the ones after it. Lifecycle hooks are meaningless under that,
-//     so registration is deferred to a microtask and every test is chained behind its
-//     predecessor — the file runs top to bottom, one test at a time.
-//   * A failure is an exception. Every matcher throws, so the runtime reports the
-//     message and the frame inside the test file that produced it.
+// A failure is an exception. Every matcher throws, so the runtime reports the message
+// and the frame inside the test file that produced it.
 
 import { test as rtTest } from "runtime:test";
 
@@ -34,15 +28,6 @@ const suite = (name, parent) => ({
 
 const root = suite("", null);
 let current = root;
-const queue = [];
-let scheduled = false;
-
-/** Register the whole file's tests once its body has finished evaluating. */
-function schedule() {
-  if (scheduled) return;
-  scheduled = true;
-  queueMicrotask(flush);
-}
 
 export function describe(name, fn) {
   const child = suite(name, current);
@@ -56,9 +41,14 @@ export function describe(name, fn) {
 }
 
 export function test(name, fn) {
-  queue.push({ suite: current, name, fn });
-  for (let s = current; s; s = s.parent) s.remaining++;
-  schedule();
+  const chain = ancestry(current);
+  for (const s of chain) s.remaining++;
+  const label = chain
+    .map((s) => s.name)
+    .filter(Boolean)
+    .concat(name)
+    .join(" › ");
+  rtTest(label, () => runTest(chain, fn));
 }
 
 export const beforeAll = (fn) => void current.beforeAll.push(fn);
@@ -78,33 +68,6 @@ function ancestry(s) {
 const runHooks = async (hooks) => {
   for (const hook of hooks) await hook();
 };
-
-function flush() {
-  // Each test waits on the previous one's gate, so the file is sequential even though
-  // the runtime starts them all at once.
-  let gate = Promise.resolve();
-
-  for (const { suite: owner, name, fn } of queue) {
-    const previous = gate;
-    let open;
-    gate = new Promise((resolve) => (open = resolve));
-    const chain = ancestry(owner);
-    const label = chain
-      .map((s) => s.name)
-      .filter(Boolean)
-      .concat(name)
-      .join(" › ");
-
-    rtTest(label, async () => {
-      await previous;
-      try {
-        await runTest(chain, fn);
-      } finally {
-        open();
-      }
-    });
-  }
-}
 
 async function runTest(chain, fn) {
   for (const s of chain) {
