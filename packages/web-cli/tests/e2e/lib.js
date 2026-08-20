@@ -9,6 +9,7 @@
 //
 // from the repository root, so the paths below stay inside the sandbox.
 
+import { makeTempDir } from "runtime:fs";
 import { dirname, fromFileURL, join } from "runtime:path";
 import { env, exit } from "runtime:process";
 import { Command } from "runtime:system";
@@ -87,6 +88,12 @@ const ARTIFACTS = [
   ".dev",
 ];
 
+/**
+ * A scratch directory for a run, anchored here rather than at the system temp dir:
+ * the sandbox is the working directory, so `/tmp` is not somewhere this can write.
+ */
+export const tempDir = (prefix) => makeTempDir({ dir: HERE, prefix: `${prefix}-` });
+
 /** Put a fixture app back the way it was checked in. */
 export const cleanFixture = (fixture) =>
   Promise.all(ARTIFACTS.map((d) => rmrf(join(fixture, d))));
@@ -115,6 +122,24 @@ const command = (args, { root, env: extra, stderr = "inherit" } = {}) =>
   });
 
 export const cli = (args, options) => command(args, options).spawn();
+
+/** Run any program to completion and decode what it wrote. */
+export async function exec(program, args, { cwd, env: extra } = {}) {
+  const result = await new Command(program, {
+    args,
+    cwd,
+    env: extra,
+    inheritEnv: true,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  const decoder = new TextDecoder();
+  return {
+    code: result.code,
+    out: decoder.decode(result.stdout),
+    err: decoder.decode(result.stderr),
+  };
+}
 
 /** The same, for a command that finishes on its own: run it, collect what it said. */
 export async function cliRun(args, options) {

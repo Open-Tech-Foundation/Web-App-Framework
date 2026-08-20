@@ -65,3 +65,4 @@ benchmarks/results/
 
 # test scratch trees (removed on a clean run; left behind by a crash)
 packages/web-cli/tests/otfw-*/
+packages/web-cli/tests/e2e/otfw-*/
