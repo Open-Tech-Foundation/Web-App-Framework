@@ -9,60 +9,30 @@
 //   2. SSG (`otfw build --ssg`): each route gets a full per-route <head> — the page's
 //      title/canonical plus the inherited layout links (again incl. links[].type).
 //
-//   bun packages/web-cli/tests/e2e/build-metadata.mjs
+//   esdev packages/web-cli/tests/e2e/build-metadata.mjs
 //
-// Needs the workspace otfwc debug build (OTFWC_BIN overrides).
+// Run from the repository root. Needs the workspace otfwc debug build
+// (OTFWC_BIN overrides).
 
-import { existsSync, readFileSync, rmSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { assert, cleanFixture, cliRun, exists, HERE, ok, readText, run } from "./lib.js";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
-const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
-const CLI = ROOT + "packages/web-cli/src/cli.js";
-const FIXTURE = HERE + "fixture";
-const OTFWC = process.env.OTFWC_BIN || ROOT + "target/debug/otfwc";
+const FIXTURE = `${HERE}/fixture`;
 const BASE = "https://example.com";
-
-let passed = 0;
-const ok = (label) => (passed++, console.log(`  ✓ ${label}`));
-function assert(cond, label) {
-  if (!cond) throw new Error(`assertion failed: ${label}`);
-  ok(label);
-}
 
 // The inner HTML of <head> — assertions target head tags, not body markup.
 const headOf = (html) => (html.match(/<head>([\s\S]*?)<\/head>/i)?.[1] ?? "");
 
-function cleanFixture() {
-  for (const d of ["dist", ".otfw", ".otfw-ssg", ".otfw-csr-head", ".otfw-api", ".otfw-api-build", ".otfw-loaders", ".otfw-loaders-build", ".dev"]) {
-    rmSync(`${FIXTURE}/${d}`, { recursive: true, force: true });
-  }
-}
-
-async function build(args) {
-  const proc = Bun.spawn(["bun", CLI, "build", ...args], {
-    cwd: FIXTURE,
-    env: { ...process.env, OTFWC_BIN: OTFWC },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { out, err, code };
-}
+const build = (args) => cliRun(["build", ...args], { root: FIXTURE });
 
 async function main() {
-  cleanFixture();
+  await cleanFixture(FIXTURE);
   try {
     // ── 1. Plain CSR: root layout metadata injected into the single shell ─────────
     const csr = await build([`--base-url=${BASE}`]);
     if (csr.code !== 0) throw new Error(`build (CSR) exited ${csr.code}:\n${csr.out}\n${csr.err}`);
     ok("otfw build (CSR) completes");
 
-    const csrHead = headOf(readFileSync(`${FIXTURE}/dist/index.html`, "utf8"));
+    const csrHead = headOf(await readText(`${FIXTURE}/dist/index.html`));
     assert(
       csrHead.includes(`<link rel="icon" href="${BASE}/favicon.svg">`),
       "CSR shell gets the layout favicon link (absolutized)",
@@ -83,15 +53,15 @@ async function main() {
     assert(!csrHead.includes("rel=\"canonical\""), "CSR shell has no route-specific canonical");
     assert(csrHead.includes("<title>E2E Fixture</title>"), "CSR shell keeps its own <title> (no per-page title leaks)");
     // CSR does not pre-render per-route HTML.
-    assert(!existsSync(`${FIXTURE}/dist/about/index.html`), "CSR build does not pre-render /about");
+    assert(!await exists(`${FIXTURE}/dist/about/index.html`), "CSR build does not pre-render /about");
 
     // ── 2. SSG: full per-route head (page title/canonical + inherited layout links) ─
-    cleanFixture();
+    await cleanFixture(FIXTURE);
     const ssg = await build(["--ssg", `--base-url=${BASE}`]);
     if (ssg.code !== 0) throw new Error(`build --ssg exited ${ssg.code}:\n${ssg.out}\n${ssg.err}`);
     ok("otfw build --ssg completes");
 
-    const aboutHead = headOf(readFileSync(`${FIXTURE}/dist/about/index.html`, "utf8"));
+    const aboutHead = headOf(await readText(`${FIXTURE}/dist/about/index.html`));
     assert(aboutHead.includes("<title>About — E2E</title>"), "SSG /about uses the page generateMetadata title");
     assert(
       aboutHead.includes(`<link rel="canonical" href="${BASE}/about">`),
@@ -102,13 +72,9 @@ async function main() {
       "SSG /about inherits the layout feed alternate with links[].type",
     );
 
-    console.log(`\n✓ otfw build metadata e2e — ${passed} assertions passed\n`);
   } finally {
-    cleanFixture();
+    await cleanFixture(FIXTURE);
   }
 }
 
-main().catch((e) => {
-  console.error(`\n✗ ${e?.message ?? e}\n`);
-  process.exit(1);
-});
+await run("otfw build metadata e2e", main);

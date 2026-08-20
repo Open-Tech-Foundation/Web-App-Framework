@@ -9,10 +9,11 @@
 //
 // from the repository root, so the paths below stay inside the sandbox.
 
-import { exists, mkdir, readDir, remove, write } from "runtime:fs";
 import { dirname, fromFileURL, join } from "runtime:path";
 import { env, exit } from "runtime:process";
 import { Command } from "runtime:system";
+
+import { exists, isFile, readBytes, readEntries, readText, rmrf, writeFile } from "../../src/runtime.js";
 
 export const HERE = dirname(fromFileURL(import.meta.url));
 export const ROOT = join(HERE, "..", "..", "..", "..");
@@ -39,36 +40,32 @@ export const visibleText = (html) => html.replace(/<!--[^>]*-->/g, "");
 
 /* -------------------------------------------------------------------- the file */
 
-/** `rm -rf`, and no complaint about what was not there to begin with. */
-export const rmrf = (path) => remove(path, { recursive: true }).catch(() => {});
-
-/** Write a file, making the directories above it first. */
-export async function writeFile(path, content = "") {
-  await mkdir(dirname(path), { recursive: true });
-  await write(path, content);
-}
+// The toolchain's own host helpers — the same `exists`/`readText`/`rmrf` the CLI runs
+// on, so an e2e reads the tree the way the code under test does.
+export { exists, isFile, readBytes, readEntries, readText, rmrf, writeFile };
 
 /** Write a whole tree, `{ "app/page.jsx": "…" }`, relative to `dir`. */
 export async function writeTree(dir, files) {
   for (const [rel, content] of Object.entries(files)) await writeFile(join(dir, rel), content);
 }
 
-export { exists, readDir };
+// Everything a build leaves behind in a fixture app. `dist` is the output; the rest
+// are the staging directories the phases compile through, each named for its phase.
+const ARTIFACTS = [
+  "dist",
+  ".otfw",
+  ".otfw-ssg",
+  ".otfw-csr-head",
+  ".otfw-api",
+  ".otfw-api-build",
+  ".otfw-loaders",
+  ".otfw-loaders-build",
+  ".dev",
+];
 
-/** Everything a build leaves behind in a fixture app, gone. */
-export function cleanFixture(fixture) {
-  return Promise.all(
-    [
-      "dist",
-      ".otfw",
-      ".otfw-ssg",
-      ".otfw-api",
-      ".otfw-loaders",
-      ".otfw-loaders-build",
-      ".dev",
-    ].map((d) => rmrf(join(fixture, d))),
-  );
-}
+/** Put a fixture app back the way it was checked in. */
+export const cleanFixture = (fixture) =>
+  Promise.all(ARTIFACTS.map((d) => rmrf(join(fixture, d))));
 
 /* ----------------------------------------------------------------- the children */
 
@@ -83,15 +80,27 @@ export function cleanFixture(fixture) {
  * `OTFWC_BIN` points the child at the workspace compiler build, which is the one under
  * test; the packaged binary a released install would use is not in a checkout.
  */
-export function cli(args, { root, env: extra, stderr = "inherit" } = {}) {
-  return new Command("esdev", {
+const command = (args, { root, env: extra, stderr = "inherit" } = {}) =>
+  new Command("esdev", {
     args: [CLI, ...args, ...(root ? [`--root=${root}`] : [])],
     cwd: ROOT,
     env: { OTFWC_BIN: OTFWC, ...extra },
     inheritEnv: true,
     stdout: "piped",
     stderr,
-  }).spawn();
+  });
+
+export const cli = (args, options) => command(args, options).spawn();
+
+/** The same, for a command that finishes on its own: run it, collect what it said. */
+export async function cliRun(args, options) {
+  const result = await command(args, { stderr: "piped", ...options }).output();
+  const decoder = new TextDecoder();
+  return {
+    code: result.code,
+    out: decoder.decode(result.stdout),
+    err: decoder.decode(result.stderr),
+  };
 }
 
 /** Stop a child and wait for it, whatever state it is in. */
