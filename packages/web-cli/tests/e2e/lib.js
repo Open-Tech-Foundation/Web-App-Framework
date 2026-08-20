@@ -13,7 +13,17 @@ import { dirname, fromFileURL, join } from "runtime:path";
 import { env, exit } from "runtime:process";
 import { Command } from "runtime:system";
 
-import { exists, isFile, readBytes, readEntries, readText, rmrf, writeFile } from "../../src/runtime.js";
+import {
+  b64url,
+  exists,
+  isFile,
+  mkdirp,
+  readBytes,
+  readEntries,
+  readText,
+  rmrf,
+  writeFile,
+} from "../../src/runtime.js";
 
 export const HERE = dirname(fromFileURL(import.meta.url));
 export const ROOT = join(HERE, "..", "..", "..", "..");
@@ -42,7 +52,21 @@ export const visibleText = (html) => html.replace(/<!--[^>]*-->/g, "");
 
 // The toolchain's own host helpers — the same `exists`/`readText`/`rmrf` the CLI runs
 // on, so an e2e reads the tree the way the code under test does.
-export { exists, isFile, readBytes, readEntries, readText, rmrf, writeFile };
+export { b64url, exists, isFile, mkdirp, readBytes, readEntries, readText, rmrf, writeFile };
+
+/** The names in a directory, or none when it is missing. */
+export const readNames = async (dir) => (await readEntries(dir)).map((e) => e.name);
+
+/**
+ * Point `link` at `target`. `runtime:fs` can read a symlink but not make one, so this
+ * is `ln -s` — a fixture that reaches a dependency through a workspace-style link is
+ * the whole point of the worker-assets e2e, and a copy would not reproduce it.
+ */
+export async function symlink(target, link) {
+  await mkdirp(dirname(link));
+  const { code } = await new Command("ln", { args: ["-sfn", target, link] }).output();
+  if (code !== 0) throw new Error(`could not link ${link} -> ${target}`);
+}
 
 /** Write a whole tree, `{ "app/page.jsx": "…" }`, relative to `dir`. */
 export async function writeTree(dir, files) {

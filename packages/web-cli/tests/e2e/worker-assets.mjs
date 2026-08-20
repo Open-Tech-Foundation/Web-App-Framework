@@ -12,75 +12,66 @@
 //   • `otfw dev`         — the /__worker & /__asset dev routes serve the same files
 //     on demand, with the source reference rewritten to those URLs.
 //
-//   bun packages/web-cli/tests/e2e/worker-assets.mjs
+//   esdev packages/web-cli/tests/e2e/worker-assets.mjs
 //
-// Needs the workspace otfwc debug build (OTFWC_BIN overrides).
+// Run from the repository root. Needs the workspace otfwc debug build
+// (OTFWC_BIN overrides).
 
-import { mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import {
+  assert,
+  b64url,
+  cleanFixture,
+  cli,
+  cliRun,
+  HERE,
+  ok,
+  readNames,
+  readText,
+  rmrf,
+  run,
+  sleep,
+  stop,
+  symlink,
+} from "./lib.js";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
-const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
-const CLI = ROOT + "packages/web-cli/src/cli.js";
-const FIXTURE = HERE + "worker-fixture";
-const OTFWC = process.env.OTFWC_BIN || ROOT + "target/debug/otfwc";
-const PAGE = FIXTURE + "/app/page.jsx";
+const FIXTURE = `${HERE}/worker-fixture`;
+const PAGE = `${FIXTURE}/app/page.jsx`;
 const PORT = 3987;
 
 // A dependency whose real path is OUTSIDE the fixture root — the app reaches it
 // through a symlinked `node_modules/@dep/pkg`, exactly like an isolated/workspace
 // dependency (its worker used to 404 in dev). `worker-dep/` lives beside the fixture.
-const DEP_SRC = HERE + "worker-dep";
-const DEP_LINK = FIXTURE + "/node_modules/@dep/pkg";
-function linkDep() {
-  rmSync(FIXTURE + "/node_modules", { recursive: true, force: true });
-  mkdirSync(FIXTURE + "/node_modules/@dep", { recursive: true });
-  symlinkSync(DEP_SRC, DEP_LINK, "dir");
+async function linkDep() {
+  await rmrf(`${FIXTURE}/node_modules`);
+  await symlink(`${HERE}/worker-dep`, `${FIXTURE}/node_modules/@dep/pkg`);
 }
 
-let passed = 0;
-const ok = (label) => (passed++, console.log(`  ✓ ${label}`));
-function assert(cond, label) {
-  if (!cond) throw new Error(`assertion failed: ${label}`);
-  ok(label);
-}
-
-function cleanFixture() {
-  for (const d of ["dist", ".otfw", ".dev", "node_modules"]) {
-    rmSync(`${FIXTURE}/${d}`, { recursive: true, force: true });
-  }
-}
+// The fixture's own leftovers, plus the node_modules the link above puts there.
+const clean = async () => {
+  await cleanFixture(FIXTURE);
+  await rmrf(`${FIXTURE}/node_modules`);
+};
 
 // `mode` is "csr" (plain `otfw build`) or "ssg" (`otfw build --ssg`). Both bundle
 // the client the same way, so both must emit/rewrite the worker + asset; SSG also
 // pre-renders, which must not choke on the module-top-level `new URL(…)`.
 async function testBuild(mode) {
-  cleanFixture();
-  linkDep();
+  await clean();
+  await linkDep();
   const args = mode === "ssg" ? ["build", "--ssg", "--base-url=https://example.com"] : ["build"];
-  const proc = Bun.spawn(["bun", CLI, ...args], {
-    cwd: FIXTURE,
-    env: { ...process.env, OTFWC_BIN: OTFWC },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+  const { code, out, err } = await cliRun(args, { root: FIXTURE });
   if (code !== 0) throw new Error(`build (${mode}) exited ${code}:\n${out}\n${err}`);
   ok(`otfw build (${mode}) completes`);
 
   if (mode === "ssg") {
     // The pre-rendered page exists and points at the emitted client bundle in
     // /assets — so the worker/asset chunks it references are served alongside it.
-    const html = readFileSync(`${FIXTURE}/dist/index.html`, "utf8");
+    const html = await readText(`${FIXTURE}/dist/index.html`);
     assert(html.includes("WORKER_E2E"), "SSG pre-rendered the page HTML");
     assert(/\/assets\/bundle-.*\.js/.test(html), "SSG page loads the hashed client bundle");
   }
 
-  const assets = readdirSync(`${FIXTURE}/dist/assets`);
+  const assets = await readNames(`${FIXTURE}/dist/assets`);
 
   // Worker + nested worker are emitted as their own hashed chunks…
   assert(assets.some((f) => /^counter-worker-.*\.js$/.test(f)), `[${mode}] worker chunk emitted (counter-worker-*.js)`);
@@ -94,20 +85,21 @@ async function testBuild(mode) {
   // The nested worker's real source made it into its chunk (not a stub / 404).
   const nested = assets.find((f) => /^nested-worker-.*\.js$/.test(f));
   assert(
-    readFileSync(`${FIXTURE}/dist/assets/${nested}`, "utf8").includes("MARKER_NESTED_WORKER"),
+    (await readText(`${FIXTURE}/dist/assets/${nested}`)).includes("MARKER_NESTED_WORKER"),
     `[${mode}] nested worker chunk carries the real worker source`,
   );
   // The worker chunk points at the hashed kernel asset, not the raw literal.
   const counter = assets.find((f) => /^counter-worker-.*\.js$/.test(f));
-  const counterCode = readFileSync(`${FIXTURE}/dist/assets/${counter}`, "utf8");
+  const counterCode = await readText(`${FIXTURE}/dist/assets/${counter}`);
   assert(/kernel-.*\.wasm/.test(counterCode), `[${mode}] worker chunk references the hashed kernel asset`);
   assert(!counterCode.includes('"./kernel.wasm"'), `[${mode}] worker chunk drops the raw ./kernel.wasm literal`);
 
   // No dangling literal references survive anywhere in the emitted JS.
-  const allJs = assets
-    .filter((f) => f.endsWith(".js"))
-    .map((f) => readFileSync(`${FIXTURE}/dist/assets/${f}`, "utf8"))
-    .join("\n");
+  const allJs = (
+    await Promise.all(
+      assets.filter((f) => f.endsWith(".js")).map((f) => readText(`${FIXTURE}/dist/assets/${f}`)),
+    )
+  ).join("\n");
   assert(!/["'`]\.\/counter-worker\.js["'`]/.test(allJs), `[${mode}] no dangling ./counter-worker.js literal remains`);
   assert(!/["'`]\.\/nested-worker\.js["'`]/.test(allJs), `[${mode}] no dangling ./nested-worker.js literal remains`);
   assert(!/["'`]\.\/pixel\.wasm["'`]/.test(allJs), `[${mode}] no dangling ./pixel.wasm literal remains`);
@@ -117,29 +109,25 @@ async function testBuild(mode) {
 async function waitForServer(base, tries = 100) {
   for (let i = 0; i < tries; i++) {
     try {
-      const r = await fetch(base + "/bundle.js");
-      if (r.ok) return;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 100));
+      if ((await fetch(`${base}/bundle.js`)).ok) return;
+    } catch {
+      /* not listening yet */
+    }
+    await sleep(100);
   }
   throw new Error("dev server did not become ready");
 }
 
 async function testDev() {
-  linkDep();
+  await linkDep();
   const base = `http://localhost:${PORT}`;
-  const proc = Bun.spawn(["bun", CLI, "dev", "--port", String(PORT)], {
-    cwd: FIXTURE,
-    env: { ...process.env, OTFWC_BIN: OTFWC },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  const proc = await cli(["dev", `--port=${PORT}`], { root: FIXTURE, stderr: "piped" });
   try {
     await waitForServer(base);
     ok("otfw dev server ready");
 
     // The worker/asset refs live in the page's route chunk (base64url of its path).
-    const routeUrl = `/__route/${Buffer.from(PAGE).toString("base64url")}.js`;
+    const routeUrl = `/__route/${b64url(PAGE)}.js`;
     const routeCode = await (await fetch(base + routeUrl)).text();
 
     // The page references two workers now (the app's counter worker + a worker owned
@@ -190,27 +178,22 @@ async function testDev() {
     assert(bytes[0] === 0x00 && bytes[1] === 0x61 && bytes[2] === 0x73 && bytes[3] === 0x6d, "wasm magic header intact");
 
     // A crafted path outside the project root is refused.
-    const escape = `/__asset/${Buffer.from("/etc/passwd").toString("base64url")}.txt`;
+    const escape = `/__asset/${b64url("/etc/passwd")}.txt`;
     assert((await fetch(base + escape)).status === 404, "/__asset traversal outside root is refused");
   } finally {
-    proc.kill();
-    await proc.exited;
+    await stop(proc);
   }
 }
 
 async function main() {
-  cleanFixture();
+  await clean();
   try {
     await testBuild("csr");
     await testBuild("ssg");
     await testDev();
-    console.log(`\n  ${passed} assertions passed\n`);
   } finally {
-    cleanFixture();
+    await clean();
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+await run("worker & asset e2e", main);
