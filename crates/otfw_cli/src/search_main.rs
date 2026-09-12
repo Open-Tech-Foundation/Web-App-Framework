@@ -90,9 +90,8 @@ fn build(site: &Path, out: &Path, root: &str) -> Result<usize, String> {
     let chunk_file = format!("t/{chunk_hash}.bin");
     fs::create_dir_all(out.join("t")).map_err(|e| e.to_string())?;
     fs::write(out.join(&chunk_file), &chunk_bytes).map_err(|e| e.to_string())?;
-    let term_json: BTreeMap<_, _> = terms.into_iter().map(|(term, posts)| (term, posts.into_iter().map(|(doc, tf)| json!([doc, tf])).collect::<Vec<_>>())).collect();
-    let index = json!({"v": 1, "phase": 1, "docs": fragments, "terms": term_json});
-    fs::write(out.join("index.json"), serde_json::to_vec(&index).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    let fragments_dir = out.join("f"); fs::create_dir_all(&fragments_dir).map_err(|e| e.to_string())?;
+    for (id, fragment) in fragments.into_iter().enumerate() { fs::write(fragments_dir.join(format!("{id}.json")), serde_json::to_vec(&fragment).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?; }
     // Phase 2 migration seam: readers may load this compact table before fetching any
     // postings. The JSON index remains the active fallback until term chunks land.
     let mut docs_bin = Vec::new(); for length in &lengths { write_varint(*length as u64, &mut docs_bin); }

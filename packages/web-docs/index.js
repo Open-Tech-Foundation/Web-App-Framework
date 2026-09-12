@@ -35,6 +35,8 @@ import "./components/PostBanner.jsx";
 import "./components/PostMeta.jsx";
 import "./components/ReadingTime.jsx";
 
+export { createSearch } from "./search.js";
+
 export { default as DocsLayout } from "./components/DocsLayout.jsx";
 export { default as Navbar } from "./components/Navbar.jsx";
 export { default as NavbarLink } from "./components/NavbarLink.jsx";
