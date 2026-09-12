@@ -1,4 +1,4 @@
-// Post-build Pagefind indexing for the docs site (Phase 2 search).
+// Post-build OTF Search indexing for the docs site (Phase 1).
 //
 // Runs after the SSG pre-render, over the built HTML in `dist/`. Pagefind reads the
 // `data-pagefind-body` region of each page (the docs `<main id="otfw-content">`) and
@@ -8,52 +8,25 @@
 // `@opentf/web-cli` calls this from `otfw build --ssg` when the project's docs config
 // has `search.provider === "pagefind"`, keeping all docs build logic owned by web-docs.
 
-import { join, relative } from "runtime:path";
-
-import { readEntries, readText } from "./host.js";
-
-/** Recursively collect every `*.html` file under `dir` (absolute paths). */
-async function htmlFiles(dir) {
-  const out = [];
-  for (const entry of await readEntries(dir)) {
-    const path = join(dir, entry.name);
-    if (entry.isDir) out.push(...(await htmlFiles(path)));
-    else if (entry.name.endsWith(".html")) out.push(path);
-  }
-  return out;
-}
+import { dirname, join } from "runtime:path";
+import { Command } from "runtime:system";
 
 /**
- * Index a built site directory with Pagefind, file by file so callers can show
- * progress. Only pages that opted into search (`data-pagefind-body`, the docs shell)
- * are added — matching Pagefind's site-wide body-exclusion rule deterministically.
- *
- * @param {{ siteDir: string, onProgress?: (done: number, total: number) => void }} opts
- * @returns {Promise<{ pages: number, errors: string[] }>}
+ * Build the Phase-1 JSON index with the internal Rust binary next to `otfwc`.
+ * Published toolchains will ship the two binaries together; source checkouts get both
+ * from `cargo build -p otfw_cli`.
  */
-export async function indexWithPagefind({ siteDir, onProgress }) {
-  // Lazy import so the (native) Pagefind binary is only loaded when search is enabled.
-  const pagefind = await import("pagefind");
-  const { index } = await pagefind.createIndex();
-
-  // Pick the searchable pages up front so progress has a real total.
-  const pages = [];
-  for (const path of await htmlFiles(siteDir)) {
-    const content = await readText(path);
-    if (content.includes("data-pagefind-body")) pages.push({ path, content });
-  }
-
-  const total = pages.length;
-  const errors = [];
-  let done = 0;
-  onProgress?.(0, total);
-  for (const { path, content } of pages) {
-    const res = await index.addHTMLFile({ sourcePath: relative(siteDir, path), content });
-    if (res.errors && res.errors.length) errors.push(...res.errors);
-    onProgress?.(++done, total);
-  }
-
-  await index.writeFiles({ outputPath: join(siteDir, "pagefind") });
-  await pagefind.close();
-  return { pages: total, errors };
+export async function indexWithOtfSearch({ siteDir, otfwc }) {
+  const binary = join(dirname(otfwc), "otf-search");
+  const out = new Command(binary, {
+    args: ["build", siteDir, "--out", join(siteDir, "_search"), "--root", "main"],
+    stdout: "piped",
+    stderr: "piped",
+    inheritEnv: true,
+  });
+  const result = await out.output();
+  if (!result.success) throw new Error(new TextDecoder().decode(result.stderr).trim() || "otf-search failed");
+  const message = new TextDecoder().decode(result.stderr);
+  const pages = Number(/indexed\s+(\d+)\s+page/.exec(message)?.[1] ?? 0);
+  return { pages };
 }

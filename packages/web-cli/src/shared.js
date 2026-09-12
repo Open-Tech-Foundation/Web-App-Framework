@@ -486,14 +486,14 @@ export async function runLastUpdated(root, appDir, config, exclude = new Set()) 
  * and writes `<siteDir>/pagefind/`. No-op (returns null) otherwise. Resolved from the
  * app's `@opentf/web-docs` so the hook ships with the docs package.
  */
-export async function runDocsSearchIndex(root, config, siteDir, onProgress) {
-  if (config?.docs?.search?.provider !== "pagefind") return null;
+export async function runDocsSearchIndex(root, config, siteDir, otfwc) {
+  if (config?.docs?.search?.provider !== "otf") return null;
   try {
     const entry = await resolveFrom("@opentf/web-docs/build", root);
-    const { indexWithPagefind } = await import(toFileURL(entry).href);
-    return await indexWithPagefind({ siteDir, onProgress });
+    const { indexWithOtfSearch } = await import(toFileURL(entry).href);
+    return await indexWithOtfSearch({ siteDir, otfwc });
   } catch (e) {
-    console.warn(`⚠ Pagefind indexing skipped: ${e?.message ?? e}`);
+    console.warn(`⚠ OTF Search indexing skipped: ${e?.message ?? e}`);
     return null;
   }
 }

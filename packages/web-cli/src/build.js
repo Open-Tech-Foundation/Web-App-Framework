@@ -291,13 +291,11 @@ export async function runBuild(options = {}) {
   const publicDir = join(root, "public");
   if (await exists(publicDir)) await copyTree(publicDir, outDir);
 
-  // Docs search: index the pre-rendered HTML with Pagefind (when SSG + opted in).
+  // Docs search: index the pre-rendered HTML with the internal Rust indexer.
   let search = null;
-  if (ssg && config?.docs?.search?.provider === "pagefind") {
+  if (ssg && config?.docs?.search?.provider === "otf") {
     const searchStep = step("Building search index");
-    search = await runDocsSearchIndex(root, config, outDir, (done, total) =>
-      searchStep.update(`${done}/${total} pages`),
-    );
+    search = await runDocsSearchIndex(root, config, outDir, otfwc);
     searchStep.done(`Search index — ${search?.pages ?? 0} page(s)`);
   }
 

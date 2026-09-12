@@ -9,4 +9,4 @@ export { blogPostsPlugin, loadPosts } from "./blog-posts-plugin.js";
 export { lastUpdatedPlugin, loadLastUpdated } from "./last-updated-plugin.js";
 export { renderAtomFeed, renderBlogFeed } from "./feed.js";
 export { renderLlmsFullTxt, renderLlmsTxt } from "./llms.js";
-export { indexWithPagefind } from "./pagefind.js";
+export { indexWithOtfSearch } from "./pagefind.js";

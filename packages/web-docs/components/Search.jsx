@@ -1,26 +1,15 @@
-// Pagefind-backed search modal (Phase 2). The navbar's `SearchTrigger` and the global
+// OTF Search-backed modal. The navbar's `SearchTrigger` and the global
 // ⌘K / Ctrl+K shortcut open it via `window.__otfwOpenSearch`, which this component
 // installs on mount. The static index is generated at build time (`otfw build --ssg`
-// with `docs.search.provider === "pagefind"`) and lives at `/pagefind/`; we load its
-// runtime on first open so pages without a search never pay for it.
+// with `docs.search.provider === "otf"`) lives at `/_search/`; the reader is lazy so
+// pages without a search never fetch its index.
 //
 // Note: results only exist against a built site (`dist/`). In dev there is no index,
 // so the modal opens but reports no results — expected.
-import { onMount, router, RawHtml, Portal } from "@opentf/web";
+import { onMount, router, Portal } from "@opentf/web";
+import { createSearch } from "../search.js";
 
-let pagefindPromise = null;
-function loadPagefind() {
-  if (!pagefindPromise) {
-    // A non-literal specifier keeps the bundler from trying to resolve the index at
-    // build time (it doesn't exist yet) — it stays a runtime import of the static file.
-    const path = "/pagefind/pagefind.js";
-    pagefindPromise = import(/* @vite-ignore */ path).then(async (pf) => {
-      await pf.init?.();
-      return pf;
-    });
-  }
-  return pagefindPromise;
-}
+const search = createSearch({ base: "/_search/" });
 
 export default function Search() {
   let open = $state(false);
@@ -42,38 +31,9 @@ export default function Search() {
     }
     loading = true;
     try {
-      const pf = await loadPagefind();
-      const search = await pf.search(q);
-      const top = (search.results || []).slice(0, 6);
-      const data = await Promise.all(top.map((r) => r.data()));
+      const found = await search.query(q, { limit: 10 });
       if (mine !== token) return; // a newer query superseded this one
-      // Flatten to heading-anchored sub-results so each row deep-links to the matched
-      // section (`/page/#heading`) rather than the page top. Pagefind builds these from
-      // the body's headings; a page with none falls back to a single page-level row.
-      const flat = [];
-      for (const d of data) {
-        const crumb = d.meta && d.meta.breadcrumb ? d.meta.breadcrumb.replace(/\s*\/\s*/g, " › ") : "";
-        // The page/post title — always shown as the result heading so you can tell which
-        // page (or blog post) a hit belongs to, even across same-named sections.
-        const pageTitle = (d.meta && d.meta.title) || d.url;
-        const subs =
-          d.sub_results && d.sub_results.length
-            ? d.sub_results
-            : [{ title: pageTitle, url: d.url, excerpt: d.excerpt }];
-        for (const s of subs.slice(0, 4)) {
-          flat.push({
-            url: s.url,
-            title: pageTitle,
-            // The matched section heading, when it differs from the page title.
-            section: s.title && s.title !== pageTitle ? s.title : "",
-            crumb,
-            excerpt: s.excerpt,
-          });
-          if (flat.length >= 10) break;
-        }
-        if (flat.length >= 10) break;
-      }
-      results = flat;
+      results = found.results.map((result) => ({ ...result, excerpt: result.text.slice(0, 180) }));
       active = 0;
     } catch (e) {
       if (mine === token) results = [];
@@ -176,12 +136,8 @@ export default function Search() {
                 }}
                 onmouseenter={() => (active = i)}
               >
-                {r.crumb ? <span class="otfw-search-result-crumb">{r.crumb}</span> : null}
                 <span class="otfw-search-result-title">{r.title}</span>
-                {r.section ? <span class="otfw-search-result-section">{r.section}</span> : null}
-                <span class="otfw-search-result-excerpt">
-                  <RawHtml html={r.excerpt} />
-                </span>
+                <span class="otfw-search-result-excerpt">{r.excerpt}</span>
               </a>
             </li>
           ))}

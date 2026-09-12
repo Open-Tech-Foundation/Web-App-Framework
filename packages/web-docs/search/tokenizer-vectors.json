@@ -1,0 +1,7 @@
+[
+  { "input": "Dynamic routing", "tokens": ["dynamic", "routing"] },
+  { "input": "café", "tokens": ["café"] },
+  { "input": "useState", "tokens": ["usestate"] },
+  { "input": "route.params", "tokens": ["route.params"] },
+  { "input": "snake_case", "tokens": ["snake_case"] }
+]

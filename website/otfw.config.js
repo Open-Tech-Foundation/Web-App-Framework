@@ -23,9 +23,8 @@ export default defineDocsConfig({
       { label: "API", href: "/api" },
       { label: "Benchmarks", href: "/benchmarks" },
     ],
-    // Static search: `otfw build --ssg` indexes the pre-rendered HTML with Pagefind
-    // into dist/pagefind/; the navbar ⌘K trigger and modal query it at runtime.
-    search: { provider: "pagefind" },
+    // Static search is indexed after SSG into dist/_search/.
+    search: { provider: "otf" },
   },
 
   // Blog generator: posts live under app/blog/<slug>/page.mdx. The toolchain resolves
