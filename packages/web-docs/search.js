@@ -1,6 +1,25 @@
 // Headless binary search reader. Kept DOM-free so the docs modal is only one consumer.
 /** @typedef {{ limit?: number, filters?: Record<string, string>, signal?: AbortSignal }} SearchOptions */
 /** @typedef {{ url: string, title: string, text: string, meta: Record<string, string>, anchors: Array<{ id: string, text: string, pos: number }>, score: number }} SearchResult */
+
+function decodeChunk(bytes) {
+  if (new TextDecoder().decode(bytes.slice(0, 4)) !== "OTFI" || bytes[4] !== 1) throw new Error("Unsupported search term chunk");
+  let p = 5; const read = () => { let n = 0, s = 0, b; do { b = bytes[p++]; n += (b & 127) * 2 ** s; s += 7; } while (b & 128); return n; };
+  const count = read(), rows = [], decoder = new TextDecoder(); let previous = new Uint8Array();
+  for (let i = 0; i < count; i++) { const prefix = read(), len = read(), suffix = bytes.slice(p, p + len); p += len; const termBytes = new Uint8Array(prefix + len); termBytes.set(previous.subarray(0, prefix)); termBytes.set(suffix, prefix); rows.push([decoder.decode(termBytes), read(), read()]); previous = termBytes; }
+  const postings = new Map(), blob = p;
+  for (const [term, df, offset] of rows) { let q = blob + offset, doc = 0, list = []; for (let i = 0; i < df; i++) { const next = () => { let n = 0, s = 0, b; do { b = bytes[q++]; n += (b & 127) * 2 ** s; s += 7; } while (b & 128); return n; }; doc += next(); const tf = next(); for (let j = 0; j < tf; j++) next(); list.push([doc, tf]); } postings.set(term, list); }
+  return postings;
+}
+function tokenize(text) {
+  const out = [];
+  for (const word of text.match(/[\p{L}\p{N}_.-]+/gu) || []) {
+    const whole = word.toLowerCase(); out.push(whole);
+    const parts = word.replace(/([a-z])([A-Z])/g, "$1 $2").split(/[_.\-\s]+/).filter(Boolean).map((part) => part.toLowerCase());
+    for (const part of parts) if (part !== whole) out.push(part);
+  }
+  return [...new Set(out)];
+}
 /**
  * Create a reusable search client for one static `_search/` directory.
  * @param {{ base?: string }} options
@@ -10,6 +29,7 @@ export function createSearch({ base = "/_search/" } = {}) {
   const root = base.replace(/\/$/, "");
   let initialized;
   let loading;
+  const chunkCache = new Map();
   let chunk;
   const readVarints = (buffer) => {
     const bytes = new Uint8Array(buffer);
@@ -41,30 +61,47 @@ export function createSearch({ base = "/_search/" } = {}) {
     });
     return { manifest, lengths: readVarints(docs) };
   }));
+  const loadChunk = (file) => {
+    if (!chunkCache.has(file)) chunkCache.set(file, fetch(`${root}/${file}`).then((r) => {
+      if (!r.ok) throw new Error(`Search term chunk unavailable (${r.status})`);
+      return r.arrayBuffer();
+    }).then((buffer) => decodeChunk(new Uint8Array(buffer))));
+    return chunkCache.get(file);
+  };
+  const findChunk = (chunks, term) => {
+    let low = 0, high = chunks.length - 1, answer = 0;
+    while (low <= high) {
+      const mid = (low + high) >>> 1;
+      if (chunks[mid].first.localeCompare(term) <= 0) { answer = mid; low = mid + 1; }
+      else high = mid - 1;
+    }
+    return chunks[answer];
+  };
   const load = () => (loading ||= init().then(async (state) => {
     const file = state?.manifest?.chunks?.[0]?.file;
     if (!file) throw new Error("Search index has no term chunks");
-    const bytes = new Uint8Array(await fetch(`${root}/${file}`).then((r) => {
-      if (!r.ok) throw new Error(`Search term chunk unavailable (${r.status})`);
-      return r.arrayBuffer();
-    }));
-    if (new TextDecoder().decode(bytes.slice(0, 4)) !== "OTFI" || bytes[4] !== 1) throw new Error("Unsupported search term chunk");
-    let p = 5; const read = () => { let n = 0, s = 0, b; do { b = bytes[p++]; n += (b & 127) * 2 ** s; s += 7; } while (b & 128); return n; };
-    const count = read(), rows = [], decoder = new TextDecoder(); let previous = new Uint8Array();
-    for (let i = 0; i < count; i++) { const prefix = read(), len = read(), suffix = bytes.slice(p, p + len); p += len; const termBytes = new Uint8Array(prefix + len); termBytes.set(previous.subarray(0, prefix)); termBytes.set(suffix, prefix); const term = decoder.decode(termBytes); rows.push([term, read(), read()]); previous = termBytes; }
-    const postings = new Map(); const blob = p;
-    for (const [term, df, offset] of rows) { let q = blob + offset, doc = 0, list = []; for (let i = 0; i < df; i++) { const next = () => { let n = 0, s = 0, b; do { b = bytes[q++]; n += (b & 127) * 2 ** s; s += 7; } while (b & 128); return n; }; doc += next(); const tf = next(); for (let j = 0; j < tf; j++) next(); list.push([doc, tf]); } postings.set(term, list); }
-    return postings;
+    return loadChunk(file);
   }));
   return {
     preload: load,
     /** @param {string} query @param {SearchOptions} options */
     async query(query, { limit = 10, signal } = {}) {
       throwIfAborted(signal);
-      const postings = await load();
-      throwIfAborted(signal);
-      const words = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}_]+/gu) || [])];
+      const words = tokenize(query);
       if (!words.length) return { results: [], total: 0, partial: false };
+      const state = await init();
+      const chunks = state?.manifest?.chunks || [];
+      if (!chunks.length) throw new Error("Search index has no term chunks");
+      const selectedByFile = new Map(words.map((word) => { const meta = findChunk(chunks, word); return [meta.file, meta]; }));
+      // A trailing prefix can continue into the lexical successor chunk.
+      const trailing = findChunk(chunks, words.at(-1));
+      const trailingIndex = chunks.indexOf(trailing);
+      if (trailingIndex + 1 < chunks.length) selectedByFile.set(chunks[trailingIndex + 1].file, chunks[trailingIndex + 1]);
+      const selected = [...selectedByFile.values()];
+      const loaded = await Promise.all(selected.map((meta) => loadChunk(meta.file)));
+      const postings = new Map();
+      for (const shard of loaded) for (const [term, list] of shard) postings.set(term, list);
+      throwIfAborted(signal);
       const scores = new Map();
       const matches = new Map();
       for (let wordIndex = 0; wordIndex < words.length; wordIndex++) {

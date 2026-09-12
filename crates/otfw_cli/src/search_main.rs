@@ -86,9 +86,13 @@ fn build(site: &Path, out: &Path, root: &str) -> Result<usize, String> {
     }
     fs::create_dir_all(out).map_err(|e| e.to_string())?;
     fs::create_dir_all(out.join("t")).map_err(|e| e.to_string())?;
-    let (chunk_bytes, first_term, term_count) = encode_term_chunk(&terms);
-    let chunk_hash = blake3::hash(&chunk_bytes).to_hex().to_string()[..12].to_string(); let chunk_file = format!("t/{chunk_hash}.bin");
-    fs::write(out.join(&chunk_file), &chunk_bytes).map_err(|e| e.to_string())?;
+    let entries: Vec<_> = terms.iter().collect(); let mut chunks = Vec::new();
+    // 750 terms keeps real-world docs shards near the 12 KB compressed request budget.
+    for group in entries.chunks(750) {
+        let shard: BTreeMap<_, _> = group.iter().map(|(term, docs)| ((*term).clone(), (*docs).clone())).collect();
+        let (bytes, first, count) = encode_term_chunk(&shard); let hash = blake3::hash(&bytes).to_hex().to_string()[..12].to_string(); let file = format!("t/{hash}.bin");
+        fs::write(out.join(&file), bytes).map_err(|e| e.to_string())?; chunks.push(json!({"first": first, "file": file, "terms": count}));
+    }
     let fragments_dir = out.join("f"); fs::create_dir_all(&fragments_dir).map_err(|e| e.to_string())?;
     for (id, fragment) in fragments.into_iter().enumerate() { fs::write(fragments_dir.join(format!("{id}.json")), serde_json::to_vec(&fragment).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?; }
     // Phase 2 migration seam: readers may load this compact table before fetching any
@@ -98,7 +102,7 @@ fn build(site: &Path, out: &Path, root: &str) -> Result<usize, String> {
     let docs_file = format!("docs.{docs_hash}.bin");
     fs::write(out.join(&docs_file), &docs_bin).map_err(|e| e.to_string())?;
     let avgdl = if lengths.is_empty() { 0.0 } else { lengths.iter().sum::<usize>() as f64 / lengths.len() as f64 };
-    fs::write(out.join("manifest.json"), serde_json::to_vec(&json!({"v": 1, "docs": lengths.len(), "avgdl": avgdl, "docsFile": docs_file, "chunks": [{"first": first_term, "file": chunk_file, "terms": term_count}]})).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    fs::write(out.join("manifest.json"), serde_json::to_vec(&json!({"v": 1, "docs": lengths.len(), "avgdl": avgdl, "docsFile": docs_file, "chunks": chunks})).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     Ok(paths.len())
 }
 
@@ -133,7 +137,20 @@ fn first_tag_text(html: &str, tag: &str) -> Option<String> {
     Some(strip_tags(&html[content..end]).split_whitespace().collect::<Vec<_>>().join(" "))
 }
 fn strip_tags(value: &str) -> String { let mut out = String::new(); let mut tag = false; for ch in value.chars() { match ch { '<' => tag = true, '>' => tag = false, _ if !tag => out.push(ch), _ => {} } } out }
-fn tokens(text: &str) -> Vec<String> { text.unicode_words().map(|word| word.to_lowercase()).filter(|word| !word.is_empty() && word.len() <= 64).collect() }
+fn tokens(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for word in text.unicode_words() {
+        let whole = word.to_lowercase(); if !whole.is_empty() && whole.len() <= 64 { out.push(whole); }
+        let mut part = String::new(); let mut previous_lower = false;
+        for ch in word.chars() {
+            if matches!(ch, '_' | '-' | '.') { if !part.is_empty() { out.push(part.to_lowercase()); part.clear(); } previous_lower = false; continue; }
+            if ch.is_uppercase() && previous_lower && !part.is_empty() { out.push(part.to_lowercase()); part.clear(); }
+            previous_lower = ch.is_lowercase(); part.push(ch);
+        }
+        if !part.is_empty() { let part = part.to_lowercase(); if part != word.to_lowercase() { out.push(part); } }
+    }
+    out
+}
 fn relative_url(site: &Path, path: &Path) -> String { let rel = path.strip_prefix(site).unwrap_or(path).to_string_lossy().replace('\\', "/"); if rel == "index.html" { "/".into() } else { format!("/{}", rel.strip_suffix("index.html").unwrap_or(&rel)) } }
 
 #[cfg(test)]
