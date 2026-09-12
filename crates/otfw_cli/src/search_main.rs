@@ -7,6 +7,7 @@ use std::{collections::BTreeMap, fs, path::{Path, PathBuf}, process::ExitCode};
 use lol_html::{doc_text, element, HtmlRewriter, Settings};
 use serde_json::{json, Value};
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
 use walkdir::WalkDir;
 
 fn main() -> ExitCode {
@@ -72,7 +73,7 @@ fn build(site: &Path, out: &Path, root: &str) -> Result<usize, String> {
         .filter(|entry| entry.file_type().is_file() && entry.path().extension().is_some_and(|x| x == "html"))
         .map(|entry| entry.into_path()).collect();
     paths.sort(); // Document IDs and output are deterministic.
-    let mut terms: BTreeMap<String, BTreeMap<usize, u32>> = BTreeMap::new();
+    let mut terms: BTreeMap<String, BTreeMap<usize, Vec<(u32, u8)>>> = BTreeMap::new();
     let mut fragments = Vec::new();
     let mut lengths = Vec::new();
     for (id, path) in paths.iter().enumerate() {
@@ -81,8 +82,9 @@ fn build(site: &Path, out: &Path, root: &str) -> Result<usize, String> {
         let title = first_tag_text(&html, "h1").or_else(|| first_tag_text(&html, "title")).unwrap_or_else(|| relative_url(site, path));
         let document_tokens = tokens(&text);
         lengths.push(document_tokens.len());
-        for token in document_tokens { *terms.entry(token).or_default().entry(id).or_default() += 1; }
-        fragments.push(json!({"url": relative_url(site, path), "title": title, "text": text, "meta": {}, "anchors": []}));
+        for token in tokens(&title) { terms.entry(token).or_default().entry(id).or_default().push((0, 0)); }
+        for (position, token) in document_tokens.into_iter().enumerate() { terms.entry(token).or_default().entry(id).or_default().push((position as u32 + 1, 6)); }
+        fragments.push(json!({"url": relative_url(site, path), "title": title, "text": text, "meta": {}, "anchors": anchors(&html, &text)}));
     }
     fs::create_dir_all(out).map_err(|e| e.to_string())?;
     fs::create_dir_all(out.join("t")).map_err(|e| e.to_string())?;
@@ -108,11 +110,11 @@ fn build(site: &Path, out: &Path, root: &str) -> Result<usize, String> {
 
 fn write_varint(mut value: u64, out: &mut Vec<u8>) { while value >= 0x80 { out.push((value as u8) | 0x80); value >>= 7; } out.push(value as u8); }
 
-fn encode_term_chunk(terms: &BTreeMap<String, BTreeMap<usize, u32>>) -> (Vec<u8>, String, usize) {
+fn encode_term_chunk(terms: &BTreeMap<String, BTreeMap<usize, Vec<(u32, u8)>>>) -> (Vec<u8>, String, usize) {
     let mut postings = Vec::new(); let mut rows = Vec::new(); let mut previous = Vec::new();
     for (term, docs) in terms {
         let offset = postings.len(); let mut last_doc = 0usize;
-        for (&doc, &tf) in docs { write_varint((doc - last_doc) as u64, &mut postings); write_varint(tf as u64, &mut postings); for _ in 0..tf { write_varint(0, &mut postings); } last_doc = doc; }
+        for (&doc, positions) in docs { write_varint((doc - last_doc) as u64, &mut postings); write_varint(positions.len() as u64, &mut postings); let mut last_position = 0u32; for &(position, field) in positions { write_varint((((position - last_position) << 3) | field as u32) as u64, &mut postings); last_position = position; } last_doc = doc; }
         let bytes = term.as_bytes(); let common = bytes.iter().zip(previous.iter()).take_while(|(a, b)| a == b).count();
         rows.push((common, bytes[common..].to_vec(), docs.len(), offset)); previous = bytes.to_vec();
     }
@@ -136,11 +138,18 @@ fn first_tag_text(html: &str, tag: &str) -> Option<String> {
     let lower = html.to_ascii_lowercase(); let start = lower.find(&format!("<{tag}"))?; let content = lower[start..].find('>').map(|n| start + n + 1)?; let end = lower[content..].find(&format!("</{tag}"))? + content;
     Some(strip_tags(&html[content..end]).split_whitespace().collect::<Vec<_>>().join(" "))
 }
+fn anchors(html: &str, text: &str) -> Vec<Value> {
+    let lower = html.to_ascii_lowercase(); let mut out = Vec::new(); let mut from = 0;
+    while let Some(offset) = lower[from..].find("<h") { let start = from + offset; let tag = lower.as_bytes().get(start + 2).copied().unwrap_or(b'0'); if !(b'1'..=b'6').contains(&tag) { from = start + 2; continue; }
+        let Some(close) = lower[start..].find('>') else { break }; let open_end = start + close + 1; let open = &html[start..open_end]; let Some(id_at) = open.find("id=\"") else { from = open_end; continue }; let id_start = id_at + 4; let Some(id_end) = open[id_start..].find('"') else { from = open_end; continue }; let id = &open[id_start..id_start + id_end]; let end_tag = format!("</h{}", tag as char); let Some(end) = lower[open_end..].find(&end_tag) else { from = open_end; continue }; let heading = strip_tags(&html[open_end..open_end + end]).split_whitespace().collect::<Vec<_>>().join(" "); let pos = text.find(&heading).unwrap_or(0); out.push(json!({"id": id, "text": heading, "pos": pos})); from = open_end + end;
+    } out
+}
 fn strip_tags(value: &str) -> String { let mut out = String::new(); let mut tag = false; for ch in value.chars() { match ch { '<' => tag = true, '>' => tag = false, _ if !tag => out.push(ch), _ => {} } } out }
 fn tokens(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for word in text.unicode_words() {
-        let whole = word.to_lowercase(); if !whole.is_empty() && whole.len() <= 64 { out.push(whole); }
+        let whole: String = word.nfkc().flat_map(char::to_lowercase).collect(); if !whole.is_empty() && whole.len() <= 64 { out.push(whole.clone()); }
+        let folded: String = whole.nfd().filter(|ch| !is_combining_mark(*ch)).collect(); if folded != whole { out.push(folded); }
         let mut part = String::new(); let mut previous_lower = false;
         for ch in word.chars() {
             if matches!(ch, '_' | '-' | '.') { if !part.is_empty() { out.push(part.to_lowercase()); part.clear(); } previous_lower = false; continue; }
