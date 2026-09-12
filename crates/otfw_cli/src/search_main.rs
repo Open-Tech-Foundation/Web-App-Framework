@@ -85,10 +85,9 @@ fn build(site: &Path, out: &Path, root: &str) -> Result<usize, String> {
         fragments.push(json!({"url": relative_url(site, path), "title": title, "text": text, "meta": {}, "anchors": []}));
     }
     fs::create_dir_all(out).map_err(|e| e.to_string())?;
-    let (chunk_bytes, first_term, term_count) = encode_term_chunk(&terms);
-    let chunk_hash = blake3::hash(&chunk_bytes).to_hex().to_string()[..12].to_string();
-    let chunk_file = format!("t/{chunk_hash}.bin");
     fs::create_dir_all(out.join("t")).map_err(|e| e.to_string())?;
+    let (chunk_bytes, first_term, term_count) = encode_term_chunk(&terms);
+    let chunk_hash = blake3::hash(&chunk_bytes).to_hex().to_string()[..12].to_string(); let chunk_file = format!("t/{chunk_hash}.bin");
     fs::write(out.join(&chunk_file), &chunk_bytes).map_err(|e| e.to_string())?;
     let fragments_dir = out.join("f"); fs::create_dir_all(&fragments_dir).map_err(|e| e.to_string())?;
     for (id, fragment) in fragments.into_iter().enumerate() { fs::write(fragments_dir.join(format!("{id}.json")), serde_json::to_vec(&fragment).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?; }
@@ -99,7 +98,7 @@ fn build(site: &Path, out: &Path, root: &str) -> Result<usize, String> {
     let docs_file = format!("docs.{docs_hash}.bin");
     fs::write(out.join(&docs_file), &docs_bin).map_err(|e| e.to_string())?;
     let avgdl = if lengths.is_empty() { 0.0 } else { lengths.iter().sum::<usize>() as f64 / lengths.len() as f64 };
-    fs::write(out.join("manifest.json"), serde_json::to_vec(&json!({"v": 1, "phase": 2, "docs": lengths.len(), "avgdl": avgdl, "docsFile": docs_file, "chunks": [{"first": first_term, "file": chunk_file, "terms": term_count}], "fallback": "index.json"})).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    fs::write(out.join("manifest.json"), serde_json::to_vec(&json!({"v": 1, "docs": lengths.len(), "avgdl": avgdl, "docsFile": docs_file, "chunks": [{"first": first_term, "file": chunk_file, "terms": term_count}]})).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     Ok(paths.len())
 }
 
