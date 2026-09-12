@@ -21,3 +21,13 @@ test("queries a binary term chunk and expands the final prefix", async () => {
     expect(result.results[0].url).toBe("/guide/");
   } finally { globalThis.fetch = original; }
 });
+
+test("rejects an already-aborted query before making a request", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const original = globalThis.fetch;
+  globalThis.fetch = () => { throw new Error("fetch must not run"); };
+  try {
+    await expect(createSearch().query("routing", { signal: controller.signal })).rejects.toThrow("aborted");
+  } finally { globalThis.fetch = original; }
+});

@@ -1,4 +1,11 @@
-// Phase-1 headless reader. Kept DOM-free so the docs modal is only one consumer.
+// Headless binary search reader. Kept DOM-free so the docs modal is only one consumer.
+/** @typedef {{ limit?: number, filters?: Record<string, string>, signal?: AbortSignal }} SearchOptions */
+/** @typedef {{ url: string, title: string, text: string, meta: Record<string, string>, anchors: Array<{ id: string, text: string, pos: number }>, score: number }} SearchResult */
+/**
+ * Create a reusable search client for one static `_search/` directory.
+ * @param {{ base?: string }} options
+ * @returns {{ preload(): Promise<Map<string, Array<[number, number]>>>, query(query: string, options?: SearchOptions): Promise<{ results: SearchResult[], total: number, partial: boolean }> }}
+ */
 export function createSearch({ base = "/_search/" } = {}) {
   const root = base.replace(/\/$/, "");
   let initialized;
@@ -20,6 +27,9 @@ export function createSearch({ base = "/_search/" } = {}) {
     }
     return values;
   };
+  const throwIfAborted = (signal) => {
+    if (signal?.aborted) throw new DOMException("Search query aborted", "AbortError");
+  };
   const init = () => (initialized ||= fetch(`${root}/manifest.json`, { cache: "no-cache" }).then(async (response) => {
     // A pre-Phase-2 export remains usable during rolling deployments.
     if (response.status === 404) return null;
@@ -34,7 +44,11 @@ export function createSearch({ base = "/_search/" } = {}) {
   const load = () => (loading ||= init().then(async (state) => {
     const file = state?.manifest?.chunks?.[0]?.file;
     if (!file) throw new Error("Search index has no term chunks");
-    const bytes = new Uint8Array(await fetch(`${root}/${file}`).then((r) => r.arrayBuffer()));
+    const bytes = new Uint8Array(await fetch(`${root}/${file}`).then((r) => {
+      if (!r.ok) throw new Error(`Search term chunk unavailable (${r.status})`);
+      return r.arrayBuffer();
+    }));
+    if (new TextDecoder().decode(bytes.slice(0, 4)) !== "OTFI" || bytes[4] !== 1) throw new Error("Unsupported search term chunk");
     let p = 5; const read = () => { let n = 0, s = 0, b; do { b = bytes[p++]; n += (b & 127) * 2 ** s; s += 7; } while (b & 128); return n; };
     const count = read(), rows = [], decoder = new TextDecoder(); let previous = new Uint8Array();
     for (let i = 0; i < count; i++) { const prefix = read(), len = read(), suffix = bytes.slice(p, p + len); p += len; const termBytes = new Uint8Array(prefix + len); termBytes.set(previous.subarray(0, prefix)); termBytes.set(suffix, prefix); const term = decoder.decode(termBytes); rows.push([term, read(), read()]); previous = termBytes; }
@@ -43,10 +57,12 @@ export function createSearch({ base = "/_search/" } = {}) {
     return postings;
   }));
   return {
-    preload: init,
+    preload: load,
+    /** @param {string} query @param {SearchOptions} options */
     async query(query, { limit = 10, signal } = {}) {
-      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      throwIfAborted(signal);
       const postings = await load();
+      throwIfAborted(signal);
       const words = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}_]+/gu) || [])];
       if (!words.length) return { results: [], total: 0, partial: false };
       const scores = new Map();
@@ -70,6 +86,7 @@ export function createSearch({ base = "/_search/" } = {}) {
       const partial = ranked.length === 0;
       if (partial) ranked = [...scores];
       const top = ranked.sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, limit);
+      throwIfAborted(signal);
       const results = await Promise.all(top.map(async ([doc, score]) => ({ ...(await fetch(`${root}/f/${doc}.json`, { signal }).then((r) => r.json())), score })));
       return { results, total: ranked.length, partial };
     },
