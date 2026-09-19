@@ -83,10 +83,12 @@ fn build(site: &Path, out: &Path, root: &str) -> Result<usize, String> {
         let document_tokens = tokens(&text);
         lengths.push(document_tokens.len());
         for token in tokens(&title) { terms.entry(token).or_default().entry(id).or_default().push((0, 0)); }
+        for (heading, field) in tagged_texts(&html, &[('2', 1), ('3', 2), ('4', 3), ('5', 3), ('6', 3)]) { let position = text.find(&heading).unwrap_or(0) as u32; for token in tokens(&heading) { terms.entry(token).or_default().entry(id).or_default().push((position + 1, field)); } }
         for (position, token) in document_tokens.into_iter().enumerate() { terms.entry(token).or_default().entry(id).or_default().push((position as u32 + 1, 6)); }
         fragments.push(json!({"url": relative_url(site, path), "title": title, "text": text, "meta": {}, "anchors": anchors(&html, &text)}));
     }
     fs::create_dir_all(out).map_err(|e| e.to_string())?;
+    for docs in terms.values_mut() { for positions in docs.values_mut() { positions.sort_by_key(|(position, field)| (*position, *field)); } }
     fs::create_dir_all(out.join("t")).map_err(|e| e.to_string())?;
     let entries: Vec<_> = terms.iter().collect(); let mut chunks = Vec::new();
     // 750 terms keeps real-world docs shards near the 12 KB compressed request budget.
@@ -144,6 +146,7 @@ fn anchors(html: &str, text: &str) -> Vec<Value> {
         let Some(close) = lower[start..].find('>') else { break }; let open_end = start + close + 1; let open = &html[start..open_end]; let Some(id_at) = open.find("id=\"") else { from = open_end; continue }; let id_start = id_at + 4; let Some(id_end) = open[id_start..].find('"') else { from = open_end; continue }; let id = &open[id_start..id_start + id_end]; let end_tag = format!("</h{}", tag as char); let Some(end) = lower[open_end..].find(&end_tag) else { from = open_end; continue }; let heading = strip_tags(&html[open_end..open_end + end]).split_whitespace().collect::<Vec<_>>().join(" "); let pos = text.find(&heading).unwrap_or(0); out.push(json!({"id": id, "text": heading, "pos": pos})); from = open_end + end;
     } out
 }
+fn tagged_texts(html: &str, tags: &[(char, u8)]) -> Vec<(String, u8)> { let lower = html.to_ascii_lowercase(); let mut out = Vec::new(); for &(tag, field) in tags { let needle = format!("<h{tag}"); let mut from = 0; while let Some(hit) = lower[from..].find(&needle) { let start = from + hit; let Some(close) = lower[start..].find('>') else { break }; let body = start + close + 1; let end_tag = format!("</h{tag}"); let Some(end) = lower[body..].find(&end_tag) else { break }; let value = strip_tags(&html[body..body + end]).split_whitespace().collect::<Vec<_>>().join(" "); if !value.is_empty() { out.push((value, field)); } from = body + end; } } out }
 fn strip_tags(value: &str) -> String { let mut out = String::new(); let mut tag = false; for ch in value.chars() { match ch { '<' => tag = true, '>' => tag = false, _ if !tag => out.push(ch), _ => {} } } out }
 fn tokens(text: &str) -> Vec<String> {
     let mut out = Vec::new();
