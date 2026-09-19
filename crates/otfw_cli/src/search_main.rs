@@ -84,6 +84,7 @@ fn build(site: &Path, out: &Path, root: &str) -> Result<usize, String> {
         lengths.push(document_tokens.len());
         for token in tokens(&title) { terms.entry(token).or_default().entry(id).or_default().push((0, 0)); }
         for (heading, field) in tagged_texts(&html, &[('2', 1), ('3', 2), ('4', 3), ('5', 3), ('6', 3)]) { let position = text.find(&heading).unwrap_or(0) as u32; for token in tokens(&heading) { terms.entry(token).or_default().entry(id).or_default().push((position + 1, field)); } }
+        for code in element_texts(&html, "pre") { let position = text.find(&code).unwrap_or(0) as u32; for token in tokens(&code) { terms.entry(token).or_default().entry(id).or_default().push((position + 1, 4)); } }
         for (position, token) in document_tokens.into_iter().enumerate() { terms.entry(token).or_default().entry(id).or_default().push((position as u32 + 1, 6)); }
         fragments.push(json!({"url": relative_url(site, path), "title": title, "text": text, "meta": {}, "anchors": anchors(&html, &text)}));
     }
@@ -147,6 +148,7 @@ fn anchors(html: &str, text: &str) -> Vec<Value> {
     } out
 }
 fn tagged_texts(html: &str, tags: &[(char, u8)]) -> Vec<(String, u8)> { let lower = html.to_ascii_lowercase(); let mut out = Vec::new(); for &(tag, field) in tags { let needle = format!("<h{tag}"); let mut from = 0; while let Some(hit) = lower[from..].find(&needle) { let start = from + hit; let Some(close) = lower[start..].find('>') else { break }; let body = start + close + 1; let end_tag = format!("</h{tag}"); let Some(end) = lower[body..].find(&end_tag) else { break }; let value = strip_tags(&html[body..body + end]).split_whitespace().collect::<Vec<_>>().join(" "); if !value.is_empty() { out.push((value, field)); } from = body + end; } } out }
+fn element_texts(html: &str, tag: &str) -> Vec<String> { let lower = html.to_ascii_lowercase(); let mut out = Vec::new(); let needle = format!("<{tag}"); let end_tag = format!("</{tag}"); let mut from = 0; while let Some(hit) = lower[from..].find(&needle) { let start = from + hit; let Some(close) = lower[start..].find('>') else { break }; let body = start + close + 1; let Some(end) = lower[body..].find(&end_tag) else { break }; let value = strip_tags(&html[body..body + end]).split_whitespace().collect::<Vec<_>>().join(" "); if !value.is_empty() { out.push(value); } from = body + end; } out }
 fn strip_tags(value: &str) -> String { let mut out = String::new(); let mut tag = false; for ch in value.chars() { match ch { '<' => tag = true, '>' => tag = false, _ if !tag => out.push(ch), _ => {} } } out }
 fn tokens(text: &str) -> Vec<String> {
     let mut out = Vec::new();
