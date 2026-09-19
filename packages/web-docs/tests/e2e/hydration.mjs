@@ -21,31 +21,30 @@
 // Every case asserts the same invariants: nothing logged, no server node torn out, and the
 // slotted probe adopted in place exactly once.
 //
-//   bun packages/web-docs/tests/e2e/hydration.mjs
+//   esdev packages/web-docs/tests/e2e/hydration.mjs
 //
 // Needs the workspace otfwc debug build (OTFWC_BIN overrides) and Chromium (CHROME_BIN
-// overrides; skips cleanly if absent). Exits 0 if every assertion holds, 1 otherwise.
+// overrides). Exits 0 if every assertion holds, 1 otherwise.
 
-import { existsSync, mkdirSync, rmSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { build } from "runtime:build";
+import { exists, file, mkdir, remove, write } from "runtime:fs";
+import { serve } from "runtime:http";
+import { dirname, fromFileURL, join } from "runtime:path";
+import { env } from "runtime:process";
+import { Command } from "runtime:system";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
-const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
-const OTFWC = process.env.OTFWC_BIN || ROOT + "target/debug/otfwc";
-const THEME_CSS = ROOT + "packages/web-docs/theme/index.css";
-const COMPONENTS = ROOT + "packages/web-docs/components";
-const TMP = HERE + ".hydration-tmp";
-const CHROME = process.env.CHROME_BIN || "/usr/bin/chromium";
+const HERE = dirname(fromFileURL(import.meta.url));
+const ROOT = dirname(dirname(dirname(dirname(HERE))));
+const OTFWC = env.OTFWC_BIN || join(ROOT, "target/debug/otfwc");
+const THEME_CSS = join(ROOT, "packages/web-docs/theme/index.css");
+const COMPONENTS = join(ROOT, "packages/web-docs/components");
+const TMP = join(HERE, ".hydration-tmp");
+const CHROME = env.CHROME_BIN || "/usr/bin/chromium";
 
-if (!existsSync(OTFWC)) {
+if (!(await exists(OTFWC))) {
   console.error(`✗ no otfwc at ${OTFWC} (run \`cargo build\` for the compiler first)`);
-  process.exit(1);
+  throw new Error("otfwc is required");
 }
-if (!existsSync(CHROME)) {
-  console.log(`• skipping web-docs hydration e2e — no Chromium at ${CHROME} (set CHROME_BIN)`);
-  process.exit(0);
-}
-
 let passed = 0;
 const failures = [];
 const knownFailures = [];
@@ -183,34 +182,32 @@ const CASES = [
 // ── Compile ───────────────────────────────────────────────────────────────────
 const otfwPlugin = (target) => ({
   name: `otfw-${target}`,
-  setup(build) {
-    build.onLoad({ filter: /\.[jt]sx$/ }, async (args) => {
-      const base = args.path.split("/").pop().replace(/\.[jt]sx$/, "");
-      const isRoute = base === "page" || base === "layout" || base === "404";
-      const argv = ["build"];
-      if (!isRoute) argv.push("--component");
-      argv.push(`--target=${target}`, "--stdin", args.path);
-      const source = await Bun.file(args.path).text();
-      const proc = Bun.spawnSync([OTFWC, ...argv], {
-        stdin: new TextEncoder().encode(source),
-      });
-      if (proc.exitCode !== 0) throw new Error(`otfwc ${target} ${args.path}:\n${proc.stderr}`);
-      return { contents: proc.stdout.toString(), loader: "js" };
-    });
-  },
+  transform: { filter: { id: /\.[jt]sx$/ }, handler: async (code, id) => {
+    const base = id.split("/").pop().replace(/\.[jt]sx$/, "");
+    const isRoute = base === "page" || base === "layout" || base === "404";
+    const args = ["build"];
+    if (!isRoute) args.push("--component");
+    args.push(`--target=${target}`, "--stdin", id);
+    const proc = await new Command(OTFWC, { args, stdin: code }).output();
+    if (!proc.success) throw new Error(`otfwc ${target} ${id}:\n${new TextDecoder().decode(proc.stderr)}`);
+    return { code: new TextDecoder().decode(proc.stdout), type: "js" };
+  } },
 });
 
 async function bundle(target, entry, format) {
-  const built = await Bun.build({
-    entrypoints: [entry],
-    target: format,
+  const built = await build({
+    input: entry,
+    platform: format === "browser" ? "browser" : "neutral",
     plugins: [otfwPlugin(target)],
   });
-  if (!built.success) {
-    for (const log of built.logs) console.error(log);
-    throw new Error(`bundle failed (${target}) for ${entry}`);
+  try {
+    const { output } = await built.generate({ format: "esm" });
+    const entryChunk = output.find((entry) => entry.type === "chunk" && entry.isEntry);
+    if (!entryChunk) throw new Error(`bundle emitted no entry (${target}) for ${entry}`);
+    return entryChunk.code;
+  } finally {
+    await built.close();
   }
-  return await built.outputs[0].text();
 }
 
 // The runtime defines `class … extends HTMLElement` at load (the CSR custom elements). Server
@@ -218,14 +215,14 @@ async function bundle(target, entry, format) {
 // evaluate — the same bare stub the toolchain's SSG step installs (web-cli/src/shared.js).
 globalThis.HTMLElement ??= class {};
 
-rmSync(TMP, { recursive: true, force: true });
-mkdirSync(TMP, { recursive: true });
+if (await exists(TMP)) await remove(TMP, { recursive: true });
+await mkdir(TMP, { recursive: true });
 
 /** Compile one case to `{ markup, payload, clientBundle }`. */
 async function buildCase(kase, i) {
   const name = `Harness${i}`;
   const harness = `${TMP}/${name}.jsx`;
-  await Bun.write(
+  await write(
     harness,
     `${kase.imports}\n${kase.consts ?? ""}\nexport default function ${name}(props) {\n  return ${kase.body};\n}\n`,
   );
@@ -235,7 +232,7 @@ async function buildCase(kase, i) {
   // and the page must embed the JSON. Without it the client falls back to attributes, reads a
   // different value, and takes the *other* branch: a mismatch that says nothing about the code.
   const ssgEntry = `${TMP}/${name}.ssg-entry.js`;
-  await Bun.write(
+  await write(
     ssgEntry,
     `import harness from "${harness}";
      import { ssgComponent, beginHydrationCollect, endHydrationCollect } from "@opentf/web/server";
@@ -246,12 +243,12 @@ async function buildCase(kase, i) {
      };`,
   );
   const ssgFile = `${TMP}/${name}.ssg.mjs`;
-  await Bun.write(ssgFile, await bundle("ssg", ssgEntry, "bun"));
+  await write(ssgFile, await bundle("ssg", ssgEntry, "runtime"));
   await import(ssgFile);
   const { html: markup, payload } = globalThis[`__render${i}`](kase.props, kase.children ?? PROBE);
 
   const clientEntry = `${TMP}/${name}.client-entry.js`;
-  await Bun.write(
+  await write(
     clientEntry,
     `import "${harness}";
      import { beginHydration, endHydration } from "@opentf/web";
@@ -264,7 +261,7 @@ async function buildCase(kase, i) {
   return { markup, payload, clientBundle };
 }
 
-const themeCSS = await Bun.file(THEME_CSS).text();
+const themeCSS = await file(THEME_CSS).text();
 
 // Tag every node the parser inserts, at document-start, so a rebuild is detectable: a rebuilt
 // subtree drops the tagged nodes and inserts fresh untagged ones.
@@ -292,11 +289,11 @@ const pageHTML = (markup, payload, clientBundle) =>
 
 // ── Serve ─────────────────────────────────────────────────────────────────────
 let currentHTML = "";
-const server = Bun.serve({
-  port: 0,
-  fetch: () => new Response(currentHTML, { headers: { "content-type": "text/html" } }),
-});
-const origin = `http://127.0.0.1:${server.port}`;
+const server = serve(
+  { hostname: "127.0.0.1", port: 0 },
+  () => new Response(currentHTML, { headers: { "content-type": "text/html" } }),
+);
+const origin = `http://127.0.0.1:${(await server.addr).port}`;
 
 // ── CDP ───────────────────────────────────────────────────────────────────────
 async function fetchJSON(url) {
@@ -310,11 +307,12 @@ async function fetchJSON(url) {
   throw new Error(`timed out fetching ${url}`);
 }
 const port = 9000 + Math.floor(Math.random() * 1000);
-const chrome = Bun.spawn(
-  [CHROME, "--headless=new", `--remote-debugging-port=${port}`, "--no-sandbox",
+const chrome = new Command(CHROME, {
+  args: ["--headless=new", `--remote-debugging-port=${port}`, "--no-sandbox",
    "--disable-gpu", "--hide-scrollbars", "about:blank"],
-  { stdout: "ignore", stderr: "ignore" },
-);
+  stdout: "null",
+  stderr: "null",
+}).spawn();
 
 async function connectPage() {
   const targets = await fetchJSON(`http://127.0.0.1:${port}/json`);
@@ -443,7 +441,7 @@ try {
   if (failures.length) {
     console.log(`\n❌ web-docs hydration e2e — ${passed} passed, ${failures.length} failed:`);
     for (const f of failures) console.log(`   ✗ ${f}`);
-    process.exitCode = 1;
+    throw new Error("web-docs hydration e2e failed");
   } else {
     console.log(
       `\n✅ web-docs hydration e2e — ${passed} checks passed across ${CASES.length} cases` +
@@ -452,10 +450,10 @@ try {
   }
 } catch (err) {
   console.error(`\n❌ ${err.stack || err.message}`);
-  process.exitCode = 1;
+  throw err;
 } finally {
   client?.close();
-  chrome.kill();
-  server.stop(true);
-  rmSync(TMP, { recursive: true, force: true });
+  (await chrome).kill();
+  await server.stop();
+  if (await exists(TMP)) await remove(TMP, { recursive: true });
 }

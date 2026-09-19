@@ -6,28 +6,32 @@
 // (Enter on a focused <button>) through the DevTools Protocol.
 //
 // It is self-contained: it builds a tiny harness (sidebar-collapse-harness.js — just
-// <Sidebar>) with the otfwc Bun plugin, serves it with the real theme CSS, and drives
+// <Sidebar>) with the otfwc build plugin, serves it with the real theme CSS, and drives
 // headless Chromium over CDP. No `otfw build` of the website, no external deps.
 //
-//   bun packages/web-docs/tests/e2e/sidebar-collapse.mjs
+//   esdev packages/web-docs/tests/e2e/sidebar-collapse.mjs
 //
 // Needs the workspace otfwc debug build (../../../../target/debug/otfwc) and Chromium
 // (override with CHROME_BIN). Exits 0 if every assertion holds, 1 otherwise.
 
-import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { build } from "runtime:build";
+import { exists, file } from "runtime:fs";
+import { serve } from "runtime:http";
+import { dirname, fromFileURL, join } from "runtime:path";
+import { env } from "runtime:process";
+import { Command } from "runtime:system";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
-const ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
-const OTFWC = process.env.OTFWC_BIN || ROOT + "target/debug/otfwc";
-const THEME_CSS = ROOT + "packages/web-docs/theme/index.css";
-const ENTRY = HERE + "sidebar-collapse-harness.js";
-const CHROME = process.env.CHROME_BIN || "/usr/bin/chromium";
+const HERE = dirname(fromFileURL(import.meta.url));
+const ROOT = dirname(dirname(dirname(dirname(HERE))));
+const OTFWC = env.OTFWC_BIN || join(ROOT, "target/debug/otfwc");
+const THEME_CSS = join(ROOT, "packages/web-docs/theme/index.css");
+const ENTRY = join(HERE, "sidebar-collapse-harness.js");
+const CHROME = env.CHROME_BIN || "/usr/bin/chromium";
 const DESKTOP = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
 
-if (!existsSync(OTFWC)) {
+if (!(await exists(OTFWC))) {
   console.error(`✗ no otfwc at ${OTFWC} (run \`cargo build\` for the compiler first)`);
-  process.exit(1);
+  throw new Error("otfwc is required");
 }
 
 let passed = 0;
@@ -41,35 +45,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // ── Build the harness bundle (otfwc compiles the .jsx imports) ────────────────
 const otfwPlugin = {
   name: "otfw-jsx",
-  setup(build) {
-    build.onLoad({ filter: /\.[jt]sx$/ }, async (args) => {
-      const source = await Bun.file(args.path).text();
-      const proc = Bun.spawnSync([OTFWC, "build", "--component", "--stdin", args.path], {
-        stdin: new TextEncoder().encode(source),
-      });
-      if (proc.exitCode !== 0) throw new Error(`otfwc failed for ${args.path}:\n${proc.stderr}`);
-      return { contents: proc.stdout.toString(), loader: "js" };
-    });
-  },
+  transform: { filter: { id: /\.[jt]sx$/ }, handler: async (code, id) => {
+    const proc = await new Command(OTFWC, { args: ["build", "--component", "--stdin", id], stdin: code }).output();
+    if (!proc.success) throw new Error(`otfwc failed for ${id}:\n${new TextDecoder().decode(proc.stderr)}`);
+    return { code: new TextDecoder().decode(proc.stdout), type: "js" };
+  } },
 };
 
-const built = await Bun.build({ entrypoints: [ENTRY], target: "browser", plugins: [otfwPlugin] });
-if (!built.success) {
-  for (const log of built.logs) console.error(log);
-  process.exit(1);
-}
-const bundleJS = await built.outputs[0].text();
-const themeCSS = await Bun.file(THEME_CSS).text();
+const bundle = await build({ input: ENTRY, platform: "browser", plugins: [otfwPlugin] });
+const { output } = await bundle.generate({ format: "esm" });
+const bundleJS = output.find((entry) => entry.type === "chunk" && entry.isEntry)?.code;
+if (!bundleJS) throw new Error("no browser entry chunk produced");
+const themeCSS = await file(THEME_CSS).text();
 const html = `<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><style>${themeCSS}</style></head>
 <body><script type="module">${bundleJS}</script></body></html>`;
 
 // ── Serve it (same HTML for every path so we can load a deep route directly) ───
-const server = Bun.serve({
-  port: 0,
-  fetch: () => new Response(html, { headers: { "content-type": "text/html" } }),
-});
-const origin = `http://127.0.0.1:${server.port}`;
+const server = serve(
+  { hostname: "127.0.0.1", port: 0 },
+  () => new Response(html, { headers: { "content-type": "text/html" } }),
+);
+const origin = `http://127.0.0.1:${(await server.addr).port}`;
 
 // ── Minimal CDP client (page-target WebSocket; no session plumbing) ───────────
 async function fetchJSON(url) {
@@ -84,11 +81,12 @@ async function fetchJSON(url) {
 }
 
 const port = 9000 + Math.floor(Math.random() * 1000);
-const chrome = Bun.spawn(
-  [CHROME, "--headless=new", `--remote-debugging-port=${port}`, "--no-sandbox",
+const chrome = new Command(CHROME, {
+  args: ["--headless=new", `--remote-debugging-port=${port}`, "--no-sandbox",
    "--disable-gpu", "--hide-scrollbars", "about:blank"],
-  { stdout: "ignore", stderr: "ignore" },
-);
+  stdout: "null",
+  stderr: "null",
+}).spawn();
 
 async function connectPage() {
   const targets = await fetchJSON(`http://127.0.0.1:${port}/json`);
@@ -334,11 +332,10 @@ async function run() {
 try {
   await run();
   console.log(`\n✅ sidebar-collapse e2e — ${passed} checks passed`);
-  process.exitCode = 0;
 } catch (err) {
   console.error(`\n❌ ${err.message}`);
-  process.exitCode = 1;
+  throw err;
 } finally {
-  chrome.kill();
-  server.stop(true);
+  (await chrome).kill();
+  await server.stop();
 }

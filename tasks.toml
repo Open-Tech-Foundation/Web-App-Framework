@@ -95,18 +95,15 @@ dir = "packages/web-cli"
 
 [tasks.test-e2e-docs-drawer]
 deps = ["build-compiler"]
-run = "bun tests/e2e/mobile-drawer.mjs"
-dir = "packages/web-docs"
+run = "esdev packages/web-docs/tests/e2e/mobile-drawer.mjs"
 
 [tasks.test-e2e-docs-sidebar]
 deps = ["build-compiler"]
-run = "bun tests/e2e/sidebar-collapse.mjs"
-dir = "packages/web-docs"
+run = "esdev packages/web-docs/tests/e2e/sidebar-collapse.mjs"
 
 [tasks.test-e2e-docs-hydration]
 deps = ["build-compiler"]
-run = "bun tests/e2e/hydration.mjs"
-dir = "packages/web-docs"
+run = "esdev packages/web-docs/tests/e2e/hydration.mjs"
 
 [tasks.test-e2e-docs]
 deps = ["test-e2e-docs-drawer", "test-e2e-docs-sidebar", "test-e2e-docs-hydration"]
