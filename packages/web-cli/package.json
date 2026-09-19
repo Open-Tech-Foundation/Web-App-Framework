@@ -16,11 +16,11 @@
     "esdev": ">=0.5.0"
   },
   "dependencies": {
-    "@opentf/web-compiler": "0.17.0",
+    "@opentf/web-compiler": "workspace:*",
     "tailwindcss": "4.2.2"
   },
   "peerDependencies": {
-    "@opentf/web": "*"
+    "@opentf/web": "workspace:*"
   },
   "keywords": [
     "opentf",

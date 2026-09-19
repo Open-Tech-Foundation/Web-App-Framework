@@ -12,10 +12,9 @@ const bin = otfwcPath(); // absolute path to the otfwc executable for this platf
 
 This single package ships the `otfwc` binary for every supported platform,
 **brotli-compressed**, under `bin/<platform>-<arch>/otfwc[.exe].br` (~0.65 MB each
-vs ~2.3 MB raw). On install a `postinstall` script decompresses **only the host's**
-binary; `otfwcPath()` also decompresses lazily as a fallback (e.g. under
-`--ignore-scripts`) and returns the path matching the host
-(`process.platform-process.arch`).
+vs ~2.3 MB raw). `otfwcPath()` decompresses **only the host's** binary lazily on
+first use, so installation has no Node lifecycle hook, and returns the path
+matching the host.
 
 Shipping all platforms in one package is cheaper to maintain than the per-platform
 optionalDependencies fan-out that rolldown/swc/esbuild use (their binaries are far

@@ -1,13 +1,11 @@
 //! Decompress the host's otfwc binary from its shipped brotli archive.
 //
 // The package ships one brotli-compressed binary per platform under
-// `bin/<platform>-<arch>/otfwc[.exe].br` (~0.65MB each vs ~2.3MB raw). On install
-// the postinstall script decompresses only the host's; `otfwcPath()` also does it
-// lazily as a fallback (e.g. when scripts are skipped with --ignore-scripts).
+// `bin/<platform>-<arch>/otfwc[.exe].br` (~0.65MB each vs ~2.3MB raw).
+// `otfwcPath()` decompresses the host's archive lazily on first use.
 //
-// This is the runtime half, and it runs under the ES-Runtime alongside the rest of
-// the toolchain. The install half is `scripts/postinstall.js`, which npm runs under
-// node and which therefore carries its own copy of this logic.
+// It runs under the ES-Runtime alongside the rest of the toolchain, so package
+// installation needs no Node lifecycle hook.
 
 import { chmod, exists, file, write } from "runtime:fs";
 import { dirname, fromFileURL, join } from "runtime:path";

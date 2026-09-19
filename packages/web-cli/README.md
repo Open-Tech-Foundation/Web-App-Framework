@@ -3,15 +3,18 @@
 The **OTF Web** dev toolchain — the `otfw` command. A [Rolldown](https://rolldown.rs)-driven
 CSR dev server, a production build, and static pre-rendering (SSG), with the IR
 compiler ([`@opentf/web-compiler`](https://github.com/Open-Tech-Foundation/Web-App-Framework/tree/main/packages/web-compiler))
-running as a transform plugin. Runs on [Bun](https://bun.sh).
+running as a transform plugin. Runs on
+[ES-Runtime](https://esrun.opentechf.org/) through `esdev`.
 
 ## Installation
 
 ```bash
-bun add -d @opentf/web-cli
+pnpm add -D @opentf/web-cli
 ```
 
-It depends on `@opentf/web-compiler` (the prebuilt compiler binary) and expects
+Install ES-Runtime before running `otfw`; its installer provides the `esdev`
+interpreter named by the CLI. The package depends on `@opentf/web-compiler` (the
+prebuilt compiler binary) and expects
 `@opentf/web` in your project. The fastest way to a working setup is
 [`@opentf/create-web`](https://github.com/Open-Tech-Foundation/Web-App-Framework/tree/main/packages/create-web).
 

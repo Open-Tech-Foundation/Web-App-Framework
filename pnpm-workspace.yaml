@@ -1,0 +1,9 @@
+packages:
+  - "packages/*"
+  - "playground"
+  - "benchmarks/*"
+  - "website"
+allowBuilds:
+  '@opentf/web-compiler': false
+  esbuild: true
+  workerd: true

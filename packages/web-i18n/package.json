@@ -27,7 +27,7 @@
     "intl-messageformat": "^10.7.0"
   },
   "peerDependencies": {
-    "@opentf/web": "*"
+    "@opentf/web": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

@@ -35,13 +35,14 @@ many targets. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full design.
 ## Quick start
 
 ```bash
-bun create @opentf/web my-app
+pnpm create @opentf/web my-app
 cd my-app
-bun install
-bun run dev
+pnpm install
+pnpm run dev
 ```
 
-`npm create @opentf/web@latest` and `pnpm create @opentf/web` work too.
+Install [ES-Runtime](https://esrun.opentechf.org/) first: `otfw` runs under
+`esdev`, while pnpm manages dependencies.
 
 ## Example
 

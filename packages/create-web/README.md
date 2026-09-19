@@ -4,13 +4,14 @@ The official scaffolding tool for **OTF Web**.
 
 ## Quick Start
 
-Get a new project up and running in seconds (the toolchain runs on [Bun](https://bun.sh)):
+Get a new project up and running in seconds. Install
+[ES-Runtime](https://esrun.opentechf.org/) first; the toolchain runs on `esdev`.
 
 ```bash
-bun create @opentf/web@latest my-app
+pnpm create @opentf/web my-app
 cd my-app
-bun install
-bun run dev
+pnpm install
+pnpm run dev
 ```
 
 ## Features
@@ -31,7 +32,7 @@ bun run dev
 | **SPA (browser-only)** | UI runs in the browser; static deploy — no server files | No backend in the repo (or you call an external API) |
 | **Fullstack (browser + server)** | UI + middleware, API routes, loaders, and `otfw serve` | You need auth, a database, or server-only logic |
 | **Documentation site** | MDX docs/blog with `@opentf/web-docs` | Product docs or a content site |
-| **Library** | Publishable components with `bun test` | Reusable UI package, not a runnable app |
+| **Library** | Publishable components with a browser test harness | Reusable UI package, not a runnable app |
 
 `@opentf/*` dependencies in the generated `package.json` are pinned to the latest
 published versions from npm at scaffold time.
@@ -39,7 +40,7 @@ published versions from npm at scaffold time.
 ## Usage
 
 ```bash
-bun create @opentf/web@latest my-cool-app
+pnpm create @opentf/web my-cool-app
 ```
 
 Follow the interactive prompts to choose a project type, language, and styling solution.

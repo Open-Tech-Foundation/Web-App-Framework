@@ -40,7 +40,7 @@
   "bugs": "https://github.com/Open-Tech-Foundation/Web-App-Framework/issues",
   "license": "MIT",
   "peerDependencies": {
-    "@opentf/web": "*"
+    "@opentf/web": "workspace:*"
   },
   "publishConfig": {
     "access": "public"
