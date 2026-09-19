@@ -115,6 +115,7 @@ export function createSearch({ base = "/_search/" } = {}) {
       throwIfAborted(signal);
       const scores = new Map();
       const matches = new Map();
+      const locations = new Map();
       const totalDocs = state.manifest.docs || state.lengths.length;
       const avgdl = state.manifest.avgdl || 1;
       const fieldWeights = [8, 5, 4, 2.5, 3, 2, 1, 0.5];
@@ -128,7 +129,7 @@ export function createSearch({ base = "/_search/" } = {}) {
         const seen = new Set();
         for (const [, list] of candidates) {
           const idf = Math.log(1 + (totalDocs - list.length + 0.5) / (list.length + 0.5));
-          for (const [doc, tf] of list) {
+          for (const [doc, tf, positions] of list) {
           if (seen.has(doc)) continue;
           seen.add(doc);
           const dl = state.lengths[doc] || avgdl;
@@ -136,10 +137,12 @@ export function createSearch({ base = "/_search/" } = {}) {
           const bm25 = fieldWeight * idf * (tf * 2.2) / (tf + 1.2 * (1 - 0.75 + 0.75 * dl / avgdl));
           scores.set(doc, (scores.get(doc) || 0) + bm25);
           matches.set(doc, (matches.get(doc) || 0) + 1);
+          const perDoc = locations.get(doc) || []; perDoc.push(positions.map(([position]) => position)); locations.set(doc, perDoc);
           }
         }
       }
       let ranked = [...scores].filter(([doc]) => matches.get(doc) === words.length);
+      for (const [doc, groups] of locations) if (groups.length >= 2) { const points = groups.map((group) => group[0]).sort((a, b) => a - b); scores.set(doc, scores.get(doc) + 1 / (1 + points.at(-1) - points[0])); }
       const partial = ranked.length === 0;
       if (partial) ranked = [...scores];
       const top = ranked.sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, limit);
