@@ -2,7 +2,7 @@
 // `ssgComponent` stamps each island a `data-h` id and records its JSON-safe props into a
 // payload the client reads at upgrade. No DOM — plain string building.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "runtime:test";
 
 import {
   beginHydrationCollect,

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "runtime:test";
 
 import { registerRoutes, routes } from "../runtime/router.js";
 import { renderHead, resolveMetadata } from "./head.js";

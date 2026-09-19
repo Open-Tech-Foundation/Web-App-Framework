@@ -1,7 +1,8 @@
-#!/usr/bin/env node
+#!/usr/bin/env esdev
 
-import fs from "node:fs";
-import path from "node:path";
+import { exists, mkdir, readDir, remove } from "runtime:fs";
+import { join, relative } from "runtime:path";
+import { args, cwd, env } from "runtime:process";
 import prompts from "prompts";
 import { cyan, green, red, reset, yellow, bold } from "kolorist";
 import { detectPackageManager, devCommand, testCommand } from "./detect-pm.js";
@@ -14,7 +15,7 @@ async function init() {
   console.log(`\n  ${bold(orange("Open Tech Foundation"))}`);
   console.log(`\n  ${bold(cyan("OTF Web"))} ${yellow("Scaffolding Tool")} ✨\n`);
 
-  let targetDir = process.argv[2];
+  let targetDir = args[0];
   const defaultProjectName = targetDir || "web-app";
   let result = {};
 
@@ -31,8 +32,8 @@ async function init() {
           },
         },
         {
-          type: () =>
-            fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0 ? "confirm" : null,
+          type: async () =>
+            (await exists(targetDir)) && (await readDir(targetDir)).length > 0 ? "confirm" : null,
           name: "overwrite",
           message: () =>
             (targetDir === "." ? "Current directory" : `Target directory "${targetDir}"`) +
@@ -136,10 +137,10 @@ async function init() {
   }
 
   const { styling, overwrite, template = "spa", language = "js", blog = false } = result;
-  const root = path.join(process.cwd(), targetDir);
+  const root = join(cwd(), targetDir);
 
-  if (overwrite) emptyDir(root);
-  else if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
+  if (overwrite) await emptyDir(root);
+  else if (!(await exists(root))) await mkdir(root, { recursive: true });
 
   try {
     await scaffold({
@@ -162,10 +163,10 @@ async function init() {
 
   const pm = detectPackageManager();
 
-  if (process.env.CREATE_WEB_SKIP_INSTALL !== "1") {
+  if (env.CREATE_WEB_SKIP_INSTALL !== "1") {
     console.log(`\n  ${reset("Installing dependencies with")} ${cyan(pm)}…\n`);
     try {
-      installDependencies(root, pm);
+      await installDependencies(root, pm);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       throw new Error(
@@ -176,20 +177,20 @@ async function init() {
     }
   }
 
-  const rel = path.relative(process.cwd(), root);
+  const rel = relative(cwd(), root);
   console.log(`\n${green("✔")} ${bold(cyan("OTF Web"))} project created! 🚀\n`);
   console.log(`  ${reset("Next steps:")}\n`);
   if (rel) console.log(`  ${cyan(`cd ${rel}`)}`);
-  if (process.env.CREATE_WEB_SKIP_INSTALL === "1") {
+  if (env.CREATE_WEB_SKIP_INSTALL === "1") {
     console.log(`  ${cyan(`${pm} install`)}`);
   }
   console.log(`  ${cyan(template === "library" ? testCommand(pm) : devCommand(pm))}\n`);
 }
 
-function emptyDir(dir) {
-  if (!fs.existsSync(dir)) return;
-  for (const file of fs.readdirSync(dir)) {
-    fs.rmSync(path.resolve(dir, file), { recursive: true, force: true });
+async function emptyDir(dir) {
+  if (!(await exists(dir))) return;
+  for (const entry of await readDir(dir)) {
+    await remove(join(dir, entry.name), { recursive: true });
   }
 }
 

@@ -1,8 +1,10 @@
+import { env } from "runtime:process";
+
 const OTF_SCOPE = "@opentf/";
 const DEFAULT_REGISTRY = "https://registry.npmjs.org";
 
 function registryBase() {
-  return process.env.CREATE_WEB_NPM_REGISTRY?.replace(/\/$/, "") || DEFAULT_REGISTRY;
+  return env.CREATE_WEB_NPM_REGISTRY?.replace(/\/$/, "") || DEFAULT_REGISTRY;
 }
 const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 
@@ -48,7 +50,7 @@ export function listOpentfDeps(pkg) {
  * @param {{ onResolved?: (name: string, version: string) => void }} [opts]
  */
 export async function pinOpentfDeps(pkg, opts = {}) {
-  if (process.env.CREATE_WEB_SKIP_NPM === "1") return pkg;
+  if (env.CREATE_WEB_SKIP_NPM === "1") return pkg;
 
   const names = listOpentfDeps(pkg);
   if (!names.length) return pkg;

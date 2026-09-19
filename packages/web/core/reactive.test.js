@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "runtime:test";
 
 import { effect, computed } from "./signals.js";
 import { reactive, isReactive, toRawValue, snapshot } from "./reactive.js";

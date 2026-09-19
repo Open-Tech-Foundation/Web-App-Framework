@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import { exists, file, remove, write } from "runtime:fs";
+import { join } from "runtime:path";
 
 const BLOG_CONFIG = `
   // Sample blog — demo post under app/blog/. Remove this block and app/blog/ if unused.
@@ -28,17 +28,17 @@ if you only need docs.
  * @param {string} targetDir
  * @param {boolean} enabled
  */
-export function applyDocsBlog(targetDir, enabled) {
-  const blogDir = path.join(targetDir, "app/blog");
-  const configPath = path.join(targetDir, "otfw.config.js");
-  const docsPagePath = path.join(targetDir, "app/docs/page.mdx");
+export async function applyDocsBlog(targetDir, enabled) {
+  const blogDir = join(targetDir, "app/blog");
+  const configPath = join(targetDir, "otfw.config.js");
+  const docsPagePath = join(targetDir, "app/docs/page.mdx");
 
   if (!enabled) {
-    if (fs.existsSync(blogDir)) fs.rmSync(blogDir, { recursive: true, force: true });
+    if (await exists(blogDir)) await remove(blogDir, { recursive: true });
     return;
   }
 
-  let config = fs.readFileSync(configPath, "utf-8");
+  let config = await file(configPath).text();
   if (!config.includes('href: "/blog"')) {
     config = config.replace(
       'nav: [{ label: "Docs", href: "/docs" }],',
@@ -48,11 +48,11 @@ export function applyDocsBlog(targetDir, enabled) {
   if (!config.includes("blog:")) {
     config = config.replace(/\n}\);\s*$/, `${BLOG_CONFIG}\n});\n`);
   }
-  fs.writeFileSync(configPath, config);
+  await write(configPath, config);
 
-  let page = fs.readFileSync(docsPagePath, "utf-8");
+  let page = await file(docsPagePath).text();
   if (!page.includes("## Blog (demo)")) {
     page = page.replace("\n## Edit Content\n", `${BLOG_DOCS_SECTION}\n## Edit Content\n`);
-    fs.writeFileSync(docsPagePath, page);
+    await write(docsPagePath, page);
   }
 }

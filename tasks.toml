@@ -43,14 +43,41 @@ run = "cargo build"
 deps = ["build-compiler"]
 run = "cargo test"
 
-# Scoped to the ported packages, so the not-yet-ported ones aren't pulled in.
+# The remaining Bun-only tests need either a browser DOM or Node compatibility.
 [tasks.test-js]
 deps = ["build-compiler"]
-run = "bun test packages/web/ packages/web-cli/tests/ packages/create-web/tests/"
+run = "bun test packages/web/core/errors.test.js packages/web/runtime/ packages/web/server/adapters/node.test.js"
 
-# Independent processes — one cargo, one bun — so they overlap.
+# Runtime-native tests: the CLI, scaffolder, and framework's pure core/server paths.
+[tasks.test-esdev]
+deps = ["build-compiler"]
+run = "esdev test packages/web-cli/tests packages/create-web/tests packages/web/core/reactive.test.js packages/web/core/signals.test.js packages/web/esdev-tests/clsx.test.js packages/web/server/api.test.js packages/web/server/cookies.test.js packages/web/server/head.test.js packages/web/server/loader.test.js packages/web/server/middleware.test.js packages/web/server/render.test.js packages/web/server/ssg-runtime.test.js"
+
+[tasks.test-create-web]
+run = "esdev test tests/scaffold.test.js"
+dir = "packages/create-web"
+
+[tasks.test-web-docs-search]
+run = "esdev test packages/web-docs/tests/search.test.js packages/web-docs/tests/tokenizer.test.js"
+
+[tasks.test-web-docs-dom]
+run = "bun test --env=happy-dom tests/MobileDrawer.test.js tests/SidebarCollapseAll.test.js tests/feed.test.js"
+dir = "packages/web-docs"
+
+[tasks.test-web-docs]
+deps = ["test-web-docs-search", "test-web-docs-dom"]
+
+[tasks.test-web-form]
+run = "bun test --env=happy-dom"
+dir = "packages/web-form"
+
+[tasks.test-web-i18n]
+run = "bun test --env=happy-dom"
+dir = "packages/web-i18n"
+
+# Independent processes — cargo, Bun, and ES-Runtime — so they overlap.
 [tasks.test]
-deps = ["test-rust", "test-js"]
+deps = ["test-rust", "test-js", "test-esdev", "test-web-docs"]
 parallel = true
 
 # Real-browser tier (docs/HYDRATION.md §5) — drives `otfw serve`/`build` against headless
@@ -67,11 +94,10 @@ parallel = true
 # once every suite takes its debugging port from the OS too — the fixed four are the blocker,
 # not the random ones.
 #
-# The eight web-cli suites are still one step: their chain lives in that package's own
-# `test:e2e` script.
+# The web-cli browser suites share one ESdev-native orchestrator.
 [tasks.test-e2e-cli]
 deps = ["build-compiler"]
-run = "bun run test:e2e"
+run = "esdev tests/e2e/all.mjs"
 dir = "packages/web-cli"
 
 [tasks.test-e2e-docs-drawer]
@@ -109,13 +135,6 @@ run = "esdev packages/web-cli/src/cli.js build --root=playground"
 [tasks.site-build]
 run = "esdev packages/web-cli/src/cli.js build --root=website --ssg"
 
-# The website is part of the root pnpm workspace. Frozen installation makes its
-# Cloudflare build consume the reviewed root lockfile rather than resolving a private
-# lockfile in `website/`.
-[tasks.site-install]
-run = "pnpm install --frozen-lockfile"
-dir = "website"
-
 # --- benchmarks ---------------------------------------------------------------
 
 # Runtime benchmark (update latency in a real browser). Args pass through:
@@ -126,15 +145,24 @@ dir = "website"
 [tasks.bench]
 run = "bun benchmarks/run.mjs"
 
-# --- deploy (Cloudflare) ------------------------------------------------------
+[tasks.bench-react-build]
+run = "bun build.mjs"
+dir = "benchmarks/react"
 
-[tasks.cf-build]
-run = "bun scripts/build-website-standalone.mjs"
+[tasks.bench-react-dev]
+run = "bun build.mjs && bun --cwd dist serve"
+dir = "benchmarks/react"
 
-[tasks.preview]
-deps = ["cf-build"]
-run = "wrangler dev"
+[tasks.bench-solid-build]
+run = "bun build.mjs"
+dir = "benchmarks/solid"
 
-[tasks.deploy]
-deps = ["cf-build"]
-run = "wrangler deploy"
+[tasks.bench-svelte-build]
+run = "bun build.mjs"
+dir = "benchmarks/svelte"
+
+[tasks.bench-otfw-dev]
+run = "esdev packages/web-cli/src/cli.js dev --root=benchmarks/otfw --port=3010"
+
+[tasks.bench-otfw-build]
+run = "esdev packages/web-cli/src/cli.js build --root=benchmarks/otfw"

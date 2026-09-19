@@ -4,9 +4,9 @@
 // `process.env.NODE_ENV` is substituted at bundle time by the toolchain (`otfw
 // dev` → "development", `otfw build` → "production"), so DEV folds to a literal
 // and every `if (DEV)` block is dropped by minification from production output.
-// Under SSR/tests the identifier survives and `process` is real, so the check
-// still works.
-export const DEV = process.env.NODE_ENV !== "production";
+// ESdev has no Node `process`; its source-mode default is development. Bundled
+// production builds substitute this expression, while Bun/Node keep NODE_ENV.
+export const DEV = globalThis.process?.env?.NODE_ENV !== "production";
 
 const seen = new Set();
 

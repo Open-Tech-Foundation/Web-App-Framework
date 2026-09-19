@@ -32,9 +32,6 @@
   "publishConfig": {
     "access": "public"
   },
-  "scripts": {
-    "test": "bun test --env=happy-dom"
-  },
   "devDependencies": {
     "@opentf/web": "workspace:*",
     "@opentf/web-test": "workspace:*"

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "runtime:test";
 
 import { registerRoutes, router, routes } from "../runtime/router.js";
 import { defineSSG, ssgComponent } from "./ssg-runtime.js";

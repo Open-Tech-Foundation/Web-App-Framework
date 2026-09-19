@@ -75,7 +75,7 @@ try {
   await copyTree(website, tmpSite, new Set(["node_modules", "dist"]));
   await materializeWorkspaceDependencies();
   await run("pnpm", ["install", "--frozen-lockfile=false"], tmpSite);
-  await run("pnpm", ["run", "build:ssg"], tmpSite);
+  await run("pnpm", ["run", "build"], tmpSite);
 
   await remove(outDir, { recursive: true });
   await copyTree(join(tmpSite, "dist"), outDir);

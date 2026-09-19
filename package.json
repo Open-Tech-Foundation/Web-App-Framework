@@ -8,19 +8,6 @@
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.21.0",
-  "scripts": {
-    "dev": "esdev packages/web-cli/src/cli.js dev --root=playground --port=3005",
-    "bench": "bun benchmarks/run.mjs",
-    "playground:build": "esdev packages/web-cli/src/cli.js build --root=playground",
-    "test": "cargo build && cargo test && esdev test packages/web-cli/tests && bun test packages/web/ packages/create-web/tests/",
-    "typecheck": "tsc --noEmit",
-    "cf:build": "esdev scripts/build-website-standalone.mjs",
-    "prepreview": "pnpm run cf:build",
-    "preview": "wrangler dev",
-    "predeploy": "pnpm run cf:build",
-    "deploy": "wrangler deploy",
-    "test:e2e": "esdev packages/web-cli/tests/e2e/all.mjs"
-  },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.33.1",
     "@opentf/esrun-types": "^0.4.0",

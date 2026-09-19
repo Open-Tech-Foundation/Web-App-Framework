@@ -101,8 +101,13 @@ async function runCase(caseName) {
 
   if (!noBuild) {
     console.log(`\n• [${caseName}] building …`);
-    const b = Bun.spawnSync(["bun", "run", "build"], {
-      cwd: appDir, stdout: "inherit", stderr: "inherit",
+    const command =
+      caseName === "otfw"
+        ? ["esdev", "packages/web-cli/src/cli.js", "build", "--root=benchmarks/otfw"]
+        : ["bun", "build.mjs"];
+    const b = Bun.spawnSync(command, {
+      cwd: caseName === "otfw" ? join(HERE, "..") : appDir,
+      stdout: "inherit", stderr: "inherit",
     });
     if (!b.success) throw new Error("build failed");
   }

@@ -2,10 +2,6 @@
   "name": "web-docs-site",
   "private": true,
   "type": "module",
-  "scripts": {
-    "dev": "otfw dev",
-    "build": "otfw build --ssg"
-  },
   "dependencies": {
     "@opentf/web": "^0.16.0",
     "@opentf/web-docs": "^0.12.0"

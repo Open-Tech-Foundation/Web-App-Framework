@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { Command } from "runtime:system";
 import { detectPackageManager } from "./detect-pm.js";
 
 /**
@@ -7,15 +7,15 @@ import { detectPackageManager } from "./detect-pm.js";
  * @param {string} cwd
  * @param {ReturnType<typeof detectPackageManager>} [pm]
  */
-export function installDependencies(cwd, pm = detectPackageManager()) {
-  const result = spawnSync(pm, ["install"], {
+export async function installDependencies(cwd, pm = detectPackageManager()) {
+  const result = await new Command(pm, {
+    args: ["install"],
     cwd,
-    stdio: "inherit",
-    env: process.env,
-  });
-
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(`${pm} install exited with code ${result.status ?? "unknown"}`);
+    stdout: "inherit",
+    stderr: "inherit",
+    inheritEnv: true,
+  }).output();
+  if (!result.success) {
+    throw new Error(`${pm} install exited with code ${result.code ?? "unknown"}`);
   }
 }

@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import { exists, file, readDir, remove, write } from "runtime:fs";
+import { basename, join, sep } from "runtime:path";
 
 const ENV_DTS = `/** OTF Web compiler macros — provided at build time, not runtime. */
 declare const $state: {
@@ -31,10 +31,10 @@ const TSCONFIG = {
 const APP_TEMPLATES = new Set(["spa", "fullstack"]);
 
 /** @param {string} dir */
-function walkFiles(dir, files = []) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) walkFiles(full, files);
+async function walkFiles(dir, files = []) {
+  for (const entry of await readDir(dir)) {
+    const full = join(dir, entry.name);
+    if (entry.isDir) await walkFiles(full, files);
     else files.push(full);
   }
   return files;
@@ -47,8 +47,8 @@ function shouldRenameToTsx(file) {
 
 /** @param {string} file */
 function shouldRenameToTs(file) {
-  const base = path.basename(file);
-  if (base === "route.js" && file.includes(`${path.sep}api${path.sep}`)) return true;
+  const base = basename(file);
+  if (base === "route.js" && file.includes(`${sep}api${sep}`)) return true;
   if (base === "_middleware.js" || base === "loader.js") return true;
   return false;
 }
@@ -104,37 +104,37 @@ function patchComponentTypes(content, basename) {
  * @param {"spa" | "fullstack" | "docs" | "library"} template
  * @param {Record<string, unknown>} [pkg]
  */
-export function applyTypescript(targetDir, template, pkg) {
-  const files = walkFiles(targetDir);
+export async function applyTypescript(targetDir, template, pkg) {
+  const files = await walkFiles(targetDir);
 
-  for (const file of files) {
-    let nextPath = file;
-    if (shouldRenameToTsx(file)) nextPath = file.replace(/\.jsx$/, ".tsx");
-    else if (shouldRenameToTs(file)) nextPath = file.replace(/\.js$/, ".ts");
+  for (const filePath of files) {
+    let nextPath = filePath;
+    if (shouldRenameToTsx(filePath)) nextPath = filePath.replace(/\.jsx$/, ".tsx");
+    else if (shouldRenameToTs(filePath)) nextPath = filePath.replace(/\.js$/, ".ts");
 
-    if (nextPath !== file) {
-      let content = fs.readFileSync(file, "utf-8");
+    if (nextPath !== filePath) {
+      let content = await file(filePath).text();
       content = patchSource(content, template);
-      content = patchLayoutTypes(content, path.basename(nextPath));
-      content = patchComponentTypes(content, path.basename(nextPath));
-      fs.writeFileSync(nextPath, content);
-      fs.rmSync(file);
+      content = patchLayoutTypes(content, basename(nextPath));
+      content = patchComponentTypes(content, basename(nextPath));
+      await write(nextPath, content);
+      await remove(filePath);
     }
   }
 
-  const indexJs = path.join(targetDir, "index.js");
-  if (template === "library" && fs.existsSync(indexJs)) {
-    let content = fs.readFileSync(indexJs, "utf-8");
+  const indexJs = join(targetDir, "index.js");
+  if (template === "library" && (await exists(indexJs))) {
+    let content = await file(indexJs).text();
     content = patchSource(content, template);
-    fs.writeFileSync(path.join(targetDir, "index.ts"), content);
-    fs.rmSync(indexJs);
+    await write(join(targetDir, "index.ts"), content);
+    await remove(indexJs);
   }
 
   const envPath =
     template === "library"
-      ? path.join(targetDir, "otfw-env.d.ts")
-      : path.join(targetDir, "app", "otfw-env.d.ts");
-  fs.writeFileSync(envPath, ENV_DTS);
+      ? join(targetDir, "otfw-env.d.ts")
+      : join(targetDir, "app", "otfw-env.d.ts");
+  await write(envPath, ENV_DTS);
 
   const tsconfig = {
     compilerOptions: { ...TSCONFIG.compilerOptions },
@@ -151,17 +151,17 @@ export function applyTypescript(targetDir, template, pkg) {
     tsconfig.compilerOptions = rest;
   }
 
-  const jsconfigPath = path.join(targetDir, "jsconfig.json");
-  if (fs.existsSync(jsconfigPath)) fs.rmSync(jsconfigPath);
+  const jsconfigPath = join(targetDir, "jsconfig.json");
+  if (await exists(jsconfigPath)) await remove(jsconfigPath);
 
-  fs.writeFileSync(path.join(targetDir, "tsconfig.json"), JSON.stringify(tsconfig, null, 2) + "\n");
+  await write(join(targetDir, "tsconfig.json"), JSON.stringify(tsconfig, null, 2) + "\n");
 
   if (template === "library") {
-    const testJs = path.join(targetDir, "tests/counter.test.js");
-    if (fs.existsSync(testJs)) {
-      let content = fs.readFileSync(testJs, "utf-8");
+    const testJs = join(targetDir, "tests/counter.test.js");
+    if (await exists(testJs)) {
+      let content = await file(testJs).text();
       content = content.replace("../src/Counter.jsx", "../src/Counter.tsx");
-      fs.writeFileSync(testJs, content);
+      await write(testJs, content);
     }
     if (pkg) {
       pkg.exports = { ".": "./index.ts" };

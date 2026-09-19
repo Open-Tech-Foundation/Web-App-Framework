@@ -2,9 +2,6 @@
   "name": "@opentf/web-bench-solid",
   "private": true,
   "type": "module",
-  "scripts": {
-    "build": "bun run build.mjs"
-  },
   "dependencies": {
     "solid-js": "^1.9.3"
   },

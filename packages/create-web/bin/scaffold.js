@@ -1,22 +1,21 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { copy, exists, file, mkdir, readDir, stat, write } from "runtime:fs";
+import { basename, dirname, fromFileURL, join, resolve } from "runtime:path";
 import { applyDocsBlog } from "./apply-docs-blog.js";
 import { applyTypescript } from "./apply-typescript.js";
 import { pinOpentfDeps } from "./resolve-deps.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const defaultTemplatesRoot = path.resolve(__dirname, "../templates");
+const __dirname = dirname(fromFileURL(import.meta.url));
+const defaultTemplatesRoot = resolve(__dirname, "../templates");
 
-function copy(src, dest) {
-  if (fs.statSync(src).isDirectory()) copyDir(src, dest);
-  else fs.copyFileSync(src, dest);
+async function copyEntry(src, dest) {
+  if ((await stat(src)).isDir) await copyDir(src, dest);
+  else await copy(src, dest);
 }
 
-function copyDir(srcDir, destDir) {
-  fs.mkdirSync(destDir, { recursive: true });
-  for (const file of fs.readdirSync(srcDir)) {
-    copy(path.resolve(srcDir, file), path.resolve(destDir, file));
+async function copyDir(srcDir, destDir) {
+  await mkdir(destDir, { recursive: true });
+  for (const entry of await readDir(srcDir)) {
+    await copyEntry(join(srcDir, entry.name), join(destDir, entry.name));
   }
 }
 
@@ -43,46 +42,46 @@ export async function scaffold({
   templatesRoot = defaultTemplatesRoot,
   onResolved,
 }) {
-  const templateDir = path.join(templatesRoot, template);
-  if (!fs.existsSync(templateDir)) {
+  const templateDir = join(templatesRoot, template);
+  if (!(await exists(templateDir))) {
     throw new Error(`Unknown template: ${template}`);
   }
 
-  const templatePkgPath = path.join(templateDir, "package.json");
-  const pkg = JSON.parse(fs.readFileSync(templatePkgPath, "utf-8"));
-  pkg.name = path.basename(targetDir);
+  const templatePkgPath = join(templateDir, "package.json");
+  const pkg = JSON.parse(await file(templatePkgPath).text());
+  pkg.name = basename(targetDir);
   await pinOpentfDeps(pkg, { onResolved });
 
   if (typescript) {
     pkg.devDependencies = { ...pkg.devDependencies, typescript: "^5.8.0" };
   }
 
-  fs.mkdirSync(targetDir, { recursive: true });
+  await mkdir(targetDir, { recursive: true });
 
-  for (const file of fs.readdirSync(templateDir)) {
-    const src = path.join(templateDir, file);
-    const dest = path.join(targetDir, file === "_gitignore" ? ".gitignore" : file);
-    if (file === "package.json") {
-      fs.writeFileSync(dest, JSON.stringify(pkg, null, 2) + "\n");
+  for (const entry of await readDir(templateDir)) {
+    const src = join(templateDir, entry.name);
+    const dest = join(targetDir, entry.name === "_gitignore" ? ".gitignore" : entry.name);
+    if (entry.name === "package.json") {
+      await write(dest, JSON.stringify(pkg, null, 2) + "\n");
     } else {
-      copy(src, dest);
+      await copyEntry(src, dest);
     }
   }
 
   if (styling === "tailwind") {
-    const cssPath = path.join(targetDir, "app", "global.css");
-    const css = fs.readFileSync(cssPath, "utf-8");
-    fs.writeFileSync(cssPath, `@import "tailwindcss";\n\n${css}`);
+    const cssPath = join(targetDir, "app", "global.css");
+    const css = await file(cssPath).text();
+    await write(cssPath, `@import "tailwindcss";\n\n${css}`);
   }
 
   if (template === "docs") {
-    applyDocsBlog(targetDir, blog);
+    await applyDocsBlog(targetDir, blog);
   }
 
   if (typescript) {
-    applyTypescript(targetDir, template, pkg);
-    fs.writeFileSync(
-      path.join(targetDir, "package.json"),
+    await applyTypescript(targetDir, template, pkg);
+    await write(
+      join(targetDir, "package.json"),
       JSON.stringify(pkg, null, 2) + "\n",
     );
   }

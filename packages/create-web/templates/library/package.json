@@ -10,9 +10,6 @@
     "index.js",
     "src"
   ],
-  "scripts": {
-    "test": "bun test"
-  },
   "peerDependencies": {
     "@opentf/web": "^0.16.0"
   },

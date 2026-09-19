@@ -3,9 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "otfw dev",
-    "build": "otfw build",
-    "build:ssg": "otfw build --ssg"
+    "build": "otfw build --ssg"
   },
   "dependencies": {
     "@opentf/web": "workspace:*",

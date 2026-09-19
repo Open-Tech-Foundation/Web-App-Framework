@@ -2,9 +2,6 @@
   "name": "@opentf/web-bench-svelte",
   "private": true,
   "type": "module",
-  "scripts": {
-    "build": "bun run build.mjs"
-  },
   "devDependencies": {
     "svelte": "^5.16.0"
   }
