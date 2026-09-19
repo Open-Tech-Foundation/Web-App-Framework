@@ -11,7 +11,7 @@ function decodeChunk(bytes) {
   for (const [term, df, offset] of rows) { let q = blob + offset, doc = 0, list = []; for (let i = 0; i < df; i++) { const next = () => { let n = 0, s = 0, b; do { b = bytes[q++]; n += (b & 127) * 2 ** s; s += 7; } while (b & 128); return n; }; doc += next(); const tf = next(), positions = []; let position = 0; for (let j = 0; j < tf; j++) { const packed = next(); position += packed >>> 3; positions.push([position, packed & 7]); } list.push([doc, tf, positions]); } postings.set(term, list); }
   return postings;
 }
-function tokenize(text) {
+export function tokenize(text) {
   const out = [];
   for (const word of text.match(/[\p{L}\p{N}_.-]+/gu) || []) {
     const whole = word.normalize("NFKC").toLowerCase(); out.push(whole);

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "../../web-cli/tests/harness.js";
 import { createSearch } from "../search.js";
 
 function varint(value) { const out = []; while (value >= 128) { out.push((value & 127) | 128); value >>= 7; } return [...out, value]; }
@@ -28,9 +28,8 @@ test("rejects an already-aborted query before making a request", async () => {
   controller.abort();
   const original = globalThis.fetch;
   globalThis.fetch = () => { throw new Error("fetch must not run"); };
-  try {
-    await expect(createSearch().query("routing", { signal: controller.signal })).rejects.toThrow("aborted");
-  } finally { globalThis.fetch = original; }
+  try { let error; try { await createSearch().query("routing", { signal: controller.signal }); } catch (e) { error = e; } expect(error?.message).toMatch("aborted"); }
+  finally { globalThis.fetch = original; }
 });
 
 test("selects the lexical shard containing an exact term", async () => {

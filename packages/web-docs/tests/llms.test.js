@@ -1,19 +1,16 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { afterEach, describe, expect, test } from "../../web-cli/tests/harness.js";
+import { makeTempDir, remove } from "runtime:fs";
+import { join } from "runtime:path";
 
+import { writeFile } from "../../web-cli/tests/fixture.js";
 import { renderLlmsFullTxt, renderLlmsTxt } from "../build/llms.js";
 
 const roots = [];
 
-function fixture() {
-  const root = join(tmpdir(), `otfw-llms-${Date.now()}-${roots.length}`);
+async function fixture() {
+  const root = await makeTempDir({ prefix: "otfw-llms-" });
   const appDir = join(root, "app");
-  mkdirSync(join(appDir, "docs", "guide"), { recursive: true });
-  mkdirSync(join(appDir, "blog", "hello"), { recursive: true });
-  mkdirSync(join(appDir, "docs", "[slug]"), { recursive: true });
-  writeFileSync(
+  await writeFile(
     join(appDir, "docs", "guide", "page.mdx"),
     [
       "---",
@@ -28,11 +25,11 @@ function fixture() {
       "Use OTF Web.",
     ].join("\n"),
   );
-  writeFileSync(
+  await writeFile(
     join(appDir, "blog", "hello", "page.mdx"),
     ["---", "title: Hello", "description: Launch notes.", "---", "", "# Hello", "", "Post body."].join("\n"),
   );
-  writeFileSync(join(appDir, "docs", "[slug]", "page.mdx"), "# Dynamic");
+  await writeFile(join(appDir, "docs", "[slug]", "page.mdx"), "# Dynamic");
   roots.push(root);
   return {
     appDir,
@@ -44,14 +41,14 @@ function fixture() {
   };
 }
 
-afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+afterEach(async () => {
+  for (const root of roots.splice(0)) await remove(root, { recursive: true });
 });
 
 describe("renderLlmsTxt", () => {
-  test("renders grouped absolute route links and excludes dynamic routes", () => {
-    const { appDir, pages } = fixture();
-    const txt = renderLlmsTxt({
+  test("renders grouped absolute route links and excludes dynamic routes", async () => {
+    const { appDir, pages } = await fixture();
+    const txt = await renderLlmsTxt({
       appDir,
       pages,
       baseUrl: "https://example.com",
@@ -67,9 +64,9 @@ describe("renderLlmsTxt", () => {
     expect(txt).not.toContain("[slug]");
   });
 
-  test("summarizes the site with its own description, not a fixed blurb", () => {
-    const { appDir, pages } = fixture();
-    const txt = renderLlmsTxt({
+  test("summarizes the site with its own description, not a fixed blurb", async () => {
+    const { appDir, pages } = await fixture();
+    const txt = await renderLlmsTxt({
       appDir,
       pages,
       baseUrl: "https://example.com",
@@ -81,9 +78,9 @@ describe("renderLlmsTxt", () => {
     expect(txt).not.toContain("OTF Web framework");
   });
 
-  test("prefers an explicit docs.description over the resolved site description", () => {
-    const { appDir, pages } = fixture();
-    const txt = renderLlmsTxt({
+  test("prefers an explicit docs.description over the resolved site description", async () => {
+    const { appDir, pages } = await fixture();
+    const txt = await renderLlmsTxt({
       appDir,
       pages,
       baseUrl: "https://example.com",
@@ -94,28 +91,24 @@ describe("renderLlmsTxt", () => {
     expect(txt).toContain("> Configured summary.");
   });
 
-  test("falls back to the home page description, then to the site title", () => {
-    const { appDir, pages } = fixture();
-    writeFileSync(
-      join(appDir, "page.mdx"),
-      ["---", "title: Home", "description: The Example project.", "---", "", "# Home"].join("\n"),
-    );
+  test("falls back to the home page description, then to the site title", async () => {
+    const { appDir, pages } = await fixture();
     const home = join(appDir, "page.mdx");
+    await writeFile(home, ["---", "title: Home", "description: The Example project.", "---", "", "# Home"].join("\n"));
 
     expect(
-      renderLlmsTxt({ appDir, pages: [...pages, home], baseUrl: "https://example.com", config: { docs: { title: "Example" } } }),
+      await renderLlmsTxt({ appDir, pages: [...pages, home], baseUrl: "https://example.com", config: { docs: { title: "Example" } } }),
     ).toContain("> The Example project.");
-
     expect(
-      renderLlmsTxt({ appDir, pages, baseUrl: "https://example.com", config: { docs: { title: "Example" } } }),
+      await renderLlmsTxt({ appDir, pages, baseUrl: "https://example.com", config: { docs: { title: "Example" } } }),
     ).toContain("> Documentation for Example.");
   });
 });
 
 describe("renderLlmsFullTxt", () => {
-  test("renders cleaned Markdown content for filesystem routes", () => {
-    const { appDir, pages } = fixture();
-    const txt = renderLlmsFullTxt({
+  test("renders cleaned Markdown content for filesystem routes", async () => {
+    const { appDir, pages } = await fixture();
+    const txt = await renderLlmsFullTxt({
       appDir,
       pages,
       baseUrl: "https://example.com",

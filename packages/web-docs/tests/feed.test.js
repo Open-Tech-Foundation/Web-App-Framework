@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "../../web-cli/tests/harness.js";
 
 import { renderAtomFeed, renderBlogFeed } from "../build/feed.js";
 

@@ -57,15 +57,8 @@ run = "esdev test packages/web-cli/tests packages/create-web/tests packages/web/
 run = "esdev test tests/scaffold.test.js"
 dir = "packages/create-web"
 
-[tasks.test-web-docs-search]
-run = "esdev test packages/web-docs/tests/search.test.js packages/web-docs/tests/tokenizer.test.js"
-
-[tasks.test-web-docs-dom]
-run = "bun test --env=happy-dom tests/MobileDrawer.test.js tests/SidebarCollapseAll.test.js tests/feed.test.js"
-dir = "packages/web-docs"
-
 [tasks.test-web-docs]
-deps = ["test-web-docs-search", "test-web-docs-dom"]
+run = "esdev test packages/web-docs/tests/feed.test.js packages/web-docs/tests/llms.test.js packages/web-docs/tests/search.test.js packages/web-docs/tests/tokenizer.test.js"
 
 [tasks.test-web-form]
 run = "bun test --env=happy-dom"
