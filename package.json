@@ -10,6 +10,7 @@
   "packageManager": "pnpm@11.21.0",
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.33.1",
+    "@opentf/esdev-plugin-web": "workspace:*",
     "@opentf/esrun-types": "^0.4.0",
     "@opentf/std": "^0.13.0",
     "@rollup/plugin-babel": "^7.0.0",

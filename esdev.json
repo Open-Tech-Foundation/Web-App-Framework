@@ -1,0 +1,9 @@
+{
+  "plugins": [
+    {
+      "module": "@opentf/esdev-plugin-web",
+      "export": "createOtfwPlugin",
+      "options": { "target": "csr" }
+    }
+  ]
+}
