@@ -5,7 +5,7 @@
 // not always oblige: it drops a newline after `<pre>`, hands back the contents of a
 // `<textarea>` as literal text (markers and all), wraps bare `<tr>`s in a `<tbody>`, and
 // closes a `<p>` at the first block-level start tag. Every one of those shows up only in
-// a browser — happy-dom and the compiler's own tests both parse (or skip) their way past
+// a browser — the `--dom` unit tests and the compiler's own tests both parse (or skip) their way past
 // it — which is why this suite exists.
 //
 // For each fixture it renders the SSG HTML in Bun, then in headless Chromium:

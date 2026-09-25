@@ -1,5 +1,5 @@
 // Real-browser e2e for the DOM lifecycle hooks (`onResize` / `onVisibilityChange` /
-// `onMediaQuery`) — the platform behaviors happy-dom cannot exercise: an actual
+// `onMediaQuery`) — the platform behaviors the `--dom` unit tier cannot exercise: an actual
 // ResizeObserver measuring real layout, an IntersectionObserver fed by real scrolling,
 // and matchMedia responding to a real viewport change. Drives `otfw serve` (SSR +
 // hydrate bundle) against the shared fixture's /hooks route, which mounts page-level

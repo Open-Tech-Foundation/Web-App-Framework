@@ -3,7 +3,7 @@
 // deep enough to exercise the collapsible groups: a top-level group (auto-expanded) that
 // holds both a nested group (collapsed by default) and a plain link.
 //
-// The point of doing this in a real browser is the CSS the happy-dom unit tests
+// The point of doing this in a real browser is the CSS the `--dom` unit tests
 // (tests/MobileDrawer.test.js) can't see: the chevron rotation on `.is-open`, the child
 // list actually gaining layout when expanded, and the reduced-motion transition guard.
 import Sidebar from "../../components/Sidebar.jsx";

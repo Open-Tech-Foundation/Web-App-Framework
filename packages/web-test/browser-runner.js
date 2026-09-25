@@ -1,11 +1,11 @@
 // In-page test runner — a tiny bun:test-compatible surface (describe/test/expect) that lets
-// the hi-fi runtime tests run inside a REAL headless browser instead of happy-dom. The
-// Bun-side orchestrator (packages/web-cli/tests/e2e/runtime-browser.mjs) bundles this plus the
+// the hi-fi runtime tests run inside a REAL headless browser instead of the unit DOM. The
+// esdev-side orchestrator (packages/web-cli/tests/e2e/runtime-browser.mjs) bundles this plus the
 // `*.browser.js` test files for the browser, loads them in Chromium, and calls `window.__run()`.
 //
-// Why a browser: these files probe the paths where happy-dom's fidelity diverges from a real
+// Why a browser: these files probe the paths where the unit DOM's fidelity diverges from a real
 // engine — custom-element upgrade timing, the real microtask/event loop, portal relocation,
-// event delegation. Everything else stays fast under `bun test` + happy-dom.
+// event delegation. Everything else stays fast under `esdev test` (+ `--dom` where needed).
 
 const TESTS = [];
 let suite = "";
@@ -109,7 +109,7 @@ export function expect(recv) {
   return m;
 }
 
-// Reset the shared document between tests — the browser equivalent of the happy-dom suite's
+// Reset the shared document between tests — the browser equivalent of the unit suite's
 // afterEach cleanup. Clears the body and any styles/head nodes the runtime injected.
 function resetDom() {
   document.body.replaceChildren();

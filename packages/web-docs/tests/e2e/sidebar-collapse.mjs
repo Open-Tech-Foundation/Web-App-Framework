@@ -1,4 +1,4 @@
-// Browser e2e for the collapsible sidebar nav groups — the half the happy-dom unit
+// Browser e2e for the collapsible sidebar nav groups — the half the `--dom` unit
 // tests (tests/MobileDrawer.test.js) can't cover, because it depends on real CSS: the
 // chevron rotation on `.is-open`, the child list actually gaining layout height when a
 // group expands, the collapse-all button's placement in the sidebar column, and the

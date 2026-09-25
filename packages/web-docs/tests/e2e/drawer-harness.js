@@ -4,7 +4,7 @@
 //
 // Isolating the drawer here (rather than driving the full pre-rendered website) keeps
 // the e2e fast, dependency-free (no `otfw build` of the site), and focused on the one
-// thing happy-dom can't check: the CSS-dependent behavior (off-canvas transform, the
+// thing the `--dom` unit tests can't check: the CSS-dependent behavior (off-canvas transform, the
 // 768px breakpoint, the slide-in, the backdrop, the body-scroll lock).
 import Sidebar from "../../components/Sidebar.jsx";
 import SidebarToggle from "../../components/SidebarToggle.jsx";

@@ -1,4 +1,4 @@
-// Browser e2e for the mobile sidebar drawer — the half the happy-dom unit tests
+// Browser e2e for the mobile sidebar drawer — the half the `--dom` unit tests
 // (tests/MobileDrawer.test.js) can't cover, because it depends on real CSS: the
 // off-canvas transform, the 768px breakpoint, the slide-in, the backdrop, and the
 // body-scroll lock.

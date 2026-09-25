@@ -1,5 +1,5 @@
 // Real-browser hydration e2e — the §5 verification bar of docs/HYDRATION.md, the
-// thing happy-dom unit tests can't prove: that a real browser *adopts* the
+// thing the `--dom` unit tests can't prove: that a real browser *adopts* the
 // server-rendered DOM on first paint instead of rebuilding it.
 //
 // It drives the actual `otfw serve` (SSR + hydrate client bundle + the

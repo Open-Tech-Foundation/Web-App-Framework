@@ -2,10 +2,10 @@
 //
 // The runtime tests that probe engine-fidelity paths — custom-element upgrade timing, the real
 // microtask/event loop, portal relocation, event delegation — live as `packages/web/runtime/
-// *.browser.js` (moved out of the `bun test` glob). This orchestrator bundles them for the
+// *.browser.js` (kept out of the `esdev test` globs). This orchestrator bundles them for the
 // browser, loads the bundle into headless Chromium, and calls the
 // in-page runner's `window.__run()`, marshaling the results back over CDP. Everything else
-// stays fast under `bun test` + happy-dom.
+// stays fast under `esdev test` (+ `--dom` where a document is needed).
 //
 //   esdev packages/web-cli/tests/e2e/runtime-browser.mjs
 //
