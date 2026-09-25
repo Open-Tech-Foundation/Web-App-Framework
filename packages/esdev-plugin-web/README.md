@@ -14,7 +14,7 @@ import { build } from "runtime:build";
 import { closeCompilers, otfwPlugin, resolveCompiler } from "@opentf/esdev-plugin-web";
 
 // Locate the compiler: OTFWC_BIN, then the @opentf/web-compiler prebuilt,
-// then this repo's Cargo workspace (built on demand).
+// then a local Cargo workspace checkout (built on demand).
 const { otfwc } = await resolveCompiler();
 
 const bundle = await build({
