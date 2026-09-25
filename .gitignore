@@ -5,8 +5,6 @@ node_modules
 out
 dist
 *.tgz
-# otfwc-precompiled JSX test fixtures (scripts/compile-test-fixtures.mjs)
-*.compiled.js
 
 # code coverage
 coverage

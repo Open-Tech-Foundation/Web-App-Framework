@@ -8,7 +8,6 @@
     "./signals": "./core/signals.js",
     "./reactive": "./core/reactive.js",
     "./runtime": "./runtime/index.js",
-    "./test": "./test-entry.js",
     "./server": {
       "types": "./server/index.d.ts",
       "default": "./server/index.js"
