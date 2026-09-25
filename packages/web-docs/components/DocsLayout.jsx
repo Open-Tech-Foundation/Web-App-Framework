@@ -57,7 +57,7 @@ export default function DocsLayout(props) {
     <div class="otfw-docs">
       <Sidebar nav={sectionNav} config={config} />
       <main id="otfw-content" class="otfw-content" data-pagefind-body>
-        <Breadcrumbs nav={sectionNav} />
+        <Breadcrumbs nav={sectionNav} siteUrl={props.siteUrl} />
         <article class="otfw-prose">{props.children}</article>
         {lastUpdated || editUrl ? (
           <div class="otfw-page-meta">

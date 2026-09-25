@@ -16,7 +16,7 @@
 //
 // The layout factory re-runs on every navigation (the router rebuilds the route +
 // layout chain), so reading `router.pathname` resolves to the page being shown.
-import { Link, router } from "@opentf/web";
+import { Link, RawHtml, router } from "@opentf/web";
 import updated from "@opentf/web-docs/updated";
 
 import Navbar from "./Navbar.jsx";
@@ -33,11 +33,30 @@ function editedAfterPublish(iso, published) {
   return new Date(iso).toDateString() !== new Date(published).toDateString();
 }
 
+// Structured data for crawlers: the current post as a BlogPosting, emitted in
+// the body (JSON-LD is discovered wherever it sits). `siteUrl` (optional site
+// origin) absolutizes the post/cover URLs. Fields the post lacks are omitted.
+function blogPostingJsonLd(post, siteUrl, dateModified) {
+  const base = (siteUrl || "").replace(/\/+$/, "");
+  const abs = (p) => (p ? base + p : undefined);
+  const article = { "@context": "https://schema.org", "@type": "BlogPosting" };
+  if (post.title) article.headline = post.title;
+  if (post.description) article.description = post.description;
+  if (post.path) article.url = abs(post.path) || post.path;
+  if (post.cover) article.image = abs(post.cover) || post.cover;
+  if (post.date) article.datePublished = post.date;
+  if (dateModified) article.dateModified = dateModified;
+  if (post.author) article.author = { "@type": "Person", name: post.author };
+  const json = JSON.stringify(article).replace(/</g, "\\u003c");
+  return `<script type="application/ld+json">${json}</script>`;
+}
+
 export default function BlogLayout(props) {
   const config = props.config || {};
   const posts = props.posts || [];
   const frame = props.frame !== false;
   const indexPath = props.indexPath || "/blog";
+  const siteUrl = props.siteUrl || "";
 
   const post = posts.find((p) => p.path === router.pathname);
   const editedIso = post && editedAfterPublish(updated[post.path], post.date) ? updated[post.path] : null;
@@ -54,6 +73,7 @@ export default function BlogLayout(props) {
           ← {config.title ? `${config.title} Blog` : "Blog"}
         </Link>
         <PostBanner post={post} />
+        <RawHtml html={blogPostingJsonLd(post, siteUrl, editedIso || post.date)} />
         <article class="otfw-prose">{props.children}</article>
         {editedIso ? <LastUpdated date={editedIso} /> : null}
       </main>
