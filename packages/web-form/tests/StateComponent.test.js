@@ -1,7 +1,7 @@
 import { expect, test, describe } from "runtime:test";
 import { mount, type, clear, click } from "./dom.js";
 import { sleep } from "@opentf/std";
-import StateForm from "./StateForm.compiled.js";
+import StateForm from "./StateForm.jsx";
 
 const waitFor = async (fn, timeout = 1000) => {
   const start = Date.now();

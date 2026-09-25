@@ -5,16 +5,17 @@
 // state, the `is-open` classes, the body-scroll lock, the root flags, the
 // cross-component event bridge, and teardown.
 //
-// The components are otfwc-compiled on import (the web-test preload), so we mount them
-// the way the runtime does — by their registered custom-element tag — rather than
-// through a JSX harness (which would itself be compiled into a component).
+// The components are otfwc-compiled on import (the project plugin), so we mount
+// them the way the runtime does — by their registered custom-element tag —
+// rather than through a JSX harness (which would itself be compiled into a
+// component).
 
 import { afterEach, beforeEach, describe, expect, test } from "runtime:test";
-import { router, setRouteState } from "@opentf/web/test";
+import { router, setRouteState } from "@opentf/web";
 
-// otfwc-compiled components (emitted by scripts/compile-test-fixtures.mjs).
-import Sidebar from "../components/Sidebar.compiled.js";
-import SidebarToggle from "../components/SidebarToggle.compiled.js";
+// Component sources, compiled on load by the project's otfwc plugin.
+import Sidebar from "../components/Sidebar.jsx";
+import SidebarToggle from "../components/SidebarToggle.jsx";
 
 const NAV = [
   { title: "Introduction", path: "/docs" },

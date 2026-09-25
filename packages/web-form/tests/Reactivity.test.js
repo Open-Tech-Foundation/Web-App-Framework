@@ -1,6 +1,6 @@
 import { expect, test, describe } from "runtime:test";
 import { mount, type } from "./dom.js";
-import DynamicPrimitiveForm from "./DynamicListForm.compiled.js";
+import DynamicPrimitiveForm from "./DynamicListForm.jsx";
 
 describe("Web Form Capabilities", () => {
   test("reactively updates dynamic primitive arrays without losing focus", async () => {

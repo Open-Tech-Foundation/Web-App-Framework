@@ -1,6 +1,6 @@
 import { expect, test, describe } from "runtime:test";
 import { mount, type, clear, click, tab } from "./dom.js";
-import ProfileForm from "./ProfileForm.compiled.js";
+import ProfileForm from "./ProfileForm.jsx";
 
 describe("Web Form Component Integration", () => {
   test("updates nested values and validation state in UI", async () => {

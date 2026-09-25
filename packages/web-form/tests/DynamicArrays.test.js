@@ -1,6 +1,6 @@
 import { expect, test, describe } from "runtime:test";
 import { mount, click } from "./dom.js";
-import DynamicArrayForm from "./DynamicArrayForm.compiled.js";
+import DynamicArrayForm from "./DynamicArrayForm.jsx";
 
 describe("Dynamic Arrays", () => {
   test("adds and removes items", async () => {

@@ -4,10 +4,9 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "runtime:test";
 
-// The otfwc-compiled Link (emitted by scripts/compile-test-fixtures.mjs):
-// defines <web-link> on import. The .jsx source is not importable under
-// `esdev test` (runs files unaltered, no compiler transform).
-import Link from "../components/Link.compiled.js";
+// The Link source, compiled on load by the project's otfwc plugin
+// (root esdev.json): defines <web-link> on import.
+import Link from "../components/Link.jsx";
 import { mountApp, routes, shouldInterceptNav } from "./router.js";
 
 beforeEach(() => {

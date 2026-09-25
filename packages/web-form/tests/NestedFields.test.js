@@ -1,6 +1,6 @@
 import { expect, test, describe } from "runtime:test";
 import { mount, type, clear, click } from "./dom.js";
-import NestedForm from "./NestedForm.compiled.js";
+import NestedForm from "./NestedForm.jsx";
 
 describe("Nested Fields", () => {
   test("handles deep object paths", async () => {

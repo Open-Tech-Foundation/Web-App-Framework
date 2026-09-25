@@ -1,6 +1,6 @@
 import { expect, test, describe } from "runtime:test";
 import { mount, type, clear, click } from "./dom.js";
-import BasicForm from "./BasicForm.compiled.js";
+import BasicForm from "./BasicForm.jsx";
 
 describe("Basic Form", () => {
   test("initializes and handles submission", async () => {
