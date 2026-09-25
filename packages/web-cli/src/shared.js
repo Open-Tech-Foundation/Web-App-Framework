@@ -1,17 +1,15 @@
 // Shared plumbing for the OTF Web toolchain (`otfw dev` / `otfw build`).
 //
 // Both commands treat the current working directory as the project root (its
-// `index.html` + `app/`), resolve `@opentf/web` via node resolution, run the
-// `otfwc` IR compiler as a `transform` plugin, and let the runtime's bundler link
-// the module graph. This module holds everything they have in common.
+// `index.html` + `app/`), resolve `@opentf/web` via node resolution, compile
+// sources through the `@opentf/esdev-plugin-web` transform plugin, and let the
+// runtime's bundler link the module graph. This module holds everything they
+// have in common.
 
 import { build } from "runtime:build";
 import { stat } from "runtime:fs";
 import { dirname, fromFileURL, join, resolve, toFileURL } from "runtime:path";
 import { args, cwd, env, exit, onSignal } from "runtime:process";
-import { Command } from "runtime:system";
-
-import { otfwcPath } from "@opentf/web-compiler";
 
 import { quiet } from "./reporter.js";
 
@@ -29,6 +27,27 @@ import {
   run,
   writeFile,
 } from "./runtime.js";
+
+// The otfwc compiler service and the `runtime:build` transform plugin live in
+// `@opentf/esdev-plugin-web` (driving `runtime:build` is the same surface for
+// the CLI and for anyone else bundling OTF sources). Imported here for the
+// SSG build below and re-exported so the command modules keep a single import
+// site.
+import {
+  closeCompilers,
+  compileError,
+  otfwPlugin,
+  resolveCompiler,
+  startCompilerServer,
+} from "@opentf/esdev-plugin-web";
+
+export {
+  closeCompilers,
+  compileError,
+  otfwPlugin,
+  resolveCompiler,
+  startCompilerServer,
+};
 
 export const EXTENSIONS = [".jsx", ".tsx", ".js", ".ts", ".mdx", ".md"];
 
@@ -147,40 +166,6 @@ export function withHtmlLang(shellHtml, locale) {
 
 export { findUp };
 
-async function hasLocalCompilerWorkspace(workspace) {
-  return !!workspace && (await exists(join(workspace, "crates", "otfw_cli", "Cargo.toml")));
-}
-
-export async function resolveCompiler({
-  cliDir = dirname(fromFileURL(import.meta.url)),
-  env: environment = env,
-  resolvePackagedCompiler = otfwcPath,
-  findWorkspace = findUp,
-  ensure = ensureCompiler,
-} = {}) {
-  if (environment.OTFWC_BIN) return { otfwc: environment.OTFWC_BIN, workspace: null };
-
-  let packagedError = null;
-  try {
-    return { otfwc: await resolvePackagedCompiler(), workspace: null };
-  } catch (e) {
-    packagedError = e;
-  }
-
-  const installedPackage = cliDir.split(/[\\/]/).includes("node_modules");
-  const workspace = installedPackage ? null : await findWorkspace("Cargo.toml", cliDir);
-  if (await hasLocalCompilerWorkspace(workspace)) {
-    const otfwc = join(workspace, "target", "debug", "otfwc");
-    await ensure(otfwc, workspace);
-    return { otfwc, workspace };
-  }
-
-  fail(
-    `${packagedError?.message ?? "cannot resolve @opentf/web-compiler prebuilt binary"}\n` +
-      `  No local otfwc compiler workspace was found to build from source.`,
-  );
-}
-
 /**
  * The project to build: the working directory, or the directory `--root=<dir>` names.
  *
@@ -232,27 +217,6 @@ export async function loadProject() {
   const exclude = new Set((env.EXCLUDE_ROUTES ?? "").split(",").filter(Boolean));
 
   return { root, appDir, webEntry, otfwc, workspace, exclude };
-}
-
-async function ensureCompiler(otfwc, workspace) {
-  if (await exists(otfwc)) return;
-  if (!workspace) fail(`otfwc compiler not found at ${otfwc}`);
-  console.log("building compiler (cargo build -p otfw_cli)…");
-  const cargo = await run("cargo", ["--version"], { cwd: workspace, stdout: "null" });
-  if (!cargo.ok) {
-    fail(
-      `cannot build otfwc because cargo is not available.\n` +
-        `  This source checkout needs Rust/Cargo to build ${otfwc}.\n` +
-        `  Install Rust in the build environment, set OTFWC_BIN to an existing otfwc binary,\n` +
-        `  or build with the published @opentf/web-cli package so @opentf/web-compiler can use its prebuilt binary.`,
-    );
-  }
-  const b = await run("cargo", ["build", "-p", "otfw_cli"], {
-    cwd: workspace,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  if (!b.ok) exit(b.code ?? 1);
 }
 
 /** The config filenames a project may use, in precedence order. */
@@ -1155,242 +1119,6 @@ export async function moduleGraph(otfwc, webEntry, roots) {
 }
 
 /**
- * Turn an `ERR` reply payload into an `Error` carrying the compiler's diagnostic.
- * The payload is the JSON object `Diag::json` writes — `{ file, message, line,
- * column, frame, note }` — so the position survives as data all the way to the browser
- * overlay instead of being flattened into prose. An older compiler (or a protocol
- * error) sends a bare string; that still works, it just has no position.
- *
- * `error.message` is the one-line human form (`path:line:col message`), `error.diag`
- * the structured fields, and `error.text` the full terminal rendering with the frame.
- */
-export function compileError(payload) {
-  let d = null;
-  if (payload.startsWith("{")) {
-    try {
-      d = JSON.parse(payload);
-    } catch {}
-  }
-  if (!d?.message) {
-    const err = new Error(payload);
-    err.diag = { message: payload };
-    err.text = payload;
-    return err;
-  }
-  const where = d.line ? `${d.file}:${d.line}:${d.column}` : d.file;
-  const err = new Error(`${where}: ${d.message}`);
-  err.diag = d;
-  err.text =
-    `${where}: ${d.message}\n` + (d.note ? `note: ${d.note}\n` : "") + (d.frame ? `\n${d.frame}` : "");
-  return err;
-}
-
-/**
- * Start a long-lived `otfwc serve` process and talk to it over a framed
- * stdin/stdout protocol (see crates/otfw_cli/src/main.rs `serve`). One process
- * compiles every module, so the toolchain pays the binary-startup cost once
- * instead of spawning a subprocess per file — the dominant dev-server cost.
- *
- * `compile(id, source, component, target)` resolves to the emitted JS or rejects
- * with the compiler diagnostic (`target` is `"csr"` | `"ssg"` | `"hydrate"`).
- * Requests are serialized through a FIFO queue: the server
- * is single-threaded, replies arrive in request order, so the head of the queue
- * always pairs with the next frame. The child is killed when this process exits.
- */
-// Every compiler child started in this process, so a one-shot command can shut them
-// all down. It has to: an open reader on a child's stdout keeps the runtime alive, so
-// a build that simply returned would leave `otfw build` hanging after `dist/` is done.
-const compilers = new Set();
-
-/** Stop every `otfwc serve` child. Called at the end of the one-shot commands. */
-export async function closeCompilers() {
-  await Promise.all([...compilers].map((close) => close()));
-  compilers.clear();
-}
-
-export function startCompilerServer(otfwc) {
-  const enc = new TextEncoder();
-  const dec = new TextDecoder();
-  const queue = []; // { resolve, reject } in request order
-  let buf = new Uint8Array(0);
-  let pumping = false;
-  let dead = false;
-  let started = null;
-
-  const append = (a, b) => {
-    const out = new Uint8Array(a.length + b.length);
-    out.set(a);
-    out.set(b, a.length);
-    return out;
-  };
-  const die = (err) => {
-    dead = true;
-    while (queue.length) queue.shift().reject(err);
-  };
-
-  // Spawning is async here, so the child is started on the first compile rather than
-  // when the plugin is constructed — a build that never touches a `.jsx` never pays
-  // for it. Nothing awaits the child's exit, so it holds nothing open; when this
-  // process goes, the child sees EOF on its stdin and stops.
-  let reading = null; // the stdout reader, so `close` can release it
-
-  function start() {
-    started ??= new Command(otfwc, {
-      args: ["serve"],
-      stdin: "piped",
-      stdout: "piped",
-      stderr: "inherit",
-    })
-      .spawn()
-      .then((proc) => {
-        reading = proc.stdout.getReader();
-        return { proc, writer: proc.stdin.getWriter(), reader: reading };
-      });
-    return started;
-  }
-
-  // Drain reply frames as they arrive, resolving queued requests in order. A frame
-  // is `<status> <byteLen>\n` followed by exactly `byteLen` bytes of payload.
-  async function pump(reader) {
-    if (pumping) return;
-    pumping = true;
-    try {
-      while (queue.length) {
-        let nl = buf.indexOf(10);
-        while (nl === -1) {
-          const { value, done } = await reader.read();
-          if (done) return die(new Error("otfwc serve exited"));
-          buf = append(buf, value);
-          nl = buf.indexOf(10);
-        }
-        const [status, lenStr] = dec.decode(buf.subarray(0, nl)).split(" ");
-        const len = Number(lenStr);
-        while (buf.length < nl + 1 + len) {
-          const { value, done } = await reader.read();
-          if (done) return die(new Error("otfwc serve exited"));
-          buf = append(buf, value);
-        }
-        const payload = dec.decode(buf.subarray(nl + 1, nl + 1 + len));
-        buf = buf.slice(nl + 1 + len);
-        const job = queue.shift();
-        if (status === "OK") job.resolve(payload);
-        else job.reject(compileError(payload));
-      }
-    } finally {
-      pumping = false;
-    }
-  }
-
-  // Replies are paired with requests by position, so the frames must reach the child
-  // in the order their promises were queued. Writing to a `WritableStream` is async,
-  // so the writes are chained rather than merely awaited per call — two concurrent
-  // `compile()`s would otherwise interleave their header and payload bytes.
-  let writes = Promise.resolve();
-
-  function compile(id, source, component, target = "csr") {
-    if (dead) return Promise.reject(new Error("otfwc serve is not running"));
-    return new Promise((resolve, reject) => {
-      queue.push({ resolve, reject });
-      writes = writes
-        .then(async () => {
-          const { writer, reader } = await start();
-          const idB = enc.encode(id);
-          const srcB = enc.encode(source);
-          await writer.write(enc.encode(`${idB.length} ${srcB.length} ${component ? 1 : 0} ${target}\n`));
-          await writer.write(idB);
-          await writer.write(srcB);
-          pump(reader);
-        })
-        .catch(die);
-    });
-  }
-
-  async function close() {
-    compilers.delete(close);
-    if (dead) return;
-    dead = true;
-    if (!started) return;
-    try {
-      const { proc, writer } = await started;
-      try {
-        await writer.close();
-      } catch {}
-      // Releasing the reader matters as much as killing the child: an outstanding
-      // reader on a child's stdout is itself a reason for the runtime to stay up.
-      try {
-        await reading?.cancel();
-      } catch {}
-      proc.kill();
-    } catch {}
-  }
-
-  compilers.add(close);
-  return { compile, close };
-}
-
-/**
- * Bundler plugin: compile `.jsx`/`.tsx` through the `otfwc` IR compiler. Page /
- * layout / 404 modules become factories; everything else a Custom Element. On a
- * compile error it emits a diagnostic stub (so one bad route doesn't sink the
- * build) unless `failOnError` is set (production builds should fail loudly).
- * `onResult(id, diagnosticOrNull)` is called per module so the dev server can push
- * compile diagnostics to the error overlay and clear them once fixed. The diagnostic
- * is the compiler's structured one (`{ file, message, line, column, frame, note }`).
- *
- * Compilation runs through one persistent `otfwc serve` process per plugin instance
- * (see `startCompilerServer`). `target` picks the codegen backend: `"csr"` (the live
- * DOM build), `"ssg"` (HTML-string renderers), or `"hydrate"` (the dual module — a
- * CSR build factory plus an adopt factory for first-paint hydration).
- */
-export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr" } = {}) {
-  const server = startCompilerServer(otfwc);
-  return {
-    // The compiler child is not torn down from a hook — the bundler validates hook
-    // names strictly, and there is nothing to tear down per build anyway: one child
-    // serves every build, and it exits on the EOF its stdin gets when we do.
-    name: "otfw",
-    transform: {
-      // Matched on the Rust side, so a module the compiler has no business seeing
-      // never costs a crossing into this isolate.
-      filter: { id: /\.(mdx|md|[jt]sx)$/ },
-      async handler(code, id, ctx) {
-      const base = id.split("/").pop().replace(/\.(mdx|md|[jt]sx)$/, "");
-      const isPage = base === "page" || base === "layout" || base === "404";
-      try {
-        const out = await server.compile(id, code, !isPage, target);
-        onResult?.(id, null);
-        // otfwc has already lowered the JSX, so the result is plain JavaScript —
-        // saying so keeps the bundler from parsing a `.jsx` id as JSX a second time.
-        // Side effects (e.g. customElements.define) must survive bundling.
-        return { code: out, type: "js", moduleSideEffects: true };
-      } catch (e) {
-        // `text` is the diagnostic as a terminal/overlay would show it — the position
-        // line plus a code frame; `diag` is the same thing as fields, for the overlay.
-        const text = e?.text ?? e?.message ?? String(e);
-        const diag = e?.diag ?? { file: id, message: e?.message ?? String(e) };
-        onResult?.(id, diag);
-        // A build phase may be spinning on the last line of the terminal; take it
-        // back before writing a diagnostic across it.
-        quiet();
-        // When the failure stops the build, the diagnostic travels with it and the
-        // CLI prints it once, unwrapped — printing here too would show it twice.
-        if (failOnError) {
-          ctx.error(`otfwc failed:\n${text}`);
-        }
-        console.error(`✗ otfwc failed:\n${text}`);
-        const stub =
-          `export default function () { const pre = document.createElement("pre");` +
-          ` pre.style.cssText = "color:#f87171;padding:1rem;white-space:pre-wrap";` +
-          ` pre.textContent = ${JSON.stringify(`Compile error\n\n${text}`)};` +
-          ` return pre; }`;
-        return { code: stub, type: "js", moduleSideEffects: true };
-      }
-      },
-    },
-  };
-}
-
-/**
  * CSS plugin: `import "./x.css"` injects a <style>; `*.module.css` resolves to an
  * identity class-name map (`styles.foo` → "foo"). Dev-grade CSS Modules.
  */
@@ -1621,7 +1349,7 @@ export async function buildServerBundle({
     define: { "process.env.NODE_ENV": '"production"' },
     plugins: [
       ...docsPlugins,
-      otfwPlugin(otfwc, { failOnError: true, target: "ssg", onResult: (id) => onCompile?.(id) }),
+      otfwPlugin(otfwc, { failOnError: true, target: "ssg", quiet, onResult: (id) => onCompile?.(id) }),
       cssPlugin(),
     ],
   });

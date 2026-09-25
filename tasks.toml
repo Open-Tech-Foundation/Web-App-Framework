@@ -60,6 +60,11 @@ run = "esdev test packages/web-cli/tests packages/create-web/tests packages/web/
 deps = ["build-compiler", "compile-test-fixtures"]
 run = "esdev test --dom packages/web/core/errors.test.js packages/web/runtime/lifecycle.test.js packages/web/runtime/resource.test.js packages/web/runtime/clsx.test.js packages/web/runtime/dom.test.js packages/web/runtime/router.test.js packages/web/runtime/router-data.test.js packages/web/runtime/router-hydrate.test.js packages/web/runtime/router-nav.test.js packages/web/runtime/hydrate.e2e.test.js"
 
+# @opentf/esdev-plugin-web: the otfwc compiler service + runtime:build plugin.
+# Binary-free (the resolver is fully injectable), so no compiler build needed.
+[tasks.test-esdev-plugin]
+run = "esdev test packages/esdev-plugin-web/tests"
+
 # @opentf/create-web is deprecated (use `esdev create`); its tests stay until removal.
 [tasks.test-create-web]
 run = "esdev test tests/scaffold.test.js"
@@ -92,7 +97,7 @@ run = "esdev test --dom packages/web-i18n/i18n.test.js"
 
 # Independent processes — cargo and the ES-Runtime — so they overlap.
 [tasks.test]
-deps = ["test-rust", "test-esdev", "test-esdev-dom", "test-web-docs", "test-web-docs-dom"]
+deps = ["test-rust", "test-esdev", "test-esdev-dom", "test-esdev-plugin", "test-web-docs", "test-web-docs-dom"]
 parallel = true
 
 # Real-browser tier (docs/HYDRATION.md §5) — drives `otfw serve`/`build` against headless

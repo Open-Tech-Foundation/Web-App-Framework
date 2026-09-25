@@ -16,6 +16,7 @@
     "esdev": ">=0.5.0"
   },
   "dependencies": {
+    "@opentf/esdev-plugin-web": "workspace:*",
     "@opentf/web-compiler": "workspace:*",
     "tailwindcss": "4.2.2"
   },

@@ -32,6 +32,7 @@
       "@opentf/web/reactive": ["./packages/web/core/reactive.js"],
       "@opentf/web/runtime": ["./packages/web/runtime/index.js"],
       "@opentf/web/test": ["./packages/web/test-entry.js"],
+      "@opentf/esdev-plugin-web": ["./packages/esdev-plugin-web/index.js"],
       "@opentf/web/compiler": ["./packages/web/compiler/index.js"],
       "@opentf/web-form": ["./packages/web-form/index.js"],
       "@opentf/web-test": ["./packages/web-test/index.js"],

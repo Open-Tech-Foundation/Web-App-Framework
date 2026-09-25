@@ -39,7 +39,7 @@ import {
   runLastUpdated,
   stampHydrateSentinel,
 } from "./shared.js";
-import { fmtMs, step } from "./reporter.js";
+import { fmtMs, quiet, step } from "./reporter.js";
 
 const hash = (s) => digest("xxhash64", s, "hex").padStart(16, "0").slice(0, 8);
 
@@ -131,6 +131,7 @@ export async function runBuild(options = {}) {
       ...docsPlugins,
       otfwPlugin(otfwc, {
         failOnError: true,
+        quiet,
         target: hydrate ? "hydrate" : "csr",
         onResult: (id) => buildStep.update(`${basename(id)}  (${++compiled})`),
       }),

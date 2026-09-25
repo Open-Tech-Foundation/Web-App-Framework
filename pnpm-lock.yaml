@@ -98,10 +98,19 @@ importers:
         specifier: ^2.4.2
         version: 2.4.2
 
+  packages/esdev-plugin-web:
+    dependencies:
+      '@opentf/web-compiler':
+        specifier: workspace:*
+        version: link:../web-compiler
+
   packages/web: {}
 
   packages/web-cli:
     dependencies:
+      '@opentf/esdev-plugin-web':
+        specifier: workspace:*
+        version: link:../esdev-plugin-web
       '@opentf/web':
         specifier: workspace:*
         version: link:../web

@@ -26,6 +26,7 @@ import { watch } from "runtime:watch";
 import { broadcast, upgradeWebSocket } from "runtime:websocket";
 
 import { b64url, exists, isFile, mkdirp, readBytes, readText, unb64url, writeFile } from "./runtime.js";
+import { quiet } from "./reporter.js";
 import { compileCss, usesTailwind } from "./tailwind.js";
 import { overlayClient } from "./overlay.js";
 import {
@@ -236,6 +237,7 @@ export async function runDev() {
 
   // One persistent compiler (one `otfwc serve` child) shared by every build below.
   const otfw = otfwPlugin(otfwc, {
+    quiet,
     onResult: (id, diag) => {
       if (!diag) return moduleErrors.delete(id);
       const msg = errorFrame(id, diag);
