@@ -16,7 +16,8 @@ Install ES-Runtime before running `otfw`; its installer provides the `esdev`
 interpreter named by the CLI. The package depends on `@opentf/web-compiler` (the
 prebuilt compiler binary) and expects
 `@opentf/web` in your project. The fastest way to a working setup is
-[`@opentf/create-web`](https://github.com/Open-Tech-Foundation/Web-App-Framework/tree/main/packages/create-web).
+[`esdev create my-app`](https://esrun.opentechf.org/esdev/create)
+(`@opentf/create-web` is deprecated).
 
 ## Commands
 

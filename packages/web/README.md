@@ -14,7 +14,8 @@ lowers them to plain DOM code that imports its helpers (`signal`, `computed`,
 bun add @opentf/web
 ```
 
-Scaffold a ready-to-run app with [`@opentf/create-web`](https://github.com/Open-Tech-Foundation/Web-App-Framework/tree/main/packages/create-web)
+Scaffold a ready-to-run app with [`esdev create`](https://esrun.opentechf.org/esdev/create)
+(`@opentf/create-web` is deprecated)
 and drive it with [`@opentf/web-cli`](https://github.com/Open-Tech-Foundation/Web-App-Framework/tree/main/packages/web-cli).
 
 ## What's inside
