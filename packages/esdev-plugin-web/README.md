@@ -7,6 +7,8 @@ framework dev server stop being a Node program.
 
 ## Use
 
+Programmatic (any `runtime:build` driver):
+
 ```js
 import { build } from "runtime:build";
 import { closeCompilers, otfwPlugin, resolveCompiler } from "@opentf/esdev-plugin-web";
@@ -41,6 +43,19 @@ instance — the binary starts once no matter how many modules or builds follow.
 
 ## API
 
+- `createOtfwPlugin({ target, failOnError, onResult, quiet })` — the
+  `esdev.json` project-plugin factory:
+
+  ```json
+  { "plugins": [{ "module": "@opentf/esdev-plugin-web",
+                  "export": "createOtfwPlugin",
+                  "options": { "target": "csr" } }] }
+  ```
+
+  Synchronous by design (the compiler resolves lazily on the first
+  transformed module), so it works however the host invokes it. Under
+  `esdev test` / `esdev <file>` only `transform` runs — which is all this
+  plugin has — so `.jsx` sources load directly with no precompile step.
 - `resolveCompiler({ cliDir, env, resolvePackagedCompiler, findWorkspace, ensure })`
   — every input injectable, so tests never touch the disk or the network.
 - `startCompilerServer(otfwc)` → `{ compile(id, source, component, target), close }`

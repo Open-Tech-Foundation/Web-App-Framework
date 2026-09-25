@@ -6,4 +6,4 @@
 // in — takes the same surface.
 
 export { closeCompilers, compileError, resolveCompiler, startCompilerServer } from "./compiler.js";
-export { otfwPlugin } from "./plugin.js";
+export { createOtfwPlugin, otfwPlugin } from "./plugin.js";

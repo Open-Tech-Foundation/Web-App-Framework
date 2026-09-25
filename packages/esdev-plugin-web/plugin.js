@@ -15,7 +15,70 @@
 // `./compiler.js`. One persistent `otfwc serve` child serves every module of
 // every build in the process (see `startCompilerServer`).
 
-import { compileError, startCompilerServer } from "./compiler.js";
+import { compileError, resolveCompiler, startCompilerServer } from "./compiler.js";
+
+/**
+ * Project-plugin factory for `esdev.json`:
+ *
+ *   { "plugins": [{ "module": "@opentf/esdev-plugin-web",
+ *                   "export": "createOtfwPlugin",
+ *                   "options": { "target": "csr" } }] }
+ *
+ * Deliberately synchronous: it only builds the plugin object — the compiler
+ * resolves lazily on the first transformed module (same one-process
+ * `otfwc serve` child as `otfwPlugin`). An async factory would depend on the
+ * host awaiting it; this shape works either way.
+ */
+export function createOtfwPlugin({ target = "csr", failOnError = false, onResult, quiet } = {}) {
+  let serverPromise = null;
+  const getServer = () =>
+    (serverPromise ??= resolveCompiler().then(({ otfwc }) => startCompilerServer(otfwc)));
+  return {
+    name: "otfw",
+    transform: {
+      // Same host-side filter as `otfwPlugin` below.
+      filter: { id: /\.(mdx|md|[jt]sx)$/ },
+      async handler(code, id, ctx) {
+        const server = await getServer();
+        return compileModule(server, code, id, { target, failOnError, onResult, quiet, ctx });
+      },
+    },
+  };
+}
+
+async function compileModule(server, code, id, { target, failOnError, onResult, quiet = () => {}, ctx }) {
+  const base = id.split("/").pop().replace(/\.(mdx|md|[jt]sx)$/, "");
+  const isPage = base === "page" || base === "layout" || base === "404";
+  try {
+    const out = await server.compile(id, code, !isPage, target);
+    onResult?.(id, null);
+    // otfwc has already lowered the JSX, so the result is plain JavaScript —
+    // saying so keeps the bundler from parsing a `.jsx` id as JSX a second time.
+    // Side effects (e.g. customElements.define) must survive bundling.
+    return { code: out, type: "js", moduleSideEffects: true };
+  } catch (e) {
+    // `text` is the diagnostic as a terminal/overlay would show it — the position
+    // line plus a code frame; `diag` is the same thing as fields, for the overlay.
+    const text = e?.text ?? e?.message ?? String(e);
+    const diag = e?.diag ?? { file: id, message: e?.message ?? String(e) };
+    onResult?.(id, diag);
+    // A build phase may be spinning on the last line of the terminal; take it
+    // back before writing a diagnostic across it.
+    quiet();
+    // When the failure stops the build, the diagnostic travels with it and the
+    // CLI prints it once, unwrapped — printing here too would show it twice.
+    if (failOnError) {
+      ctx.error(`otfwc failed:\n${text}`);
+    }
+    console.error(`✗ otfwc failed:\n${text}`);
+    const stub =
+      `export default function () { const pre = document.createElement("pre");` +
+      ` pre.style.cssText = "color:#f87171;padding:1rem;white-space:pre-wrap";` +
+      ` pre.textContent = ${JSON.stringify(`Compile error\n\n${text}`)};` +
+      ` return pre; }`;
+    return { code: stub, type: "js", moduleSideEffects: true };
+  }
+}
 
 /**
  * Bundler plugin: compile `.jsx`/`.tsx` through the `otfwc` IR compiler. Page /
@@ -46,37 +109,7 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr
       // never costs a crossing into this isolate.
       filter: { id: /\.(mdx|md|[jt]sx)$/ },
       async handler(code, id, ctx) {
-      const base = id.split("/").pop().replace(/\.(mdx|md|[jt]sx)$/, "");
-      const isPage = base === "page" || base === "layout" || base === "404";
-      try {
-        const out = await server.compile(id, code, !isPage, target);
-        onResult?.(id, null);
-        // otfwc has already lowered the JSX, so the result is plain JavaScript —
-        // saying so keeps the bundler from parsing a `.jsx` id as JSX a second time.
-        // Side effects (e.g. customElements.define) must survive bundling.
-        return { code: out, type: "js", moduleSideEffects: true };
-      } catch (e) {
-        // `text` is the diagnostic as a terminal/overlay would show it — the position
-        // line plus a code frame; `diag` is the same thing as fields, for the overlay.
-        const text = e?.text ?? e?.message ?? String(e);
-        const diag = e?.diag ?? { file: id, message: e?.message ?? String(e) };
-        onResult?.(id, diag);
-        // A build phase may be spinning on the last line of the terminal; take it
-        // back before writing a diagnostic across it.
-        quiet();
-        // When the failure stops the build, the diagnostic travels with it and the
-        // CLI prints it once, unwrapped — printing here too would show it twice.
-        if (failOnError) {
-          ctx.error(`otfwc failed:\n${text}`);
-        }
-        console.error(`✗ otfwc failed:\n${text}`);
-        const stub =
-          `export default function () { const pre = document.createElement("pre");` +
-          ` pre.style.cssText = "color:#f87171;padding:1rem;white-space:pre-wrap";` +
-          ` pre.textContent = ${JSON.stringify(`Compile error\n\n${text}`)};` +
-          ` return pre; }`;
-        return { code: stub, type: "js", moduleSideEffects: true };
-      }
+        return compileModule(server, code, id, { target, failOnError, onResult, quiet, ctx });
       },
     },
   };
