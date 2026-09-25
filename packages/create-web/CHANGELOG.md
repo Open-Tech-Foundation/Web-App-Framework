@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Deprecated
+
+- **Use `esdev create` for new projects.** `@opentf/create-web` is deprecated in
+  favor of `esdev create`, which ships the OTF templates (SPA, fullstack, docs,
+  library). This package is kept for existing projects and will be removed in a
+  future release.
+
 ## [0.17.0] - 2026-08-12
 
 ### Fixed

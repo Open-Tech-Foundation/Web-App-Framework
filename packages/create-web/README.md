@@ -1,5 +1,16 @@
 # @opentf/create-web
 
+> **Deprecated — scaffold new projects with `esdev create` instead.**
+>
+> ```bash
+> esdev create my-app
+> ```
+>
+> `esdev create` ships the OTF templates (SPA, fullstack, docs, library) and
+> replaces this package. See the
+> [`esdev create` docs](https://esrun.opentechf.org/esdev/create). This package
+> is kept for existing projects and will be removed in a future release.
+
 The official scaffolding tool for **OTF Web**.
 
 ## Quick Start

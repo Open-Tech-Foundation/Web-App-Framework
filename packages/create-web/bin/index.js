@@ -12,6 +12,11 @@ import { scaffold } from "./scaffold.js";
 const orange = (str) => `\x1b[38;2;255;165;0m${str}${reset("")}`;
 
 async function init() {
+  console.warn(
+    `\n  ${bold(yellow("⚠ @opentf/create-web is deprecated."))}` +
+      ` Scaffold new projects with ${cyan("esdev create my-app")} instead.\n` +
+      `  See https://esrun.opentechf.org/esdev/create\n`,
+  );
   console.log(`\n  ${bold(orange("Open Tech Foundation"))}`);
   console.log(`\n  ${bold(cyan("OTF Web"))} ${yellow("Scaffolding Tool")} ✨\n`);
 
