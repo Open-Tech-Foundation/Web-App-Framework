@@ -17,6 +17,3 @@
 - **`createOtfwRoutes`** — Next.js-style file conventions as a virtual
   `@otfw/routes` module (`{ pages, guard }`) crawled from `app/` with the
   runtime `Glob`.
-- **`createCssPlugin`** — stylesheets: style inject, CSS Modules identity
-  maps, and Tailwind v4 compilation (pure-JS engine + resolution shims,
-  no native addons).

@@ -15,11 +15,6 @@
       }
     },
     {
-      "module": "@opentf/esdev-plugin-web",
-      "export": "createCssPlugin",
-      "options": {}
-    },
-    {
       "module": "@opentf/web-docs/build",
       "export": "docsNavPlugin",
       "options": {

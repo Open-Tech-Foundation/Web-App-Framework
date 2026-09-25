@@ -106,9 +106,6 @@ importers:
       '@opentf/web-compiler':
         specifier: workspace:*
         version: link:../web-compiler
-      tailwindcss:
-        specifier: 4.2.2
-        version: 4.2.2
 
   packages/web: {}
 

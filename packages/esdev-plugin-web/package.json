@@ -10,12 +10,10 @@
     "index.js",
     "compiler.js",
     "plugin.js",
-    "routes.js",
-    "css.js"
+    "routes.js"
   ],
   "dependencies": {
-    "@opentf/web-compiler": "workspace:*",
-    "tailwindcss": "4.2.2"
+    "@opentf/web-compiler": "workspace:*"
   },
   "engines": {
     "esdev": ">=0.10.0"
