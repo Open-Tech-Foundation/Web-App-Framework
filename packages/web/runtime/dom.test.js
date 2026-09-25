@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "runtime:test";
 
 import { resetWarnings } from "../core/dev.js";
 import { signal } from "../core/signals.js";

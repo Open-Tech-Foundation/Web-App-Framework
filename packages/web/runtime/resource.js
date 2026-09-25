@@ -23,8 +23,8 @@
 
 import { batch, effect, signal, untracked } from "../core/signals.js";
 
-// Test override: bun tests run under happy-dom (a `document` always exists), so
-// server behavior is opted into explicitly.
+// Test override: the DOM suites run in esdev's `--dom` realm (a `document`
+// always exists), so server behavior is opted into explicitly.
 let serverOverride = null;
 
 /** Force server (true) / client (false) behavior for new resources — tests only. */

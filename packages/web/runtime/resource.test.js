@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "runtime:test";
 
 import { signal, scope } from "../core/signals.js";
 import { __setResourceServer, resource } from "./resource.js";

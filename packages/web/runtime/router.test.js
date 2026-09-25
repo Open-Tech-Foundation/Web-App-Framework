@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "runtime:test";
 
 import {
   configureI18n,
@@ -37,7 +37,6 @@ describe("router", () => {
       "/proj/app/404.jsx": { default: page("missing") },
     };
 
-    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
     window.history.replaceState({}, "", "/");
     mountApp({ pages, target: app });
     await tick();
@@ -79,7 +78,6 @@ describe("router", () => {
       next();
     };
 
-    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
     window.history.replaceState({}, "", "/");
     mountApp({ pages, target: app, guard });
     await tick();
@@ -117,7 +115,6 @@ describe("router", () => {
       "/proj2/app/post/[id]/page.jsx": { default: postPage },
     };
 
-    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
     window.history.replaceState({}, "", "/post/7");
     mountApp({ pages, target: app });
     await tick();
@@ -154,7 +151,6 @@ describe("router", () => {
     clearReloadFlag();
 
     try {
-      if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
       window.history.replaceState({}, "", "/");
       mountApp({ pages, target: app });
       await tick();
@@ -184,7 +180,6 @@ describe("router", () => {
     clearReloadFlag();
 
     try {
-      if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
       window.history.replaceState({}, "", "/");
       mountApp({ pages, target: app });
       await tick();
@@ -236,7 +231,6 @@ describe("router", () => {
       "/proj6/app/docs/intro/page.jsx": chunk("page", page("intro")),
     };
 
-    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/docs/intro");
     window.history.replaceState({}, "", "/docs/intro");
     mountApp({ pages, target: app });
     await new Promise((r) => setTimeout(r, 50));
@@ -273,7 +267,6 @@ describe("router", () => {
     clearReloadFlag();
 
     try {
-      if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
       window.history.replaceState({}, "", "/");
       mountApp({ pages, target: app });
       await tick();
@@ -337,7 +330,6 @@ describe("i18n locale routing (prefix_except_default)", () => {
       "/i18n/app/about/page.jsx": { default: page("about") },
     };
 
-    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
     window.history.replaceState({}, "", "/");
     mountApp({ pages, target: app, i18n: { locales: ["en", "fr"], defaultLocale: "en" } });
     await tick();

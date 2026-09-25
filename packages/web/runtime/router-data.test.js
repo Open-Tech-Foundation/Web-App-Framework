@@ -2,7 +2,7 @@
 // for routes registered via `registerLoaderRoutes` and exposes the result as the
 // reactive `router.data` — resolved before the navigation commits.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "runtime:test";
 
 import { onError } from "../core/errors.js";
 import {
@@ -53,7 +53,6 @@ async function mountFixture() {
     "/proj/app/todos/page.jsx": { default: page("todos") },
     "/proj/app/items/[id]/page.jsx": { default: page("item") },
   };
-  if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
   window.history.replaceState({}, "", "/");
   mountApp({ pages, target: app, loaders: ["/todos", "/items/[id]"] });
   await tick();

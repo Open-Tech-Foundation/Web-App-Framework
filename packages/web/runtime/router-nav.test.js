@@ -2,9 +2,12 @@
 // intercept `<Link>` clicks; MPA leaves navigation to the browser (full page load).
 // A per-link `reload` opts a single link out of SPA interception.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "runtime:test";
 
-import Link from "../components/Link.jsx"; // defines <web-link> on import
+// The otfwc-compiled Link (emitted by scripts/compile-test-fixtures.mjs):
+// defines <web-link> on import. The .jsx source is not importable under
+// `esdev test` (runs files unaltered, no compiler transform).
+import Link from "../components/Link.compiled.js";
 import { mountApp, routes, shouldInterceptNav } from "./router.js";
 
 beforeEach(() => {

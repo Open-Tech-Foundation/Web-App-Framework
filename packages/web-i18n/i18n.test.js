@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "runtime:test";
 
-import { configureI18n, setRouteState } from "@opentf/web";
+import { configureI18n, setRouteState } from "@opentf/web/test";
 
 import { fmt } from "./format.js";
 import { createI18n, getLocale, t } from "./i18n.js";

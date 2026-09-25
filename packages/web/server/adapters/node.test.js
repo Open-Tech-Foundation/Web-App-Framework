@@ -1,15 +1,48 @@
-import { describe, expect, test } from "bun:test";
-import { Readable } from "node:stream";
+import { describe, expect, test } from "runtime:test";
 
 import { createFetchHandler } from "../api.js";
 import { sendWebResponse, toNodeListener, toWebRequest } from "./node.js";
 
-// A minimal IncomingMessage: a readable stream carrying `body` plus method/url/headers.
+// The adapter is Node-specific (`req.on`, `Buffer`), but its contract is
+// stream-agnostic — so the fakes stay web-standard and a two-function `Buffer`
+// shim covers what the adapter touches (`concat`/`from`). That keeps this suite
+// on the shared esdev runner instead of a Node-only harness.
+globalThis.Buffer ??= {
+  concat(parts) {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let off = 0;
+    for (const p of parts) {
+      out.set(p, off);
+      off += p.length;
+    }
+    return out;
+  },
+  from(data) {
+    if (typeof data === "string") return new TextEncoder().encode(data);
+    return new Uint8Array(data);
+  },
+};
+
+// A minimal IncomingMessage: method/url/headers plus an `on()` emitter that
+// delivers `body` as bytes, then ends — the only stream surface the adapter reads.
 function fakeReq({ method = "GET", url = "/", headers = {}, body = "" } = {}) {
-  const stream = Readable.from(body ? [Buffer.from(body)] : []);
-  stream.method = method;
-  stream.url = url;
-  stream.headers = { host: "localhost", ...headers };
+  const listeners = {};
+  const stream = {
+    method,
+    url,
+    headers: { host: "localhost", ...headers },
+    on(ev, fn) {
+      (listeners[ev] ??= []).push(fn);
+      return stream;
+    },
+  };
+  queueMicrotask(() => {
+    if (body) {
+      const bytes = new TextEncoder().encode(body);
+      for (const fn of listeners.data ?? []) fn(bytes);
+    }
+    for (const fn of listeners.end ?? []) fn();
+  });
   return stream;
 }
 
@@ -26,7 +59,7 @@ function fakeRes() {
       this.headersSent = true;
     },
     end(chunk) {
-      if (chunk) this.body += chunk.toString();
+      if (chunk) this.body += new TextDecoder().decode(chunk);
     },
   };
 }

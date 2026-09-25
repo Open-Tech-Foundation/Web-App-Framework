@@ -3,7 +3,7 @@
 // `hydrate` adopt factory, the router *adopts* the server DOM instead of rebuilding it;
 // otherwise it falls back to a plain CSR build.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "runtime:test";
 
 import { signal } from "../core/signals.js";
 import { bindText } from "./dom.js";
@@ -68,7 +68,6 @@ function serverRoot(withSentinel) {
   if (withSentinel) root.setAttribute("data-otfw-hydrate", "");
   root.innerHTML = SERVER_HTML; // the server-rendered markup, as the browser parsed it
   document.body.appendChild(root);
-  if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
   window.history.replaceState({}, "", "/");
   return root;
 }
@@ -140,7 +139,6 @@ describe("router boot — hydrate vs build", () => {
       SERVER_HTML +
       "<!--]--></main>";
     document.body.appendChild(root);
-    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
     window.history.replaceState({}, "", "/");
 
     const serverMain = root.firstChild;
@@ -175,7 +173,6 @@ describe("router boot — hydrate vs build", () => {
     root.setAttribute("data-otfw-hydrate", "");
     root.innerHTML = '<main><!--[-->' + SERVER_HTML + "<!--]--></main>";
     document.body.appendChild(root);
-    if (window.happyDOM?.setURL) window.happyDOM.setURL("http://localhost/");
     window.history.replaceState({}, "", "/");
 
     await mountApp({ target: root });
@@ -247,9 +244,10 @@ describe("router boot — hydrate vs build", () => {
     });
     const root = serverRoot(true); // sentinel + `/` server markup
     // In a browser the flag is seeded `true` at hydrate.js module load, from the sentinel in
-    // the already-parsed HTML (docs/HYDRATION.md §3.4) — that's what makes it leak. happy-dom
-    // imports the module against an empty document, so seed it here or the test can't see the
-    // bug at all (it passed against the unfixed router until this line existed).
+    // the already-parsed HTML (docs/HYDRATION.md §3.4) — that's what makes it leak. The
+    // `--dom` realm loads the module against an empty document, so seed it here or the
+    // test can't see the bug at all (it passed against the unfixed router until this
+    // line existed).
     beginHydration();
 
     await mountApp({

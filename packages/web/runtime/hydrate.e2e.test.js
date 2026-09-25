@@ -7,10 +7,12 @@
 // drives the otfwc binary directly so it can request the ssg/hydrate targets. It is
 // skipped when the workspace debug build is absent (OTFWC_BIN overrides the path).
 
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { exists } from "runtime:fs";
+import { dirname, fromFileURL, join } from "runtime:path";
+import { env, unmask } from "runtime:process";
+import { Command } from "runtime:system";
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "runtime:test";
 
 import { signal } from "../core/signals.js";
 import {
@@ -56,34 +58,40 @@ import {
 import "./portal.js";
 import { reportError } from "../core/errors.js";
 
-function findUp(name, from) {
+async function findUp(name, from) {
   let dir = from;
   while (true) {
-    if (existsSync(join(dir, name))) return dir;
+    if (await exists(join(dir, name))) return dir;
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
   }
 }
-const workspace = findUp("Cargo.toml", import.meta.dir);
-const OTFWC = process.env.OTFWC_BIN ?? (workspace ? join(workspace, "target", "debug", "otfwc") : "otfwc");
-const hasBin = existsSync(OTFWC);
+const workspace = await findUp("Cargo.toml", dirname(fromFileURL(import.meta.url)));
+const OTFWC = unmask(env.OTFWC_BIN ?? "") || (workspace ? join(workspace, "target", "debug", "otfwc") : "otfwc");
+const hasBin = await exists(OTFWC);
 
 // Compile `source` with otfwc for `target` (ssg | hydrate), returning the emitted JS.
 // `component` selects the Custom Element backend (the page backend is the default).
-function compile(source, target, component = false) {
-  const args = [OTFWC, "build", `--target=${target}`, "--stdin"];
+async function compile(source, target, component = false) {
+  const args = ["build", `--target=${target}`, "--stdin"];
   if (component) args.push("--component");
   args.push(component ? "/app/Panel.tsx" : "/app/page.tsx");
-  const proc = Bun.spawnSync(args, { stdin: new TextEncoder().encode(source) });
-  if (proc.exitCode !== 0) throw new Error(`otfwc ${target} failed:\n${proc.stderr}`);
-  return proc.stdout.toString();
+  const proc = await new Command(OTFWC, {
+    args,
+    stdin: new TextEncoder().encode(source),
+    stdout: "piped",
+    stderr: "piped",
+    inheritEnv: true,
+  }).output();
+  if (!proc.success) throw new Error(`otfwc ${target} failed:\n${new TextDecoder().decode(proc.stderr)}`);
+  return new TextDecoder().decode(proc.stdout);
 }
 
 // Evaluate an emitted *component* module and return the named binding (the element class, or
 // the `_ssg` render fn). Unlike `loadModule` this keeps the declaration addressable, so the
-// test can construct and connect the element by hand — happy-dom does not upgrade elements
-// parsed out of `innerHTML`, so the adopt branch is only reachable by driving it directly.
+// test can construct and connect the element by hand — elements parsed out of `innerHTML`
+// upgrade only on connect, so the adopt branch is only reachable by driving it directly.
 function loadComponent(code, name, bindings) {
   const body = code
     .split("\n")
@@ -124,9 +132,9 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
   const source =
     'export default function P(){ let n=$state(3); return <div class="box"><button onclick={() => n++}>Count {n}</button></div>; }';
 
-  test("the Hydrate factory adopts the SSG-rendered DOM and wires reactivity onto it", () => {
+  test("the Hydrate factory adopts the SSG-rendered DOM and wires reactivity onto it", async () => {
     // 1. Server render (SSG) → HTML string with text-hole markers.
-    const ssgFactory = loadModule(compile(source, "ssg"), { signal, ssgText }).default;
+    const ssgFactory = loadModule(await compile(source, "ssg"), { signal, ssgText }).default;
     const html = ssgFactory();
     expect(html).toContain("<!--$-->3<!--/-->"); // value bracketed by hydration markers
     expect(html).not.toContain("onclick"); // event handler is client-only, never serialized
@@ -141,7 +149,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
 
     // 3. Hydrate over the existing container, using the dual module's `hydrate` export
     //    (its `default` is the CSR build factory used for client-side navigation).
-    const mod = loadModule(compile(source, "hydrate"), {
+    const mod = loadModule(await compile(source, "hydrate"), {
       signal,
       bindText,
       cursor,
@@ -170,16 +178,16 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
   // through the serialized payload as a *rich* value (an object), not a string attribute.
   // This covers the SSG side (assign `data-h`, serialize the object) and the client reader
   // (resolve a host's rich props by its id). The remaining leg — the component constructor
-  // reading it *at upgrade* — is validated in the real-browser e2e, because happy-dom does
-  // not expose attributes in the constructor on upgrade (real browsers do, per the Custom
-  // Elements spec), so the constructor path can't be exercised here.
+  // reading it *at upgrade* — is validated in the real-browser e2e, because the unit DOM
+  // does not expose attributes in the constructor on upgrade (real browsers do, per the
+  // Custom Elements spec), so the constructor path can't be exercised here.
   const islandSource =
     'function Badge({ meta }){ return <span class="badge">{meta.text}</span>; }' +
     ' export default function P(){ return <div><Badge meta={{ text: "hi", n: 7 }}/></div>; }';
 
-  test("SSG serializes a rich island prop into the payload, and the reader resolves it", () => {
+  test("SSG serializes a rich island prop into the payload, and the reader resolves it", async () => {
     // 1. Server render, collecting the island payload as renderRoute does.
-    const ssg = loadModule(compile(islandSource, "ssg"), { signal, ssgText, ssgComponent, defineSSG });
+    const ssg = loadModule(await compile(islandSource, "ssg"), { signal, ssgText, ssgComponent, defineSSG });
     beginHydrationCollect();
     const html = ssg.default();
     const payload = endHydrationCollect();
@@ -222,9 +230,9 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     " return <div><button onclick={() => items = [...items, items.length+1]}>add</button>" +
     "<ul>{items.map(x => <li>item {x}</li>)}</ul></div>; }";
 
-  test("the Hydrate factory adopts a server list region and reconciles from it with no flash", () => {
+  test("the Hydrate factory adopts a server list region and reconciles from it with no flash", async () => {
     // 1. Server render (SSG) → the list is bracketed by region markers.
-    const ssgFactory = loadModule(compile(listSource, "ssg"), { signal, ssgText, ssgList }).default;
+    const ssgFactory = loadModule(await compile(listSource, "ssg"), { signal, ssgText, ssgList }).default;
     const html = ssgFactory();
     expect(html).toContain("<!--[-->"); // list region opens
     expect(html).toContain("<!--]-->"); // …and closes
@@ -238,7 +246,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     expect(serverItems.map((li) => li.textContent)).toEqual(["item 1", "item 2", "item 3"]);
 
     // 3. Hydrate over the existing container.
-    const mod = loadModule(compile(listSource, "hydrate"), {
+    const mod = loadModule(await compile(listSource, "hydrate"), {
       signal,
       bindText,
       bindList,
@@ -272,9 +280,9 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     " return <div><button onclick={() => open = !open}>t</button>" +
     '{open ? <p class="yes">YES</p> : <span class="no">NO</span>}</div>; }';
 
-  test("the Hydrate factory adopts the rendered conditional branch and swaps on change", () => {
+  test("the Hydrate factory adopts the rendered conditional branch and swaps on change", async () => {
     // 1. Server render (SSG) → the rendered branch bracketed by region markers.
-    const ssgFactory = loadModule(compile(condSource, "ssg"), { signal, ssgText }).default;
+    const ssgFactory = loadModule(await compile(condSource, "ssg"), { signal, ssgText }).default;
     const html = ssgFactory();
     expect(html).toContain("<!--[-->"); // region opens
     expect(html).toMatch(/<p class="yes">YES<\/p>/); // the `true` branch was rendered
@@ -287,7 +295,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     expect(serverP.textContent).toBe("YES");
 
     // 3. Hydrate over the existing container.
-    const mod = loadModule(compile(condSource, "hydrate"), {
+    const mod = loadModule(await compile(condSource, "hydrate"), {
       signal,
       bindChild,
       hydrateChild,
@@ -322,11 +330,11 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
   const innerPageSource =
     'export default function P(){ let n=$state(5); return <main><button onclick={() => n++}>c {n}</button></main>; }';
 
-  test("a compiled layout adopts its chain — layout + page thread one cursor at the slot", () => {
+  test("a compiled layout adopts its chain — layout + page thread one cursor at the slot", async () => {
     const helpers = { signal, ssgText };
     // 1. Server-compose exactly like renderRoute: render the page, wrap in the layout.
-    const pageSsg = loadModule(compile(innerPageSource, "ssg"), helpers).default;
-    const layoutSsg = loadModule(compile(layoutSource, "ssg"), helpers).default;
+    const pageSsg = loadModule(await compile(innerPageSource, "ssg"), helpers).default;
+    const layoutSsg = loadModule(await compile(layoutSource, "ssg"), helpers).default;
     const html = layoutSsg({ children: pageSsg({}) });
     expect(html).toMatch(/<div class="layout"><header>H<\/header><!--\[-->/); // slot region opens
     expect(html).toContain("<main><button>c <!--$-->5<!--/--></button></main>"); // page inside
@@ -351,8 +359,8 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
       claimRegionStart,
       claimRegionEnd,
     };
-    const layoutMod = loadModule(compile(layoutSource, "hydrate"), claimBindings);
-    const pageMod = loadModule(compile(innerPageSource, "hydrate"), claimBindings);
+    const layoutMod = loadModule(await compile(layoutSource, "hydrate"), claimBindings);
+    const pageMod = loadModule(await compile(innerPageSource, "hydrate"), claimBindings);
     const rootNode = layoutMod.hydrateAt(cursor(container), {
       children: (c) => pageMod.hydrateAt(c, {}),
     });
@@ -380,7 +388,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     ' export default function P(){ let n=$state(0);' +
     ' return <main><Card><button class="inner" onclick={() => n++}>c {n}</button></Card></main>; }';
 
-  test("hydrateSlot still finds an unlabeled slot marker (older-compiler skew)", () => {
+  test("hydrateSlot still finds an unlabeled slot marker (older-compiler skew)", async () => {
     // The markers carry the owning host's tag, but `@opentf/web-cli` pins a compiler version,
     // so this runtime can run against server HTML built by a compiler one release behind that
     // emits bare `<!--c[-->`. A strict label comparison would make `hydrateSlot` a silent
@@ -404,10 +412,10 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     expect(ran).toBe(false);
   });
 
-  test("a parent adopts a component's slotted children's reactivity (2.1d)", () => {
+  test("a parent adopts a component's slotted children's reactivity (2.1d)", async () => {
     // 1. Server render: the slot is bracketed by the distinct <!--c[-->…<!--c]--> markers,
     //    with the parent's <button class="inner"> rendered inside the host.
-    const ssg = loadModule(compile(slotSource, "ssg"), {
+    const ssg = loadModule(await compile(slotSource, "ssg"), {
       signal,
       ssgText,
       ssgComponent,
@@ -426,7 +434,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
 
     // 3. Run the page's adopt walk; it claims the host and adopts the slotted button via
     //    hydrateSlot (wiring the parent's `n` onto it).
-    const mod = loadModule(compile(slotSource, "hydrate"), {
+    const mod = loadModule(await compile(slotSource, "hydrate"), {
       signal,
       bindText,
       handleError,
@@ -464,9 +472,9 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     " return <div><div>{EXAMPLES.map((ex) => <button class=\"tab\" onclick={() => sel = ex.id}>{ex.id}</button>)}</div>" +
     " <pre>{EXAMPLES.find((ex) => ex.id === sel).body}</pre></div>; }";
 
-  test("a node-valued text hole hydrates without duplicating the server-rendered node", () => {
+  test("a node-valued text hole hydrates without duplicating the server-rendered node", async () => {
     // 1. Server render — the <pre> hole carries the selected example's node markup inline.
-    const ssg = loadModule(compile(nodeHoleSource, "ssg"), { signal, ssgText, ssgList }).default;
+    const ssg = loadModule(await compile(nodeHoleSource, "ssg"), { signal, ssgText, ssgList }).default;
     const html = ssg();
     expect(html).toContain('<pre><!--$--><code class="ex"><span>AAA</span></code><!--/--></pre>');
     expect(html).not.toContain("BBB"); // only the selected example is server-rendered
@@ -478,7 +486,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     expect(pre.querySelectorAll("code.ex").length).toBe(1);
 
     // 3. Hydrate.
-    const mod = loadModule(compile(nodeHoleSource, "hydrate"), {
+    const mod = loadModule(await compile(nodeHoleSource, "hydrate"), {
       signal,
       bindText,
       bindList,
@@ -514,10 +522,10 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
     "export default function P(){ let n=$state(0);" +
     ' return <main><Portal><button class="m" onclick={() => n++}>c {n}</button></Portal></main>; }';
 
-  test("a <Portal>'s slotted content hydrates in place before it relocates (Task 2)", () => {
+  test("a <Portal>'s slotted content hydrates in place before it relocates (Task 2)", async () => {
     // 1. SSG: the portal's children are bracketed by the <!--c[-->…<!--c]--> slot markers
     //    (server/builtins.js) so the compiled `hydrateSlot` walk can locate and adopt them.
-    const ssg = loadModule(compile(portalSource, "ssg"), {
+    const ssg = loadModule(await compile(portalSource, "ssg"), {
       signal,
       ssgText,
       ssgComponent,
@@ -538,7 +546,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
 
     // 3. Run the page's adopt walk while the slot is still in place; `hydrateSlot` finds the
     //    marker and wires the parent's `n` onto the server button (no rebuild).
-    const mod = loadModule(compile(portalSource, "hydrate"), {
+    const mod = loadModule(await compile(portalSource, "hydrate"), {
       signal,
       bindText,
       cursor,
@@ -567,7 +575,7 @@ describe.skipIf(!hasBin)("hydration e2e (ssg → hydrate)", () => {
 
   // Guard the deferral primitive directly: `afterHydration` queues during a pass and flushes
   // (in order) at `endHydration`; outside a pass it runs synchronously.
-  test("afterHydration defers during a pass and runs synchronously outside one", () => {
+  test("afterHydration defers during a pass and runs synchronously outside one", async () => {
     const order = [];
     afterHydration(() => order.push("sync")); // not hydrating → immediate
     expect(order).toEqual(["sync"]);
@@ -626,13 +634,13 @@ describe.skipIf(!hasBin)("hydration construct matrix (ssg → hydrate, no rebuil
   const elementsIn = (root) => Array.from(root.querySelectorAll("*"));
 
   // SSG-render `source`, mount the server HTML, snapshot every server element, then adopt.
-  function roundTrip(source) {
-    const ssg = loadModule(compile(source, "ssg"), ALL).default;
+  async function roundTrip(source) {
+    const ssg = loadModule(await compile(source, "ssg"), ALL).default;
     const html = ssg();
     const container = document.createElement("div");
     container.innerHTML = html;
     const serverEls = elementsIn(container); // detached → child components don't upgrade
-    const mod = loadModule(compile(source, "hydrate"), ALL);
+    const mod = loadModule(await compile(source, "hydrate"), ALL);
     mod.hydrate(container);
     return { html, container, serverEls };
   }
@@ -760,8 +768,8 @@ describe.skipIf(!hasBin)("hydration construct matrix (ssg → hydrate, no rebuil
   ];
 
   for (const kase of MATRIX) {
-    test(`construct: ${kase.name}`, () => {
-      const { html, container, serverEls } = roundTrip(kase.source);
+    test(`construct: ${kase.name}`, async () => {
+      const { html, container, serverEls } = await roundTrip(kase.source);
       for (const frag of kase.ssg || []) expect(html).toContain(frag);
       if (kase.checkHtml) kase.checkHtml(html);
       expectNoRebuild(serverEls, container);
@@ -786,10 +794,10 @@ describe.skipIf(!hasBin)("hydration construct matrix (ssg → hydrate, no rebuil
     ' const body = <div class="b"><article class="slot">{props.children}</article></div>;' +
     ' return frame ? <div class="shell">{body}</div> : body; }';
 
-  test("component adopt: a value local's `{children}` slot survives the subscribe-only build", () => {
+  test("component adopt: a value local's `{children}` slot survives the subscribe-only build", async () => {
     // 1. Server-render the component body with real slotted content, then wrap it in its host
     //    tag exactly as a parent's `ssgComponent` would.
-    const ssgFn = loadComponent(compile(slotValueLocalSource, "ssg", true), "Panel_ssg", {
+    const ssgFn = loadComponent(await compile(slotValueLocalSource, "ssg", true), "Panel_ssg", {
       signal,
       ssgText,
       defineSSG,
@@ -800,7 +808,7 @@ describe.skipIf(!hasBin)("hydration construct matrix (ssg → hydrate, no rebuil
     expect(inner).not.toContain('class="shell"'); // unframed: the bare `body` branch
 
     // 2. Build the host element from the compiled class and give it the server DOM.
-    const Panel = loadComponent(compile(slotValueLocalSource, "hydrate", true), "PanelElement", {
+    const Panel = loadComponent(await compile(slotValueLocalSource, "hydrate", true), "PanelElement", {
       signal,
       bindText,
       bindChild,
