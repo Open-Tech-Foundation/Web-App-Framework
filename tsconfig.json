@@ -28,6 +28,10 @@
     "noPropertyAccessFromIndexSignature": false,
     "paths": {
       "@opentf/web": ["./packages/web/index.js"],
+      "@opentf/web/signals": ["./packages/web/core/signals.js"],
+      "@opentf/web/reactive": ["./packages/web/core/reactive.js"],
+      "@opentf/web/runtime": ["./packages/web/runtime/index.js"],
+      "@opentf/web/test": ["./packages/web/test-entry.js"],
       "@opentf/web/compiler": ["./packages/web/compiler/index.js"],
       "@opentf/web-form": ["./packages/web-form/index.js"],
       "@opentf/web-test": ["./packages/web-test/index.js"],
@@ -38,6 +42,7 @@
     "**/node_modules",
     "**/dist",
     "**/.dev",
+    "**/*.compiled.js",
     "target",
     "benchmarks/**/dist"
   ]

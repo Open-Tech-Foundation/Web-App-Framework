@@ -1,14 +1,9 @@
-import {
-  signal,
-  computed,
-  effect,
-  batch,
-  untracked,
-  getCurrentInstance,
-  reactive,
-  toRawValue,
-  snapshot,
-} from "@opentf/web";
+// Subpath imports (the same modules the package root re-exports) so this
+// plain-JS module never pulls the root's JSX source — which keeps it loadable
+// outside a bundler pipeline (e.g. esdev).
+import { batch, computed, effect, signal, untracked } from "@opentf/web/signals";
+import { getCurrentInstance } from "@opentf/web/runtime";
+import { reactive, snapshot, toRawValue } from "@opentf/web/reactive";
 
 export { signal, computed, batch, effect, untracked, reactive, getCurrentInstance };
 
