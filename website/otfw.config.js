@@ -20,8 +20,8 @@ export default defineDocsConfig({
     nav: [
       { label: "Home", href: "/" },
       { label: "Docs", href: "/docs" },
+      { label: "Packages", href: "/packages" },
       { label: "API", href: "/api" },
-      { label: "Benchmarks", href: "/benchmarks" },
     ],
     // Static search is indexed after SSG into dist/_search/.
     search: { provider: "otf" },

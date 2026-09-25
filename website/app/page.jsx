@@ -12,7 +12,7 @@ export const metadata = {
   canonical: "/",
 };
 
-// Every benchmark caveat lives on /benchmarks; the landing page states the claim in a
+// Every benchmark caveat lives on /docs/benchmarks; the landing page states the claim in a
 // line and links there, so a figure is never shown without its qualifications a click away.
 const METHOD_LINK = "text-[var(--accent)] font-semibold hover:underline whitespace-nowrap";
 
@@ -110,7 +110,7 @@ export default function HomePage() {
         </div>
         <p className="text-center text-sm text-[var(--text-muted)]">
           Bold beats the ~{resolutionMs}&nbsp;ms timing resolution; the rest are ties.{" "}
-          <Link href="/benchmarks" className={METHOD_LINK}>Method &amp; caveats →</Link>
+          <Link href="/docs/benchmarks" className={METHOD_LINK}>Method &amp; caveats →</Link>
         </p>
       </section>
 
@@ -129,7 +129,7 @@ export default function HomePage() {
         </div>
         <p className="text-center text-sm text-[var(--text-muted)]">
           The columns do not represent equal work.{" "}
-          <Link href="/benchmarks" className={METHOD_LINK}>Method &amp; caveats →</Link>
+          <Link href="/docs/benchmarks" className={METHOD_LINK}>Method &amp; caveats →</Link>
         </p>
       </section>
 

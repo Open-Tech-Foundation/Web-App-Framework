@@ -74,7 +74,7 @@ The main documentation section. Common fields:
 | `lastUpdated` | boolean | Show a "Last updated" line per page (git/frontmatter). Requires the last-updated build plugin (set on `docs` or `blog`). |
 | `repoUrl` + `lastUpdated` | — | Together they enable **"Edit this page"** links (`<repoUrl>/edit/main/<source>`). `repoUrl` alone is not enough. |
 
-See [Packages → web-docs → Configuration](/docs/packages/web-docs/configuration) for the
+See [Packages → web-docs → Configuration](/packages/web-docs/configuration) for the
 exhaustive field reference and per-folder `_meta.js` ordering.
 
 ## Multiple sections
@@ -106,7 +106,7 @@ of this file.
 ## `blog`
 
 Turns on the blog generator (post list, banners, reading time, feeds). See
-[Packages → web-docs → Blog](/docs/packages/web-docs/blog).
+[Packages → web-docs → Blog](/packages/web-docs/blog).
 
 ```js
 blog: { dir: "blog", title: "My Blog", lastUpdated: true }
@@ -130,7 +130,7 @@ i18n: {
 | `locales` | string[] | All supported locales. |
 | `defaultLocale` | string | Served at the bare path; others are prefixed (`/fr/…`). |
 
-See [Packages → web-i18n → Locale Routing](/docs/packages/web-i18n/routing) for the full
+See [Packages → web-i18n → Locale Routing](/packages/web-i18n/routing) for the full
 routing model and the message/formatting API.
 
 ## `proxy`

@@ -5,9 +5,14 @@ import { BlogLayout } from "@opentf/web-docs";
 import { posts } from "@opentf/web-docs/posts";
 import config from "../../otfw.config.js";
 
+// Posts are articles; the index page below overrides back to `website`.
+export const metadata = {
+  openGraph: { type: "article" },
+};
+
 export default function BlogLayoutRoute(props) {
   return (
-    <BlogLayout config={config.docs} posts={posts} frame={false}>
+    <BlogLayout config={config.docs} posts={posts} siteUrl={config.site?.url} frame={false}>
       {props.children}
     </BlogLayout>
   );

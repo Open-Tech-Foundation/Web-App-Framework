@@ -15,6 +15,13 @@ export const metadata = {
     siteName: "OTF Web",
     type: "website",
   },
+  jsonLd: {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "Open Tech Foundation",
+    url: "https://web.opentechf.org",
+    logo: "https://web.opentechf.org/img/otf-logo.svg",
+  },
   links: [
     { rel: "icon", href: "/img/otf-logo.svg" },
     { rel: "apple-touch-icon", href: "/img/otf-logo.svg" },

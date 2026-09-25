@@ -1,0 +1,28 @@
+---
+title: Packages
+description: Reference for the OTF Web core packages — the @opentf/web runtime, reactive macros, the server package, and the otfw CLI.
+---
+
+import { Cards, Card } from "@opentf/web-docs";
+
+# Packages
+
+Reference for the core packages every OTF Web project stands on: the runtime,
+the compiler macros, the server package, and the CLI. The optional packages
+(forms, i18n, testing, docs) live under [API Reference](/api).
+
+<Cards>
+  <Card title="Core" href="/packages/core" desc="The @opentf/web runtime — mountApp, router, Link, lifecycle, and helpers." />
+  <Card title="Reactive Macros" href="/packages/macros" desc="$state, $derived, $effect, $ref, $expose, and the lifecycle hooks the compiler provides." />
+  <Card title="Server" href="/packages/server" desc="@opentf/web/server — middleware, cookies, API routes, createFetchHandler, and runtime adapters." />
+  <Card title="CLI" href="/packages/cli" desc="The otfw command — dev server, production build, and static generation." />
+</Cards>
+
+## Guides
+
+<Cards>
+  <Card title="web-form" href="/packages/web-form" desc="A reactive, path-based form engine — signal-bound fields, nested state, and pluggable validation." />
+  <Card title="web-i18n" href="/packages/web-i18n" desc="Internationalization — URL-prefix locale routing, ICU messages, and locale-aware Intl formatters." />
+  <Card title="web-test" href="/packages/web-test" desc="DOM testing — render components, drive interactions, and assert on reactive updates." />
+  <Card title="web-docs" href="/packages/web-docs" desc="Documentation-site generator — themed shell, build-time nav, and MDX content." />
+</Cards>

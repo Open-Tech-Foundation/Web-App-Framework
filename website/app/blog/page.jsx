@@ -8,6 +8,7 @@ export const metadata = {
   title: "Blog (demo)",
   description:
     "Sample posts demonstrating @opentf/web-docs blog layouts — not OTF Web product news.",
+  openGraph: { type: "website" },
 };
 
 export default function BlogIndex() {
@@ -20,7 +21,7 @@ export default function BlogIndex() {
         These sample posts exist to demonstrate the <code>@opentf/web-docs</code> blog
         feature — post list, banner, reading time, and TOC. This is not the OTF Web
         product blog; the only intentional link here is in the{" "}
-        <a href="/docs/packages/web-docs/blog" className="text-[var(--accent)] underline">
+        <a href="/packages/web-docs/blog" className="text-[var(--accent)] underline">
           web-docs Blog guide
         </a>
         .

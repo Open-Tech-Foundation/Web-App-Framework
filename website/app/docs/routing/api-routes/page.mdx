@@ -76,7 +76,7 @@ Full pipeline, page guards, `__data.json` scoping, and deploy exports:
 Request validation (e.g. with `zod`) belongs in middleware or at the top of a handler.
 
 Cookies use the standards-based helpers from `@opentf/web/server` —
-see the [Cookies](/docs/routing/cookies) guide (API reference: [Server](/api/server#cookies)).
+see the [Cookies](/docs/routing/cookies) guide (API reference: [Server](/packages/server#cookies)).
 
 ## TypeScript
 
@@ -101,7 +101,7 @@ export default auth;
 - **`otfw serve`** tries a matching `route.*` handler first, then SSR — so a request
   that matches no handler falls through to your pages (pages and endpoints coexist).
 - **`otfw build`** emits `dist/server/api.js`, a self-contained handler you deploy
-  with a runtime adapter — see the [Server API reference](/api/server).
+  with a runtime adapter — see the [Server API reference](/packages/server).
 
 Environment variables are never bundled into the client. Handlers read them via
 `process.env` — `otfw dev`/`otfw serve` load your `.env` automatically (Bun), and a

@@ -8,7 +8,7 @@ export default {
   routing: "Routing",
   "data-fetching": "Data Fetching",
   configuration: "Configuration",
-  packages: "Packages",
+  benchmarks: "Benchmarks",
   deployment: "Deployment",
   troubleshooting: "Troubleshooting",
 };

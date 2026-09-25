@@ -8,7 +8,7 @@ import config from "../../otfw.config.js";
 
 export default function DocsLayoutRoute(props) {
   return (
-    <DocsLayout config={config.docs} frame={false}>
+    <DocsLayout config={config.docs} siteUrl={config.site?.url} frame={false}>
       {props.children}
     </DocsLayout>
   );

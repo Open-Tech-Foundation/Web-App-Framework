@@ -7,8 +7,9 @@ import { Callout } from "@opentf/web-docs";
 
 # Project Structure
 
-`create-web` scaffolds four project types — **SPA**, **Fullstack**, **Documentation
-site**, and **Library**. Apps and docs sites share the same `app/` routing layout;
+`esdev create` scaffolds four project types — **SPA**, **Fullstack**, **Documentation
+site**, and **Library** (`@opentf/create-web` is deprecated — use `esdev create`
+for new projects). Apps and docs sites share the same `app/` routing layout;
 libraries ship source components with no `app/` folder.
 
 ## SPA (browser-only)
@@ -62,7 +63,7 @@ Run `otfw serve` for per-request SSR, loaders, and API routes in one process. Se
 ## Documentation site
 
 Docs projects add `otfw.config.js` and an `app/docs/` section for MDX content. The
-scaffolder can optionally add `app/blog/` — see [web-docs → Blog](/docs/packages/web-docs/blog).
+scaffolder can optionally add `app/blog/` — see [web-docs → Blog](/packages/web-docs/blog).
 
 ```text
 my-docs/

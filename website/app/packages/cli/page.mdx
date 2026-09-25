@@ -28,7 +28,15 @@ Both `otfw dev` and `otfw serve` serve your [API routes](/docs/routing/api-route
 
 ## Scaffolding
 
-Create a new project with the `create` initializer:
+Create a new project with `esdev create`:
+
+```bash
+esdev create my-app
+```
+
+`@opentf/create-web` (`bun create @opentf/web`, `npm/pnpm/yarn create @opentf/web`)
+is deprecated — use `esdev create` for new projects. The legacy scaffolder below
+is kept for existing projects:
 
 ```bash
 bun create @opentf/web my-app

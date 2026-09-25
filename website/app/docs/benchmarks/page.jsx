@@ -2,14 +2,14 @@
 // framing each; everything a reader needs to judge those numbers — what is and is not
 // being compared, the methodology, and the caveats that qualify each figure — lives
 // here, so the landing page stays scannable without the claims losing their context.
-import { benchmark, ssgBenchmark } from "../home-data.js";
-import BenchmarkTable from "../components/BenchmarkTable.jsx";
+import { benchmark, ssgBenchmark } from "../../home-data.js";
+import BenchmarkTable from "../../components/BenchmarkTable.jsx";
 
 export const metadata = {
   title: "Benchmarks",
   description:
     "How OTF Web is measured: a rendering-layer comparison against the React, Solid and Svelte libraries, and a framework-level build-cost comparison against Astro, Next.js, TanStack Start and Vite.",
-  canonical: "/benchmarks",
+  canonical: "/docs/benchmarks",
 };
 
 const H2 = "text-2xl font-bold tracking-tight text-[var(--text-main)] mt-16 mb-3";

@@ -56,7 +56,7 @@ export const capabilities = [
   {
     category: "Tooling & DX",
     items: [
-      { name: "create-web scaffolder", status: "supported", desc: "App, Docs, or Library templates — JS/TS, auto-install, npm-pinned deps." },
+      { name: "create-web scaffolder", status: "supported", desc: "Deprecated — use `esdev create` (App, Docs, or Library templates). Kept for existing projects." },
       { name: "Dev server + reload on save", status: "partial", desc: "On-demand per-route compile. Edits under app/ rebuild and trigger a full-page refresh — not module-level HMR." },
       { name: "Module-level HMR", status: "planned", desc: "Hot-swap changed modules in place without reloading the tab." },
       { name: "Dev error overlay", status: "supported", desc: "In-browser error reporting during dev." },
