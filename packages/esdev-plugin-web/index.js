@@ -7,3 +7,4 @@
 
 export { closeCompilers, compileError, resolveCompiler, startCompilerServer } from "./compiler.js";
 export { createOtfwPlugin, otfwPlugin } from "./plugin.js";
+export { createOtfwRoutes } from "./routes.js";

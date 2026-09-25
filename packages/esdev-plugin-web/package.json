@@ -9,7 +9,8 @@
   "files": [
     "index.js",
     "compiler.js",
-    "plugin.js"
+    "plugin.js",
+    "routes.js"
   ],
   "dependencies": {
     "@opentf/web-compiler": "workspace:*"

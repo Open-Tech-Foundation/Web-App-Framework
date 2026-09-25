@@ -56,6 +56,21 @@ instance — the binary starts once no matter how many modules or builds follow.
   transformed module), so it works however the host invokes it. Under
   `esdev test` / `esdev <file>` only `transform` runs — which is all this
   plugin has — so `.jsx` sources load directly with no precompile step.
+
+- `createOtfwRoutes({ appDir, exclude })` — the Next.js-style file
+  conventions as a plugin: serves a virtual `@otfw/routes` module
+  (`{ pages, guard }`) crawled from `app/` with the runtime's `Glob`
+  (`**/{page,layout,404}.{mdx,md,jsx,tsx}`). A user entry stays four lines:
+
+  ```js
+  import { mountApp } from "@opentf/web";
+  import { guard, pages } from "@otfw/routes";
+
+  mountApp({ pages, guard, target: document.getElementById("app") });
+  ```
+
+  `resolve` + `load` only, so this half runs under `esdev start` /
+  `esdev build`, not under `esdev test` (tests hand-write the map).
 - `resolveCompiler({ cliDir, env, resolvePackagedCompiler, findWorkspace, ensure })`
   — every input injectable, so tests never touch the disk or the network.
 - `startCompilerServer(otfwc)` → `{ compile(id, source, component, target), close }`
