@@ -502,8 +502,14 @@ fn slugify(text: &str) -> String {
 /// Minimal frontmatter → JS object literal: flat `key: value` scalar lines. Values
 /// are emitted as strings (booleans/numbers passed through). Good enough for docs
 /// metadata (title/description/…); richer YAML is a follow-up.
+///
+/// One conventional mapping: a `cover` image (the web-docs blog frontmatter field)
+/// is also exposed as `openGraph.image`, so link unfurlers pick up the post visual
+/// without every post hand-writing nested metadata (which flat frontmatter cannot
+/// express). Explicit `openGraph` handling downstream merges over it.
 fn frontmatter_object(yaml: &str) -> String {
     let mut fields = Vec::new();
+    let mut cover: Option<String> = None;
     for line in yaml.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -517,12 +523,18 @@ fn frontmatter_object(yaml: &str) -> String {
             continue;
         }
         let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
+        if key == "cover" && !value.is_empty() {
+            cover = Some(value.to_string());
+        }
         let rendered = if matches!(value, "true" | "false") || value.parse::<f64>().is_ok() {
             value.to_string()
         } else {
             js_string(value)
         };
         fields.push(format!("{}: {rendered}", js_string(key)));
+    }
+    if let Some(image) = cover {
+        fields.push(format!("\"openGraph\": {{ \"image\": {} }}", js_string(&image)));
     }
     format!("{{ {} }}", fields.join(", "))
 }
@@ -728,6 +740,14 @@ mod tests {
         assert!(out.contains("export const metadata = {"), "{out}");
         assert!(out.contains("\"title\": \"Intro\""), "{out}");
         assert!(out.contains("\"description\": \"A page\""), "{out}");
+    }
+
+    #[test]
+    fn frontmatter_cover_maps_to_opengraph_image() {
+        let out =
+            mdx_to_jsx("---\ntitle: Post\ncover: /blog/cover.svg\n---\n\n# Hi", "post.mdx").unwrap();
+        assert!(out.contains("\"cover\": \"/blog/cover.svg\""), "{out}");
+        assert!(out.contains("\"openGraph\": { \"image\": \"/blog/cover.svg\" }"), "{out}");
     }
 
     #[test]
