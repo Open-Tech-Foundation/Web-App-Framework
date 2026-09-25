@@ -11,4 +11,8 @@ export default {
   benchmarks: "Benchmarks",
   deployment: "Deployment",
   troubleshooting: "Troubleshooting",
+  core: "Core",
+  macros: "Reactive Macros",
+  server: "Server",
+  cli: "CLI",
 };

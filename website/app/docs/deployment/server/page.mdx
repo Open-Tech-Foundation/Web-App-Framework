@@ -73,7 +73,7 @@ const fetch = createFetchHandler(apiRoutes, { middleware });
 createServer(toNodeListener(fetch)).listen(3000);
 ```
 
-See the [Server API reference](/packages/server) for the full adapter surface.
+See the [Server API reference](/docs/server) for the full adapter surface.
 
 <Callout type="tip" title="Pair with static output">
   Build the client with `otfw build` (or `--ssg` for pre-rendered HTML) and let your host
