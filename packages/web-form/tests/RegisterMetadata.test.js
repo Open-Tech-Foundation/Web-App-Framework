@@ -1,6 +1,6 @@
-import { test, expect } from "bun:test";
+import { test, expect } from "runtime:test";
 import { createForm } from "../index.js";
-import { effect, signal, batch } from "@opentf/web";
+import { effect, signal, batch } from "@opentf/web/signals";
 
 test("register() returns reactive metadata", async () => {
   const form = createForm({

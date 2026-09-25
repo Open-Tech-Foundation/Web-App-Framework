@@ -1,14 +1,13 @@
-import { expect, test, describe } from "bun:test";
-import { render, userEvent } from "@opentf/web-test";
-import NestedForm from "./NestedForm.jsx";
+import { expect, test, describe } from "runtime:test";
+import { mount, type, clear, click } from "./dom.js";
+import NestedForm from "./NestedForm.compiled.js";
 
 describe("Nested Fields", () => {
   test("handles deep object paths", async () => {
     let submittedValues = null;
-    const { getByTestId } = render(NestedForm, { 
+    const { getByTestId } = mount(NestedForm, { 
       onSubmit: (v) => submittedValues = v 
     });
-    const user = userEvent.setup();
 
     const firstName = getByTestId("first-name");
     const notifications = getByTestId("notifications");
@@ -17,11 +16,11 @@ describe("Nested Fields", () => {
     expect(firstName.value).toBe("John");
     expect(notifications.checked).toBe(true);
 
-    await user.clear(firstName);
-    await user.type(firstName, "Jane");
-    await user.click(notifications); // Uncheck
+    await clear(firstName);
+    await type(firstName, "Jane");
+    await click(notifications); // Uncheck
 
-    await user.click(submit);
+    await click(submit);
     expect(submittedValues.user.profile.firstName).toBe("Jane");
     expect(submittedValues.user.settings.notifications).toBe(false);
   });

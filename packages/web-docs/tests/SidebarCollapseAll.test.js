@@ -5,12 +5,13 @@
 // button flips to "expand all", the branch holding the active route stays open, and the
 // state survives a re-mount (SPA navigation).
 //
-// Rendering/visual details (the CSS) are out of scope here — happy-dom evaluates no CSS.
+// Rendering/visual details (the CSS) are out of scope here — the unit DOM evaluates no CSS.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { setRouteState } from "@opentf/web";
+import { afterEach, beforeEach, describe, expect, test } from "runtime:test";
+import { setRouteState } from "@opentf/web/test";
 
-import Sidebar from "../components/Sidebar.jsx";
+// otfwc-compiled component (emitted by scripts/compile-test-fixtures.mjs).
+import Sidebar from "../components/Sidebar.compiled.js";
 import { collapseAll } from "../components/sidebar-collapse.js";
 
 const NAV = [

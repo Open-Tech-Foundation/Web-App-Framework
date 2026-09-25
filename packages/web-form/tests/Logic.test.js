@@ -1,4 +1,4 @@
-import { expect, test, describe } from "bun:test";
+import { expect, test, describe } from "runtime:test";
 import { createForm } from "../index.js";
 
 describe("Web App Framework Forms Library - Pure Logic", () => {

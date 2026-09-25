@@ -1,7 +1,7 @@
-import { expect, test, describe } from "bun:test";
-import { render, userEvent } from "@opentf/web-test";
+import { expect, test, describe } from "runtime:test";
+import { mount, type, clear, click } from "./dom.js";
 import { sleep } from "@opentf/std";
-import StateForm from "./StateForm.jsx";
+import StateForm from "./StateForm.compiled.js";
 
 const waitFor = async (fn, timeout = 1000) => {
   const start = Date.now();
@@ -19,10 +19,9 @@ const waitFor = async (fn, timeout = 1000) => {
 describe("Form State UI Reactivity", () => {
   test("updates UI based on state helpers", async () => {
     let submitted = false;
-    const { getByTestId, queryByTestId } = render(StateForm, { onSubmit: async () => {
+    const { getByTestId, queryByTestId } = mount(StateForm, { onSubmit: async () => {
       submitted = true;
     }});
-    const user = userEvent.setup();
 
     const input = getByTestId("username");
     const statusValid = getByTestId("status-valid");
@@ -35,22 +34,22 @@ describe("Form State UI Reactivity", () => {
     expect(statusValid.textContent).toBe("Valid");
 
     // Change value to invalid
-    await user.clear(input);
-    await user.type(input, "ab");
+    await clear(input);
+    await type(input, "ab");
     expect(statusValid.textContent).toBe("Invalid");
     expect(statusChanged.textContent).toBe("Changed");
     expect(getByTestId("error").textContent).toBe("Too short");
 
     // Submit valid data
-    await user.clear(input);
-    await user.type(input, "bob");
-    await user.click(submitBtn);
+    await clear(input);
+    await type(input, "bob");
+    await click(submitBtn);
 
     await waitFor(() => expect(submitted).toBe(true));
     await waitFor(() => expect(getByTestId("success")).toBeTruthy());
 
     // Reset
-    await user.click(resetBtn);
+    await click(resetBtn);
     expect(input.value).toBe("alice");
     expect(statusChanged.textContent).toBe("Unchanged");
     expect(queryByTestId("success")).toBeNull();

@@ -1,5 +1,5 @@
 // Mobile sidebar drawer — the DOM contract shared by <Sidebar> (the drawer) and
-// <SidebarToggle> (the navbar burger). happy-dom evaluates no CSS, so the *visual*
+// <SidebarToggle> (the navbar burger). The unit DOM evaluates no CSS, so the *visual*
 // off-canvas/responsive behavior is covered by the browser e2e
 // (tests/e2e/mobile-drawer.mjs); here we assert the JS-observable wiring: open/close
 // state, the `is-open` classes, the body-scroll lock, the root flags, the
@@ -9,11 +9,12 @@
 // the way the runtime does — by their registered custom-element tag — rather than
 // through a JSX harness (which would itself be compiled into a component).
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { router, setRouteState } from "@opentf/web";
+import { afterEach, beforeEach, describe, expect, test } from "runtime:test";
+import { router, setRouteState } from "@opentf/web/test";
 
-import Sidebar from "../components/Sidebar.jsx";
-import SidebarToggle from "../components/SidebarToggle.jsx";
+// otfwc-compiled components (emitted by scripts/compile-test-fixtures.mjs).
+import Sidebar from "../components/Sidebar.compiled.js";
+import SidebarToggle from "../components/SidebarToggle.compiled.js";
 
 const NAV = [
   { title: "Introduction", path: "/docs" },

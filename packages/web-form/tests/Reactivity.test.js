@@ -1,11 +1,10 @@
-import { expect, test, describe } from "bun:test";
-import { render, userEvent } from "@opentf/web-test";
-import DynamicPrimitiveForm from "./DynamicListForm.jsx";
+import { expect, test, describe } from "runtime:test";
+import { mount, type } from "./dom.js";
+import DynamicPrimitiveForm from "./DynamicListForm.compiled.js";
 
 describe("Web Form Capabilities", () => {
   test("reactively updates dynamic primitive arrays without losing focus", async () => {
-    const { getByTestId } = render(DynamicPrimitiveForm);
-    const user = userEvent.setup();
+    const { getByTestId } = mount(DynamicPrimitiveForm);
 
     const input0 = getByTestId("input-0");
     const input1 = getByTestId("input-1");
@@ -14,7 +13,7 @@ describe("Web Form Capabilities", () => {
     expect(input1.value).toBe("HTML");
 
     // Simulate typing a new character into the first input
-    await user.type(input0, "!");
+    await type(input0, "!");
 
     // The value should update immediately via the form's reactivity loop
     expect(input0.value).toBe("JavaScript!");

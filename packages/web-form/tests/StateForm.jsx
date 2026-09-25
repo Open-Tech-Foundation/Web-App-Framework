@@ -8,7 +8,7 @@ export default function StateForm({ onSubmit }) {
   });
 
   // Submit is driven via onclick rather than a native `type="submit"` (which, in
-  // happy-dom, mangles the form subtree on submission regardless of
+  // the unit DOM, mangles the form subtree on submission regardless of
   // preventDefault — a test-env quirk, not a real-browser behaviour).
   return (
     <div>
