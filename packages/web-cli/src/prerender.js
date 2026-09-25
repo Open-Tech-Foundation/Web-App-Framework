@@ -48,16 +48,20 @@ function absoluteUrl(baseUrl, path) {
   return baseUrl.replace(/\/+$/, "") + (path === "/" ? "/" : path);
 }
 
-// Emit sitemap.xml (absolute <loc> per rendered path) — requires a base URL. A
-// project-supplied public/sitemap.xml takes precedence (it overwrites ours on copy).
-async function writeSitemap(outDir, publicDir, baseUrl, paths) {
+// Emit sitemap.xml (absolute <loc> per rendered path, with <lastmod> where the
+// last-updated map knows the path) — requires a base URL. A project-supplied
+// public/sitemap.xml takes precedence (it overwrites ours on copy).
+async function writeSitemap(outDir, publicDir, baseUrl, paths, lastUpdated = {}) {
   if (await exists(join(publicDir, "sitemap.xml"))) return false;
   if (!baseUrl) {
     console.warn("⚠ sitemap.xml skipped: no site URL (pass --base-url or set otfw.config)");
     return false;
   }
   const urls = paths
-    .map((p) => `  <url><loc>${escapeXml(absoluteUrl(baseUrl, p))}</loc></url>`)
+    .map((p) => {
+      const lastmod = lastUpdated[p] ? `<lastmod>${escapeXml(lastUpdated[p])}</lastmod>` : "";
+      return `  <url><loc>${escapeXml(absoluteUrl(baseUrl, p))}</loc>${lastmod}</url>`;
+    })
     .join("\n");
   const xml =
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
@@ -136,9 +140,12 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
         const preload = preloadFor(route);
         if (preload) head += `\n${preload}`;
         // SEO: expose the page's last-updated time (git/frontmatter) as Open Graph's
-        // article:modified_time so crawlers see when the content actually changed.
+        // article:modified_time so crawlers see when the content actually changed,
+        // and a frontmatter `date` as article:published_time (blog posts).
         const iso = lastUpdated[path];
         if (iso) head += `\n<meta property="article:modified_time" content="${escapeXml(iso)}">`;
+        const published = typeof metadata?.date === "string" ? metadata.date.trim() : "";
+        if (published) head += `\n<meta property="article:published_time" content="${escapeXml(published)}">`;
         const file = htmlPathFor(outDir, urlPath);
         await writeFile(
           file,
@@ -186,7 +193,7 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
 
   // Crawl infrastructure: sitemap.xml + robots.txt (honoring public/ overrides).
   const publicDir = join(root, "public");
-  const hasSitemap = await writeSitemap(outDir, publicDir, baseUrl, rendered);
+  const hasSitemap = await writeSitemap(outDir, publicDir, baseUrl, rendered, lastUpdated);
   await writeRobots(outDir, publicDir, baseUrl, hasSitemap);
 
   // No "/" route (or it declared no description): fall back to the layout chain's
