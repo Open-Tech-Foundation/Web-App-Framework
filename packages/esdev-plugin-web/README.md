@@ -71,6 +71,12 @@ instance — the binary starts once no matter how many modules or builds follow.
 
   `resolve` + `load` only, so this half runs under `esdev start` /
   `esdev build`, not under `esdev test` (tests hand-write the map).
+
+- `createCssPlugin({ projectRoot })` — stylesheets: `import "./x.css"`
+  injects a `<style>`, `*.module.css` resolves to an identity class map, and
+  a Tailwind entry (`@import "tailwindcss"`) compiles first, scanning the
+  project for used utilities. `projectRoot` anchors bare `@import`
+  resolution and the scan.
 - `resolveCompiler({ cliDir, env, resolvePackagedCompiler, findWorkspace, ensure })`
   — every input injectable, so tests never touch the disk or the network.
 - `startCompilerServer(otfwc)` → `{ compile(id, source, component, target), close }`

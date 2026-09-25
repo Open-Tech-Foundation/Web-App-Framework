@@ -36,5 +36,8 @@
 <body class="bg-white text-slate-900">
     <!-- The OTF Web toolchain mounts the app here and injects the bundle. -->
     <div id="app"></div>
+    <!-- Pure-esdev entry (`esdev start` / `esdev build`); the CLI toolchain
+         strips module entries and injects its own bundle instead. -->
+    <script type="module" src="./entry.js"></script>
 </body>
 </html>

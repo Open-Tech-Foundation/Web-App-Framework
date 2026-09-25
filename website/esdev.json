@@ -1,0 +1,51 @@
+{
+  "plugins": [
+    {
+      "module": "@opentf/esdev-plugin-web",
+      "export": "createOtfwRoutes",
+      "options": {
+        "appDir": "app"
+      }
+    },
+    {
+      "module": "@opentf/esdev-plugin-web",
+      "export": "createOtfwPlugin",
+      "options": {
+        "target": "csr"
+      }
+    },
+    {
+      "module": "@opentf/esdev-plugin-web",
+      "export": "createCssPlugin",
+      "options": {}
+    },
+    {
+      "module": "@opentf/web-docs/build",
+      "export": "docsNavPlugin",
+      "options": {
+        "appDir": "app"
+      }
+    },
+    {
+      "module": "@opentf/web-docs/build",
+      "export": "blogPostsPlugin",
+      "options": {
+        "appDir": "app",
+        "contentDir": "blog"
+      }
+    },
+    {
+      "module": "@opentf/web-docs/build",
+      "export": "lastUpdatedPlugin",
+      "options": {
+        "appDir": "app"
+      }
+    }
+  ],
+  "targets": {
+    "web": {
+      "entry": "index.html",
+      "outdir": "dist"
+    }
+  }
+}
