@@ -6,13 +6,12 @@
     "build": "otfw build --ssg"
   },
   "dependencies": {
-    "@opentf/web": "^0.28.0",
-    "@opentf/web-docs": "^0.26.0",
-    "@opentf/web-form": "^1.23.0",
-    "@opentf/web-i18n": "^1.23.0"
+    "@opentf/web": "workspace:*",
+    "@opentf/web-docs": "workspace:*",
+    "@opentf/web-form": "workspace:*",
+    "@opentf/web-i18n": "workspace:*"
   },
   "devDependencies": {
-    "@opentf/esdev-plugin-web": "workspace:*",
-    "@opentf/web-cli": "^1.26.0"
+    "@opentf/web-cli": "workspace:*"
   }
 }
