@@ -18,11 +18,23 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
-      # The test runner compiles `.jsx` fixtures through `otfwc` (bunfig preload), so the
-      # Rust toolchain must be present; the `test` task's `cargo build` produces the binary.
+      # Component fixtures are precompiled through `otfwc` ahead of the test run
+      # (tasks.toml `compile-test-fixtures`), so the Rust toolchain must be
+      # present; the `test` task's `cargo build` produces the binary.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install esdev
+        shell: bash
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/ES-Runtime/main/install.sh | bash -s -- --only=esdev
+          echo "$HOME/.es-runtime/bin" >> "$GITHUB_PATH"
       - name: Install tsr
         shell: bash
         # Unpinned, so CI tracks the current tsr. The installer drops the binary in
@@ -31,16 +43,14 @@ jobs:
         run: |
           curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/tsr/main/install.sh | bash
           echo "$HOME/.tsr/bin" >> "$GITHUB_PATH"
-      - run: bun install
-      # `tsr test` = the Rust suite (cargo build && cargo test) then the JS suite, scoped
-      # to packages/web/, web-cli/tests/ and create-web/tests/ so the not-yet-ported
-      # packages aren't pulled in. What it runs lives in tasks.toml.
+      - run: pnpm install --frozen-lockfile
+      # What `tsr test` runs lives in tasks.toml (Rust + esdev suites).
       - run: tsr test
 
   # Real-browser tier: the e2e suites that drive `otfw serve`/`build` + headless Chrome over
   # CDP (docs/HYDRATION.md §5) — including the hi-fi runtime unit suite (runtime-browser.mjs)
-  # moved off happy-dom. These probe engine-fidelity paths (custom-element upgrade timing, the
-  # real event loop, portal relocation) that the fast `bun test` tier can't. Separate job so it
+  # moved off the `--dom` tier. These probe engine-fidelity paths (custom-element upgrade timing, the
+  # real event loop, portal relocation) that the fast esdev tier can't. Separate job so it
   # only pays the browser cost once and runs in parallel with the fast suite.
   e2e:
     runs-on: ubuntu-latest
@@ -50,7 +60,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install esdev
+        shell: bash
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/ES-Runtime/main/install.sh | bash -s -- --only=esdev
+          echo "$HOME/.es-runtime/bin" >> "$GITHUB_PATH"
       # Pin a known-good Chrome and expose its path (ubuntu-latest ships one too, but pinning
       # keeps the run reproducible across runner-image changes).
       - id: chrome
@@ -62,7 +83,7 @@ jobs:
         run: |
           curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/tsr/main/install.sh | bash
           echo "$HOME/.tsr/bin" >> "$GITHUB_PATH"
-      - run: bun install
+      - run: pnpm install --frozen-lockfile
       - name: Browser e2e (real headless Chrome)
         env:
           # A missing/incorrect binary makes the suites *skip* (exit 0), which would be a false
