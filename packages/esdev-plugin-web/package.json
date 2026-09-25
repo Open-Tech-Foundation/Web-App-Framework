@@ -1,0 +1,41 @@
+{
+  "name": "@opentf/esdev-plugin-web",
+  "version": "0.1.0",
+  "description": "OTF Web plugins for esdev's runtime:build bundler — compile .jsx/.tsx/.mdx through the otfwc IR compiler.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "compiler.js",
+    "plugin.js"
+  ],
+  "dependencies": {
+    "@opentf/web-compiler": "workspace:*"
+  },
+  "engines": {
+    "esdev": ">=0.5.0"
+  },
+  "keywords": [
+    "opentf",
+    "esdev",
+    "esdev-plugin",
+    "otfwc",
+    "jsx",
+    "bundler-plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Open-Tech-Foundation/Web-App-Framework.git",
+    "directory": "packages/esdev-plugin-web"
+  },
+  "homepage": "https://github.com/Open-Tech-Foundation/Web-App-Framework#readme",
+  "bugs": {
+    "url": "https://github.com/Open-Tech-Foundation/Web-App-Framework/issues"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

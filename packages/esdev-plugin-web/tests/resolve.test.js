@@ -1,22 +1,27 @@
-import { join } from "runtime:path";
+import { afterEach, describe, expect, test } from "runtime:test";
+import { makeTempDir, mkdir, remove, write } from "runtime:fs";
+import { dirname, fromFileURL, join } from "runtime:path";
 
-import { discard, tempDir, writeFile } from "./fixture.js";
-import { afterEach, describe, expect, test } from "./harness.js";
+import { resolveCompiler } from "../index.js";
 
-import { resolveCompiler } from "../src/shared.js";
-
+const HERE = dirname(fromFileURL(import.meta.url));
 const tmpRoots = [];
 
+/** A fresh workspace skeleton: a Cargo marker where the resolver looks for one. */
 async function tmpWorkspace() {
-  const root = await tempDir("otfw-compiler-resolution");
-  await writeFile(join(root, "crates", "otfw_cli", "Cargo.toml"), '[package]\nname = "otfw_cli"\n');
-  await writeFile(join(root, "packages", "web-cli", "src", ".keep"), "");
+  const root = await makeTempDir({ dir: HERE, prefix: "otfw-compiler-resolution-" });
+  await mkdir(join(root, "crates", "otfw_cli"), { recursive: true });
+  await write(join(root, "crates", "otfw_cli", "Cargo.toml"), '[package]\nname = "otfw_cli"\n');
   tmpRoots.push(root);
   return root;
 }
 
 afterEach(async () => {
-  for (const root of tmpRoots.splice(0)) await discard(root);
+  for (const root of tmpRoots.splice(0)) {
+    try {
+      await remove(root, { recursive: true });
+    } catch {}
+  }
 });
 
 describe("resolveCompiler", () => {
