@@ -525,17 +525,17 @@ body {
   font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
 }
 
-/* Site footer — Open Tech Foundation org link */
+/* Site footer — Open Tech Foundation org link (footer is always dark). */
 .otfw-footer-org-link {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--text-muted);
+  color: #94a3b8;
   text-decoration: none;
   transition: color 0.15s;
 }
 .otfw-footer-org-link:hover {
-  color: var(--text-main);
+  color: #f1f5f9;
 }
 .otfw-footer-org-logo {
   display: block;
