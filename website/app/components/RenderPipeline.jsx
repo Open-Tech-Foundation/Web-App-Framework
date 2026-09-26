@@ -45,7 +45,7 @@ const FRAMEWORKS = [
     name: "Vue",
     logo: "/img/vuedotjs.svg",
     layers: [
-      { label: "SFC components", icon: "file" },
+      { label: "SFC (.vue)", icon: "file" },
       { label: "Vue compiler", icon: "gear" },
       { label: "Vue components", icon: "puzzle" },
       { label: "VDOM", icon: "tree" },
