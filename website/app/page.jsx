@@ -1,6 +1,5 @@
 import { Link } from "@opentf/web";
 import BenchmarkTable from "./components/BenchmarkTable.jsx";
-import InstallTabs from "./components/InstallTabs.jsx";
 import RenderPipeline from "./components/RenderPipeline.jsx";
 import { benchmark, capabilities, ssgBenchmark } from "./home-data.js";
 
@@ -78,10 +77,6 @@ export default function HomePage() {
                   </svg>
                 </span>
               </Link>
-            </div>
-
-            <div className="flex pt-1">
-              <InstallTabs />
             </div>
           </div>
 

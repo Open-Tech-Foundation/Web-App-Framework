@@ -743,6 +743,9 @@ body {
   border-radius: 9999px;
 }
 .pipe-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   padding: 0.45rem 0.7rem;
   border: 1px solid #1e293b;
   border-radius: 0.55rem;
@@ -750,6 +753,10 @@ body {
   font-size: 0.82rem;
   font-weight: 600;
   color: #f1f5f9;
+}
+.pipe-icon {
+  flex: none;
+  color: #94a3b8;
 }
 .pipe-note {
   margin: 0.4rem 0 0;
