@@ -13,6 +13,7 @@
     "@opentf/esdev-plugin-web": "workspace:*",
     "@opentf/esrun-types": "^0.4.0",
     "@opentf/std": "^0.13.0",
+    "@opentf/web-docs": "workspace:*",
     "@rollup/plugin-babel": "^7.0.0",
     "@tailwindcss/vite": "^4.2.2",
     "jiti": "^2.6.1",

@@ -20,6 +20,9 @@ importers:
       '@opentf/std':
         specifier: ^0.13.0
         version: 0.13.0
+      '@opentf/web-docs':
+        specifier: workspace:*
+        version: link:packages/web-docs
       '@rollup/plugin-babel':
         specifier: ^7.0.0
         version: 7.1.0(@babel/core@7.29.7(supports-color@10.2.2))(rollup@4.63.1)(supports-color@10.2.2)

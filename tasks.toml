@@ -26,8 +26,11 @@ members = ["packages/*", "playground", "benchmarks/*", "website"]
 [tasks.dev]
 run = "esdev packages/web-cli/src/cli.js dev --root=playground --port=3005"
 
+# The website runs on pure esdev now (`esdev start` from the root, with the
+# site target + plugins in esdev.json) — no CLI in the loop. `site-build`
+# still uses the CLI until the SSG prerender lands natively.
 [tasks.site]
-run = "esdev packages/web-cli/src/cli.js dev --root=website"
+run = "esdev start --port=3005"
 
 # --- check --------------------------------------------------------------------
 
