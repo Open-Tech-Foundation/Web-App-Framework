@@ -31,6 +31,11 @@
       "entry": "website/index.html",
       "outdir": "website/dist-pure",
       "assets": ["website/public"]
+    },
+    "site-ssg": {
+      "entry": "website/ssg.js",
+      "out": "website/.ssg/ssg.js",
+      "then": "run"
     }
   }
 }
