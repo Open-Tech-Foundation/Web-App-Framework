@@ -227,7 +227,7 @@ export const CONFIG_FILENAMES = ["otfw.config.json", "otfw.config.js", "otfw.con
  * file path and ignores a `?v=` query, so the only way to re-evaluate a module is
  * to import a genuinely new path. Bundling to a versioned file (rather than copying it)
  * inlines the module's own relative imports, so the copy's location can't change how
- * they resolve. Returns the URL to import — the original file if bundling fails.
+ * they resolve. Returns the imported module — the original file's when bundling fails.
  *
  * `slot` namespaces the generated file, so two callers (the project config, a docs
  * `_meta.js`) can't overwrite each other's copy.
@@ -235,6 +235,29 @@ export const CONFIG_FILENAMES = ["otfw.config.json", "otfw.config.js", "otfw.con
 async function freshModuleUrl(file, cacheDir, bust, slot) {
   const dir = join(cacheDir, slot);
   const name = `${bust}.mjs`;
+  // The whole sequence — through the finished module load — runs serialized
+  // (see below): a second rebuild must not rmrf this slot between our write
+  // and our import. Note the import itself is inside the lock on purpose: the
+  // loader reads the file lazily, so releasing after the `import()` call but
+  // before its bytes are read races exactly the same way.
+  return serializeFreshModule(() => freshModuleUrlInner(file, dir, name));
+}
+
+// Serializes fresh-module loads process-wide. Overlapping dev rebuilds used
+// to interleave here — rebuild B's rmrf deleted rebuild A's just-written
+// versioned file before A's import landed (`4.mjs` gone, `5.mjs` on disk) —
+// surfacing as "could not load _meta.js" warnings with a degraded nav.
+// Concurrent builds now queue behind each other instead.
+let freshModuleTail = Promise.resolve();
+function serializeFreshModule(job) {
+  const run = () => job();
+  const p = freshModuleTail.then(run, run);
+  freshModuleTail = p.catch(() => {});
+  return p;
+}
+
+async function freshModuleUrlInner(file, dir, name) {
+  let url;
   try {
     await rmrf(dir);
     const bundle = await build({
@@ -248,11 +271,12 @@ async function freshModuleUrl(file, cacheDir, bust, slot) {
     } finally {
       await bundle.close();
     }
-    return toFileURL(join(dir, name)).href;
+    url = toFileURL(join(dir, name)).href;
   } catch (e) {
     console.warn(`⚠ could not re-bundle ${file}: ${e?.message ?? e}`);
-    return toFileURL(file).href;
+    url = toFileURL(file).href;
   }
+  return import(url);
 }
 
 /**
@@ -271,7 +295,7 @@ export function moduleReloader(cacheDir) {
     const hit = cache.get(file);
     if (hit?.key === key) return hit.mod;
     const slot = `mod-${b64url(file).slice(-24)}`;
-    const mod = await import(await freshModuleUrl(file, cacheDir, ++version, slot));
+    const mod = await freshModuleUrl(file, cacheDir, ++version, slot);
     cache.set(file, { key, mod });
     return mod;
   };
@@ -298,8 +322,8 @@ export async function loadConfig(root, { bust = 0, cacheDir = join(root, ".dev")
     const p = join(root, name);
     if (await exists(p)) {
       try {
-        const href = bust ? await freshModuleUrl(p, cacheDir, bust, "config") : toFileURL(p).href;
-        return (await import(href)).default ?? {};
+        const mod = bust ? await freshModuleUrl(p, cacheDir, bust, "config") : await import(toFileURL(p).href);
+        return mod.default ?? {};
       } catch (e) {
         console.warn(`⚠ could not load ${name}: ${e?.message ?? e}`);
       }
