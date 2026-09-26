@@ -29,7 +29,7 @@
   "targets": {
     "site": {
       "entry": "website/index.html",
-      "outdir": "website/dist-pure",
+      "outdir": "website/dist",
       "assets": ["website/public"]
     },
     "site-ssg": {

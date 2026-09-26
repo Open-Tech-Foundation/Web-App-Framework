@@ -12,7 +12,7 @@
 //   when there is no staging (selected-target builds overlay in place).
 //
 // LAYOUTS: the same file builds the site in two places — this monorepo (site
-// root `website/`, output `dist-pure/`) and standalone from npm with `website/`
+// root `website/`, output `dist/`) and standalone from npm with `website/`
 // as the project root (a Cloudflare root directory; site root `.`, output
 // `dist/`). The layout follows the bundle's own location: a `/website/.ssg/`
 // segment means monorepo, anything else standalone. Tooling imports stay bare
@@ -75,10 +75,10 @@ const projectRoot = stagingRoot
 // LAYOUTS (see header): the bundle's own location names the layout.
 const monorepo = bundlePath.includes("/website/.ssg/");
 const root = monorepo ? join(projectRoot, "website") : projectRoot;
-const outName = monorepo ? "dist-pure" : "dist";
+const outName = "dist";
 const appDir = join(root, "app");
 const stagedOut = stagingRoot
-  ? join(stagingRoot, monorepo ? "website/dist-pure" : "dist")
+  ? join(stagingRoot, monorepo ? "website/dist" : "dist")
   : join(root, outName);
 if (!projectRoot || !(await exists(appDir))) {
   console.error(`✗ ssg: cannot anchor sources (bundle at ${bundleDir})`);
