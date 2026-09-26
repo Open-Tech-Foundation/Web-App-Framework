@@ -13,6 +13,14 @@ import { args, exit } from "runtime:process";
 
 const cmd = args[0];
 
+// Deprecated: new projects run on esdev directly (`esdev start` / `esdev build`
+// with `@opentf/esdev-plugin-web` in esdev.json). This CLI is kept for existing
+// projects and will be removed in a future release.
+console.warn(
+  `\n  ⚠ @opentf/web-cli is deprecated. Run new projects on esdev + @opentf/esdev-plugin-web instead.\n` +
+    `  See https://esrun.opentechf.org/esdev/build/project#plugins-in-a-project\n`,
+);
+
 // A build that fails is a fact about the project, not a crash in the toolchain, so it
 // prints the diagnostics the bundler collected and stops. The JS stack behind them
 // says only which of our own frames happened to be on top; `--trace` keeps it for the
