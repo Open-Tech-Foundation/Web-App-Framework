@@ -8,7 +8,7 @@ export const metadata = {
   // Absolute: the homepage keeps its full title instead of the "%s — OTF Web" template.
   title: { absolute: "OTF Web — The native-first framework for modern web apps" },
   description:
-    "A high-performance, zero-VDOM framework that compiles JSX to native DOM. Built with signals and standard Web Components.",
+    "A high-performance full-stack web framework that compiles JSX to native Web Components, with signals for reactive state updates.",
   canonical: "/",
 };
 
@@ -65,8 +65,8 @@ export default function HomePage() {
             </h1>
 
             <p className="text-xl text-[var(--text-muted)] leading-relaxed max-w-xl">
-              A high-performance, zero-VDOM framework that compiles JSX to native DOM.
-              Built with signals and standard Web Components.
+              A high-performance full-stack web framework that compiles JSX to native Web Components,
+              with signals for reactive state updates.
             </p>
 
             <div className="flex pt-2">

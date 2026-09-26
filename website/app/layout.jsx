@@ -10,7 +10,7 @@ const OTF_ORG = "https://opentechf.org/";
 export const metadata = {
   titleTemplate: "%s — OTF Web",
   description:
-    "A high-performance, zero-VDOM framework that compiles JSX to native DOM. Built with signals and standard Web Components.",
+    "A high-performance full-stack web framework that compiles JSX to native Web Components, with signals for reactive state updates.",
   openGraph: {
     siteName: "OTF Web",
     type: "website",
