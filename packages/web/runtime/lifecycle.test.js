@@ -1,10 +1,6 @@
 import { describe, expect, test } from "runtime:test";
 
-// The package root (`../index.js`) re-exports this barrel verbatim — it is
-// imported here instead because the root also pulls `components/Link.jsx`
-// source, which `esdev test` runs unaltered (no otfwc transform); the Link
-// component itself is covered via its precompiled module in router-nav.test.js.
-import * as web from "./index.js";
+import * as web from "../index.js";
 import { onCleanup, onMediaQuery, onMount, onResize, onVisibilityChange } from "./lifecycle.js";
 
 // The lifecycle hooks are compiler macros; these exports exist so the

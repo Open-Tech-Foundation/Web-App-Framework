@@ -6,7 +6,6 @@
   "exports": {
     ".": "./index.js",
     "./signals": "./core/signals.js",
-    "./reactive": "./core/reactive.js",
     "./runtime": "./runtime/index.js",
     "./server": {
       "types": "./server/index.d.ts",
