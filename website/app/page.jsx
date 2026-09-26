@@ -2,6 +2,7 @@ import { Link } from "@opentf/web";
 import BenchmarkTable from "./components/BenchmarkTable.jsx";
 import InstallTabs from "./components/InstallTabs.jsx";
 import ReactiveTrace from "./components/ReactiveTrace.jsx";
+import RenderDuel from "./components/RenderDuel.jsx";
 import { benchmark, capabilities, ssgBenchmark } from "./home-data.js";
 
 export const metadata = {
@@ -49,37 +50,45 @@ export default function HomePage() {
   return (
     <div className="flex-1 max-w-6xl mx-auto px-8 w-full pb-24">
       {/* Hero */}
-      <section className="hero-glow text-center max-w-3xl mx-auto py-28 space-y-7">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/25 rounded-full text-[11px] font-bold uppercase tracking-wider">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent)]"></span>
-          </span>
-          Alpha
-        </div>
+      <section className="hero-glow py-28">
+        <div className="grid md:grid-cols-2 gap-12 items-center max-w-6xl mx-auto">
+          <div className="space-y-7">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/25 rounded-full text-[11px] font-bold uppercase tracking-wider">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent)]"></span>
+              </span>
+              Alpha
+            </div>
 
-        <h1 className="text-5xl md:text-7xl font-black tracking-tight text-[var(--text-main)] leading-[1.05]">
-          The <span className="text-[var(--accent)]">native-first</span> framework for modern web apps.
-        </h1>
+            <h1 className="text-5xl md:text-6xl font-black tracking-tight text-[var(--text-main)] leading-[1.05]">
+              The <span className="text-[var(--accent)]">native-first</span> framework for modern web apps.
+            </h1>
 
-        <p className="text-xl text-[var(--text-muted)] leading-relaxed max-w-xl mx-auto">
-          A high-performance, zero-VDOM framework that compiles JSX to native DOM.
-          Built with signals and standard Web Components.
-        </p>
+            <p className="text-xl text-[var(--text-muted)] leading-relaxed max-w-xl">
+              A high-performance, zero-VDOM framework that compiles JSX to native DOM.
+              Built with signals and standard Web Components.
+            </p>
 
-        <div className="flex justify-center pt-2">
-          <Link href="/docs" className="transition-all active:scale-95">
-            <span className="inline-flex items-center justify-center gap-2 bg-[var(--text-main)] text-[var(--bg-main)] px-7 py-3 rounded-xl font-bold hover:opacity-90 shadow-lg">
-              Get Started
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </span>
-          </Link>
-        </div>
+            <div className="flex pt-2">
+              <Link href="/docs" className="transition-all active:scale-95">
+                <span className="inline-flex items-center justify-center gap-2 bg-[var(--text-main)] text-[var(--bg-main)] px-7 py-3 rounded-xl font-bold hover:opacity-90 shadow-lg">
+                  Get Started
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
+              </Link>
+            </div>
 
-        <div className="flex justify-center pt-1">
-          <InstallTabs />
+            <div className="flex pt-1">
+              <InstallTabs />
+            </div>
+          </div>
+
+          <div>
+            <RenderDuel />
+          </div>
         </div>
       </section>
 
