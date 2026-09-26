@@ -37,7 +37,7 @@ const FRAMEWORKS = [
       { label: "VDOM" },
       { label: "DOM updates" },
     ],
-    note: "Components re-render on state change; the VDOM diff computes the DOM patch.",
+    note: "Auto-memoized by the React Compiler (opt-in); re-rendered components diff through the VDOM to the DOM patch.",
   },
   {
     id: "vue",
@@ -50,7 +50,7 @@ const FRAMEWORKS = [
       { label: "VDOM" },
       { label: "DOM updates" },
     ],
-    note: "Single-file components compile to render functions; an optimized VDOM patches the DOM.",
+    note: "Default path: templates compile to render functions; the VDOM patches the DOM. Vapor Mode (3.6, opt-in) and alien-signals reactivity skip it.",
   },
   {
     id: "angular",
@@ -83,7 +83,7 @@ const FRAMEWORKS = [
     logo: "/img/solid.svg",
     layers: [
       { label: "JSX components" },
-      { label: "Babel transform" },
+      { label: "Oxc compiler (native)" },
       { label: "Components (run once)" },
       { label: "Signals runtime" },
       { label: "DOM updates" },
