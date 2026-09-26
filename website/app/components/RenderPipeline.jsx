@@ -119,12 +119,11 @@ export default function RenderPipeline() {
     const root = rootRef;
     if (!root) return;
     root.querySelectorAll(`[data-pl="${panel}"] .pipe-chip`).forEach((el, i) => {
-      const vdom = el.hasAttribute("data-vdom");
       animate(
         el,
         [
-          { background: vdom ? "rgba(239,68,68,0.16)" : "var(--accent-soft)", offset: 0 },
-          { background: vdom ? "rgba(239,68,68,0.16)" : "var(--accent-soft)", offset: 0.5 },
+          { background: "var(--accent-soft)", offset: 0 },
+          { background: "var(--accent-soft)", offset: 0.5 },
           { background: "rgba(0,0,0,0)" },
         ],
         { duration: 560, delay: i * 150, easing: "ease-out" },
@@ -171,14 +170,7 @@ export default function RenderPipeline() {
             {current().layers.map((l) => (
               <div
                 key={l.label}
-                className={
-                  l.kind === "novdom"
-                    ? "pipe-chip is-ghost"
-                    : l.kind === "vdom"
-                      ? "pipe-chip is-vdom"
-                      : "pipe-chip"
-                }
-                data-vdom={l.kind === "vdom" ? "" : undefined}
+                className={l.kind === "novdom" ? "pipe-chip is-ghost" : "pipe-chip"}
               >
                 {l.label}
               </div>

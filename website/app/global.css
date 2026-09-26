@@ -746,9 +746,6 @@ body {
   font-weight: 600;
   color: var(--text-main);
 }
-.pipe-chip.is-vdom {
-  border-color: #ef4444;
-}
 .pipe-chip.is-ghost {
   border-style: dashed;
   color: var(--text-muted);
