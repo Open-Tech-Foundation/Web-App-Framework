@@ -19,6 +19,7 @@ const OTF = {
     { label: "JSX components", icon: "code" },
     { label: "otfwc compiler", icon: "gear" },
     { label: "Web components", icon: "corners" },
+    { label: "Signals", icon: "bolt" },
     { label: "Framework runtime", icon: "layers" },
     { label: "DOM updates", icon: "monitor" },
   ],
