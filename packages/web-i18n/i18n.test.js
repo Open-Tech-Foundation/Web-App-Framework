@@ -79,3 +79,14 @@ describe("web-i18n fmt", () => {
     expect(fmt.relativeTime(-3, "day")).toBe("3 days ago");
   });
 });
+
+describe("web-i18n <html lang> mirror", () => {
+  test("tracks the active locale", () => {
+    configureI18n({ locales: ["en", "fr"], defaultLocale: "en" });
+    createI18n({ locales: ["en", "fr"], defaultLocale: "en", messages });
+    setLocale("en");
+    expect(document.documentElement.lang).toBe("en");
+    setLocale("fr");
+    expect(document.documentElement.lang).toBe("fr");
+  });
+});
