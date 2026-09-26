@@ -683,10 +683,15 @@ body {
   color: var(--text-muted);
 }
 /* ── Render-pipeline (hero) ────────────────────────────────────────────────────
-   Auto-touring framework stacks left, OTF pinned right. Layer chips flash top
-   to bottom (WAAPI from RenderPipeline.jsx) as the tour advances. */
+   Always-dark panel: auto-touring framework stacks left, OTF pinned right.
+   Layer chips flash top to bottom (WAAPI from RenderPipeline.jsx) as the tour
+   advances. Fixed dark palette (not theme vars) so it reads dark in both modes. */
 .pipe-body {
-  padding: 0.5rem 0;
+  padding: 1.25rem;
+  border-radius: 1rem;
+  background: #020617;
+  border: 1px solid #1e293b;
+  box-shadow: 0 24px 50px -28px rgba(2, 6, 23, 0.65);
 }
 .pipe-duel {
   display: grid;
@@ -699,16 +704,16 @@ body {
   font-family: 'Geist Mono', ui-monospace, monospace;
   font-size: 0.75rem;
   font-weight: 700;
-  color: var(--text-muted);
-  border: 1px solid var(--border);
+  color: #94a3b8;
+  border: 1px solid #1e293b;
   border-radius: 9999px;
   padding: 0.4rem 0.6rem;
-  background: var(--bg-main);
+  background: #0f172a;
 }
 .pipe-stack {
-  border: 1px solid var(--border);
+  border: 1px solid #1e293b;
   border-radius: 0.75rem;
-  background: var(--bg-main);
+  background: #0f172a;
   padding: 0.9rem;
   display: flex;
   flex-direction: column;
@@ -726,7 +731,7 @@ body {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-main);
+  color: #f1f5f9;
   margin-bottom: 0.35rem;
 }
 .pipe-logo {
@@ -739,26 +744,26 @@ body {
 }
 .pipe-chip {
   padding: 0.45rem 0.7rem;
-  border: 1px solid var(--border);
+  border: 1px solid #1e293b;
   border-radius: 0.55rem;
-  background: var(--bg-surface);
+  background: #020617;
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--text-main);
+  color: #f1f5f9;
 }
 .pipe-chip.is-ghost {
   border-style: dashed;
-  color: var(--text-muted);
+  color: #94a3b8;
   font-weight: 500;
 }
 .pipe-note {
   margin: 0.4rem 0 0;
   font-size: 0.76rem;
   line-height: 1.5;
-  color: var(--text-muted);
+  color: #94a3b8;
 }
-/* Angular's mark is near-black — invert it on the dark theme. */
-[data-theme="dark"] .pipe-logo.is-angular {
+/* Angular's mark is near-black — always inverted on this dark panel. */
+.pipe-logo.is-angular {
   filter: invert(1);
 }
 @media (max-width: 640px) {
@@ -773,6 +778,6 @@ body {
   margin: 0.85rem 0 0;
   font-size: 0.76rem;
   line-height: 1.5;
-  color: var(--text-muted);
+  color: #94a3b8;
 }
 
