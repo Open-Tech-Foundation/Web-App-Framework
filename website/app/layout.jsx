@@ -40,7 +40,7 @@ export default function WebsiteLayout(props) {
         {props.children}
       </main>
 
-      <footer className="py-12 border-t border-[var(--border)] flex justify-start items-center px-8 text-xs text-[var(--text-muted)] bg-[var(--bg-surface)] mt-auto transition-colors">
+      <footer className="py-12 border-t border-[#1e293b] flex justify-start items-center px-8 text-xs text-slate-400 bg-[#020617] mt-auto transition-colors">
         <a
           href={OTF_ORG}
           target="_blank"

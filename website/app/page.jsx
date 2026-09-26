@@ -70,7 +70,7 @@ export default function HomePage() {
 
             <div className="flex pt-2">
               <Link href="/docs" className="transition-all active:scale-95">
-                <span className="inline-flex items-center justify-center gap-2 bg-[var(--text-main)] text-[var(--bg-main)] px-7 py-3 rounded-xl font-bold hover:opacity-90 shadow-lg">
+                <span className="inline-flex items-center justify-center gap-2 bg-white text-slate-900 px-7 py-3 rounded-xl font-bold hover:opacity-90 shadow-lg border border-slate-200">
                   Get Started
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                     <path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
@@ -99,10 +99,10 @@ export default function HomePage() {
         <div className="max-w-3xl mx-auto bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
           <BenchmarkTable report={benchmark} />
         </div>
-        <p className="text-center text-sm text-[var(--text-muted)]">
+        <div className="text-center text-sm text-[var(--text-muted)]">
           Bold beats the ~{resolutionMs}&nbsp;ms timing resolution; the rest are ties.{" "}
           <Link href="/docs/benchmarks" className={METHOD_LINK}>Method &amp; caveats →</Link>
-        </p>
+        </div>
       </section>
 
       {/* SSG build benchmark — build cost, not runtime */}
@@ -118,10 +118,10 @@ export default function HomePage() {
         <div className="max-w-3xl mx-auto bg-[var(--bg-main)] border border-[var(--border)] rounded-3xl overflow-hidden shadow-sm">
           <BenchmarkTable report={ssgBenchmark} rowHeader="Metric" />
         </div>
-        <p className="text-center text-sm text-[var(--text-muted)]">
+        <div className="text-center text-sm text-[var(--text-muted)]">
           The columns do not represent equal work.{" "}
           <Link href="/docs/benchmarks" className={METHOD_LINK}>Method &amp; caveats →</Link>
-        </p>
+        </div>
       </section>
 
       {/* Capabilities & roadmap */}

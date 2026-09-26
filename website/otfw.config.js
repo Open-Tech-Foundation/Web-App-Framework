@@ -9,7 +9,6 @@ export default defineDocsConfig({
   docs: {
     title: "OTF Web",
     version: "v0.27.0",
-    logo: "/img/otf-logo.svg",
     // Show a "Last updated" line per page (every section), sourced from each file's
     // last git commit (or a `lastUpdated` frontmatter override).
     lastUpdated: true,
