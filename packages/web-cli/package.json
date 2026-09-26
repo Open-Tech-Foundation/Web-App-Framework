@@ -7,7 +7,8 @@
     "otfw": "./src/cli.js"
   },
   "exports": {
-    ".": "./src/cli.js"
+    ".": "./src/cli.js",
+    "./ssg": "./src/ssg.js"
   },
   "files": [
     "src"

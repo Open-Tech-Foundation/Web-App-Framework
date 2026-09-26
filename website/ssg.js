@@ -5,20 +5,27 @@
 // own path instead (see Anchor below).
 //
 // - SOURCES (app/, otfw.config.js, public/ overrides) live in the REAL tree —
-//   staging mirrors outputs only. The repo root is found by walking up from this
-//   bundle's own path to the first `package.json` (staging carries none).
+//   staging mirrors outputs only. The enclosing project root is found by walking
+//   up from this bundle's own path to the first `package.json` (staging carries
+//   none).
 // - OUTPUTS (the staged site) sit under the staging root — or the final output
 //   when there is no staging (selected-target builds overlay in place).
 //
-// Everything else is the `otfw build --ssg` second half (`packages/web-cli`): the
-// shell is the site target's own `index.html` output (bundle script + stylesheet
-// already injected, assets already copied), stamped with the hydrate sentinel the
-// declarative build doesn't know about.
+// LAYOUTS: the same file builds the site in two places — this monorepo (site
+// root `website/`, output `dist-pure/`) and standalone from npm with `website/`
+// as the project root (a Cloudflare root directory; site root `.`, output
+// `dist/`). The layout follows the bundle's own location: a `/website/.ssg/`
+// segment means monorepo, anything else standalone. Tooling imports stay bare
+// (`@opentf/web-cli/ssg`) so both layouts resolve them identically.
+//
+// Everything else is the `otfw build --ssg` second half: the shell is the site
+// target's own `index.html` output (bundle script + stylesheet already injected,
+// assets already copied), stamped with the hydrate sentinel the declarative
+// build doesn't know about.
 
 import { env, exit } from "runtime:process";
 import { basename, dirname, fromFileURL, join, toFileURL } from "runtime:path";
 
-import { exists, findUp, readText, resolveFrom } from "../packages/web-cli/src/runtime.js";
 import {
   assertNoRouteConflicts,
   closeCompilers,
@@ -26,17 +33,22 @@ import {
   discoverPages,
   emitApiBundle,
   emitLoaderBundle,
+  exists,
+  findUp,
+  fmtMs,
   loadConfig,
   loadDocsPlugins,
+  readText,
   resolveCompiler,
+  resolveFrom,
   runBlogFeed,
   runDocsSearchIndex,
   runLastUpdated,
   runLlmsFiles,
+  runPrerender,
   stampHydrateSentinel,
-} from "../packages/web-cli/src/shared.js";
-import { runPrerender } from "../packages/web-cli/src/prerender.js";
-import { fmtMs, step } from "../packages/web-cli/src/reporter.js";
+  step,
+} from "@opentf/web-cli/ssg";
 
 const t0 = performance.now();
 
@@ -45,7 +57,8 @@ const t0 = performance.now();
 // otherwise the final output. Sources always live in the REAL tree (staging
 // mirrors outputs only); the staged site is under the staging root when there
 // is one, else the final output (selected-target builds overlay in place).
-const bundleDir = dirname(fromFileURL(import.meta.url));
+const bundlePath = fromFileURL(import.meta.url).replace(/\\/g, "/");
+const bundleDir = dirname(bundlePath);
 let stagingRoot = null;
 for (let dir = bundleDir; ; ) {
   if (basename(dir).startsWith(".esdev-build-")) {
@@ -59,9 +72,14 @@ for (let dir = bundleDir; ; ) {
 const projectRoot = stagingRoot
   ? dirname(stagingRoot)
   : await findUp("package.json", bundleDir);
-const root = join(projectRoot, "website");
+// LAYOUTS (see header): the bundle's own location names the layout.
+const monorepo = bundlePath.includes("/website/.ssg/");
+const root = monorepo ? join(projectRoot, "website") : projectRoot;
+const outName = monorepo ? "dist-pure" : "dist";
 const appDir = join(root, "app");
-const stagedOut = stagingRoot ? join(stagingRoot, "website/dist-pure") : join(root, "dist-pure");
+const stagedOut = stagingRoot
+  ? join(stagingRoot, monorepo ? "website/dist-pure" : "dist")
+  : join(root, outName);
 if (!projectRoot || !(await exists(appDir))) {
   console.error(`✗ ssg: cannot anchor sources (bundle at ${bundleDir})`);
   exit(1);
@@ -82,7 +100,7 @@ const baseUrl = String(config?.site?.url ?? "").replace(/\/+$/, "");
 if (!baseUrl && (config?.docs || config?.blog)) {
   console.error(
     `✗ site.url is required for this production build.\n` +
-      `  Add it to website/otfw.config.js:\n\n` +
+      `  Add it to otfw.config.js:\n\n` +
       `  export default defineDocsConfig({\n` +
       `    site: { url: "https://example.com" }\n` +
       `  })`,
@@ -198,4 +216,4 @@ if (config?.docs || config?.blog) {
 // runtime alive, so this is what lets a finished build actually exit.
 await closeCompilers();
 
-console.log(`\n  → dist-pure/  ready in ${fmtMs(performance.now() - t0)}\n`);
+console.log(`\n  → ${outName}/  ready in ${fmtMs(performance.now() - t0)}\n`);

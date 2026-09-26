@@ -42,6 +42,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .otfw-loaders
 .otfw-loaders-build
 website/.ssg
+.esdev-build-*
 
 # generated app the dev-server e2e builds and tears down
 packages/web-cli/tests/e2e/.dev-hmr-app

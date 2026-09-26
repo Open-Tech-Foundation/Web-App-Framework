@@ -40,7 +40,13 @@
   "targets": {
     "web": {
       "entry": "index.html",
-      "outdir": "dist"
+      "outdir": "dist",
+      "assets": ["public"]
+    },
+    "site-ssg": {
+      "entry": "ssg.js",
+      "out": ".ssg/ssg.js",
+      "then": "run"
     }
   }
 }

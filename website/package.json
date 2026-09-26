@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "otfw build --ssg"
+    "build": "esdev build",
+    "start": "esdev start --port=3005"
   },
   "dependencies": {
     "@opentf/web": "workspace:*",
