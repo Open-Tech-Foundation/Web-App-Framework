@@ -34,7 +34,7 @@ const FRAMEWORKS = [
       { label: "JSX components" },
       { label: "React Compiler" },
       { label: "React components" },
-      { label: "VDOM", kind: "vdom" },
+      { label: "VDOM" },
       { label: "DOM updates" },
     ],
     note: "Components re-render on state change; the VDOM diff computes the DOM patch.",
@@ -47,7 +47,7 @@ const FRAMEWORKS = [
       { label: "SFC components" },
       { label: "Vue compiler" },
       { label: "Vue components" },
-      { label: "VDOM", kind: "vdom" },
+      { label: "VDOM" },
       { label: "DOM updates" },
     ],
     note: "Single-file components compile to render functions; an optimized VDOM patches the DOM.",
@@ -73,7 +73,6 @@ const FRAMEWORKS = [
       { label: "Svelte components" },
       { label: "Svelte compiler" },
       { label: "Runes / signals" },
-      { label: "No VDOM", kind: "novdom" },
       { label: "DOM updates" },
     ],
     note: "Reactivity compiles to targeted DOM writes; there is no virtual tree.",
@@ -87,7 +86,6 @@ const FRAMEWORKS = [
       { label: "Babel transform" },
       { label: "Components (run once)" },
       { label: "Signals runtime" },
-      { label: "No VDOM", kind: "novdom" },
       { label: "DOM updates" },
     ],
     note: "Components execute once; fine-grained signals update bindings directly.",
@@ -168,10 +166,7 @@ export default function RenderPipeline() {
                 mixed item shapes crash the list reconciler, and ternaries lower
                 to unsupported multi-node roots. Variance lives in attributes. */}
             {current().layers.map((l) => (
-              <div
-                key={l.label}
-                className={l.kind === "novdom" ? "pipe-chip is-ghost" : "pipe-chip"}
-              >
+              <div key={l.label} className="pipe-chip">
                 {l.label}
               </div>
             ))}

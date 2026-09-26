@@ -751,11 +751,6 @@ body {
   font-weight: 600;
   color: #f1f5f9;
 }
-.pipe-chip.is-ghost {
-  border-style: dashed;
-  color: #94a3b8;
-  font-weight: 500;
-}
 .pipe-note {
   margin: 0.4rem 0 0;
   font-size: 0.76rem;
