@@ -29,7 +29,8 @@
   "targets": {
     "site": {
       "entry": "website/index.html",
-      "outdir": "website/dist-pure"
+      "outdir": "website/dist-pure",
+      "assets": ["website/public"]
     }
   }
 }
