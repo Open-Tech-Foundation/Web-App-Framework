@@ -98,6 +98,16 @@ export default function RenderPipeline() {
   let selected = $state("react");
   const rootRef = $ref();
 
+  // Auto-tour: advance through every framework, playing each update flow.
+  // Any manual interaction (tab or Play) stops the tour — the user owns it after.
+  let tour = null;
+  const stopTour = () => {
+    if (tour) {
+      clearInterval(tour);
+      tour = null;
+    }
+  };
+
   const current = () => FRAMEWORKS.find((f) => f.id === selected) ?? FRAMEWORKS[0];
 
   const animate = (el, frames, opts) => {
@@ -127,45 +137,26 @@ export default function RenderPipeline() {
     playStack("right");
   };
 
+  const tourStep = () => {
+    const i = FRAMEWORKS.findIndex((f) => f.id === selected);
+    selected = FRAMEWORKS[(i + 1) % FRAMEWORKS.length].id;
+    play();
+  };
+
   onMount(() => {
+    stopTour();
     const reduced =
       typeof matchMedia === "function" &&
       matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) return;
-    // One opening pass so the flow reads before any interaction.
+    // Opening pass on React, then tour every framework in turn.
     setTimeout(play, 800);
+    tour = setInterval(tourStep, 3400);
   });
 
   return (
-    <div className="pipe" ref={rootRef}>
-      <div className="win-titlebar">
-        <span className="win-light is-red"></span>
-        <span className="win-light is-amber"></span>
-        <span className="win-light is-green"></span>
-        <span className="win-titlebar-label">pipeline.jsx — one update's path</span>
-      </div>
+    <div ref={rootRef}>
       <div className="pipe-body">
-        <div className="pipe-tabs" role="tablist" aria-label="Framework">
-          {FRAMEWORKS.map((f) => (
-            <button
-              key={f.id}
-              role="tab"
-              aria-selected={selected === f.id ? "true" : "false"}
-              className={selected === f.id ? "pipe-tab is-on" : "pipe-tab"}
-              onclick={() => (selected = f.id)}
-            >
-              <img
-                className={f.id === "angular" ? "pipe-tab-logo is-angular" : "pipe-tab-logo"}
-                src={f.logo}
-                alt=""
-                width="16"
-                height="16"
-                loading="lazy"
-              />
-              {f.name}
-            </button>
-          ))}
-        </div>
         {/* Stacks are written out (not a shared helper returning JSX): the
             compiler binds a helper's returned element as text. */}
         <div className="pipe-duel">
@@ -210,12 +201,7 @@ export default function RenderPipeline() {
             <p className="pipe-note">{OTF.note}</p>
           </div>
         </div>
-        <div className="pipe-controls">
-          <button className="duel-btn" onclick={play}>
-            Play update
-          </button>
-        </div>
-        <p className="duel-caption">Layer names, not timings — what runs, in order, when state changes.</p>
+        <p className="pipe-caption">Layer names, not timings — what runs, in order, when state changes.</p>
       </div>
     </div>
   );

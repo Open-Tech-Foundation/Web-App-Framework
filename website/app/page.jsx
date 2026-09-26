@@ -1,7 +1,6 @@
 import { Link } from "@opentf/web";
 import BenchmarkTable from "./components/BenchmarkTable.jsx";
 import InstallTabs from "./components/InstallTabs.jsx";
-import RenderDuel from "./components/RenderDuel.jsx";
 import RenderPipeline from "./components/RenderPipeline.jsx";
 import { benchmark, capabilities, ssgBenchmark } from "./home-data.js";
 
@@ -87,21 +86,9 @@ export default function HomePage() {
           </div>
 
           <div>
-            <RenderDuel />
+            <RenderPipeline />
           </div>
         </div>
-      </section>
-
-      {/* Rendering pipelines — one update's path through each framework, next to ours */}
-      <section className="py-24 space-y-12">
-        <div className="text-center space-y-3">
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">How rendering flows</h2>
-          <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            One update's path through five frameworks, next to ours. Layer names,
-            not timings — what runs, in order, when state changes.
-          </p>
-        </div>
-        <RenderPipeline />
       </section>
 
       {/* Benchmark */}
