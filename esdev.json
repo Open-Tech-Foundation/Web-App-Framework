@@ -6,11 +6,6 @@
       "options": { "target": "hydrate" }
     },
     {
-      "module": "@opentf/esdev-plugin-web",
-      "export": "createOtfwRoutes",
-      "options": { "appDir": "website/app" }
-    },
-    {
       "module": "@opentf/web-docs/build",
       "export": "docsNavPlugin",
       "options": { "appDir": "website/app" }
@@ -26,11 +21,19 @@
       "options": { "appDir": "website/app" }
     }
   ],
+  "start": { "serve": "website/dist" },
   "targets": {
     "site": {
       "entry": "website/index.html",
       "outdir": "website/dist",
-      "assets": ["website/public"]
+      "assets": ["website/public"],
+      "plugins": [
+        {
+          "module": "@opentf/esdev-plugin-web",
+          "export": "createOtfwRoutes",
+          "options": { "appDir": "website/app" }
+        }
+      ]
     },
     "site-ssg": {
       "entry": "website/ssg.js",

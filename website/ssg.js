@@ -8,8 +8,9 @@
 //   staging mirrors outputs only. The enclosing project root is found by walking
 //   up from this bundle's own path to the first `package.json` (staging carries
 //   none).
-// - OUTPUTS (the staged site) sit under the staging root — or the final output
-//   when there is no staging (selected-target builds overlay in place).
+// - OUTPUTS (the staged site) sit under the staging root. No staging area (the
+//   dev loop runs the bundle straight from the `.dev` mirror) means "not a
+//   release build" — the step skips rather than touch the final tree (see below).
 //
 // LAYOUTS: the same file builds the site in two places — this monorepo (site
 // root `website/`, output `dist/`) and standalone from npm with `website/`
@@ -52,6 +53,17 @@ import {
 
 const t0 = performance.now();
 
+// The dev loop (`esdev start`) builds this bundle too — but it must never run
+// there: start has no staging (the bundle runs straight from the `.dev` mirror),
+// so the outputs below would land in the FINAL tree, clobbering the release
+// deployment with dev-profile HTML — and the step only reruns when this bundle's
+// own files change, so page edits would serve stale routes anyway (observed).
+// Prerender on staged release builds only (full `esdev build`); dev serves the
+// live CSR shell (HMR-correct, like the old CLI dev), `esdev preview` shows the
+// release output. No signal needed beyond the staging root itself: no
+// `.esdev-build-*` ancestor means "not a release build", in any devdir, and the
+// safe direction is to skip.
+
 // Anchor — everything derives from this bundle's own path, the one stable truth:
 // under a full `esdev build` it is the STAGED copy (`<root>/.esdev-build-*/…`),
 // otherwise the final output. Sources always live in the REAL tree (staging
@@ -72,6 +84,10 @@ for (let dir = bundleDir; ; ) {
 const projectRoot = stagingRoot
   ? dirname(stagingRoot)
   : await findUp("package.json", bundleDir);
+if (!stagingRoot) {
+  console.log("ssg: no staging area — prerender runs on a release `esdev build`, skipping.");
+  exit(0);
+}
 // LAYOUTS (see header): the bundle's own location names the layout.
 const monorepo = bundlePath.includes("/website/.ssg/");
 const root = monorepo ? join(projectRoot, "website") : projectRoot;

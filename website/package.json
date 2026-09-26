@@ -13,6 +13,7 @@
     "@opentf/web-i18n": "workspace:*"
   },
   "devDependencies": {
+    "@opentf/esdev-plugin-web": "workspace:*",
     "@opentf/web-cli": "workspace:*",
     "tailwindcss": "4.2.2"
   }

@@ -103,7 +103,7 @@ async function runCase(caseName) {
     console.log(`\n• [${caseName}] building …`);
     const command =
       caseName === "otfw"
-        ? ["esdev", "packages/web-cli/src/cli.js", "build", "--root=benchmarks/otfw"]
+        ? ["esdev", "build", "--minify", "--config=esdev.bench.json"]
         : ["bun", "build.mjs"];
     const b = Bun.spawnSync(command, {
       cwd: caseName === "otfw" ? join(HERE, "..") : appDir,

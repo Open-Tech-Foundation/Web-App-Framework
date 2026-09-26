@@ -1,0 +1,20 @@
+{
+  "plugins": [
+    {
+      "module": "@opentf/esdev-plugin-web",
+      "export": "createOtfwPlugin",
+      "options": { "target": "csr" }
+    },
+    {
+      "module": "@opentf/esdev-plugin-web",
+      "export": "createOtfwRoutes",
+      "options": { "appDir": "app" }
+    }
+  ],
+  "targets": {
+    "web": {
+      "entry": "index.html",
+      "outdir": "dist"
+    }
+  }
+}

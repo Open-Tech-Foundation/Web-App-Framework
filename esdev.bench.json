@@ -1,0 +1,23 @@
+{
+  "plugins": [
+    {
+      "module": "@opentf/esdev-plugin-web",
+      "export": "createOtfwPlugin",
+      "options": { "target": "csr" }
+    }
+  ],
+  "start": { "serve": "benchmarks/otfw/dist" },
+  "targets": {
+    "web": {
+      "entry": "benchmarks/otfw/index.html",
+      "outdir": "benchmarks/otfw/dist",
+      "plugins": [
+        {
+          "module": "@opentf/esdev-plugin-web",
+          "export": "createOtfwRoutes",
+          "options": { "appDir": "benchmarks/otfw/app" }
+        }
+      ]
+    }
+  }
+}

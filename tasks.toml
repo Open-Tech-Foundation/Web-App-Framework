@@ -20,14 +20,15 @@ members = ["packages/*", "playground", "benchmarks/*", "website"]
 
 # --- develop ------------------------------------------------------------------
 
-# The playground is the framework's own scratch app. Run the linked CLI from the
-# repository root: pnpm links its source outside the app's esdev filesystem jail,
-# while `--root` keeps the app itself inside the same root sandbox.
+# The playground is the framework's own scratch app, on its own config
+# (esdev.playground.json — root-level so plugin modules resolve inside the repo
+# jail; pnpm symlinks a per-app config's node_modules outside its own root).
+# One otfw target, CSR like the old CLI dev.
 [tasks.dev]
-run = "esdev packages/web-cli/src/cli.js dev --root=playground --port=3005"
+run = "esdev start --config=esdev.playground.json --port=3005"
 
-# The website runs on pure esdev now (`esdev start` from the root, with the
-# site + site-ssg targets in esdev.json) — no CLI in the loop.
+# The website runs on pure esdev (esdev.json: the site target plus the
+# site-ssg prerender step) — no CLI in the loop.
 [tasks.site]
 run = "esdev start --port=3005"
 
@@ -46,7 +47,7 @@ run = "cargo build"
 deps = ["build-compiler"]
 run = "cargo test"
 
-# Runtime-native tests: the CLI, scaffolder, and framework's pure core/server paths.
+# Runtime-native tests: the SSG lib, scaffolder, and framework's pure core/server paths.
 [tasks.test-esdev]
 deps = ["build-compiler"]
 run = "esdev test packages/web-cli/tests packages/create-web/tests packages/web/core/reactive.test.js packages/web/core/signals.test.js packages/web/esdev-tests/clsx.test.js packages/web/server/api.test.js packages/web/server/cookies.test.js packages/web/server/head.test.js packages/web/server/loader.test.js packages/web/server/middleware.test.js packages/web/server/render.test.js packages/web/server/ssg-runtime.test.js packages/web/server/adapters/node.test.js"
@@ -91,26 +92,13 @@ run = "esdev test --dom packages/web-i18n/i18n.test.js"
 deps = ["test-rust", "test-esdev", "test-esdev-dom", "test-esdev-plugin", "test-web-docs", "test-web-docs-dom"]
 parallel = true
 
-# Real-browser tier (docs/HYDRATION.md §5) — drives `otfw serve`/`build` against headless
-# Chrome over CDP, covering engine-fidelity paths (custom-element upgrade timing, the real
-# event loop, portal relocation) the `--dom` tier can't reach. Slow and browser-dependent,
-# so it stays out of `test`.
-#
-# These stay **sequential** deliberately, unlike `test` and `ci`. Every suite takes its HTTP
-# port from the OS (`port: 0`), but the Chrome debugging ports are not that clean: the three
-# web-docs suites draw `9000 + random(1000)`, while four web-cli suites hardcode theirs —
-# 9333 (hydrate-browser), 9334 (lifecycle-hooks), 9355 (runtime-browser), 9357
-# (template-parity). Overlapping the two groups can collide whenever a web-docs suite happens
-# to draw a web-cli port, and each suite spawns its own Chrome besides. Flip `parallel` on
-# once every suite takes its debugging port from the OS too — the fixed four are the blocker,
-# not the random ones.
-#
-# The web-cli browser suites share one ESdev-native orchestrator.
-[tasks.test-e2e-cli]
-deps = ["build-compiler"]
-run = "esdev tests/e2e/all.mjs"
-dir = "packages/web-cli"
-
+# Real-browser tier (docs/HYDRATION.md §5) — framework-behavior suites (docs shell
+# drawer/sidebar/hydration) against headless Chrome over CDP, covering
+# engine-fidelity paths (custom-element upgrade timing, the real event loop,
+# portal relocation) the `--dom` tier can't reach. Slow and browser-dependent,
+# so it stays out of `test`. The `otfw serve`/`build` CLI e2e retired with the
+# CLI; its port-collision notes die with it (each suite spawns its own Chrome —
+# keep these sequential until every debugging port comes from the OS).
 [tasks.test-e2e-docs-drawer]
 deps = ["build-compiler"]
 run = "esdev packages/web-docs/tests/e2e/mobile-drawer.mjs"
@@ -127,7 +115,7 @@ run = "esdev packages/web-docs/tests/e2e/hydration.mjs"
 deps = ["test-e2e-docs-drawer", "test-e2e-docs-sidebar", "test-e2e-docs-hydration"]
 
 [tasks.test-e2e]
-deps = ["test-e2e-cli", "test-e2e-docs"]
+deps = ["test-e2e-docs"]
 
 # Local convenience — CI runs the fast and browser tiers as separate parallel jobs, so this
 # is the "use my cores" path on a dev machine. `build-compiler` is de-duplicated to one run.
@@ -138,7 +126,7 @@ parallel = true
 # --- build --------------------------------------------------------------------
 
 [tasks.build]
-run = "esdev packages/web-cli/src/cli.js build --root=playground"
+run = "esdev build --minify --config=esdev.playground.json"
 
 [tasks.site-build]
 run = "esdev build --minify"
@@ -170,7 +158,7 @@ run = "bun build.mjs"
 dir = "benchmarks/svelte"
 
 [tasks.bench-otfw-dev]
-run = "esdev packages/web-cli/src/cli.js dev --root=benchmarks/otfw --port=3010"
+run = "esdev start --config=esdev.bench.json --port=3010"
 
 [tasks.bench-otfw-build]
-run = "esdev packages/web-cli/src/cli.js build --root=benchmarks/otfw"
+run = "esdev build --minify --config=esdev.bench.json"

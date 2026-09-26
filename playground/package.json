@@ -11,6 +11,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@opentf/esdev-plugin-web": "workspace:*",
     "@opentf/web-cli": "workspace:*"
   }
 }

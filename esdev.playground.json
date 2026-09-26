@@ -1,0 +1,23 @@
+{
+  "plugins": [
+    {
+      "module": "@opentf/esdev-plugin-web",
+      "export": "createOtfwPlugin",
+      "options": { "target": "csr" }
+    }
+  ],
+  "start": { "serve": "playground/dist" },
+  "targets": {
+    "web": {
+      "entry": "playground/index.html",
+      "outdir": "playground/dist",
+      "plugins": [
+        {
+          "module": "@opentf/esdev-plugin-web",
+          "export": "createOtfwRoutes",
+          "options": { "appDir": "playground/app" }
+        }
+      ]
+    }
+  }
+}

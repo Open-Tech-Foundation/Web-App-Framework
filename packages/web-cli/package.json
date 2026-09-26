@@ -1,13 +1,9 @@
 {
   "name": "@opentf/web-cli",
   "version": "1.26.0",
-  "description": "OTF Web dev toolchain \u2014 the ES-Runtime dev server, production build, and SSG.",
+  "description": "OTF Web SSG library — the pre-render driver for `esdev build` (`@opentf/web-cli/ssg`). The `otfw` dev-server/build commands are retired; apps build straight from esdev.json.",
   "type": "module",
-  "bin": {
-    "otfw": "./src/cli.js"
-  },
   "exports": {
-    ".": "./src/cli.js",
     "./ssg": "./src/ssg.js"
   },
   "files": [
@@ -17,9 +13,7 @@
     "esdev": ">=0.5.0"
   },
   "dependencies": {
-    "@opentf/esdev-plugin-web": "workspace:*",
-    "@opentf/web-compiler": "workspace:*",
-    "tailwindcss": "4.2.2"
+    "@opentf/esdev-plugin-web": "workspace:*"
   },
   "peerDependencies": {
     "@opentf/web": "workspace:*"

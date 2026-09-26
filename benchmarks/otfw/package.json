@@ -6,6 +6,7 @@
     "@opentf/web": "workspace:*"
   },
   "devDependencies": {
+    "@opentf/esdev-plugin-web": "workspace:*",
     "@opentf/web-cli": "workspace:*"
   }
 }
