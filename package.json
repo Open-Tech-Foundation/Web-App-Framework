@@ -12,7 +12,7 @@
     "@cloudflare/vite-plugin": "^1.33.1",
     "@opentf/esdev-plugin-web": "workspace:*",
     "@opentf/esrun-types": "^0.4.0",
-    "@opentf/std": "^1.0.0-beta.3",
+    "@opentf/std": "^0.19.0",
     "@opentf/web-docs": "workspace:*",
     "@rollup/plugin-babel": "^7.0.0",
     "@tailwindcss/vite": "^4.2.2",

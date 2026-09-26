@@ -18,8 +18,8 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
       '@opentf/std':
-        specifier: ^1.0.0-beta.3
-        version: 1.0.0-beta.3
+        specifier: ^0.19.0
+        version: 0.19.0
       '@opentf/web-docs':
         specifier: workspace:*
         version: link:packages/web-docs
@@ -145,8 +145,8 @@ importers:
   packages/web-form:
     dependencies:
       '@opentf/std':
-        specifier: ^1.0.0-beta.3
-        version: 1.0.0-beta.3
+        specifier: ^0.19.0
+        version: 0.19.0
     devDependencies:
       '@opentf/web':
         specifier: workspace:*
@@ -911,9 +911,9 @@ packages:
   '@opentf/esrun-types@0.4.0':
     resolution: {integrity: sha512-MEjKuFur/3zBP8xY05tLD7GKI07NWTMcmbyJjnL8g/Mt5Qu0Beetj+MjMDlog/Lbdr3krziGAQIBbRqtXd60Dg==}
 
-  '@opentf/std@1.0.0-beta.3':
-    resolution: {integrity: sha512-cYjPKcKil0sSNmXownPYOH/LqvFdmHsfuIP+JwN6wxX/4+igva+HfPjONxxeHCgKpyUnSDZo/oi6VGq4MXzQxw==}
-    engines: {node: '>=18.0.0'}
+  '@opentf/std@0.19.0':
+    resolution: {integrity: sha512-tnBP9Fv3T7Sfd1VWJQKfq6BubBH/qvVEC80zzMeeLW7epACt0jtpZ7ivB9A5HLSzb8Lxs9Mc0V/jvD6jStq+bA==}
+    engines: {node: '>=20.0.0'}
 
   '@oxc-project/types@0.127.0':
     resolution: {integrity: sha512-aIYXQBo4lCbO4z0R3FHeucQHpF46l2LbMdxRvqvuRuW2OxdnSkcng5B8+K12spgLDj93rtN3+J2Vac/TIO+ciQ==}
@@ -2815,7 +2815,7 @@ snapshots:
 
   '@opentf/esrun-types@0.4.0': {}
 
-  '@opentf/std@1.0.0-beta.3': {}
+  '@opentf/std@0.19.0': {}
 
   '@oxc-project/types@0.127.0': {}
 
