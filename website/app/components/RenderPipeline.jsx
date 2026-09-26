@@ -60,10 +60,10 @@ const FRAMEWORKS = [
       { label: "Templates" },
       { label: "AOT compiler (Ivy)" },
       { label: "Components" },
-      { label: "Change detection" },
+      { label: "Signals (zoneless CD)" },
       { label: "DOM updates" },
     ],
-    note: "No VDOM — change detection checks component bindings and writes the DOM.",
+    note: "Signals are the reactive primitive; zoneless change detection (default since v21) refreshes dirty views — no Zone.js, no VDOM.",
   },
   {
     id: "svelte",
