@@ -19,7 +19,7 @@ const OTF = {
     { label: "JSX components" },
     { label: "otfwc compiler" },
     { label: "Web components" },
-    { label: "otfw runtime" },
+    { label: "Framework runtime" },
     { label: "DOM updates" },
   ],
   note: "Standard custom elements + signals; the compiler emits native DOM bindings.",
