@@ -27,8 +27,7 @@ members = ["packages/*", "playground", "benchmarks/*", "website"]
 run = "esdev packages/web-cli/src/cli.js dev --root=playground --port=3005"
 
 # The website runs on pure esdev now (`esdev start` from the root, with the
-# site target + plugins in esdev.json) — no CLI in the loop. `site-build` is the
-# legacy CLI build (dist/); `site-build-pure` is the native one (dist-pure/).
+# site + site-ssg targets in esdev.json) — no CLI in the loop.
 [tasks.site]
 run = "esdev start --port=3005"
 
@@ -142,9 +141,6 @@ parallel = true
 run = "esdev packages/web-cli/src/cli.js build --root=playground"
 
 [tasks.site-build]
-run = "esdev packages/web-cli/src/cli.js build --root=website --ssg"
-
-[tasks.site-build-pure]
 run = "esdev build"
 
 # --- benchmarks ---------------------------------------------------------------
