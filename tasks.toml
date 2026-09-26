@@ -141,7 +141,7 @@ parallel = true
 run = "esdev packages/web-cli/src/cli.js build --root=playground"
 
 [tasks.site-build]
-run = "esdev build"
+run = "esdev build --minify"
 
 # --- benchmarks ---------------------------------------------------------------
 

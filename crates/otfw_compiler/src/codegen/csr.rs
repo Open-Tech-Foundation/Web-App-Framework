@@ -406,8 +406,12 @@ fn component_body_ex<'a>(
         // string. Latch the same guard the runtime stamp uses so that upgrade-time callback
         // is ignored; `connectedCallback` clears it after stamping the hook. (The consumer's
         // real `class` rides the payload, not the attribute, so nothing is lost.)
+        //
+        // The latch is conditional on a payload being present: with no payload there is
+        // nothing to protect, and an unconditional latch would swallow pre-connect
+        // `setAttribute` calls (createElement + set + append), which the CSR backend honors.
         if hydratable && props.iter().any(|p| p.attr == "class") {
-            code.push_str("    this._stampingHostClass = true;\n");
+            code.push_str("    this._stampingHostClass = __h != null;\n");
         }
         code.push_str("  }\n");
 

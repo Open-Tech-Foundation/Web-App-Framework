@@ -1527,8 +1527,10 @@ mod tests {
         // Regression: a `class` prop shares the host's `class` attribute with the styling
         // hook. A hydrating upgrade fires `attributeChangedCallback("class", "web-…")` for
         // the server-stamped hook attribute *after* the constructor, which would clobber the
-        // payload-hydrated prop signal. The constructor must latch `_stampingHostClass` so
-        // that upgrade-time callback is ignored (the value from the rich payload stands).
+        // payload-hydrated prop signal. The constructor must latch `_stampingHostClass` —
+        // conditional on a payload being present, so pre-connect `setAttribute` calls on
+        // client-created elements still sync — so that upgrade-time callback is ignored
+        // (the value from the rich payload stands).
         let m = emit_component(
             "export default function Link({ href, class: c }){ return <a href={href} class={c}>x</a>; }",
         );
@@ -1544,8 +1546,8 @@ mod tests {
         let ctor = m.code.split("constructor() {").nth(1).expect("constructor");
         let ctor = &ctor[..ctor.find("\n  }").expect("constructor closes")];
         assert!(
-            ctor.contains("this._stampingHostClass = true;"),
-            "constructor latches the host-class guard:\n{}",
+            ctor.contains("this._stampingHostClass = __h != null;"),
+            "constructor latches the host-class guard only with a payload:\n{}",
             m.code,
         );
         // The guard is honored by attributeChangedCallback.

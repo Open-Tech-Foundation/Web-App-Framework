@@ -3,7 +3,7 @@
     {
       "module": "@opentf/esdev-plugin-web",
       "export": "createOtfwPlugin",
-      "options": { "target": "csr" }
+      "options": { "target": "hydrate" }
     },
     {
       "module": "@opentf/esdev-plugin-web",
