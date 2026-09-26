@@ -1,8 +1,8 @@
 import { Link } from "@opentf/web";
 import BenchmarkTable from "./components/BenchmarkTable.jsx";
 import InstallTabs from "./components/InstallTabs.jsx";
-import ReactiveTrace from "./components/ReactiveTrace.jsx";
 import RenderDuel from "./components/RenderDuel.jsx";
+import RenderPipeline from "./components/RenderPipeline.jsx";
 import { benchmark, capabilities, ssgBenchmark } from "./home-data.js";
 
 export const metadata = {
@@ -92,16 +92,16 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Reactive trace — watch a change flow through the signal graph to the DOM */}
+      {/* Rendering pipelines — one update's path through each framework, next to ours */}
       <section className="py-24 space-y-12">
         <div className="text-center space-y-3">
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">How an update propagates</h2>
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--text-main)]">How rendering flows</h2>
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
-            No virtual tree, no reconciliation pass. A change writes only to the DOM nodes
-            bound to it.
+            One update's path through five frameworks, next to ours. Layer names,
+            not timings — what runs, in order, when state changes.
           </p>
         </div>
-        <ReactiveTrace />
+        <RenderPipeline />
       </section>
 
       {/* Benchmark */}

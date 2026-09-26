@@ -28,7 +28,9 @@ export default function RenderDuel() {
   const rootRef = $ref();
   let timer = null;
 
-  const animate = (el, frames, opts) => el && el.animate(frames, opts);
+  const animate = (el, frames, opts) => {
+    if (el && typeof el.animate === "function") el.animate(frames, opts);
+  };
 
   const flash = (el, color, delay = 0) =>
     animate(
@@ -102,11 +104,11 @@ export default function RenderDuel() {
 
   return (
     <div className="duel" ref={rootRef}>
-      <div className="trace-titlebar">
-        <span className="trace-light is-red"></span>
-        <span className="trace-light is-amber"></span>
-        <span className="trace-light is-green"></span>
-        <span className="trace-titlebar-label">update.jsx — one update, two renderers</span>
+      <div className="win-titlebar">
+        <span className="win-light is-red"></span>
+        <span className="win-light is-amber"></span>
+        <span className="win-light is-green"></span>
+        <span className="win-titlebar-label">update.jsx — one update, two renderers</span>
       </div>
       <div className="duel-body">
         <div className="duel-panels">
