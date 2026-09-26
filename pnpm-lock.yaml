@@ -18,8 +18,8 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
       '@opentf/std':
-        specifier: ^0.13.0
-        version: 0.13.0
+        specifier: ^1.0.0-beta.3
+        version: 1.0.0-beta.3
       '@opentf/web-docs':
         specifier: workspace:*
         version: link:packages/web-docs
@@ -145,7 +145,7 @@ importers:
   packages/web-form:
     dependencies:
       '@opentf/std':
-        specifier: ^1.0.0-beta.2
+        specifier: ^1.0.0-beta.3
         version: 1.0.0-beta.3
     devDependencies:
       '@opentf/web':
@@ -910,10 +910,6 @@ packages:
 
   '@opentf/esrun-types@0.4.0':
     resolution: {integrity: sha512-MEjKuFur/3zBP8xY05tLD7GKI07NWTMcmbyJjnL8g/Mt5Qu0Beetj+MjMDlog/Lbdr3krziGAQIBbRqtXd60Dg==}
-
-  '@opentf/std@0.13.0':
-    resolution: {integrity: sha512-VG9vn7oML5prxWipDvod1X7z9+3fyyCbw+SuD5F7cWx9F1bXFZdAYGIKGqqHLtfxz3mrXZWHcxnm8d0YwQ7tKQ==}
-    engines: {node: '>=16.20.2'}
 
   '@opentf/std@1.0.0-beta.3':
     resolution: {integrity: sha512-cYjPKcKil0sSNmXownPYOH/LqvFdmHsfuIP+JwN6wxX/4+igva+HfPjONxxeHCgKpyUnSDZo/oi6VGq4MXzQxw==}
@@ -2818,8 +2814,6 @@ snapshots:
     optional: true
 
   '@opentf/esrun-types@0.4.0': {}
-
-  '@opentf/std@0.13.0': {}
 
   '@opentf/std@1.0.0-beta.3': {}
 
