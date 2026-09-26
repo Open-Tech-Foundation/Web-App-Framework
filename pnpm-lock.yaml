@@ -63,6 +63,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/web
     devDependencies:
+      '@opentf/esdev-plugin-web':
+        specifier: workspace:*
+        version: link:../../packages/esdev-plugin-web
       '@opentf/web-cli':
         specifier: workspace:*
         version: link:../../packages/web-cli
@@ -120,12 +123,6 @@ importers:
       '@opentf/web':
         specifier: workspace:*
         version: link:../web
-      '@opentf/web-compiler':
-        specifier: workspace:*
-        version: link:../web-compiler
-      tailwindcss:
-        specifier: 4.2.2
-        version: 4.2.2
 
   packages/web-compiler: {}
 
@@ -204,6 +201,9 @@ importers:
         specifier: ^4.3.6
         version: 4.6.2
     devDependencies:
+      '@opentf/esdev-plugin-web':
+        specifier: workspace:*
+        version: link:../packages/esdev-plugin-web
       '@opentf/web-cli':
         specifier: workspace:*
         version: link:../packages/web-cli
@@ -223,6 +223,9 @@ importers:
         specifier: workspace:*
         version: link:../packages/web-i18n
     devDependencies:
+      '@opentf/esdev-plugin-web':
+        specifier: workspace:*
+        version: link:../packages/esdev-plugin-web
       '@opentf/web-cli':
         specifier: workspace:*
         version: link:../packages/web-cli
