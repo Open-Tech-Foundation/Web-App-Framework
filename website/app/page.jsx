@@ -70,7 +70,7 @@ export default function HomePage() {
 
             <div className="flex pt-2">
               <Link href="/docs" className="transition-all active:scale-95">
-                <span className="inline-flex items-center justify-center gap-2 bg-white text-slate-900 px-7 py-3 rounded-xl font-bold hover:opacity-90 shadow-lg border border-slate-200">
+                <span className="inline-flex items-center justify-center gap-2 bg-white text-slate-900 px-7 py-3 rounded-lg font-bold hover:opacity-90 shadow-lg border border-slate-200">
                   Get Started
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                     <path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
