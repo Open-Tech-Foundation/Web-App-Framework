@@ -189,7 +189,10 @@ export function setRouteData(data) {
 /** Layout entries that wrap `route`, outermost (root) first. */
 export function layoutChain(route) {
   const chain = [];
-  if (!route) return chain;
+  // The 404 fallback has no route pattern of its own, but it still belongs to the
+  // app shell. Apply the root layout when one is registered so 404 pages inherit
+  // the same navigation, footer, and other site-wide UI as regular pages.
+  if (!route) return routes.layouts["/"] ? [routes.layouts["/"]] : chain;
   let p = route;
   while (true) {
     if (routes.layouts[p]) chain.unshift(routes.layouts[p]);
