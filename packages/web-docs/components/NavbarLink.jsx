@@ -18,6 +18,13 @@ export default function NavbarLink(props) {
   ) : (
     <Link
       href={link.href}
+      aria-current={
+        (link.href === "/"
+          ? router.pathname === "/"
+          : router.pathname === link.href || router.pathname.startsWith(link.href + "/"))
+          ? "page"
+          : null
+      }
       class={
         (link.href === "/"
           ? router.pathname === "/"

@@ -12,12 +12,22 @@ import NavbarLink from "./NavbarLink.jsx";
 import NavIcon from "./NavIcon.jsx";
 import { Link } from "@opentf/web";
 
+// `aria-label` / `aria-labelledby` name the banner landmark, `navLabel` names the
+// primary navigation landmark, and `id` lets a caller reference the header.
 export default function Navbar(props) {
   const config = props.config || {};
   const links = config.nav || [];
+  const navLabel = props.navLabel || "Main navigation";
+  const ariaLabel = props["aria-label"] || props.ariaLabel;
+  const ariaLabelledby = props["aria-labelledby"] || props.ariaLabelledby;
 
   return (
-    <header class="otfw-navbar">
+    <header
+      id={props.id}
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledby}
+      class="otfw-navbar"
+    >
       <div class="otfw-navbar-inner">
         <div class="otfw-navbar-lead">
           <SidebarToggle />
@@ -33,7 +43,7 @@ export default function Navbar(props) {
         </div>
 
         <div class="otfw-navbar-right">
-          <nav class="otfw-navbar-nav">
+          <nav class="otfw-navbar-nav" aria-label={navLabel}>
             {links.map((l) => (
               <NavbarLink link={l} />
             ))}
