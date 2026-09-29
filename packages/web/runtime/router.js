@@ -574,9 +574,24 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
       if (anchor) anchor.scrollIntoView();
       else window.scrollTo(0, 0);
     }
+    if (isBrowser) focusRouteContent(rootEl);
   } else {
     rootEl.innerHTML = "<h1>404 — Not Found</h1>";
     currentNodes = [];
+  }
+}
+
+/** Move keyboard/screen-reader focus into the newly rendered route after SPA nav. */
+function focusRouteContent(container) {
+  const target = container.querySelector("h1") || container.querySelector("main");
+  if (!target) return;
+  // Headings and main landmarks are not normally in the tab order. A programmatic
+  // tabindex lets focus land there without adding another Tab stop.
+  if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+  try {
+    target.focus({ preventScroll: true });
+  } catch {
+    target.focus();
   }
 }
 

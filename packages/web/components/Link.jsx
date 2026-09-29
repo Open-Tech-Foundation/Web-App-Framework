@@ -11,7 +11,8 @@
 
 import { localizePath, navigate, shouldInterceptNav } from "../runtime/router.js";
 
-export default function Link({ href, class: className, reload, children }) {
+export default function Link(props) {
+  const { href, class: className, reload, children } = props;
   // Keep the link in the active locale (no-op when i18n is off). Locale is a
   // per-load constant under URL-prefix routing, so resolving it once here is
   // correct — a navigation that changes the locale rebuilds this component.
@@ -20,6 +21,8 @@ export default function Link({ href, class: className, reload, children }) {
   // Absent resolves to null (getAttribute), so use loose `!= null` to treat only a
   // present, non-false value as opting out.
   const forceReload = reload != null && reload !== false;
+  const ariaLabel = props["aria-label"] || props.ariaLabel;
+  const ariaCurrent = props["aria-current"] || props.ariaCurrent;
 
   const onclick = (e) => {
     // Let the browser handle modified clicks (new tab, etc.) and non-primary buttons.
@@ -36,7 +39,13 @@ export default function Link({ href, class: className, reload, children }) {
   };
 
   return (
-    <a href={target} class={className} onclick={onclick}>
+    <a
+      href={target}
+      class={className}
+      aria-label={ariaLabel}
+      aria-current={ariaCurrent}
+      onclick={onclick}
+    >
       {children}
     </a>
   );
