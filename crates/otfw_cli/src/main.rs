@@ -11,9 +11,12 @@ use std::io::{self, BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use base64::Engine;
+
 use otfw_compiler::codegen::{csr, hydrate, ssg};
 use otfw_compiler::graph::{DiskVfs, ModuleGraph, Resolver};
-use otfw_compiler::lower::lower_module;
+use otfw_compiler::lower::{lower_module, lower_module_with_source_map};
+use otfw_compiler::sourcemap;
 use otfw_compiler::mdx::mdx_to_jsx;
 use otfw_compiler::parse::ParseSession;
 
@@ -44,21 +47,25 @@ fn main() -> ExitCode {
                 Target::Csr
             };
             match rest.iter().find(|a| !a.starts_with("--")) {
-                Some(file) => build(file, as_component, from_stdin, target),
+                Some(file) => build(
+                    file, as_component, from_stdin, target,
+                    rest.iter().any(|a| a == "--sourcemap"),
+                ),
                 None => {
-                    eprintln!("usage: otfwc build [--component] [--stdin] [--target=ssg|hydrate] <file.tsx>");
+                    eprintln!("usage: otfwc build [--component] [--stdin] [--sourcemap] [--target=ssg|hydrate] <file.tsx>");
                     ExitCode::FAILURE
                 }
             }
         }
-        Some("serve") => serve(),
+        Some("serve") => serve(args.iter().any(|a| a == "--sourcemap")),
         Some("graph") => graph_cmd(&args[2..]),
         _ => {
             println!("otfwc: OTF Web IR compiler (foundation). See ARCHITECTURE.md.");
             println!("usage: otfwc build [--component] [--stdin] <file.tsx>   # parse → lower → CSR codegen");
             println!("  default emits a page factory; --component emits a Custom Element class");
             println!("  --stdin reads source from stdin; <file> is used only for the module id");
-            println!("       otfwc serve   # long-lived compiler: framed requests on stdin, results on stdout");
+            println!("  --sourcemap emits an inline map for JSX/TSX; Markdown maps to generated JSX");
+            println!("       otfwc serve [--sourcemap]   # long-lived compiler: framed requests on stdin, results on stdout");
             println!("       otfwc graph [--web=<path>] <entry...>   # crawl the module graph as JSON");
             ExitCode::SUCCESS
         }
@@ -150,6 +157,12 @@ pub(crate) fn json_str(s: &str) -> String {
     out
 }
 
+struct CompiledModule {
+    code: String,
+    map: Option<serde_json::Value>,
+    warnings: Vec<String>,
+}
+
 /// Compile one module to its emitted JS. `as_component` selects the Custom Element
 /// backend (page/layout factories pass `false`); `ssg` selects the HTML-string
 /// backend over CSR. `.mdx`/`.md` ids run the MDX front-end first. Returns the code
@@ -159,7 +172,8 @@ fn compile_module(
     source: String,
     as_component: bool,
     target: Target,
-) -> Result<(String, Vec<String>), Diag> {
+    source_map: bool,
+) -> Result<CompiledModule, Diag> {
     // MDX front-end: `.mdx`/`.md` lower to JSX source first, then run the normal
     // parse → lower → codegen pipeline (the module id keeps the original extension).
     // Positions below are then offsets into that generated JSX; `generated` records
@@ -207,7 +221,12 @@ fn compile_module(
         return Err(located(at as usize, 1, msg));
     }
 
-    let Some(lowered) = lower_module(file, &parsed.program, &source, !as_component) else {
+    let prefix = source_map.then(|| sourcemap::prefix(&source));
+    let lowered = match prefix.as_deref() {
+        Some(prefix) => lower_module_with_source_map(file, &parsed.program, &source, !as_component, prefix),
+        None => lower_module(file, &parsed.program, &source, !as_component),
+    };
+    let Some(lowered) = lowered else {
         // Prefer a targeted diagnostic for the common near-miss (JSX built but not
         // returned as the view) over the generic "no component" message.
         if let Some((at, hint)) = otfw_compiler::lower::no_component_diagnostic(&parsed.program) {
@@ -231,12 +250,32 @@ fn compile_module(
             (m.code, m.errors)
         }
     };
-    Ok((code, warnings))
+    let (code, map) = if let Some(prefix) = prefix {
+        let mapped = sourcemap::finish(&code, &prefix, &source);
+        // The Markdown front-end currently has no original-source mapping.
+        // Expose its generated JSX honestly, rather than assigning JSX offsets
+        // to unrelated positions in the original Markdown file.
+        let source_name = if generated { format!("{file}?otfw-jsx") } else { file.to_string() };
+        let map = serde_json::json!({
+            "version": 3, "sources": [source_name], "sourcesContent": [source],
+            "names": [], "mappings": mapped.mappings,
+        });
+        (mapped.code, Some(map))
+    } else {
+        (code, None)
+    };
+    Ok(CompiledModule { code, map, warnings })
 }
 
 /// Compile one module and print it. Source comes from `file` or, with `from_stdin`,
 /// from stdin (then `file` is only the module id). Diagnostics go to stderr.
-fn build(file: &str, as_component: bool, from_stdin: bool, target: Target) -> ExitCode {
+fn build(
+    file: &str,
+    as_component: bool,
+    from_stdin: bool,
+    target: Target,
+    source_map: bool,
+) -> ExitCode {
     let source = if from_stdin {
         let mut buf = String::new();
         if let Err(e) = io::stdin().read_to_string(&mut buf) {
@@ -254,9 +293,13 @@ fn build(file: &str, as_component: bool, from_stdin: bool, target: Target) -> Ex
         }
     };
 
-    match compile_module(file, source, as_component, target) {
-        Ok((code, warnings)) => {
+    match compile_module(file, source, as_component, target, source_map) {
+        Ok(CompiledModule { code, map, warnings }) => {
             print!("{code}");
+            if let Some(map) = map {
+                let encoded = base64::engine::general_purpose::STANDARD.encode(map.to_string());
+                println!("\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,{encoded}");
+            }
             for w in &warnings {
                 eprintln!("warning: {w}");
             }
@@ -273,10 +316,11 @@ fn build(file: &str, as_component: bool, from_stdin: bool, target: Target) -> Ex
 /// `<id_len> <source_len> <component> <target>\n` (byte counts; `component` is the
 /// flag `0`/`1`; `target` is the token `csr`/`ssg`/`hydrate`), immediately followed
 /// by `id_len` bytes of module id and `source_len` bytes of source. Each reply is
-/// `OK <len>\n<code>` on success or `ERR <len>\n<message>` on a compile error — the
+/// `OK <len>\n<code>` on success or `ERR <len>\n<message>` on a compile error.
+/// `serve --sourcemap` uses `MAP <len>\n{code,map}` success frames instead. The
 /// server stays up either way. Lengths are byte counts so the payloads may contain
 /// newlines (source, multi-line diagnostics). EOF ends the loop.
-fn serve() -> ExitCode {
+fn serve(source_map: bool) -> ExitCode {
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     let stdout = io::stdout();
@@ -329,13 +373,13 @@ fn serve() -> ExitCode {
             "hydrate" => Target::Hydrate,
             _ => Target::Csr,
         };
-        match compile_module(&id, source, as_component, target) {
-            // Warnings are non-fatal, so the reply frame carries only the code — but they
+        match compile_module(&id, source, as_component, target, source_map) {
+            // Warnings are non-fatal, so the success frame omits them — but they
             // still have to reach the developer. The toolchain inherits this process's
             // stderr, so printing them here is what surfaces a diagnostic (a view that
             // can't be adopted, say) in `otfw build` / `otfw dev` output; dropping them
             // made every such fallback silent, since the CLI only ever runs `otfwc serve`.
-            Ok((code, warnings)) => {
+            Ok(CompiledModule { code, map, warnings }) => {
                 // One line per distinct diagnostic: a module with eight spread props
                 // reports the same unsupported shape eight times, which is noise.
                 let mut seen = std::collections::BTreeSet::new();
@@ -344,7 +388,12 @@ fn serve() -> ExitCode {
                         eprintln!("warning: {id}: {w}");
                     }
                 }
-                write_frame(&mut writer, true, code.as_bytes())
+                if let Some(map) = map {
+                    let payload = serde_json::json!({ "code": code, "map": map }).to_string();
+                    write_status_frame(&mut writer, "MAP", payload.as_bytes());
+                } else {
+                    write_frame(&mut writer, true, code.as_bytes());
+                }
             }
             // An error frame carries the diagnostic as JSON — file, message, line,
             // column, code frame — so the dev server can show the position instead of
@@ -358,7 +407,10 @@ fn serve() -> ExitCode {
 
 /// Write one length-prefixed reply frame and flush so the toolchain can read it.
 fn write_frame<W: Write>(w: &mut W, ok: bool, payload: &[u8]) {
-    let status = if ok { "OK" } else { "ERR" };
+    write_status_frame(w, if ok { "OK" } else { "ERR" }, payload);
+}
+
+fn write_status_frame<W: Write>(w: &mut W, status: &str, payload: &[u8]) {
     let _ = write!(w, "{status} {}\n", payload.len());
     let _ = w.write_all(payload);
     let _ = w.flush();

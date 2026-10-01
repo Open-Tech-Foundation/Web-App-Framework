@@ -308,6 +308,10 @@ impl<'a> Emitter<'a> {
         self.lowered.exprs.code(id).unwrap_or("undefined").to_string()
     }
 
+    fn plain_code(&self, id: ExpressionId) -> String {
+        crate::sourcemap::plain(self.lowered.exprs.source_map.as_deref(), &self.code(id)).into_owned()
+    }
+
     fn render(&self, indent: &str) -> String {
         let mut out = String::new();
         for l in &self.lines {
@@ -548,7 +552,8 @@ impl<'a> Emitter<'a> {
                 // hydration assumption everything else rests on), so evaluating the adopt
                 // template picks the same one. Any other JSX-embedding statement
                 // (`const map = { a: <A/> }`) isn't positional — keep the safe rebuild fallback.
-                match value_local(template) {
+                let plain = crate::sourcemap::plain(self.lowered.exprs.source_map.as_deref(), template);
+                match value_local(&plain) {
                     Some((name, rhs)) => self.emit_jsx_value_local(&name, &rhs, nodes),
                     None => self
                         .errors
@@ -784,8 +789,8 @@ impl<'a> Emitter<'a> {
             // Adopt it in place (`hydrateHole` + the local's `adopt` closure) instead of the
             // claimText path, which would strip the subtree and let bindText rebuild it — a
             // flash plus a rebuild cascade through any island the value contains.
-            ViewNode::Dynamic { expr } if self.value_locals.iter().any(|n| n == self.code(*expr).trim()) => {
-                let name = self.code(*expr).trim().to_string();
+            ViewNode::Dynamic { expr } if self.value_locals.iter().any(|n| n == self.plain_code(*expr).trim()) => {
+                let name = self.plain_code(*expr).trim().to_string();
                 self.uses.hydrate_hole = true;
                 self.line(format!("hydrateHole({cur}, {name}.adopt);"));
                 String::new()

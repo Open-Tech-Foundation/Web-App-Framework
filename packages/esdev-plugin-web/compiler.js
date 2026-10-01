@@ -141,6 +141,8 @@ export function compileError(payload) {
  *
  * `compile(id, source, component, target)` resolves to the emitted JS or rejects
  * with the compiler diagnostic (`target` is `"csr"` | `"ssg"` | `"hydrate"`).
+ * With `{ sourceMap: true }`, success resolves to `{ code, map }`. Older
+ * binaries still compile, returning `map: null`. The request framing is unchanged.
  * Requests are serialized through a FIFO queue: the server
  * is single-threaded, replies arrive in request order, so the head of the queue
  * always pairs with the next frame. The child is killed when this process exits.
@@ -156,7 +158,7 @@ export async function closeCompilers() {
   compilers.clear();
 }
 
-export function startCompilerServer(otfwc) {
+export function startCompilerServer(otfwc, { sourceMap = false } = {}) {
   const enc = new TextEncoder();
   const dec = new TextDecoder();
   const queue = []; // { resolve, reject } in request order
@@ -184,7 +186,7 @@ export function startCompilerServer(otfwc) {
 
   function start() {
     started ??= new Command(otfwc, {
-      args: ["serve"],
+      args: sourceMap ? ["serve", "--sourcemap"] : ["serve"],
       stdin: "piped",
       stdout: "piped",
       stderr: "inherit",
@@ -221,7 +223,10 @@ export function startCompilerServer(otfwc) {
         const payload = dec.decode(buf.subarray(nl + 1, nl + 1 + len));
         buf = buf.slice(nl + 1 + len);
         const job = queue.shift();
-        if (status === "OK") job.resolve(payload);
+        if (status === "MAP") job.resolve(JSON.parse(payload));
+        // Older packaged binaries ignore --sourcemap and return plain OK frames.
+        // Keep them usable; they cannot provide mappings until upgraded.
+        else if (status === "OK") job.resolve(sourceMap ? { code: payload, map: null } : payload);
         else job.reject(compileError(payload));
       }
     } finally {

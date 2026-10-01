@@ -47,7 +47,7 @@ export function createOtfwPlugin({ target, mode = "spa", failOnError = false, on
   }
   let serverPromise = null;
   const getServer = () =>
-    (serverPromise ??= resolveCompiler().then(({ otfwc }) => startCompilerServer(otfwc)));
+    (serverPromise ??= resolveCompiler().then(({ otfwc }) => startCompilerServer(otfwc, { sourceMap: true })));
   return {
     name: "otfw",
     transform: {
@@ -70,12 +70,12 @@ async function compileModule(server, code, id, { target, failOnError, onResult, 
   const base = id.split("/").pop().replace(/\.(mdx|md|[jt]sx)$/, "");
   const isPage = base === "page" || base === "layout" || base === "404";
   try {
-    const out = await server.compile(id, code, !isPage, target);
+    const { code: out, map } = await server.compile(id, code, !isPage, target);
     onResult?.(id, null);
     // otfwc has already lowered the JSX, so the result is plain JavaScript —
     // saying so keeps the bundler from parsing a `.jsx` id as JSX a second time.
     // Side effects (e.g. customElements.define) must survive bundling.
-    return { code: out, type: "js", moduleSideEffects: true };
+    return { code: out, ...(map ? { map } : {}), type: "js", moduleSideEffects: true };
   } catch (e) {
     // `text` is the diagnostic as a terminal/overlay would show it — the position
     // line plus a code frame; `diag` is the same thing as fields, for the overlay.
@@ -97,7 +97,7 @@ async function compileModule(server, code, id, { target, failOnError, onResult, 
       ` pre.style.cssText = "color:#f87171;padding:1rem;white-space:pre-wrap";` +
       ` pre.textContent = ${JSON.stringify(`Compile error\n\n${text}`)};` +
       ` return pre; }`;
-    return { code: stub, type: "js", moduleSideEffects: true };
+    return { code: stub, map: { version: 3, sources: [], names: [], mappings: "" }, type: "js", moduleSideEffects: true };
   }
 }
 
@@ -119,7 +119,7 @@ async function compileModule(server, code, id, { target, failOnError, onResult, 
  * CSR build factory plus an adopt factory for first-paint hydration).
  */
 export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr", quiet = () => {} } = {}) {
-  const server = startCompilerServer(otfwc);
+  const server = startCompilerServer(otfwc, { sourceMap: true });
   return {
     // The compiler child is not torn down from a hook — the bundler validates hook
     // names strictly, and there is nothing to tear down per build anyway: one child

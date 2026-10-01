@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- `otfwc build --sourcemap` emits an inline version-3 source map. Copied
+  statements, initializers, JSX expressions, and event/lifecycle callbacks retain
+  source positions through CSR, hydration, and SSG codegen. Generated helpers
+  remain unmapped; Unicode columns use UTF-16 and source content is included.
+- `otfwc serve --sourcemap` opts into `MAP <len>\n{code,map}` success frames.
+  Requests and the default `serve` behavior remain unchanged. Markdown maps to
+  its generated JSX intermediate (`?otfw-jsx`), pending front-end provenance.
+
 ## [0.17.0] - 2026-08-12
 
 ### Added

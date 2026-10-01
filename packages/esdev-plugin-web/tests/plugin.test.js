@@ -115,15 +115,38 @@ test("a starter config loads the default factory and builds browser and server r
     }));
     const executable = env.ESDEV_BIN || "esdev";
     const built = await new Command(executable, {
-      args: ["build", `--config=${join(scratch, "esdev.json")}`], cwd: scratch, inheritEnv: true, env: { OTFWC_BIN: join(root, "target/debug/otfwc") },
+      args: ["build", "--sourcemap", `--config=${join(scratch, "esdev.json")}`], cwd: scratch, inheritEnv: true, env: { OTFWC_BIN: join(root, "target/debug/otfwc") },
     }).output();
     if (!built.success) throw new Error(new TextDecoder().decode(built.stderr));
+    expect(new TextDecoder().decode(built.stderr)).not.toContain("SOURCEMAP_BROKEN");
     expect(await file(join(scratch, "dist/index.html")).text()).toContain("/assets/");
     const rendered = await new Command(executable, {
       args: [join(scratch, "server.mjs")], cwd: scratch, inheritEnv: true, env: { OTFWC_BIN: join(root, "target/debug/otfwc") },
     }).output();
     if (!rendered.success) throw new Error(new TextDecoder().decode(rendered.stderr));
     expect(new TextDecoder().decode(rendered.stdout)).toContain("Hello<!--/--></p>");
+
+    // Verify the composed bundle map using esdev's independent stack consumer,
+    // including the dynamically imported route chunk's external .map file.
+    await write(join(scratch, "app/page.jsx"), `export default function Home() {
+  let value = $state("Hello");
+  const explode = () => {
+    throw new Error("bundled-source-map-probe");
+  };
+  return <p>{explode()}</p>;
+}`);
+    const rebuilt = await new Command(executable, {
+      args: ["build", "--sourcemap", "--target=server", `--config=${join(scratch, "esdev.json")}`],
+      cwd: scratch, inheritEnv: true, env: { OTFWC_BIN: join(root, "target/debug/otfwc") },
+    }).output();
+    if (!rebuilt.success) throw new Error(new TextDecoder().decode(rebuilt.stderr));
+    const failed = await new Command(executable, {
+      args: [join(scratch, "server.mjs")], cwd: scratch, inheritEnv: true,
+    }).output();
+    expect(failed.success).toBe(false);
+    const stack = new TextDecoder().decode(failed.stderr);
+    expect(stack).toContain("bundled-source-map-probe");
+    expect(stack).toContain("app/page.jsx:4:11");
   } finally {
     await remove(scratch, { recursive: true });
   }

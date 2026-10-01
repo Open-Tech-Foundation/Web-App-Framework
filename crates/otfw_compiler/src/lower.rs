@@ -53,6 +53,8 @@ pub struct ExprInfo {
 /// serialized as a durable contract (ARCHITECTURE.md §4.8).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ExprTable {
+    /// Delimiter used by the optional provenance annotations in this table.
+    pub(crate) source_map: Option<String>,
     entries: Vec<ExprInfo>,
 }
 
@@ -281,11 +283,11 @@ pub fn lower_component<'a>(
 ) -> Option<Lowered> {
     let resolved = crate::semantic::resolve(program);
     let scoping = resolved.semantic.scoping();
-    let (imports, runtime_imports) = collect_imports(program, source);
+    let (imports, runtime_imports) = collect_imports(program, source, None);
     let (export, func) = find_component(program)?;
     lower_one(
         module, &export, func, scoping, source, is_page, &imports, &runtime_imports, is_page, true,
-        false,
+        false, None,
     )
 }
 
@@ -312,13 +314,37 @@ pub fn lower_module<'a>(
     source: &'a str,
     is_page_module: bool,
 ) -> Option<LoweredModule> {
+    lower_module_inner(module, program, source, is_page_module, None)
+}
+
+/// Lower with source provenance annotations for `sourcemap::finish`. The
+/// annotations travel with copied expressions through all three emitters.
+pub fn lower_module_with_source_map<'a>(
+    module: &str,
+    program: &'a Program<'a>,
+    source: &'a str,
+    is_page_module: bool,
+    prefix: &'a str,
+) -> Option<LoweredModule> {
+    lower_module_inner(module, program, source, is_page_module, Some(prefix))
+}
+
+fn lower_module_inner<'a>(
+    module: &str,
+    program: &'a Program<'a>,
+    source: &'a str,
+    is_page_module: bool,
+    source_map: Option<&'a str>,
+) -> Option<LoweredModule> {
     let resolved = crate::semantic::resolve(program);
     let scoping = resolved.semantic.scoping();
-    let (imports, runtime_imports) = collect_imports(program, source);
+    let (imports, runtime_imports) = collect_imports(program, source, source_map);
 
     // A module-scope lowerer (no component signals) templates JSX-as-value in
     // preserved top-level statements; its expr table travels with the module.
     let mut module_lowerer = Lowerer::new(source, scoping, HashMap::new(), None, None, None);
+    module_lowerer.source_map = source_map;
+    module_lowerer.exprs.source_map = source_map.map(str::to_string);
     let mut components = Vec::new();
     let mut module_stmts = Vec::new();
     for stmt in &program.body {
@@ -327,7 +353,7 @@ pub fn lower_module<'a>(
             let role = is_page_module && is_default;
             if let Some(lowered) = lower_one(
                 module, &export, func, scoping, source, role, &imports, &runtime_imports, role,
-                is_default, export_kind == ExportKind::Named,
+                is_default, export_kind == ExportKind::Named, source_map,
             ) {
                 components.push(lowered);
             }
@@ -401,11 +427,12 @@ fn lower_one<'a>(
     is_page_role: bool,
     is_default_export: bool,
     is_named_export: bool,
+    source_map: Option<&'a str>,
 ) -> Option<Lowered> {
     callable.body()?;
     let name = callable.id().unwrap_or_else(|| export.to_string());
 
-    let classified = classify(callable, scoping, source, is_page);
+    let classified = classify(callable, scoping, source, is_page, source_map);
 
     let children_symbol = classified.children.as_ref().and_then(|c| c.symbol);
     // Components capture their light-DOM children into an array (`children_local`);
@@ -422,6 +449,8 @@ fn lower_one<'a>(
         classified.props_symbol,
         classified.page_param.clone(),
     );
+    lowerer.source_map = source_map;
+    lowerer.exprs.source_map = source_map.map(str::to_string);
     let view = lowerer.lower_root(jsx)?;
 
     // Ordered body: interleave signal declarations with preserved statements (local
@@ -469,7 +498,7 @@ fn lower_one<'a>(
     let media_queries: Vec<String> = classified
         .media_args
         .iter()
-        .map(|(q, _)| inject_arg(source, scoping, &lowerer.signals, lowerer.props_symbol, q).code)
+        .map(|(q, _)| inject_arg(source, scoping, &lowerer.signals, lowerer.props_symbol, q, source_map).code)
         .collect();
 
     // `$effect`/`$expose`/lifecycle callbacks: `.value`-injected; a callback
@@ -482,7 +511,7 @@ fn lower_one<'a>(
             EffectCb { code: lowerer.exprs.code(eid).unwrap_or_default().to_string(), nodes }
         }
         _ => EffectCb {
-            code: inject_arg(source, scoping, &lowerer.signals, lowerer.props_symbol, arg).code,
+            code: inject_arg(source, scoping, &lowerer.signals, lowerer.props_symbol, arg, source_map).code,
             nodes: Vec::new(),
         },
     };
@@ -544,13 +573,13 @@ fn lower_one<'a>(
 /// Collect the module's top-level imports. `@opentf/web` named specifiers are
 /// returned separately (merged into the single generated runtime import); compiler
 /// macros are dropped; all other imports are preserved verbatim.
-fn collect_imports(program: &Program, source: &str) -> (Vec<String>, Vec<String>) {
+fn collect_imports(program: &Program, source: &str, source_map: Option<&str>) -> (Vec<String>, Vec<String>) {
     let mut imports = Vec::new();
     let mut runtime_imports = Vec::new();
     for stmt in &program.body {
         let Statement::ImportDeclaration(decl) = stmt else { continue };
         if decl.source.value != "@opentf/web" {
-            imports.push(slice_span(source, decl.span));
+            imports.push(crate::sourcemap::copy(source_map, source, decl.span.start, decl.span.end));
             continue;
         }
         let mut verbatim = false;
@@ -574,7 +603,7 @@ fn collect_imports(program: &Program, source: &str) -> (Vec<String>, Vec<String>
             }
         }
         if verbatim {
-            imports.push(slice_span(source, decl.span));
+            imports.push(crate::sourcemap::copy(source_map, source, decl.span.start, decl.span.end));
         }
     }
     (imports, runtime_imports)
@@ -1308,7 +1337,7 @@ struct Classified<'a> {
 /// Two passes: first bind every signal's symbol → id (so a later initializer or
 /// the view can reference any of them), then build the declarations with
 /// `.value` injected into initializers/defaults.
-fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page: bool) -> Classified<'a> {
+fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page: bool, source_map: Option<&str>) -> Classified<'a> {
     enum Detail<'a> {
         Prop { local: String, attr: String, default: Option<&'a Expression<'a>> },
         Macro { arg: Option<&'a Argument<'a>> },
@@ -1551,13 +1580,13 @@ fn classify<'a>(callable: Callable<'a>, scoping: &Scoping, source: &str, is_page
         infos.push(SignalInfo { id: p.id, kind: p.kind.clone(), name: p.name.clone() });
         match p.detail {
             Detail::Prop { local, attr, default } => {
-                let default = default.map(|e| inject_expr(source, scoping, &by_symbol, props_symbol, e).code);
+                let default = default.map(|e| inject_expr(source, scoping, &by_symbol, props_symbol, e, source_map).code);
                 props.push(PropDecl { local, attr, default });
             }
             Detail::Macro { arg } => {
                 let (init, init_is_fn) = match arg {
                     Some(arg) if !arg.is_spread() => {
-                        (inject_arg(source, scoping, &by_symbol, props_symbol, arg).code, is_fn_argument(arg))
+                        (inject_arg(source, scoping, &by_symbol, props_symbol, arg, source_map).code, is_fn_argument(arg))
                     }
                     _ => (String::new(), false),
                 };
@@ -1799,7 +1828,7 @@ fn shorthand_prefix(
 /// Apply `inserts` (text weaved into `source[span]`) and return the rewritten
 /// slice. Insertions at the same offset keep their collection order (prefixes are
 /// collected before the `.value` at a reference's end, so both land correctly).
-fn splice(source: &str, span: Span, mut inserts: Vec<Insert>) -> String {
+fn splice(source: &str, span: Span, mut inserts: Vec<Insert>, source_map: Option<&str>) -> String {
     let base = span.start as usize;
     let slice = &source[base..span.end as usize];
     inserts.sort_by_key(|(pos, _)| *pos);
@@ -1807,11 +1836,11 @@ fn splice(source: &str, span: Span, mut inserts: Vec<Insert>) -> String {
     let mut last = 0usize;
     for (pos, text) in inserts {
         let rel = pos as usize - base;
-        out.push_str(&slice[last..rel]);
+        out.push_str(&crate::sourcemap::copy(source_map, source, (base + last) as u32, (base + rel) as u32));
         out.push_str(&text);
         last = rel;
     }
-    out.push_str(&slice[last..]);
+    out.push_str(&crate::sourcemap::copy(source_map, source, (base + last) as u32, span.end));
     out
 }
 
@@ -1821,10 +1850,11 @@ fn inject_jsx(
     signals: &HashMap<SymbolId, SignalId>,
     props_symbol: Option<SymbolId>,
     expr: &JSXExpression,
+    source_map: Option<&str>,
 ) -> ExprInfo {
     let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_jsx_expression(expr);
-    ExprInfo { code: splice(source, expr.span(), rc.inserts), deps: rc.deps }
+    ExprInfo { code: splice(source, expr.span(), rc.inserts, source_map), deps: rc.deps }
 }
 
 fn inject_arg(
@@ -1833,10 +1863,11 @@ fn inject_arg(
     signals: &HashMap<SymbolId, SignalId>,
     props_symbol: Option<SymbolId>,
     arg: &Argument,
+    source_map: Option<&str>,
 ) -> ExprInfo {
     let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_argument(arg);
-    ExprInfo { code: splice(source, arg.span(), rc.inserts), deps: rc.deps }
+    ExprInfo { code: splice(source, arg.span(), rc.inserts, source_map), deps: rc.deps }
 }
 
 fn inject_expr(
@@ -1845,10 +1876,11 @@ fn inject_expr(
     signals: &HashMap<SymbolId, SignalId>,
     props_symbol: Option<SymbolId>,
     expr: &Expression,
+    source_map: Option<&str>,
 ) -> ExprInfo {
     let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_expression(expr);
-    ExprInfo { code: splice(source, expr.span(), rc.inserts), deps: rc.deps }
+    ExprInfo { code: splice(source, expr.span(), rc.inserts, source_map), deps: rc.deps }
 }
 
 /// Preserve a whole body statement verbatim with `.value` injected on signal
@@ -1859,10 +1891,11 @@ fn inject_stmt(
     signals: &HashMap<SymbolId, SignalId>,
     props_symbol: Option<SymbolId>,
     stmt: &Statement,
+    source_map: Option<&str>,
 ) -> String {
     let mut rc = new_collector(scoping, signals, props_symbol);
     rc.visit_statement(stmt);
-    splice(source, stmt.span(), rc.inserts)
+    splice(source, stmt.span(), rc.inserts, source_map)
 }
 
 // ── Dynamic node regions (conditional / element-valued holes) ────────────────
@@ -2030,7 +2063,7 @@ fn branch_placeholder(i: usize) -> String {
 
 /// Build the dynamic-node template: the expression source with `.value` spliced
 /// at `ends` and each embedded JSX span replaced by its slot placeholder.
-fn build_template(source: &str, span: Span, inserts: Vec<Insert>, branches: &[JsxBranch]) -> String {
+fn build_template(source: &str, span: Span, inserts: Vec<Insert>, branches: &[JsxBranch], source_map: Option<&str>) -> String {
     let base = span.start as usize;
     let slice = &source[base..span.end as usize];
     // Edits as (start, end, replacement); text insertions are zero-width.
@@ -2048,17 +2081,18 @@ fn build_template(source: &str, span: Span, inserts: Vec<Insert>, branches: &[Js
     let mut out = String::with_capacity(slice.len());
     let mut last = 0usize;
     for (s, e, text) in edits {
-        out.push_str(&slice[last..s]);
+        out.push_str(&crate::sourcemap::copy(source_map, source, (base + last) as u32, (base + s) as u32));
         out.push_str(&text);
         last = e;
     }
-    out.push_str(&slice[last..]);
+    out.push_str(&crate::sourcemap::copy(source_map, source, (base + last) as u32, span.end));
     out
 }
 
 // ── View lowering ───────────────────────────────────────────────────────────
 
 struct Lowerer<'a, 'r> {
+    source_map: Option<&'a str>,
     source: &'a str,
     scoping: &'r Scoping,
     /// Owned so list-item parameters can be scoped in/out during lowering.
@@ -2089,6 +2123,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         page_param: Option<String>,
     ) -> Self {
         Self {
+            source_map: None,
             source,
             scoping,
             signals,
@@ -2134,14 +2169,14 @@ impl<'a, 'r> Lowerer<'a, 'r> {
     }
 
     fn intern_jsx(&mut self, expr: &JSXExpression) -> ExpressionId {
-        let info = inject_jsx(self.source, self.scoping, &self.signals, self.props_symbol, expr);
+        let info = inject_jsx(self.source, self.scoping, &self.signals, self.props_symbol, expr, self.source_map);
         self.exprs.intern(info)
     }
 
     /// Intern a plain expression as a reactive dynamic hole (`.value`-injected) —
     /// used for a thunk body (`{() => expr}`).
     fn intern_expr(&mut self, expr: &Expression) -> ExpressionId {
-        let info = inject_expr(self.source, self.scoping, &self.signals, self.props_symbol, expr);
+        let info = inject_expr(self.source, self.scoping, &self.signals, self.props_symbol, expr, self.source_map);
         self.exprs.intern(info)
     }
 
@@ -2212,7 +2247,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
         inserts: Vec<Insert>,
         branches: Vec<JsxBranch<'a>>,
     ) -> (ExpressionId, Vec<ViewNode>) {
-        let template = build_template(self.source, span, inserts, &branches);
+        let template = build_template(self.source, span, inserts, &branches, self.source_map);
         let branch_nodes = branches.into_iter().map(|b| self.lower_branch(b)).collect();
         let expr = self.exprs.intern(ExprInfo { code: template, deps: Vec::new() });
         (expr, branch_nodes)
@@ -2263,6 +2298,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
                 &self.signals,
                 self.props_symbol,
                 stmt,
+                self.source_map,
             ));
         }
         let (inserts, branches) = {
@@ -2276,7 +2312,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
             t.visit_statement(stmt);
             (t.inserts, t.branches)
         };
-        let template = build_template(self.source, stmt.span(), inserts, &branches);
+        let template = build_template(self.source, stmt.span(), inserts, &branches, self.source_map);
         let nodes = branches.into_iter().map(|b| self.lower_branch(b)).collect();
         BodyItem::Jsx { template, nodes }
     }
@@ -2425,6 +2461,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
                         &self.signals,
                         self.props_symbol,
                         &s.argument,
+                        self.source_map,
                     );
                     let id = self.exprs.intern(info);
                     props.push(Prop { name: String::new(), value: PropValue::Dynamic(id) });
@@ -2503,6 +2540,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
                 &self.signals,
                 self.props_symbol,
                 &member.object,
+                self.source_map,
             );
             (self.exprs.intern(info), Vec::new())
         };
@@ -2519,7 +2557,7 @@ impl<'a, 'r> Lowerer<'a, 'r> {
             .preamble
             .iter()
             .map(|stmt| {
-                inject_stmt(self.source, self.scoping, &self.signals, self.props_symbol, stmt)
+                inject_stmt(self.source, self.scoping, &self.signals, self.props_symbol, stmt, self.source_map)
             })
             .collect();
         let item = self.lower_root(body_jsx);

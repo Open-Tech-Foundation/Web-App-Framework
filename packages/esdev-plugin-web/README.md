@@ -114,6 +114,25 @@ await closeCompilers(); // one-shot commands: release the `otfwc serve` child
 Compilation runs through one persistent `otfwc serve` child per plugin
 instance — the binary starts once no matter how many modules or builds follow.
 
+## Source maps
+
+The compiler plugin returns a version-3 `map` with its generated JavaScript.
+Esdev composes that map into the final bundle; this package does not bundle code
+or calculate final bundle positions. Copied JavaScript statements, signal
+initializers, expressions, and event/lifecycle callbacks retain their original
+JSX/TSX locations, including UTF-16 columns. Compiler-generated helpers remain
+unmapped. The maps include source content for browser debugging.
+
+Markdown currently maps to a `?otfw-jsx` virtual source containing the generated
+JSX intermediate. Original Markdown positions require a map from the Markdown
+front end and are not supplied yet.
+
+`otfwc build --sourcemap app/page.jsx` emits an inline map. The plugin uses
+`otfwc serve --sourcemap`, whose `MAP` success frame carries `{ code, map }` as
+JSON. The original four-field request and plain `serve` response stay compatible.
+Older compiler binaries can still compile, but cannot supply maps; rebuild the
+workspace compiler (`tsr build-compiler`) and restart esdev to enable them.
+
 ## API
 
 - `createOtfwPlugin({ target, mode, failOnError, onResult, quiet })` — the
@@ -151,7 +170,10 @@ instance — the binary starts once no matter how many modules or builds follow.
 
 - `resolveCompiler({ cliDir, env, resolvePackagedCompiler, findWorkspace, ensure })`
   — every input injectable, so tests never touch the disk or the network.
-- `startCompilerServer(otfwc)` → `{ compile(id, source, component, target), close }`
+- `startCompilerServer(otfwc, { sourceMap: false })` →
+  `{ compile(id, source, component, target), close }`. Compiles return strings
+  by default; `sourceMap: true` returns `{ code, map }` (`map: null` with an older
+  binary).
 - `closeCompilers()` — stop every child started in this process.
 - `compileError(payload)` — an `ERR` reply payload as an `Error` with the
   compiler's structured diagnostic (`.diag`, `.text`).

@@ -4,6 +4,13 @@
 
 ### Added
 
+- Compiler transforms now return source maps to esdev for original JSX/TSX
+  expressions, statements, and callbacks. Esdev handles final bundle composition.
+- Optional mapped compiler-service responses, preserving plain JavaScript service
+  callers and compatibility with binaries that predate source-map output.
+- Source-map tests cover CSR/SSG/hydrate, Unicode columns, inline CLI maps, and
+  esdev remapping an error in a dynamically imported bundle to the original JSX.
+
 - Default `createWebPlugin` factory combines JSX compilation and `@otfw/routes`
   for native esdev starter configs without an explicit export name.
 - `mode: "spa" | "ssg" | "ssr"` chooses CSR, server rendering, or hydration
