@@ -6,7 +6,7 @@
 //
 // Note: results only exist against a built site (`dist/`). In dev there is no index,
 // so the modal opens but reports no results — expected.
-import { onMount, router, Portal } from "@opentf/web";
+import { onCleanup, onMount, router, Portal } from "@opentf/web";
 import { createSearch } from "../search.js";
 
 const search = createSearch({ base: "/_search/" });
@@ -17,6 +17,8 @@ export default function Search() {
   let results = $state([]);
   let active = $state(0);
   let loading = $state(false);
+  let error = $state("");
+  let controller;
   const inputRef = $ref();
 
   let timer;
@@ -24,6 +26,9 @@ export default function Search() {
 
   async function runSearch(q) {
     const mine = ++token;
+    controller?.abort();
+    controller = new AbortController();
+    error = "";
     if (!q.trim()) {
       results = [];
       loading = false;
@@ -31,12 +36,15 @@ export default function Search() {
     }
     loading = true;
     try {
-      const found = await search.query(q, { limit: 10 });
+      const found = await search.query(q, { limit: 10, signal: controller.signal });
       if (mine !== token) return; // a newer query superseded this one
-      results = found.results.map((result) => ({ ...result, excerpt: result.text.slice(0, 180) }));
+      results = found.results;
       active = 0;
     } catch (e) {
-      if (mine === token) results = [];
+      if (mine === token && e?.name !== "AbortError") {
+        results = [];
+        error = "Search is unavailable. Please try again.";
+      }
     } finally {
       if (mine === token) loading = false;
     }
@@ -57,6 +65,11 @@ export default function Search() {
     focusInput();
   };
   const close = () => {
+    ++token;
+    controller?.abort();
+    clearTimeout(timer);
+    loading = false;
+    error = "";
     open = false;
     query = "";
     results = [];
@@ -95,6 +108,12 @@ export default function Search() {
       window.removeEventListener("keydown", onKey);
       if (window.__otfwOpenSearch === openModal) delete window.__otfwOpenSearch;
     };
+  });
+
+  onCleanup(() => {
+    ++token;
+    clearTimeout(timer);
+    controller?.abort();
   });
 
   // Portal to <body>: the navbar (our render parent) sets `backdrop-filter`, which
@@ -142,7 +161,8 @@ export default function Search() {
             </li>
           ))}
         </ul>
-        {query.trim() && !loading && results.length === 0 ? (
+        {error ? <div class="otfw-search-empty" role="status">{error}</div> : null}
+        {query.trim() && !loading && !error && results.length === 0 ? (
           <div class="otfw-search-empty">No results for “{query}”.</div>
         ) : null}
         <div class="otfw-search-hint">
