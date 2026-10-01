@@ -35,7 +35,7 @@ run = "esdev start --port=3005"
 # --- check --------------------------------------------------------------------
 
 [tasks.typecheck]
-run = "tsc --noEmit"
+run = "esdev typecheck"
 
 # The compiler binary, which several suites need on disk: `hydrate.e2e` shells
 # to it directly, and the project's otfwc plugin (`esdev.json`) compiles `.jsx`

@@ -9,21 +9,13 @@
   "private": true,
   "packageManager": "pnpm@11.21.0",
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.33.1",
     "@opentf/esdev-plugin-web": "workspace:*",
     "@opentf/esrun-types": "^0.4.0",
     "@opentf/std": "^0.19.0",
     "@opentf/web-docs": "workspace:*",
     "@opentf/web-test": "workspace:*",
-    "@rollup/plugin-babel": "^7.0.0",
-    "@tailwindcss/vite": "^4.2.2",
-    "jiti": "^2.6.1",
-    "linkedom": "^0.18.12",
-    "rolldown": "1.0.0-rc.17",
     "tailwindcss": "^4.2.2",
-    "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vite": "^8.0.10",
     "wrangler": "^4.84.1",
     "zod": "^4.3.6"
   }

@@ -105,7 +105,44 @@ test("a starter config loads the default factory and builds browser and server r
     await write(join(scratch, "app/page.jsx"), source);
     await write(join(scratch, "entry.js"), 'import { mountApp } from "@opentf/web"; import { pages } from "@otfw/routes"; mountApp({ pages, target: document.getElementById("app") });');
     await write(join(scratch, "index.html"), '<html><body><div id="app"></div><script type="module" src="./entry.js"></script></body></html>');
-    await write(join(scratch, "server.js"), 'import { pages } from "@otfw/routes"; const { default: Home } = await pages["/app/page.jsx"](); console.log(Home());');
+    await mkdir(join(scratch, "app/api/hello"), { recursive: true });
+    await write(join(scratch, "app/api/hello/route.js"), 'export function GET(request, context) { return Response.json({ message: "API", source: context.locals.source }); }');
+    await write(join(scratch, "app/loader.js"), 'export default function({ query, request, locals }) { return { message: query.message || "Loader", source: locals.source, liveRequest: request instanceof Request }; }');
+    await write(join(scratch, "app/_middleware.js"), 'export default async function(request, context, next) { context.locals.source = "middleware"; const response = await next(); response.headers.set("x-otf-middleware", "yes"); return response; }');
+    await write(join(scratch, "server.js"), `
+      import { pages } from "@otfw/routes";
+      import { createApiHandler, createLoaderRegistry, createMiddleware } from "@opentf/web/server";
+      import { serve } from "runtime:http";
+      import * as endpoint from "./app/api/hello/route.js";
+      import * as loader from "./app/loader.js";
+      import * as middlewareModule from "./app/_middleware.js";
+      const { default: Home } = await pages["/app/page.jsx"]();
+      console.log(Home());
+      const api = createApiHandler({ "/app/api/hello/route.js": endpoint });
+      const loaders = createLoaderRegistry({ "/app/loader.js": loader });
+      const middleware = createMiddleware({ "/app/_middleware.js": middlewareModule });
+      const handler = request => middleware.run(request, async (req, context) => {
+        const apiResponse = await api(req, undefined, undefined, { locals: context.locals });
+        if (apiResponse) return apiResponse;
+        const dataResponse = await loaders.handle(req, { locals: context.locals });
+        if (dataResponse) return dataResponse;
+        const url = new URL(req.url);
+        const data = await loaders.load(loaders.match(url.pathname), { request: req, query: Object.fromEntries(url.searchParams), locals: context.locals });
+        return new Response(Home() + JSON.stringify(data), { headers: { "content-type": "text/html" } });
+      });
+      const server = serve({ hostname: "127.0.0.1", port: 0 }, handler);
+      try {
+        const origin = "http://127.0.0.1:" + (await server.addr).port;
+        const apiResponse = await fetch(origin + "/api/hello");
+        const apiData = await apiResponse.json();
+        if (apiData.source !== "middleware" || apiResponse.headers.get("x-otf-middleware") !== "yes") throw Error("API middleware failed");
+        const data = await (await fetch(origin + "/__data.json?message=Query")).json();
+        if (data.message !== "Query" || data.source !== "middleware" || !data.liveRequest) throw Error("loader context failed");
+        const html = await (await fetch(origin + "/?message=SSR")).text();
+        if (!html.includes("Hello") || !html.includes('"message":"SSR"')) throw Error("SSR request failed");
+        console.log("native fullstack HTTP verified");
+      } finally { await server.stop(); }
+    `);
     await write(join(scratch, "esdev.json"), JSON.stringify({
       plugins: [{ module: "@opentf/esdev-plugin-web", options: { mode: "ssr" } }],
       build: { targets: {
@@ -125,6 +162,7 @@ test("a starter config loads the default factory and builds browser and server r
     }).output();
     if (!rendered.success) throw new Error(new TextDecoder().decode(rendered.stderr));
     expect(new TextDecoder().decode(rendered.stdout)).toContain("Hello<!--/--></p>");
+    expect(new TextDecoder().decode(rendered.stdout)).toContain("native fullstack HTTP verified");
 
     // Verify the composed bundle map using esdev's independent stack consumer,
     // including the dynamically imported route chunk's external .map file.

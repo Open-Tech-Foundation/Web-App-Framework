@@ -84,9 +84,9 @@ export default function Benchmarks() {
       <h3 className={H3}>What is and is not fair here</h3>
       <p className={P}>
         The asymmetry between a framework and a view library is real, but it lands{" "}
-        <em>outside</em> the measured window. The OTF Web case is built with the full{" "}
+        <em>outside</em> the measured window. The published OTF Web case was measured with the full{" "}
         <code>otfw build</code> toolchain and boots the router and mount layer; the other
-        three are minimal hand-rolled bundles with no router. That cost is paid once at
+        three are minimal hand-rolled bundles with no router. The current OTF Web runner uses esdev; these published measurements retain their original toolchain. That cost is paid once at
         startup and never enters a timed sample, so it neither inflates nor deflates the
         per-operation medians — but it does mean OTF Web carries weight the others do not.
         For the same reason, a bundle-size column would <em>not</em> belong in this table.

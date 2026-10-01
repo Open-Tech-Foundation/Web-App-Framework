@@ -120,7 +120,7 @@ tsr site           # Documentation development server
 tsr build          # Build the playground
 tsr site-build     # Build and prerender the documentation site
 tsr test           # Rust and esdev tests, including forms and i18n
-tsr test-e2e       # Browser tests (Chrome; override with CHROME_BIN)
+tsr test-e2e       # Browser tests (Chrome and matching ChromeDriver)
 ```
 
 Component sources compile on import through `@opentf/esdev-plugin-web` in
@@ -135,6 +135,9 @@ The configs follow the official [project build configuration](https://esrun.open
 [Tailwind v4](https://esrun.opentechf.org/esdev/build/tailwind) is compiled by esdev directly from the CSS import.
 
 Full guides, API reference, and a live playground at **[https://web.opentechf.org/docs](https://web.opentechf.org/docs)**.
+
+Current upstream starter, output-hook and release requirements are tracked in
+[the esdev migration status](docs/ESDEV_MIGRATION.md).
 
 ## License
 

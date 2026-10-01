@@ -44,7 +44,11 @@ jobs:
           echo "$HOME/.tsr/bin" >> "$GITHUB_PATH"
       - run: pnpm install --frozen-lockfile
       # What `tsr test` runs lives in tasks.toml (Rust + esdev suites).
+      - name: Typecheck
+        run: tsr typecheck
       - run: tsr test
+      - name: Release site build with prerendering and search
+        run: tsr site-build
 
   # Real-browser tier: esdev builds component harnesses and drives headless Chrome over
   # CDP (docs/HYDRATION.md §5). These probe engine-fidelity paths (custom-element upgrade timing, the

@@ -905,12 +905,12 @@ export default async function loader({ params, query, request, locale, locals })
 }
 ```
 
-- **Signature**: default export (or named `loader`). `params` follows the `[param]`/`[...rest]` conventions (percent-decoded, catch-alls as arrays); `query` is the parsed query string (empty at SSG time); `request` is the live `Request` under `otfw serve`/dev and `undefined` at SSG prerender; `locale` is the active locale; `locals` is the per-request bag stamped by `_middleware.*` (Section 11.5) — empty at SSG prerender, where no middleware runs.
-- **Where it runs**: at build time under `otfw build --ssg`, per request under `otfw serve`, and on demand under `otfw dev` — never in the browser.
+- **Signature**: default export (or named `loader`). `params` follows the `[param]`/`[...rest]` conventions (percent-decoded, catch-alls as arrays); `query` is the parsed query string (empty at SSG time); `request` is the live `Request` when supplied by a request server and `undefined` at SSG prerender; `locale` is the active locale; `locals` is the per-request bag stamped by `_middleware.*` (Section 11.5) — empty at SSG prerender, where no middleware runs.
+- **Where it runs**: at build time in an `esdev build` prerender script, or per request through an app-provided server entry — never in the browser.
 - **Reading the data**: the page reads the reactive **`router.data`**, like `router.params`. It is `undefined` when the route has no loader (or the loader 404'd).
-- **The wire format**: first paint inlines the data as `<script type="application/json" id="__otfw_data">`; SPA navigation fetches `GET <path>/__data.json` (the same URL `--ssg` writes as a literal file next to each page's `index.html`, so static hosts serve it with no server). `__data.json` is a **reserved filename**.
+- **The wire format**: first paint inlines the data as `<script type="application/json" id="__otfw_data">`; SPA navigation fetches `GET <path>/__data.json` (the same URL prerendering writes as a literal file next to each page's `index.html`, so static hosts serve it with no server). `__data.json` is a **reserved filename**.
 - **Errors**: `notFound()` (from `@opentf/web/server`) renders the 404 page with HTTP 404 (and 404s the data endpoint); any other throw is a 500. The client treats a failed/404 data fetch as `data === undefined` and still commits the navigation.
-- **Constraints (MVP)**: page-level only (no layout loaders); loaders do not run API `_middleware.*`; redirects and streaming are future work; a query-dependent loader needs `otfw serve` (static `__data.json` files are rendered with an empty query). A `loader.*` without a sibling `page.*` is a build error.
+- **Constraints (MVP)**: page-level only (no layout loaders); loaders do not run API `_middleware.*`; redirects and streaming are future work; a query-dependent loader needs a request server (static `__data.json` files are rendered with an empty query). A `loader.*` without a sibling `page.*` is a build error.
 - **`getStaticPaths`** stays on the page module; a dynamic route with a loader still needs it to prerender.
 
 ---
@@ -920,25 +920,28 @@ export default async function loader({ params, query, request, locale, locals })
 OTF Web is designed for high-performance static rendering, allowing the entire app to be pre-rendered into HTML at build time.
 
 ### 9.1 Build-time Rendering
-The framework uses `linkedom` to provide a lightweight server-side DOM environment.
-- **Shredding**: During SSG, the framework instantiates Web Components in the server DOM and manually triggers their `connectedCallback` to populate the HTML.
-- **Data Reflection**: Properties set on components during SSG are reflected as attributes in the final HTML to ensure consistency.
+The compiler's SSG backend emits string renderers using `@opentf/web/server`.
+No server-side DOM is required. A project prerender script runs after the client
+bundle during `esdev build`, composes pages and layouts, and writes their HTML
+into the staged output. This repository uses `website/ssg.js` and the stable
+`@opentf/web-cli/ssg` library entry.
 
 ### 9.2 Hydration
-- **data-ssg="true"**: The root element is marked with this attribute if it was pre-rendered.
-- **Client-side Pickup**: On the client, the framework detects `data-ssg` and skips initial rendering of static content.
-- **Signal Hydration**: The framework identifies static content and skips the initial execution of effects that would otherwise re-render the pre-populated DOM.
+The generated HTML marks the app root with `data-otfw-hydrate`. The client uses
+the compiler's hydrate backend to adopt existing nodes and attach bindings.
+Components can carry `data-h` IDs; a serialized island-props payload restores
+rich object props without reflecting them as HTML attributes.
 
 ### 9.3 Macro Behavior in SSG
-- **`$effect()`**: The `$effect` macro is **never** executed during SSG to prevent client-only logic (like `fetch` or `localStorage`) from breaking the build.
-- **`effect()` (Internal)**: To populate the DOM initially during the server build, `core/signals.js` intercepts internal `effect()` calls. During SSG, it executes the provided function *once* synchronously to trigger DOM bindings, and then returns a no-op dispose function, bypassing the reactivity engine.
+Server rendering evaluates the values required for initial HTML. It does not
+run client effects or mount/cleanup lifecycle callbacks. The hydrate backend
+activates client bindings and lifecycle after adoption.
 
-### 9.4 Partial Hydration Strategy
-OTF Web employs a **Selective Activation** strategy:
-- **Marker**: Components that were SSG'd are marked with `data-ssg="true"`.
-- **Skip Static**: On the client, the `connectedCallback` detects the marker. It skips the `_createDOM()` phase because the nodes already exist.
-- **Hydrate Reactivity**: The component still runs its `_activate()` phase to register effects, but it checks if the current DOM state matches the signal's initial value to avoid unnecessary layout shifts.
-- **Nested Hydration**: `data-ssg` is applied recursively. If a parent is SSG'd, its children are assumed to be SSG'd unless they explicitly opt-out.
+### 9.4 Hydration Limits
+Supported output adopts existing DOM. Unsupported compiler shapes fall back to
+client rendering and are reported as hydrate diagnostics. Original Markdown
+source mapping remains pending; see [docs/HYDRATION.md](docs/HYDRATION.md) and
+[docs/ESDEV_MIGRATION.md](docs/ESDEV_MIGRATION.md) for current limits.
 
 ---
 

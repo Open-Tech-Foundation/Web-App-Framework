@@ -21,7 +21,7 @@
 * [ ] Server-Side Rendering (SSR) / Static Site Generation (SSG).
 
 ## API Routes — see [docs/API.md](API.md)
-* [x] Phase A: file-based `app/api/**` `Request→Response` handlers, method exports, `[param]`/`[...rest]`, nested `_middleware`, `otfw dev`/`serve`/`build` (`dist/server/api.js`), Node/Fetch adapters.
+* [x] Phase A: file-based `app/api/**` `Request→Response` handlers, method exports, `[param]`/`[...rest]`, nested `_middleware`, runtime handlers and API-bundle emission (`dist/server/api.js`); native esdev fullstack orchestration remains to be verified, Node/Fetch adapters.
 * [ ] Phase B (compiler): typed server functions / loaders + actions via the Server IR, splitting the client/server boundary.
 
 ## Data Fetching — see [docs/DATA.md](DATA.md)
@@ -34,4 +34,6 @@
 
 ## Diagnostics & source maps
 * [x] Located compile diagnostics: every compiler failure (syntax, `$state` mutation, callback `ref`, no-component) carries `file:line:column` and a code frame, rendered in the terminal and pushed to the dev overlay as structured fields.
-* [ ] Source maps from `otfwc`: the IR carries no source spans through codegen, so a *runtime* stack frame can only be attributed to the module it came from, not to the original line. Threading spans IR → codegen would let dev chunks ship a map (and `otfw build` an optional one), making browser stacks and breakpoints land in the `.jsx`/`.mdx` source.
+* [x] JSX/TSX source maps from `otfwc`: original statements, expressions and callbacks carry mappings; the esdev plugin returns them for bundler composition. Compiler-generated helpers remain unmapped.
+* [ ] Original Markdown/MDX source maps: current maps target the generated `?otfw-jsx` intermediate. The Markdown front end still needs to supply the preceding mapping.
+* [ ] Native fullstack orchestration and esdev starter verification. See [ESDEV_MIGRATION.md](ESDEV_MIGRATION.md).

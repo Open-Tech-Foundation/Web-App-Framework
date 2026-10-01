@@ -10,7 +10,7 @@
     "src"
   ],
   "engines": {
-    "esdev": ">=0.5.0"
+    "esdev": ">=0.14.0"
   },
   "dependencies": {
     "@opentf/esdev-plugin-web": "workspace:*"

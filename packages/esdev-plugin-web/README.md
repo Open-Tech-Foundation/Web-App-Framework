@@ -47,7 +47,7 @@ For SSG/SSR, configure the default factory with options:
   "build": {
     "targets": {
       "web": { "entry": "index.html", "outdir": "dist" },
-      "server": { "entry": "server.js", "out": "dist/server.js" }
+      "server": { "entry": "server.js", "out": "dist/server.js", "platform": "server" }
     }
   }
 }
@@ -177,3 +177,6 @@ workspace compiler (`tsr build-compiler`) and restart esdev to enable them.
 - `closeCompilers()` — stop every child started in this process.
 - `compileError(payload)` — an `ERR` reply payload as an `Error` with the
   compiler's structured diagnostic (`.diag`, `.text`).
+
+Current starter compatibility and release requirements are tracked in
+[ESDEV_MIGRATION.md](../../docs/ESDEV_MIGRATION.md).

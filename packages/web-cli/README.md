@@ -1,59 +1,51 @@
 # @opentf/web-cli
 
-The **OTF Web** dev toolchain — the `otfw` command. A [Rolldown](https://rolldown.rs)-driven
-CSR dev server, a production build, and static pre-rendering (SSG), with the IR
-compiler ([`@opentf/web-compiler`](https://github.com/Open-Tech-Foundation/Web-App-Framework/tree/main/packages/web-compiler))
-running as a transform plugin. Runs on
-[ES-Runtime](https://esrun.opentechf.org/) through `esdev`.
+The SSG library used by OTF Web projects during `esdev build`. The package retains
+its historical name, but the `otfw` executable and its dev/build/serve commands
+have been retired.
 
 ## Installation
 
-```bash
-pnpm add -D @opentf/web-cli
-```
-
-Install ES-Runtime before running `otfw`; its installer provides the `esdev`
-interpreter named by the CLI. The package depends on `@opentf/web-compiler` (the
-prebuilt compiler binary) and expects
-`@opentf/web` in your project. The fastest way to a working setup is
-[`esdev create my-app`](https://esrun.opentechf.org/esdev/create)
-(`@opentf/create-web` is deprecated).
-
-## Commands
-
-The project root is the current working directory — its `index.html` plus a
-file-based `app/` route tree (`page.jsx`, `layout.jsx`, `404.jsx`).
+For projects with a prerender script:
 
 ```bash
-otfw dev            # start the dev server (watch + live reload)
-otfw build          # production bundle in dist/ (hashed, code-split, minified)
-otfw build --ssg    # build, then pre-render each static route to HTML
-otfw serve          # build, then server-render each route per request (SSR)
+pnpm add -D @opentf/web-cli @opentf/esdev-plugin-web
 ```
 
-- **`dev`** — bundles the route graph through Rolldown with the compiler as a
-  transform, serves it, and live-reloads on change. Picks port 3000, scanning
-  upward if it's taken; an explicit `--port` fails fast if busy.
+Apps also depend on `@opentf/web`. Install esdev 0.14 or newer and configure the
+OTF compiler/routes plugin in `esdev.json`.
 
-  It watches `app/`, `public/`, `index.html`, `otfw.config.*`, and any module your
-  pages import from outside `app/` — including a workspace package linked into the
-  project. Routes, loaders and config picked up live; only a rebuilt compiler binary
-  needs a restart. A failed build shows an overlay with the file, line, column and a
-  code frame, and clears itself as soon as the build succeeds.
-- **`build`** — emits `dist/` from your `index.html`, compiling and hashing local
-  stylesheets (TailwindCSS v4 supported out of the box).
-- **`build --ssg`** — additionally pre-renders each route with `getStaticPaths`
-  into static HTML.
-- **`serve`** — builds `dist/`, then runs a per-request SSR server: assets are served
-  from `dist/` and every navigation is server-rendered through the same path SSG uses.
-  Picks port 3000 (scanning upward), or `--port` for an explicit one. Phase 1: the page
-  becomes interactive via the client bundle (CSR mount); hydration is a later phase.
+## Development and builds
 
-`OTFWC_BIN` overrides the compiler binary location. Published installs under
-`node_modules` use the packaged compiler, even when the app lives inside a Cargo
-workspace; this repository's own source checkout may build and use
-`target/debug/otfwc` for compiler development.
+```bash
+esdev start
+esdev build --minify
+esdev preview
+```
+
+The project owns its HTML entry and build targets. For static rendering, add a
+second target with a prerender entry and `"then": "run"`, following this repo's
+[`esdev.json`](../../esdev.json) and [`website/ssg.js`](../../website/ssg.js).
+The script checks for release staging, prerenders pages, and runs optional search,
+feed and LLM-file generation before esdev publishes the staged output.
+
+## SSG exports
+
+Import helpers from `@opentf/web-cli/ssg`. This stable entry exposes route/loader
+collection, compiler resolution, `runPrerender`, API/loader bundle emission,
+docs build helpers and build reporting. It does not supply a dev server or an
+SSR request server. A fullstack app must provide its own server entry and adapter.
+
+`OTFWC_BIN` overrides the compiler binary. `OTF_SEARCH_BIN` overrides the search
+indexer. Published installations use the binaries shipped by `@opentf/web-compiler`;
+this repository can use its Cargo debug builds.
+
+## Starter migration
+
+Templates are embedded in esdev. The installed esdev 0.14 OTF app templates still
+emit retired `otfw` scripts; see the [migration status](../../docs/ESDEV_MIGRATION.md)
+for the upstream changes required before new generated projects can run.
 
 ## License
 
-MIT © [Open Tech Foundation](https://github.com/Open-Tech-Foundation)
+MIT © [Open Tech Foundation](https://github.com/Open-Tech-Foundation).
