@@ -1,18 +1,105 @@
 adapters = ["npm"]
+skip_publish = ["@opentf/create-web"]
 tag_format = "{name}@{version}"
 provider = "github"
+default_branch = "main"
 changelog_strategy = "curated"
 changelog_scope = "package"
 github_release_notes = "auto-generate"
 
 [hooks]
 
+[publish.ignore_paths]
+"@opentf/web-docs" = [
+    "**/*.md",
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/test/**",
+    "**/tests/**",
+]
+"@opentf/esdev-plugin-web" = [
+    "**/*.md",
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/test/**",
+    "**/tests/**",
+]
+"@opentf/web-cli" = [
+    "**/*.md",
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/test/**",
+    "**/tests/**",
+]
+"@opentf/web-i18n" = [
+    "**/*.md",
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/test/**",
+    "**/tests/**",
+]
+"@opentf/web" = [
+    "**/*.md",
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/test/**",
+    "**/tests/**",
+]
+"@opentf/web-test" = [
+    "**/*.md",
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/test/**",
+    "**/tests/**",
+]
+"@opentf/web-form" = [
+    "**/*.md",
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/test/**",
+    "**/tests/**",
+]
+
+[[package]]
+name = "@opentf/esdev-plugin-web"
+adapter = "npm"
+mode = "publish"
+matrix = false
+command = ""
+artifacts = ""
+manifest = "packages/esdev-plugin-web/package.json"
+
+[[package]]
+name = "@opentf/web"
+adapter = "npm"
+mode = "publish"
+matrix = false
+command = ""
+artifacts = ""
+manifest = "packages/web/package.json"
+
+[[package]]
+name = "@opentf/web-cli"
+adapter = "npm"
+mode = "publish"
+matrix = false
+command = ""
+artifacts = ""
+manifest = "packages/web-cli/package.json"
+
 [[package]]
 name = "@opentf/web-compiler"
 adapter = "npm"
 mode = "publish"
 matrix = true
-command = "cargo build --release --target {triple}"
+command = "cargo build --release -p otfw_cli --bins --target {triple}"
 artifacts = "target/{triple}/release/{bin}{ext}"
 bin_name = "otfwc"
 compress = "brotli"
@@ -46,3 +133,39 @@ triple = "x86_64-pc-windows-msvc"
 runner = "windows-latest"
 stage_as = "win32-x64"
 ext = ".exe"
+
+[[package]]
+name = "@opentf/web-docs"
+adapter = "npm"
+mode = "publish"
+matrix = false
+command = ""
+artifacts = ""
+manifest = "packages/web-docs/package.json"
+
+[[package]]
+name = "@opentf/web-form"
+adapter = "npm"
+mode = "publish"
+matrix = false
+command = ""
+artifacts = ""
+manifest = "packages/web-form/package.json"
+
+[[package]]
+name = "@opentf/web-i18n"
+adapter = "npm"
+mode = "publish"
+matrix = false
+command = ""
+artifacts = ""
+manifest = "packages/web-i18n/package.json"
+
+[[package]]
+name = "@opentf/web-test"
+adapter = "npm"
+mode = "publish"
+matrix = false
+command = ""
+artifacts = ""
+manifest = "packages/web-test/package.json"

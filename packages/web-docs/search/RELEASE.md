@@ -11,7 +11,14 @@ For each target already listed in the root `release.toml`, build both binaries:
 cargo build --release -p otfw_cli --bins --target <triple>
 ```
 
-CI currently stages only `otfwc`. Extend that artifact collection to include:
+`otf-release` stages `otfwc`. The temporary
+`scripts/stage-search-binary.mjs` step then compresses and stages `otf-search`
+inside the same `.artifacts/@opentf/web-compiler/bin/<stage_as>/` tree before
+upload. It requires the compiler archive and search executable to exist; a
+missing binary fails that matrix leg. The publish job merges all platform trees
+into the compiler package.
+
+The search archives are:
 
 | Target | Source executable | Package archive |
 | --- | --- | --- |
@@ -20,7 +27,10 @@ CI currently stages only `otfwc`. Extend that artifact collection to include:
 | `x86_64-apple-darwin` | `target/<triple>/release/otf-search` | `bin/darwin-x64/otf-search.br` |
 | `x86_64-pc-windows-msvc` | `target/<triple>/release/otf-search.exe` | `bin/win32-x64/otf-search.exe.br` |
 
-Keep the existing `otfwc[.exe].br` artifacts too. Use the same Brotli compression
+Keep the existing `otfwc[.exe].br` artifacts too. Workflow regeneration currently
+overwrites the manual staging step: restore it until the release tool supports
+multiple binaries in one package. Keep pnpm setup reading `packageManager` from
+package.json rather than requesting a conflicting `latest` version. Use the same Brotli compression
 as the compiler. `otfSearchPath()` lazily extracts the search archive, sets the
 executable permission on Unix, and supports `OTF_SEARCH_BIN` for source builds.
 A missing executable fails enabled search builds with an actionable error.
@@ -41,16 +51,14 @@ The package allowlist includes `search.js`; Pagefind is no longer a dependency.
 
 ## Output-hook integration
 
-Until esdev's output-hook contract lands, the existing SSG script calls
-`indexWithOtfSearch({ siteDir, otfwc })` after prerendering. It operates on staged
-release output. Development has no generated index; use a release preview to test.
+The configured `siteOutputPlugin` from `@opentf/web-cli/ssg` uses esdev 0.15's
+release-only `finish` hook. It calls `indexWithOtfSearch({ siteDir, otfwc })` after
+the prerender target finishes, using the staged browser output directory.
+Indexing failures prevent publication and preserve the previous deployment.
 
-The future `docsSearchPlugin` belongs in `@opentf/web-docs/build`. It must run once
-for the completed prerendered site, before staged output is published. The hook
-needs the actual staged output directory and explicit ordering after SSG. It must
-skip ordinary dev/server compilation, register its generated assets with the
-host's publication mechanism, and propagate failures. Do not infer this phase
-from the compiler's per-module transform or metadata-only bundle hook.
+Development runs neither the hook nor the prerender step by default. Use a release
+preview to test search. A selected browser-only build skips indexing when the
+configured prerender target was not built.
 
 ## Deployment caching
 

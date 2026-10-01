@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: write  # create tags and GitHub Releases
-  id-token: write
 
 concurrency:
   group: release
@@ -24,7 +23,9 @@ jobs:
           fetch-depth: 0
       - name: Install otf-release
         shell: bash
-        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.sh | bash
+        env:
+          OTF_RELEASE_VERSION: v0.38.0
+        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/v0.38.0/install.sh | bash
       - id: check
         run: |
           echo "should_release=$(otf-release check --exclude-package @opentf/web-compiler)" >> "$GITHUB_OUTPUT"
@@ -40,7 +41,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install otf-release
         shell: bash
-        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.sh | bash
+        env:
+          OTF_RELEASE_VERSION: v0.38.0
+        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/v0.38.0/install.sh | bash
       - id: set
         run: echo "matrix=$(otf-release matrix --package @opentf/web-compiler)" >> "$GITHUB_OUTPUT"
 
@@ -56,9 +59,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.triple }}
+      # Read the pinned packageManager version from package.json.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11.21.0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -66,17 +68,48 @@ jobs:
       - name: Install otf-release
         if: runner.os != 'Windows'
         shell: bash
-        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.sh | bash
+        env:
+          OTF_RELEASE_VERSION: v0.38.0
+        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/v0.38.0/install.sh | bash
       - name: Install otf-release
         if: runner.os == 'Windows'
         shell: pwsh
-        run: irm https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.ps1 | iex
+        env:
+          OTF_RELEASE_VERSION: v0.38.0
+        run: irm https://raw.githubusercontent.com/Open-Tech-Foundation/release/v0.38.0/install.ps1 | iex
+      - name: Install esdev for binary staging
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          ESDEV_VERSION: 0.15.0
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/ES-Runtime/main/install.sh | bash -s -- --only=esdev
+          echo "$HOME/.es-runtime/bin" >> "$GITHUB_PATH"
+      - name: Install esdev for binary staging
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ESDEV_VERSION: 0.15.0
+          ES_RUNTIME_ONLY: esdev
+        run: |
+          irm https://raw.githubusercontent.com/Open-Tech-Foundation/ES-Runtime/main/install.ps1 | iex
+          Join-Path $HOME '.es-runtime/bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Build @opentf/web-compiler
         run: otf-release build --package @opentf/web-compiler --target ${{ matrix.name }}/${{ matrix.arch }}
+      # Temporary: otf-release stages only one binary per npm matrix package.
+      # Keep this step when regenerating the workflow until multi-binary support lands.
+      - name: Stage search indexer alongside compiler
+        shell: bash
+        env:
+          SEARCH_TARGET_TRIPLE: ${{ matrix.triple }}
+          SEARCH_STAGE_AS: ${{ matrix.stage_as }}
+          SEARCH_BINARY_EXT: ${{ matrix.ext }}
+        run: esdev scripts/stage-search-binary.mjs "$SEARCH_TARGET_TRIPLE" "$SEARCH_STAGE_AS" "$SEARCH_BINARY_EXT"
       - uses: actions/upload-artifact@v4
         with:
           name: opentf-web-compiler-${{ matrix.name }}-${{ matrix.arch }}
           path: .artifacts/@opentf/web-compiler
+          if-no-files-found: error
 
   publish-opentf-web-compiler:
     needs: [check-release, build-opentf-web-compiler]
@@ -86,9 +119,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # Read the pinned packageManager version from package.json.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11.21.0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -101,7 +133,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install otf-release
         shell: bash
-        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.sh | bash
+        env:
+          OTF_RELEASE_VERSION: v0.38.0
+        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/v0.38.0/install.sh | bash
       - name: Publish
         run: otf-release publish --package @opentf/web-compiler --artifacts-dir .artifacts
         env:
@@ -120,9 +154,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # Read the pinned packageManager version from package.json.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11.21.0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -130,10 +163,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install otf-release
         shell: bash
-        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/main/install.sh | bash
+        env:
+          OTF_RELEASE_VERSION: v0.38.0
+        run: curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/release/v0.38.0/install.sh | bash
       - name: Publish
         run: otf-release publish --exclude-package @opentf/web-compiler
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
