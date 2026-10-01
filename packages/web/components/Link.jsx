@@ -12,7 +12,9 @@
 import { localizePath, navigate, shouldInterceptNav } from "../runtime/router.js";
 
 export default function Link(props) {
-  const { href, class: className, reload, children } = props;
+  const href = props.href;
+  const className = props.class;
+  const reload = props.reload;
   // Keep the link in the active locale (no-op when i18n is off). Locale is a
   // per-load constant under URL-prefix routing, so resolving it once here is
   // correct — a navigation that changes the locale rebuilds this component.
@@ -46,7 +48,7 @@ export default function Link(props) {
       aria-current={ariaCurrent}
       onclick={onclick}
     >
-      {children}
+      {props.children}
     </a>
   );
 }

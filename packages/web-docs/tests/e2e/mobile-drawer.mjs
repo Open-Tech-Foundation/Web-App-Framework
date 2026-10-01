@@ -161,6 +161,7 @@ const PROBE = `(() => {
     navNavDisplay: navNav ? cs(navNav).display : null,
     drawerLinksDisplay: drawerLinks ? cs(drawerLinks).display : null,
     drawerLinkCount: drawerLinks ? drawerLinks.querySelectorAll('.otfw-navbar-link').length : 0,
+    drawerLinkLabels: drawerLinks ? Array.from(drawerLinks.querySelectorAll('a'), a => a.textContent.trim()) : [],
   };
 })()`;
 
@@ -189,6 +190,7 @@ async function run() {
   assert(s.navNavDisplay === "none", "navbar top-level links are hidden on mobile");
   assert(s.drawerLinksDisplay !== "none", "drawer surfaces the top-level links on mobile");
   assert(s.drawerLinkCount === 3, "drawer shows all three top-level links");
+  assert(JSON.stringify(s.drawerLinkLabels) === JSON.stringify(["Home", "Docs", "API"]), "drawer anchors contain their slotted labels");
   assert(s.asideOpen === false, "drawer starts closed");
   assert(s.asideRect.right <= 1, "drawer is off-canvas to the left");
   assert(s.asideVisibility === "hidden", "drawer is visibility:hidden while closed");
