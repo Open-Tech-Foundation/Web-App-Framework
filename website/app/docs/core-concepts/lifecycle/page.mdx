@@ -102,6 +102,22 @@ export default function Sidebar() {
 }
 ```
 
+Use the same hook to respect a user's reduced-motion preference. Stop decorative
+animations when the preference is enabled, and respond if it changes while the page
+is open:
+
+```jsx
+export default function AnimatedPanel() {
+  let reducedMotion = $state(false);
+
+  onMediaQuery("(prefers-reduced-motion: reduce)", (matches) => {
+    reducedMotion = matches;
+  });
+
+  return <div class={reducedMotion ? "panel" : "panel panel-animated"}>Content</div>;
+}
+```
+
 The query expression is evaluated once at mount — a signal read inside it is a
 one-time snapshot, not reactive.
 

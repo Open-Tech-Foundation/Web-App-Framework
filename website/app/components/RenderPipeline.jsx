@@ -9,7 +9,7 @@
 // "Play update" flashes both stacks top to bottom — the path one state change
 // travels. Flashes are WAAPI fired imperatively; SSG renders the static stacks.
 
-import { onMount } from "@opentf/web";
+import { onCleanup, onMediaQuery } from "@opentf/web";
 
 const OTF = {
   id: "otf",
@@ -100,11 +100,24 @@ export default function RenderPipeline() {
   // Auto-tour: advance through every framework, playing each update flow.
   // Any manual interaction (tab or Play) stops the tour — the user owns it after.
   let tour = null;
+  let tourStart = null;
   const stopTour = () => {
-    if (tour) {
+    if (tourStart !== null) {
+      clearTimeout(tourStart);
+      tourStart = null;
+    }
+    if (tour !== null) {
       clearInterval(tour);
       tour = null;
     }
+  };
+  const stopAnimations = () => {
+    stopTour();
+    rootRef?.querySelectorAll(".pipe-chip").forEach((el) => {
+      if (typeof el.getAnimations === "function") {
+        el.getAnimations().forEach((animation) => animation.cancel());
+      }
+    });
   };
 
   const current = () => FRAMEWORKS.find((f) => f.id === selected) ?? FRAMEWORKS[0];
@@ -141,16 +154,20 @@ export default function RenderPipeline() {
     play();
   };
 
-  onMount(() => {
+  onMediaQuery("(prefers-reduced-motion: reduce)", (reduced) => {
     stopTour();
-    const reduced =
-      typeof matchMedia === "function" &&
-      matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduced) return;
+    if (reduced) {
+      stopAnimations();
+      return;
+    }
     // Opening pass on React, then tour every framework in turn.
-    setTimeout(play, 800);
+    tourStart = setTimeout(() => {
+      tourStart = null;
+      play();
+    }, 800);
     tour = setInterval(tourStep, 3400);
   });
+  onCleanup(stopTour);
 
   return (
     <div ref={rootRef}>
