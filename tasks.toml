@@ -39,7 +39,8 @@ run = "tsc --noEmit"
 
 # The compiler binary, which several suites need on disk: `hydrate.e2e` shells
 # to it directly, and the project's otfwc plugin (`esdev.json`) compiles `.jsx`
-# on load through it. The e2e drive the real toolchain.
+# on load through it. esdev.test.json selects CSR for test imports.
+# The e2e drive the real toolchain.
 [tasks.build-compiler]
 run = "cargo build"
 
@@ -50,7 +51,7 @@ run = "cargo test"
 # Runtime-native tests: the SSG lib, scaffolder, and framework's pure core/server paths.
 [tasks.test-esdev]
 deps = ["build-compiler"]
-run = "esdev test packages/web-cli/tests packages/create-web/tests packages/web/core/reactive.test.js packages/web/core/signals.test.js packages/web/esdev-tests/clsx.test.js packages/web/server/api.test.js packages/web/server/cookies.test.js packages/web/server/head.test.js packages/web/server/loader.test.js packages/web/server/middleware.test.js packages/web/server/render.test.js packages/web/server/ssg-runtime.test.js packages/web/server/adapters/node.test.js"
+run = "esdev test --config=esdev.test.json packages/web-cli/tests packages/create-web/tests packages/web/core/reactive.test.js packages/web/core/signals.test.js packages/web/esdev-tests/clsx.test.js packages/web/server/api.test.js packages/web/server/cookies.test.js packages/web/server/head.test.js packages/web/server/loader.test.js packages/web/server/middleware.test.js packages/web/server/render.test.js packages/web/server/ssg-runtime.test.js packages/web/server/adapters/node.test.js"
 
 # DOM suites: these ran under happy-dom's ambient `document` before; under esdev
 # the `--dom` realm provides it instead (esdev's URL is http://localhost/, so the
@@ -58,38 +59,37 @@ run = "esdev test packages/web-cli/tests packages/create-web/tests packages/web/
 # needs it too — without a `document` the resource thinks it is server-side.
 [tasks.test-esdev-dom]
 deps = ["build-compiler"]
-run = "esdev test --dom packages/web/core/errors.test.js packages/web/runtime/lifecycle.test.js packages/web/runtime/resource.test.js packages/web/runtime/clsx.test.js packages/web/runtime/dom.test.js packages/web/runtime/router.test.js packages/web/runtime/router-data.test.js packages/web/runtime/router-hydrate.test.js packages/web/runtime/router-nav.test.js packages/web/runtime/hydrate.e2e.test.js"
+run = "esdev test --config=esdev.test.json --dom packages/web/core/errors.test.js packages/web/runtime/lifecycle.test.js packages/web/runtime/resource.test.js packages/web/runtime/clsx.test.js packages/web/runtime/dom.test.js packages/web/runtime/router.test.js packages/web/runtime/router-data.test.js packages/web/runtime/router-hydrate.test.js packages/web/runtime/router-nav.test.js packages/web/runtime/hydrate.e2e.test.js"
 
 # @opentf/esdev-plugin-web: the otfwc compiler service + runtime:build plugin.
 # Binary-free (the resolver is fully injectable), so no compiler build needed.
 [tasks.test-esdev-plugin]
-run = "esdev test packages/esdev-plugin-web/tests"
+run = "esdev test --config=esdev.test.json packages/esdev-plugin-web/tests"
 
 # @opentf/create-web is deprecated (use `esdev create`); its tests stay until removal.
 [tasks.test-create-web]
-run = "esdev test tests/scaffold.test.js"
-dir = "packages/create-web"
+run = "esdev test --config=esdev.test.json packages/create-web/tests/scaffold.test.js"
 
 [tasks.test-web-docs]
-run = "esdev test packages/web-docs/tests/feed.test.js packages/web-docs/tests/llms.test.js packages/web-docs/tests/search.test.js packages/web-docs/tests/tokenizer.test.js"
+run = "esdev test --config=esdev.test.json packages/web-docs/tests/feed.test.js packages/web-docs/tests/llms.test.js packages/web-docs/tests/search.test.js packages/web-docs/tests/tokenizer.test.js"
 
-# Mounted-component suites (Sidebar drawer / collapse-all): component sources
-# compile on load through the project's otfwc plugin; mounted by tag.
+# esdev 0.14 applies the test config's OTF plugin to unbundled JSX imports.
+# Tests use CSR independently of the website's hydrate build configuration.
 [tasks.test-web-docs-dom]
 deps = ["build-compiler"]
-run = "esdev test --dom packages/web-docs/tests/MobileDrawer.test.js packages/web-docs/tests/SidebarCollapseAll.test.js"
+run = "esdev test --config=esdev.test.json --dom packages/web-docs/tests/MobileDrawer.test.js packages/web-docs/tests/SidebarCollapseAll.test.js"
 
 [tasks.test-web-form]
 deps = ["build-compiler"]
-run = "esdev test --dom packages/web-form/tests"
+run = "esdev test --config=esdev.test.json --dom packages/web-form/tests"
 
 [tasks.test-web-i18n]
 deps = ["build-compiler"]
-run = "esdev test --dom packages/web-i18n/i18n.test.js"
+run = "esdev test --config=esdev.test.json --dom packages/web-i18n/i18n.test.js"
 
 # Independent processes — cargo and the ES-Runtime — so they overlap.
 [tasks.test]
-deps = ["test-rust", "test-esdev", "test-esdev-dom", "test-esdev-plugin", "test-web-docs", "test-web-docs-dom"]
+deps = ["test-rust", "test-esdev", "test-esdev-dom", "test-esdev-plugin", "test-web-docs", "test-web-docs-dom", "test-web-form", "test-web-i18n"]
 parallel = true
 
 # Real-browser tier (docs/HYDRATION.md §5) — framework-behavior suites (docs shell

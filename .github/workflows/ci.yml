@@ -18,9 +18,8 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
-      # Component fixtures are precompiled through `otfwc` ahead of the test run
-      # (tasks.toml `compile-test-fixtures`), so the Rust toolchain must be
-      # present; the `test` task's `cargo build` produces the binary.
+      # esdev.test.json loads the OTF plugin to compile JSX imports. The Rust
+      # toolchain is required; the `test` task's cargo build produces the binary.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v4
@@ -47,9 +46,8 @@ jobs:
       # What `tsr test` runs lives in tasks.toml (Rust + esdev suites).
       - run: tsr test
 
-  # Real-browser tier: the e2e suites that drive `otfw serve`/`build` + headless Chrome over
-  # CDP (docs/HYDRATION.md §5) — including the hi-fi runtime unit suite (runtime-browser.mjs)
-  # moved off the `--dom` tier. These probe engine-fidelity paths (custom-element upgrade timing, the
+  # Real-browser tier: esdev builds component harnesses and drives headless Chrome over
+  # CDP (docs/HYDRATION.md §5). These probe engine-fidelity paths (custom-element upgrade timing, the
   # real event loop, portal relocation) that the fast esdev tier can't. Separate job so it
   # only pays the browser cost once and runs in parallel with the fast suite.
   e2e:
@@ -90,7 +88,7 @@ jobs:
           # green — so print the version first: a bad path fails the step loudly here.
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
           OTFWC_BIN: ${{ github.workspace }}/target/debug/otfwc
-        # `tsr test-e2e` runs the web-cli and web-docs suites. Each declares the
+        # `tsr test-e2e` runs the web-docs suites. Each declares the
         # `build-compiler` dep that produces OTFWC_BIN, de-duplicated to a single cargo build.
         run: |
           echo "Chrome: $CHROME_BIN"

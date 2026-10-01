@@ -3,21 +3,29 @@
     {
       "module": "@opentf/esdev-plugin-web",
       "export": "createOtfwPlugin",
-      "options": { "target": "csr" }
+      "options": {
+        "target": "csr"
+      }
+    },
+    {
+      "module": "@opentf/esdev-plugin-web",
+      "export": "createOtfwRoutes",
+      "options": {
+        "appDir": "benchmarks/otfw/app"
+      }
     }
   ],
-  "start": { "serve": "benchmarks/otfw/dist" },
-  "targets": {
-    "web": {
-      "entry": "benchmarks/otfw/index.html",
-      "outdir": "benchmarks/otfw/dist",
-      "plugins": [
-        {
-          "module": "@opentf/esdev-plugin-web",
-          "export": "createOtfwRoutes",
-          "options": { "appDir": "benchmarks/otfw/app" }
-        }
-      ]
+  "build": {
+    "targets": {
+      "web": {
+        "entry": "benchmarks/otfw/index.html",
+        "outdir": "benchmarks/otfw/dist"
+      }
+    }
+  },
+  "dev": {
+    "server": {
+      "port": 3010
     }
   }
 }

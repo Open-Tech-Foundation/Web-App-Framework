@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "runtime:test";
 import { setRouteState } from "@opentf/web";
 
-// Component source, compiled on load by the project's otfwc plugin.
+// Component source, compiled on import by esdev.test.json's otfwc plugin.
 import Sidebar from "../components/Sidebar.jsx";
 import { collapseAll } from "../components/sidebar-collapse.js";
 

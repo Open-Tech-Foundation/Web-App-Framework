@@ -3,21 +3,29 @@
     {
       "module": "@opentf/esdev-plugin-web",
       "export": "createOtfwPlugin",
-      "options": { "target": "csr" }
+      "options": {
+        "target": "csr"
+      }
+    },
+    {
+      "module": "@opentf/esdev-plugin-web",
+      "export": "createOtfwRoutes",
+      "options": {
+        "appDir": "playground/app"
+      }
     }
   ],
-  "start": { "serve": "playground/dist" },
-  "targets": {
-    "web": {
-      "entry": "playground/index.html",
-      "outdir": "playground/dist",
-      "plugins": [
-        {
-          "module": "@opentf/esdev-plugin-web",
-          "export": "createOtfwRoutes",
-          "options": { "appDir": "playground/app" }
-        }
-      ]
+  "build": {
+    "targets": {
+      "web": {
+        "entry": "playground/index.html",
+        "outdir": "playground/dist"
+      }
+    }
+  },
+  "dev": {
+    "server": {
+      "port": 3005
     }
   }
 }

@@ -1,0 +1,15 @@
+{
+  "plugins": [
+    {
+      "module": "@opentf/esdev-plugin-web",
+      "export": "createOtfwPlugin",
+      "options": {
+        "target": "csr",
+        "failOnError": true
+      }
+    }
+  ],
+  "test": {
+    "timeout": 30000
+  }
+}

@@ -81,7 +81,7 @@ The runtime is a rendering-layer comparison against the React, Solid, and
 Svelte 5 libraries. It's an honest one — no single operation is fastest, and the
 create-row ops are ties at this timing resolution. See the
 [benchmarks page](https://web.opentechf.org/benchmarks) for the full tables,
-methodology, and caveats. Reproduce locally with `bun run bench all`.
+methodology, and caveats. Reproduce locally with `tsr bench -- all`.
 
 ## Ecosystem
 
@@ -106,6 +106,33 @@ methodology, and caveats. Reproduce locally with `bun run bench all`.
 | `benchmarks/` | The js-framework-benchmark harness and aggregation scripts. |
 
 ## Documentation
+
+For repository development, install ES-Runtime (`esdev` 0.14 or newer), the Rust
+toolchain, pnpm, and [tsr](https://tsr.opentechf.org/), then run `pnpm install`
+at the root. Run workspace tasks from the root so pnpm's package links stay
+inside esdev's project root.
+The tasks in [`tasks.toml`](tasks.toml) are the shared local and CI entry points:
+
+```bash
+tsr --list          # Discover available tasks
+tsr dev            # Playground development server
+tsr site           # Documentation development server
+tsr build          # Build the playground
+tsr site-build     # Build and prerender the documentation site
+tsr test           # Rust and esdev tests, including forms and i18n
+tsr test-e2e       # Browser tests (Chrome; override with CHROME_BIN)
+```
+
+Component sources compile on import through `@opentf/esdev-plugin-web` in
+esdev's DOM realm: `tsr test-web-docs-dom`, `tsr test-web-form`, and
+`tsr test-web-i18n` run them individually. Each test file runs in a separate
+process, with a 30-second timeout and strict compiler errors configured in
+[`esdev.test.json`](esdev.test.json). The comparison benchmark toolchains still require Bun.
+
+The configs follow the official [project build configuration](https://esrun.opentechf.org/esdev/build/project):
+`build.targets` describes outputs, `dev` controls development, and top-level
+`plugins` also apply to [tests](https://esrun.opentechf.org/esdev/test/configuration).
+[Tailwind v4](https://esrun.opentechf.org/esdev/build/tailwind) is compiled by esdev directly from the CSS import.
 
 Full guides, API reference, and a live playground at **[https://web.opentechf.org/docs](https://web.opentechf.org/docs)**.
 

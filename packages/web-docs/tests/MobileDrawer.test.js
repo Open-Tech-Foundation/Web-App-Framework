@@ -5,7 +5,7 @@
 // state, the `is-open` classes, the body-scroll lock, the root flags, the
 // cross-component event bridge, and teardown.
 //
-// The components are otfwc-compiled on import (the project plugin), so we mount
+// esdev.test.json compiles imports with the otfwc plugin, so we mount
 // them the way the runtime does — by their registered custom-element tag —
 // rather than through a JSX harness (which would itself be compiled into a
 // component).
@@ -13,7 +13,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "runtime:test";
 import { router, setRouteState } from "@opentf/web";
 
-// Component sources, compiled on load by the project's otfwc plugin.
+// Component sources, compiled on import by the test config's otfwc plugin.
 import Sidebar from "../components/Sidebar.jsx";
 import SidebarToggle from "../components/SidebarToggle.jsx";
 
@@ -157,8 +157,9 @@ describe("mobile sidebar drawer", () => {
 
     const drawerLinks = aside().querySelector(".otfw-drawer-links");
     expect(drawerLinks).not.toBeNull();
-    const labels = Array.from(drawerLinks.querySelectorAll("a"), (a) => a.textContent.trim());
-    expect(labels).toEqual(["Home", "Docs", "API"]);
+    const links = Array.from(drawerLinks.querySelectorAll("a"));
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/", "/docs", "/api"]);
+    expect(links.map((a) => a.textContent.trim())).toEqual(["Home", "Docs", "API"]);
   });
 
   test("burger opens the drawer, locks scroll, and syncs aria-expanded", async () => {

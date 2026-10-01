@@ -53,9 +53,13 @@ instance — the binary starts once no matter how many modules or builds follow.
   ```
 
   Synchronous by design (the compiler resolves lazily on the first
-  transformed module), so it works however the host invokes it. Under
-  `esdev test` / `esdev <file>` only `transform` runs — which is all this
-  plugin has — so `.jsx` sources load directly with no precompile step.
+  transformed module). Declare it in the top-level `plugins` array of
+  `esdev.json`, alongside `build.targets` and `dev`. In esdev 0.14 or newer,
+  `resolve`, `load`, and `transform` also run for `esdev test`, `esdev test --dom`,
+  and `esdev <file>`, so JSX imports compile directly without prebundling.
+  Use `--config=esdev.test.json` with `target: "csr"` and `failOnError: true`
+  when tests need a different rendering mode from the app's build.
+  See the official [plugin configuration](https://esrun.opentechf.org/esdev/build/project#where-plugins-run).
 
 - `createOtfwRoutes({ appDir, exclude })` — the Next.js-style file
   conventions as a plugin: serves a virtual `@otfw/routes` module
@@ -69,8 +73,8 @@ instance — the binary starts once no matter how many modules or builds follow.
   mountApp({ pages, guard, target: document.getElementById("app") });
   ```
 
-  `resolve` + `load` only, so this half runs under `esdev start` /
-  `esdev build`, not under `esdev test` (tests hand-write the map).
+  `resolve` + `load` only. It runs under builds and unbundled commands alike
+  when configured; tests that hand-write a route map can omit it.
 
 - `resolveCompiler({ cliDir, env, resolvePackagedCompiler, findWorkspace, ensure })`
   — every input injectable, so tests never touch the disk or the network.
