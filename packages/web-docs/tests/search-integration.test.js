@@ -28,6 +28,7 @@ test('the Rust writer and JS reader agree on content, metadata, and deployment g
     const result = await old.query('route.params');
     expect(result.partial).toBe(false);
     expect(result.results[0].title).toBe('Guide & Reference');
+    expect(result.results[0].url).toBe('/#routing');
     expect(result.results[0].meta.breadcrumb).toBe('Docs & Guides');
     expect(result.results[0].text.includes('route.params')).toBe(true);
     expect((await old.query('IgnoreSentinel')).total).toBe(0);

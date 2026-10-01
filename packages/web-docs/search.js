@@ -70,10 +70,10 @@ function wordGroups(text) {
 export function tokenize(text) {
   return [...new Set(wordGroups(text).flat())];
 }
-function excerptFor(text, terms) {
+function excerptFor(text, terms, position) {
   const lower = text.toLowerCase();
-  let start = text.length;
-  for (const term of terms) {
+  let start = position ?? text.length;
+  for (const term of position === undefined ? terms : []) {
     const at = lower.indexOf(term);
     if (at >= 0) start = Math.min(start, at);
   }
@@ -88,6 +88,29 @@ function excerptFor(text, terms) {
     while ((at = excerptLower.indexOf(term, at)) >= 0) { highlights.push([at, at + term.length]); at += term.length; }
   }
   return { excerpt, highlights };
+}
+// Posting offsets already account for Unicode normalization and identifier variants.
+// Pick the section containing the strongest matches, then use that same location
+// for the link and excerpt so a result card describes where it will take you.
+function sectionMatch(fragment, groups, fieldWeights) {
+  const anchors = (fragment.anchors || []).filter((anchor) => anchor.id).sort((a, b) => a.pos - b.pos);
+  const sections = new Map();
+  groups.forEach((positions, group) => {
+    for (const [position, field] of positions) {
+      const anchor = anchors.findLast((anchor) => anchor.pos <= position);
+      const key = anchor?.id || "";
+      if (!sections.has(key)) sections.set(key, { anchor, weights: new Map(), position, weight: 0 });
+      const section = sections.get(key), weight = fieldWeights[field];
+      section.weights.set(group, Math.max(section.weights.get(group) || 0, weight));
+      if (weight > section.weight || (weight === section.weight && position < section.position)) {
+        section.position = position;
+        section.weight = weight;
+      }
+    }
+  });
+  return [...sections.values()].sort((a, b) => b.weights.size - a.weights.size ||
+    [...b.weights.values()].reduce((sum, weight) => sum + weight, 0) - [...a.weights.values()].reduce((sum, weight) => sum + weight, 0) ||
+    a.position - b.position)[0];
 }
 /**
  * Create a reusable client for one static `_search/` directory.
@@ -158,7 +181,7 @@ export function createSearch({ base = "/_search/" } = {}) {
       const postings = new Map();
       for (const shard of await Promise.all([...selected].map(loadChunk))) for (const [term, list] of shard) postings.set(term, list);
       throwIfAborted(signal);
-      const scores = new Map(), matches = new Map(), locations = new Map();
+      const scores = new Map(), matches = new Map(), locations = new Map(), matchedPositions = new Map();
       const totalDocs = state.lengths.length, avgdl = state.manifest.avgdl || 1;
       const fieldWeights = [8, 5, 4, 2.5, 3, 2, 1, 0.5];
       groups.forEach((group, groupIndex) => {
@@ -181,6 +204,8 @@ export function createSearch({ base = "/_search/" } = {}) {
           matches.set(doc, (matches.get(doc) || 0) + 1);
           const perDoc = locations.get(doc) || [];
           perDoc.push(positions.map(([position]) => position)); locations.set(doc, perDoc);
+          const perDocMatches = matchedPositions.get(doc) || [];
+          perDocMatches.push(positions); matchedPositions.set(doc, perDocMatches);
         }
       });
       for (const [doc, groups] of locations) if (groups.length >= 2) {
@@ -196,7 +221,9 @@ export function createSearch({ base = "/_search/" } = {}) {
         const fragment = await (await fetchIndex(`${state.manifest.fragmentsDir || "f"}/${doc}.json`, { signal })).json();
         const lower = fragment.text.toLowerCase();
         const terms = groups.map((group) => group.find((term) => lower.includes(term))).filter(Boolean);
-        return { ...fragment, ...excerptFor(fragment.text, terms), score };
+        const match = sectionMatch(fragment, matchedPositions.get(doc) || [], fieldWeights);
+        const url = match?.anchor ? `${fragment.url.split("#")[0]}#${encodeURIComponent(match.anchor.id)}` : fragment.url;
+        return { ...fragment, url, ...excerptFor(fragment.text, terms, match?.position), score };
       }));
       throwIfAborted(signal);
       return { results, total: ranked.length, partial };

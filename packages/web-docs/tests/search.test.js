@@ -123,7 +123,7 @@ test("prefix expansion crosses every matching shard", async () => {
 
 test("uses immutable fragment generations and produces match-centered excerpts", async () => {
   const text = `${"Use unrelated introduction. ".repeat(30)}useState details at the end.`;
-  await withIndex({ chunks: [{ first: "usestate", file: "t/a.bin", bytes: termsChunk([["usestate", [[0, 500]]]]) }],
+  await withIndex({ chunks: [{ first: "usestate", file: "t/a.bin", bytes: termsChunk([["usestate", [[0, text.indexOf("useState")]]]]) }],
     manifest: { fragmentsDir: "f/generation-a" }, fragments: [{ url: "/guide/", title: "Guide", text }] }, async (search, seen) => {
     const result = await search.query("useState");
     expect(result.results[0].excerpt.includes("useState details")).toBe(true);
@@ -155,5 +155,37 @@ test("failed requests can be retried", async () => {
 test("a valid empty corpus returns no results", async () => {
   await withIndex({ chunks: [], fragments: [] }, async (search) => {
     expect((await search.query("routing")).total).toBe(0);
+  });
+});
+
+
+test("links to the strongest matching section and centers its excerpt there", async () => {
+  const text = `Guide useState overview ${"Introduction filler. ".repeat(20)}State hook useState details`;
+  const heading = text.indexOf("State hook"), match = text.lastIndexOf("useState");
+  // Two occurrences: generic prose and the dedicated section's code example.
+  const bytes = new Uint8Array([...new TextEncoder().encode("OTFI"), 1, 1, 0, 8, ...new TextEncoder().encode("usestate"), 1, 0,
+    0, 2, ...varint(text.indexOf("useState") * 8 + 6), ...varint((match - text.indexOf("useState")) * 8 + 4)]);
+  await withIndex({ chunks: [{ first: "usestate", file: "t/a.bin", bytes }], fragments: [{
+    url: "/guide/?lang=en#old", text, anchors: [{ id: "overview", pos: 0 }, { id: "state hook", pos: heading }],
+  }] }, async (search) => {
+    const result = (await search.query("useState")).results[0];
+    expect(result.url).toBe("/guide/?lang=en#state%20hook");
+    expect(result.excerpt.includes("useState details")).toBe(true);
+  });
+});
+
+test("uses posting offsets for folded Unicode and prefix section matches", async () => {
+  const text = "Guide 😀 Café details";
+  await withIndex({ chunks: [{ first: "cafe", file: "t/a.bin", bytes: termsChunk([["cafe", [[0, text.indexOf("Café")]]]]) }],
+    fragments: [{ url: "/guide/", text, anchors: [{ id: "café", pos: text.indexOf("Café") }] }] }, async (search) => {
+    expect((await search.query("caf")).results[0].url).toBe("/guide/#caf%C3%A9");
+    expect((await search.query("cafe")).results[0].url).toBe("/guide/#caf%C3%A9");
+  });
+});
+
+test("keeps the page URL for matches before the first section", async () => {
+  await withIndex({ chunks: [{ first: "guide", file: "t/a.bin", bytes: termsChunk([["guide", [[0, 0]]]]) }],
+    fragments: [{ url: "/guide/", text: "Guide Routing", anchors: [{ id: "routing", pos: 6 }] }] }, async (search) => {
+    expect((await search.query("guide")).results[0].url).toBe("/guide/");
   });
 });
