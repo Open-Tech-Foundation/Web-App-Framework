@@ -1,5 +1,5 @@
 import { expect, test } from "../../web-cli/tests/harness.js";
-import { createSearch } from "../search.js";
+import { createSearch, excerptParts } from "../search.js";
 
 function varint(value) { const out = []; while (value >= 128) { out.push((value & 127) | 128); value >>= 7; } return [...out, value]; }
 function binaryChunk(term, doc = 0) { return new Uint8Array([...new TextEncoder().encode("OTFI"), 1, ...varint(1), 0, ...varint(term.length), ...new TextEncoder().encode(term), 1, 0, doc, 1, 0]); }
@@ -187,5 +187,32 @@ test("keeps the page URL for matches before the first section", async () => {
   await withIndex({ chunks: [{ first: "guide", file: "t/a.bin", bytes: termsChunk([["guide", [[0, 0]]]]) }],
     fragments: [{ url: "/guide/", text: "Guide Routing", anchors: [{ id: "routing", pos: 6 }] }] }, async (search) => {
     expect((await search.query("guide")).results[0].url).toBe("/guide/");
+  });
+});
+
+
+test("previews prose without code dumps and reports the matching section", async () => {
+  const code = '<div class="card">HTML example</div>';
+  const text = `Styling Use class for styling. ${code} CSS Modules Files are scoped.`;
+  const from = text.indexOf(code), to = from + code.length;
+  await withIndex({ chunks: [{ first: "class", file: "t/a.bin", bytes: termsChunk([["class", [[0, text.indexOf("class")]]]]) }],
+    fragments: [{ url: "/styling/", text, excerptOmit: [[from, to]], anchors: [{ id: "styling", text: "Styling", pos: 0 }] }] }, async (search) => {
+    const result = (await search.query("class")).results[0];
+    expect(result.section).toBe("Styling");
+    expect(result.excerpt.includes('<div')).toBe(false);
+    expect(result.excerpt.includes('Use class')).toBe(true);
+    expect(result.highlights.map(([from, to]) => result.excerpt.slice(from, to))).toEqual(["class"]);
+  });
+});
+
+test("highlight ranges preserve original accents, identifier spelling, and safe text", async () => {
+  const text = "😀 Café useState <img onerror=evil()>";
+  await withIndex({ chunks: [{ first: "cafe", file: "t/a.bin", bytes: termsChunk([["cafe", [[0, text.indexOf("Café")]]], ["usestate", [[0, text.indexOf("useState")]]]]) }],
+    fragments: [{ url: "/guide/", text }] }, async (search) => {
+    const result = (await search.query("cafe useSt")).results[0];
+    const parts = excerptParts(result.excerpt, result.highlights);
+    expect(parts.filter((part) => part.match).map((part) => part.text)).toEqual(["Café", "useState"]);
+    expect(parts.map((part) => part.text).join('')).toBe(result.excerpt);
+    expect(parts.some((part) => !part.match && part.text.includes('<img'))).toBe(true);
   });
 });

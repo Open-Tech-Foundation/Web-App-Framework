@@ -50,3 +50,9 @@ outside the indexed body. Pagefind attribute aliases remain readable for migrati
 
 The current format includes titles, headings, code, body text, metadata and heading
 anchors. Filter indexes are not implemented; the query API does not advertise filters.
+
+Fragments optionally include `excerptOmit`: pairs of start/end UTF-16 offsets
+for block code. Code remains searchable; readers omit these ranges from prose
+previews. Code toolbar labels (`otfw-code-head`) are excluded from indexing.
+Search results expose the selected heading as `section`, and highlight ranges
+refer to the cleaned excerpt. Render these as text nodes and `<mark>` elements.

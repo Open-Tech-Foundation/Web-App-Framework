@@ -216,7 +216,7 @@ fn build(site: &Path, out: &Path, root: &str) -> Result<usize, String> {
         }
         fragments.push(
             json!({"url": relative_url(site, path), "title": title, "text": document.text,
-            "meta": document.meta, "anchors": document.anchors}),
+            "meta": document.meta, "anchors": document.anchors, "excerptOmit": document.excerpt_omit}),
         );
     }
     fs::create_dir_all(out).map_err(|e| e.to_string())?;
@@ -403,6 +403,7 @@ struct Document {
     title: String,
     meta: BTreeMap<String, String>,
     anchors: Vec<Value>,
+    excerpt_omit: Vec<(usize, usize)>,
     terms: Vec<(String, u32, u8)>,
     length: usize,
 }
@@ -557,6 +558,10 @@ fn walk(
         return;
     }
     let name = el.value().name();
+    // Code toolbar labels are UI chrome, not documentation content.
+    if el.value().classes().any(|class| class == "otfw-code-head") {
+        return;
+    }
     let field = match name {
         "h1" => 0,
         "h2" => 1,
@@ -623,6 +628,13 @@ fn walk(
             );
         }
     }
+    // Keep examples searchable, but omit block code from prose result previews.
+    if name == "pre" {
+        doc.excerpt_omit.push((
+            doc.text[..start].encode_utf16().count(),
+            doc.text.encode_utf16().count(),
+        ));
+    }
     if block {
         space(&mut doc.text);
     }
@@ -643,6 +655,18 @@ fn relative_url(site: &Path, path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn markup_and_code_toolbars_are_not_indexed_and_examples_have_preview_omissions() {
+        let html = "<main data-otf-search-body><h2 id='styling'>Styling</h2><p>😀 Use <code>class</code> as usual.</p><div class='otfw-code-head'>JSX Copy</div><pre><code>&lt;div class=\"card\"&gt;example&lt;/div&gt;</code></pre><p data-unwanted='AttributeNoise'>Scoped styles.</p></main>";
+        let doc = extract_document(&Html::parse_document(html), "main", true).unwrap().unwrap();
+        assert!(!doc.text.contains("Copy"));
+        assert!(!doc.text.contains("AttributeNoise"));
+        assert!(doc.terms.iter().any(|(term, _, _)| term == "card"));
+        let utf16 = doc.text.encode_utf16().collect::<Vec<_>>();
+        let (start, end) = doc.excerpt_omit[0];
+        assert_eq!(String::from_utf16(&utf16[start..end]).unwrap(), "<div class=\"card\">example</div>");
+    }
 
     #[test]
     fn tokenizer_matches_phase_one_vectors() {

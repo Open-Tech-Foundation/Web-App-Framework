@@ -1,6 +1,6 @@
 // DOM-free reader for the OTF Search binary format.
 /** @typedef {{ limit?: number, signal?: AbortSignal }} SearchOptions */
-/** @typedef {{ url: string, title: string, text: string, excerpt: string, highlights: number[][], meta: Record<string, string>, anchors: Array<{ id: string, text: string, pos: number }>, score: number }} SearchResult */
+/** @typedef {{ url: string, title: string, text: string, section: string, excerpt: string, highlights: number[][], meta: Record<string, string>, anchors: Array<{ id: string, text: string, pos: number }>, score: number }} SearchResult */
 const encoder = new TextEncoder();
 // Rust's String ordering is UTF-8 byte ordering, not locale collation.
 function compare(a, b) {
@@ -70,24 +70,55 @@ function wordGroups(text) {
 export function tokenize(text) {
   return [...new Set(wordGroups(text).flat())];
 }
-function excerptFor(text, terms, position) {
-  const lower = text.toLowerCase();
-  let start = position ?? text.length;
-  for (const term of position === undefined ? terms : []) {
-    const at = lower.indexOf(term);
-    if (at >= 0) start = Math.min(start, at);
+// Build a prose-only preview within the selected section. Original offsets remain
+// untouched in the index; omission ranges are mapped only for card rendering.
+function excerptFor(fragment, groups, match) {
+  const { text, anchors = [], excerptOmit = [] } = fragment;
+  const sectionStart = match?.anchor?.pos ?? 0;
+  const sectionEnd = anchors.filter((anchor) => anchor.pos > sectionStart).sort((a, b) => a.pos - b.pos)[0]?.pos ?? text.length;
+  let source = sectionStart, clean = "", position = 0;
+  const target = match?.position ?? sectionStart;
+  const append = (end) => {
+    if (target >= source) position = clean.length + Math.min(target - source, end - source);
+    clean += text.slice(source, end);
+    source = end;
+  };
+  for (const [from, to] of [...excerptOmit].sort((a, b) => a[0] - b[0])) {
+    if (to <= source || from >= sectionEnd) continue;
+    append(Math.max(source, from));
+    source = Math.min(to, sectionEnd);
   }
-  if (start === text.length) return { excerpt: text.slice(0, 180), highlights: [] };
-  start = Math.max(0, text.lastIndexOf(" ", Math.max(0, start - 70)) + 1);
-  let end = Math.min(text.length, start + 220);
-  const boundary = text.indexOf(" ", end);
+  append(sectionEnd);
+  position = clean.slice(0, position).replace(/\s+/g, " ").length;
+  clean = clean.replace(/\s+/g, " ");
+  const start = Math.max(0, clean.lastIndexOf(" ", Math.max(0, position - 70)) + 1);
+  let end = Math.min(clean.length, start + 220);
+  const boundary = clean.indexOf(" ", end);
   if (boundary >= 0) end = boundary;
-  const excerpt = text.slice(start, end), excerptLower = excerpt.toLowerCase(), highlights = [];
-  for (const term of terms) {
-    let at = 0;
-    while ((at = excerptLower.indexOf(term, at)) >= 0) { highlights.push([at, at + term.length]); at += term.length; }
+  const excerpt = clean.slice(start, end).trim(), highlights = [];
+  // Highlight complete visible words; normalization handles accents and identifiers
+  // without using normalized string offsets against the original display text.
+  for (const word of excerpt.matchAll(/[\p{L}\p{N}\p{M}_.-]+/gu)) {
+    const variants = wordGroups(word[0])[0] || [];
+    if (groups.some((group) => variants.some((variant) => variant.startsWith(group[0]) ||
+      variant.startsWith(group[0].normalize("NFD").replace(/\p{M}/gu, ""))))) {
+      highlights.push([word.index, word.index + word[0].length]);
+    }
   }
   return { excerpt, highlights };
+}
+// Render highlighted excerpts as text nodes and <mark>, never injected HTML.
+export function excerptParts(excerpt, highlights = []) {
+  const parts = [];
+  let position = 0;
+  for (const [start, end] of [...highlights].sort((a, b) => a[0] - b[0])) {
+    if (start < position || end <= start || end > excerpt.length) continue;
+    if (start > position) parts.push({ text: excerpt.slice(position, start), match: false });
+    parts.push({ text: excerpt.slice(start, end), match: true });
+    position = end;
+  }
+  if (position < excerpt.length) parts.push({ text: excerpt.slice(position), match: false });
+  return parts;
 }
 // Posting offsets already account for Unicode normalization and identifier variants.
 // Pick the section containing the strongest matches, then use that same location
@@ -219,11 +250,9 @@ export function createSearch({ base = "/_search/" } = {}) {
       throwIfAborted(signal);
       const results = await Promise.all(top.map(async ([doc, score]) => {
         const fragment = await (await fetchIndex(`${state.manifest.fragmentsDir || "f"}/${doc}.json`, { signal })).json();
-        const lower = fragment.text.toLowerCase();
-        const terms = groups.map((group) => group.find((term) => lower.includes(term))).filter(Boolean);
         const match = sectionMatch(fragment, matchedPositions.get(doc) || [], fieldWeights);
         const url = match?.anchor ? `${fragment.url.split("#")[0]}#${encodeURIComponent(match.anchor.id)}` : fragment.url;
-        return { ...fragment, url, ...excerptFor(fragment.text, terms, match?.position), score };
+        return { ...fragment, url, section: match?.anchor?.text || "", ...excerptFor(fragment, groups, match), score };
       }));
       throwIfAborted(signal);
       return { results, total: ranked.length, partial };

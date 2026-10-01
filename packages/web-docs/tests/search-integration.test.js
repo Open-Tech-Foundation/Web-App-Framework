@@ -21,7 +21,7 @@ test('the Rust writer and JS reader agree on content, metadata, and deployment g
     catch { return new Response(null, { status: 404 }); }
   };
   try {
-    await write(join(site, 'index.html'), '<main data-otf-search-body><h1>Guide &amp; Reference</h1><p>😀 café</p><h2 id="routing">Routing</h2><p>route.<em>params</em> Alpha</p><span data-otf-search-ignore>IgnoreSentinel</span></main><p>OutsideSentinel</p><nav data-otf-search-meta="breadcrumb">Docs &amp; Guides</nav>');
+    await write(join(site, 'index.html'), '<main data-otf-search-body><h1>Guide &amp; Reference</h1><p>😀 café</p><h2 id="routing">Routing</h2><p>route.<em>params</em> Alpha</p><div class="otfw-code-head">JSX Copy</div><pre><code>&lt;div class="UniqueExampleToken"&gt;sample&lt;/div&gt;</code></pre><span data-otf-search-ignore>IgnoreSentinel</span></main><p>OutsideSentinel</p><nav data-otf-search-meta="breadcrumb">Docs &amp; Guides</nav>');
     await write(join(site, '404.html'), '<main>Not searchable</main>');
     await build();
     const old = createSearch();
@@ -31,6 +31,11 @@ test('the Rust writer and JS reader agree on content, metadata, and deployment g
     expect(result.results[0].url).toBe('/#routing');
     expect(result.results[0].meta.breadcrumb).toBe('Docs & Guides');
     expect(result.results[0].text.includes('route.params')).toBe(true);
+    expect(result.results[0].section).toBe('Routing');
+    expect(result.results[0].excerpt.includes('<div')).toBe(false);
+    expect(result.results[0].text.includes('JSX Copy')).toBe(false);
+    expect((await old.query('UniqueExampleToken')).total).toBe(1);
+    expect((await old.query('Copy')).total).toBe(0);
     expect((await old.query('IgnoreSentinel')).total).toBe(0);
     expect((await old.query('OutsideSentinel')).total).toBe(0);
     expect((await old.query('café')).partial).toBe(false);

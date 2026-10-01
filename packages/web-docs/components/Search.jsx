@@ -7,7 +7,7 @@
 // Note: results only exist against a built site (`dist/`). In dev there is no index,
 // so the modal opens but reports no results — expected.
 import { onCleanup, onMount, router, Portal } from "@opentf/web";
-import { createSearch } from "../search.js";
+import { createSearch, excerptParts } from "../search.js";
 
 const search = createSearch({ base: "/_search/" });
 
@@ -155,8 +155,12 @@ export default function Search() {
                 }}
                 onmouseenter={() => (active = i)}
               >
+                {r.meta?.breadcrumb ? <span class="otfw-search-result-crumb">{r.meta.breadcrumb}</span> : null}
                 <span class="otfw-search-result-title">{r.title}</span>
-                <span class="otfw-search-result-excerpt">{r.excerpt}</span>
+                {r.section ? <span class="otfw-search-result-section">{r.section}</span> : null}
+                <span class="otfw-search-result-excerpt">
+                  {excerptParts(r.excerpt, r.highlights).map((part) => <span>{part.match ? <mark>{part.text}</mark> : part.text}</span>)}
+                </span>
               </a>
             </li>
           ))}

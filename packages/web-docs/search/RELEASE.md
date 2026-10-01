@@ -31,6 +31,10 @@ containing the binary. Also release `@opentf/web-cli`: its shared SSG helper now
 propagates indexing failures instead of producing a successful build without search.
 Versions and the release matrix are managed by the maintainer and release CI.
 
+Ship the updated native indexer together with the docs reader for prose previews:
+new fragments include `excerptOmit` ranges for code blocks. Rebuild site indexes
+with that binary; old indexes remain readable but lack code omission metadata.
+
 The package allowlist includes `search.js`; Pagefind is no longer a dependency.
 `@opentf/web-docs/search` exposes the DOM-free reader. Built sites need only static
 `_search` assets, not the native executable or a search server.
