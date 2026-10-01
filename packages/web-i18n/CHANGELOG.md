@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep `<html lang>` synchronized with the active locale, including locale changes
+  during SPA navigation, so assistive technology uses the page's current language.
+  Server rendering continues to use the static HTML shell's language attribute.
+
+### Changed
+
+- Track the workspace framework peer dependency and migrate tests to esdev's
+  `runtime:test`.
+
 ## [1.23.0] - 2026-08-12
 
 _Dependency updates._

@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Run setup through esdev's `runtime:test` with its native DOM or browser mode.
+  Remove the Bun JSX plugin and happy-dom dependency; configure JSX compilation
+  through `@opentf/esdev-plugin-web` instead. Requires esdev `>=0.14.0`.
+- Export the setup and browser runner explicitly and limit published files to the
+  supported test helpers.
+
+### Fixed
+
+- `render()` mounts compiled custom elements using their registered `.tag` and
+  assigns props before connection. Page factories use the framework's mount scope
+  and lifecycle.
+- `unmount()` and automatic cleanup dispose factory lifecycle and reactive scopes,
+  remove mounted containers, and safely handle repeated calls.
+- Failed renders remove their temporary container, and setup reports a clear error
+  when neither DOM nor browser mode is enabled.
+
 ## [1.23.0] - 2026-08-12
 
 _Dependency updates._
