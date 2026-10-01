@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-01
+
+### Fixed
+
+- SPA navigation moves focus to the new page's heading, falling back to its main
+  landmark, without changing the scroll position or adding a Tab stop.
+- Custom 404 pages inherit the root layout so navigation and the site shell remain
+  available when a route is missing.
+- `Link` preserves slotted children and forwards `aria-label` / `aria-current`,
+  including the `ariaLabel` / `ariaCurrent` prop aliases.
+- Development diagnostics work when the ES-Runtime has no Node `process` global.
+
+### Changed
+
+- Migrate unit and component tests to esdev's `runtime:test` and project JSX plugin,
+  replacing Bun tests and the JSX precompile setup.
+
 ## [0.28.0] - 2026-08-12
 
 ### Fixed

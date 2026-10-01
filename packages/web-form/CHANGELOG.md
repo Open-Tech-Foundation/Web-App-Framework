@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-10-01
+
+### Changed
+
+- Use stable `@opentf/std` `^0.19.0` instead of `^1.0.0-beta.2`.
+- Track the workspace framework peer dependency and migrate form and component
+  tests to esdev, replacing the Bun and happy-dom configuration.
+
 ## [1.23.0] - 2026-08-12
 
 _Dependency updates._

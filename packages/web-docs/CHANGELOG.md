@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-01
+
 ### Changed
 
 - Generate static search indexes with `otfwc docs index` from the unified

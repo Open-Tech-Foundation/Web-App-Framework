@@ -1,6 +1,6 @@
 {
   "name": "@opentf/web-cli",
-  "version": "1.26.0",
+  "version": "1.27.0",
   "description": "OTF Web SSG library — the pre-render driver for `esdev build` (`@opentf/web-cli/ssg`). The `otfw` dev-server/build commands are retired; apps build straight from esdev.json.",
   "type": "module",
   "exports": {

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.27.0] - 2026-10-01
+
 ### Changed
 
 - The release-only `siteOutputPlugin` uses the unified toolchain for documentation
