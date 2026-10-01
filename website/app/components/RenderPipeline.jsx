@@ -1,95 +1,133 @@
-// Rendering pipelines — one update's path through each framework, next to ours.
-//
-// Five framework tabs on the left (React, Vue, Angular, Svelte, Solid), OTF
-// pinned on the right. Each stack names that framework's real layers — VDOM
-// appears only where one exists (React, Vue); the compiled frameworks get an
-// explicit "No VDOM" marker instead of a gap. No timings, no scores: layer
-// names, one honest note each. Brand marks are official SVGs in public/img.
-//
-// The auto-tour flashes both stacks top to bottom — the path one state change
-// travels. Flashes are WAAPI fired imperatively; SSG renders the static stacks.
+// Build-time preparation and runtime updates, compared with OTF Web.
+// Only runtime chips flash: a state change does not rerun the compiler.
+// WAAPI illustrates ordering, not elapsed time or comparative performance.
 
 import { onCleanup, onMediaQuery } from "@opentf/web";
 
 const OTF = {
-  id: "otf",
   name: "OTF Web",
+  mode: "Custom elements + signals",
   logo: "/img/otf-logo.svg",
-  layers: [
+  build: [
     { label: "JSX components", icon: "code" },
     { label: "otfwc compiler", icon: "gear" },
-    { label: "Web components", icon: "corners" },
-    { label: "Signals", icon: "bolt" },
-    { label: "Framework runtime", icon: "layers" },
+    { label: "Custom elements + bindings", icon: "corners" },
+  ],
+  updates: [
+    { label: "Signal change", icon: "bolt" },
+    { label: "Dependent DOM bindings", icon: "layers" },
     { label: "DOM updates", icon: "monitor" },
   ],
-  note: "Standard custom elements + signals; the compiler emits native DOM bindings.",
+  note: "Custom elements manage component lifecycles; signals rerun dependent bindings. No virtual DOM.",
+  source: "/docs/core-concepts/reactivity",
 };
 
 const FRAMEWORKS = [
   {
     id: "react",
     name: "React",
+    mode: "19 · DOM renderer",
     logo: "/img/react.svg",
-    layers: [
+    build: [
       { label: "JSX components", icon: "code" },
-      { label: "React Compiler", icon: "sparkles" },
-      { label: "React components", icon: "puzzle" },
-      { label: "VDOM", icon: "tree" },
-      { label: "DOM updates", icon: "monitor" },
+      { label: "React Compiler (optional)", icon: "sparkles" },
+      { label: "JSX transform", icon: "gear" },
     ],
-    note: "Auto-memoized by the React Compiler (opt-in); re-rendered components diff through the VDOM to the DOM patch.",
+    updates: [
+      { label: "State update", icon: "bolt" },
+      { label: "Component render", icon: "puzzle" },
+      { label: "Reconciliation (VDOM)", icon: "tree" },
+      { label: "DOM commit", icon: "monitor" },
+    ],
+    note: "React Compiler adds build-time memoization. React renders affected components and commits necessary DOM changes.",
+    source: "https://react.dev/learn/render-and-commit",
   },
   {
     id: "vue",
     name: "Vue",
+    mode: "3 · VDOM mode",
     logo: "/img/vuedotjs.svg",
-    layers: [
+    build: [
       { label: "SFC (.vue)", icon: "file" },
-      { label: "Vue compiler", icon: "gear" },
-      { label: "Vue components", icon: "puzzle" },
-      { label: "VDOM", icon: "tree" },
+      { label: "Template → render function", icon: "gear" },
+    ],
+    updates: [
+      { label: "Reactive state change", icon: "bolt" },
+      { label: "Render effect", icon: "puzzle" },
+      { label: "VDOM patch", icon: "tree" },
       { label: "DOM updates", icon: "monitor" },
     ],
-    note: "Default path: templates compile to render functions; the VDOM patches the DOM. Vapor Mode (3.6, opt-in) and alien-signals reactivity skip it.",
+    note: "Compiler hints narrow VDOM patching. The alien-signals reactivity refactor does not change this rendering mode.",
+    source: "https://vuejs.org/guide/extras/rendering-mechanism.html",
+  },
+  {
+    id: "vue-vapor",
+    name: "Vue Vapor",
+    mode: "3.6 RC · opt-in",
+    logo: "/img/vuedotjs.svg",
+    build: [
+      { label: "SFC with vapor opt-in", icon: "file" },
+      { label: "Vapor compiler", icon: "gear" },
+    ],
+    updates: [
+      { label: "Reactive state change", icon: "bolt" },
+      { label: "Dependent effects", icon: "layers" },
+      { label: "DOM updates", icon: "monitor" },
+    ],
+    note: "Vapor components update the DOM without VDOM. This opt-in mode supports a subset of Vue APIs; mixed apps can still use VDOM components.",
+    source: "https://github.com/vuejs/core/releases/tag/v3.6.0-rc.1",
   },
   {
     id: "angular",
     name: "Angular",
+    mode: "21+ · zoneless",
     logo: "/img/angular.svg",
-    layers: [
-      { label: "Templates", icon: "layout" },
-      { label: "AOT compiler (Ivy)", icon: "gear" },
-      { label: "Components", icon: "puzzle" },
-      { label: "Signals (zoneless CD)", icon: "bolt" },
+    build: [
+      { label: "Components + templates", icon: "layout" },
+      { label: "AOT template compiler", icon: "gear" },
+    ],
+    updates: [
+      { label: "Signal / event notification", icon: "bolt" },
+      { label: "Scheduled change detection", icon: "layers" },
+      { label: "Template bindings", icon: "puzzle" },
       { label: "DOM updates", icon: "monitor" },
     ],
-    note: "Signals are the reactive primitive; zoneless change detection (default since v21) refreshes dirty views — no Zone.js, no VDOM.",
+    note: "Zoneless is the default from v21. Template signals, bound events and other Angular notifications schedule view checks. No VDOM.",
+    source: "https://angular.dev/guide/zoneless",
   },
   {
     id: "svelte",
     name: "Svelte",
+    mode: "5 · runes mode",
     logo: "/img/svelte.svg",
-    layers: [
-      { label: "Svelte components", icon: "file" },
+    build: [
+      { label: "Components + runes syntax", icon: "file" },
       { label: "Svelte compiler", icon: "gear" },
-      { label: "Runes / signals", icon: "bolt" },
+    ],
+    updates: [
+      { label: "Reactive state change", icon: "bolt" },
+      { label: "Dependent render effects", icon: "layers" },
       { label: "DOM updates", icon: "monitor" },
     ],
-    note: "Reactivity compiles to targeted DOM writes; there is no virtual tree.",
+    note: "Runes are compiler syntax. Generated code uses runtime signals and effects for targeted DOM updates. No VDOM.",
+    source: "https://svelte.dev/docs/svelte/what-are-runes",
   },
   {
     id: "solid",
     name: "Solid",
+    mode: "1.x · fine-grained reactivity",
     logo: "/img/solid.svg",
-    layers: [
+    build: [
       { label: "JSX components", icon: "code" },
-      { label: "Oxc compiler (native)", icon: "gear" },
-      { label: "Components (run once)", icon: "play" },
-      { label: "Signals runtime", icon: "bolt" },
+      { label: "JSX compiler", icon: "gear" },
+    ],
+    updates: [
+      { label: "Signal change", icon: "bolt" },
+      { label: "Dependent DOM bindings", icon: "layers" },
       { label: "DOM updates", icon: "monitor" },
     ],
-    note: "Components execute once; fine-grained signals update bindings directly.",
+    note: "Component setup runs once per mount; dependent computations update the DOM. No VDOM. The Rust/Oxc toolchain is introduced in Solid 2.0 RC.",
+    source: "https://docs.solidjs.com/concepts/components/basics",
   },
 ];
 
@@ -130,11 +168,11 @@ export default function RenderPipeline() {
     }
   };
 
-  // Flash one stack's chips top to bottom — the path a state change travels.
+  // Flash only runtime chips, in order, after a state change.
   const playStack = (panel) => {
     const root = rootRef;
     if (!root) return;
-    root.querySelectorAll(`[data-pl="${panel}"] .pipe-chip`).forEach((el, i) => {
+    root.querySelectorAll(`[data-pl="${panel}"] [data-phase="update"] .pipe-chip`).forEach((el, i) => {
       animate(
         el,
         [
@@ -203,18 +241,31 @@ export default function RenderPipeline() {
               <img className={current().id === "angular" ? "pipe-logo is-angular" : "pipe-logo"} src={current().logo} alt="" width="18" height="18" loading="lazy" />
               {current().name}
             </div>
-            {/* Uniform item shape (never a conditional branch): keyed lists with
-                mixed item shapes crash the list reconciler, and ternaries lower
-                to unsupported multi-node roots. Variance lives in attributes. */}
-            {current().layers.map((l) => (
-              <div key={l.label} className="pipe-chip">
-                <svg className="pipe-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <use href={"#pi-" + l.icon} />
-                </svg>
-                {l.label}
-              </div>
-            ))}
+            <p className="pipe-mode">{current().mode}</p>
+            <div className="pipe-phase" data-phase="build">
+              <h2 className="pipe-phase-label">Build time</h2>
+              {current().build.map((l) => (
+                <div key={l.label} className="pipe-chip">
+                  <svg className="pipe-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <use href={"#pi-" + l.icon} />
+                  </svg>
+                  {l.label}
+                </div>
+              ))}
+            </div>
+            <div className="pipe-phase" data-phase="update">
+              <h2 className="pipe-phase-label">On state change</h2>
+              {current().updates.map((l) => (
+                <div key={l.label} className="pipe-chip">
+                  <svg className="pipe-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <use href={"#pi-" + l.icon} />
+                  </svg>
+                  {l.label}
+                </div>
+              ))}
+            </div>
             <p className="pipe-note">{current().note}</p>
+            <a className="pipe-source" href={current().source}>Official docs →</a>
           </div>
           <div className="pipe-vs" aria-hidden="true">
             vs
@@ -224,18 +275,34 @@ export default function RenderPipeline() {
               <img className="pipe-logo" src={OTF.logo} alt="" width="18" height="18" loading="lazy" />
               {OTF.name}
             </div>
-            {OTF.layers.map((l) => (
-              <div key={l.label} className="pipe-chip">
-                <svg className="pipe-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <use href={"#pi-" + l.icon} />
-                </svg>
-                {l.label}
-              </div>
-            ))}
+            <p className="pipe-mode">{OTF.mode}</p>
+            <div className="pipe-phase" data-phase="build">
+              <h2 className="pipe-phase-label">Build time</h2>
+              {OTF.build.map((l) => (
+                <div key={l.label} className="pipe-chip">
+                  <svg className="pipe-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <use href={"#pi-" + l.icon} />
+                  </svg>
+                  {l.label}
+                </div>
+              ))}
+            </div>
+            <div className="pipe-phase" data-phase="update">
+              <h2 className="pipe-phase-label">On state change</h2>
+              {OTF.updates.map((l) => (
+                <div key={l.label} className="pipe-chip">
+                  <svg className="pipe-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <use href={"#pi-" + l.icon} />
+                  </svg>
+                  {l.label}
+                </div>
+              ))}
+            </div>
             <p className="pipe-note">{OTF.note}</p>
+            <a className="pipe-source" href={OTF.source}>Reactivity docs →</a>
           </div>
         </div>
-        <p className="pipe-caption">Layer names, not timings — what runs, in order, when state changes.</p>
+        <p className="pipe-caption">Simplified client-side update paths. Build steps stay static; animation speed and step counts do not represent performance.</p>
       </div>
     </div>
   );

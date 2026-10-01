@@ -691,8 +691,8 @@ body {
 }
 /* ── Render-pipeline (hero) ────────────────────────────────────────────────────
    Always-dark panel: auto-touring framework stacks left, OTF pinned right.
-   Layer chips flash top to bottom (WAAPI from RenderPipeline.jsx) as the tour
-   advances. Fixed dark palette (not theme vars) so it reads dark in both modes. */
+   Runtime chips flash top to bottom (WAAPI from RenderPipeline.jsx); build
+   steps stay static. The panel uses a dark palette in both themes. */
 .pipe-body {
   padding: 1.25rem;
   border-radius: 1rem;
@@ -718,6 +718,7 @@ body {
   background: #0f172a;
 }
 .pipe-stack {
+  min-width: 0;
   border: 1px solid #1e293b;
   border-radius: 0.75rem;
   background: #0f172a;
@@ -740,6 +741,45 @@ body {
   text-transform: uppercase;
   color: #f1f5f9;
   margin-bottom: 0.35rem;
+}
+.pipe-mode {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: #94a3b8;
+}
+.pipe-phase {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.pipe-phase[data-phase='update'] {
+  margin-top: 0.5rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed #334155;
+}
+.pipe-phase-label {
+  margin: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.pipe-source {
+  align-self: flex-start;
+  margin-top: auto;
+  padding-top: 0.4rem;
+  font-size: 0.72rem;
+  color: #fdba74;
+  text-underline-offset: 3px;
+}
+.pipe-source:hover {
+  text-decoration: underline;
+}
+.pipe-source:focus-visible {
+  outline: 2px solid #fdba74;
+  outline-offset: 3px;
 }
 .pipe-logo {
   width: 1.1rem;
