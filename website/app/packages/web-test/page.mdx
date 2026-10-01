@@ -8,11 +8,11 @@ import { Callout } from "@opentf/web-docs";
 # @opentf/web-test
 
 A testing utility for OTF Web, inspired by Testing Library. It renders components into
-a real DOM (`happy-dom`), compiles JSX through the framework's own compiler, and
-bundles `@testing-library/dom` queries plus `user-event`.
+esdev's native DOM realm or a real browser. The esdev plugin compiles JSX, and
+the package provides `@testing-library/dom` queries plus `user-event`.
 
 ```bash
-bun add -d @opentf/web-test
+pnpm add -D @opentf/web-test
 ```
 
 ## Why it fits OTF Web
@@ -33,14 +33,13 @@ bun add -d @opentf/web-test
 ## At a glance
 
 ```jsx
-import { test, expect } from "bun:test";
-import { render, userEvent } from "@opentf/web-test";
+import { test, expect } from "runtime:test";
+import { render } from "@opentf/web-test";
 import Counter from "./Counter.jsx";
 
 test("increments on click", async () => {
   const { getByRole } = render(Counter);
-  const user = userEvent.setup();
-  await user.click(getByRole("button"));
+  getByRole("button").click();
   expect(getByRole("button").textContent).toBe("Count: 1");
 });
 ```

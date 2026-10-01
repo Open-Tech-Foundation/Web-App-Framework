@@ -47,11 +47,13 @@ test("loads the profile", async () => {
 ## Forms
 
 Drive forms through the UI — type into fields, submit, assert on errors and the
-submitted result. This exercises `@opentf/web-form` end to end:
+submitted result. This exercises `@opentf/web-form` end to end. Run `userEvent` workflows with
+`esdev test --config=esdev.test.json --browser`:
 
 ```jsx
 test("submits valid credentials", async () => {
-  const onSubmit = mock();
+  const submitted = [];
+  const onSubmit = (values) => submitted.push(values);
   const { getByLabelText, getByRole } = render(LoginForm, { onSubmit });
   const user = userEvent.setup();
 
@@ -59,10 +61,10 @@ test("submits valid credentials", async () => {
   await user.type(getByLabelText("Password"), "correct horse");
   await user.click(getByRole("button", { name: "Sign in" }));
 
-  expect(onSubmit).toHaveBeenCalledWith({
+  expect(submitted).toEqual([{
     email: "ada@example.com",
     password: "correct horse",
-  });
+  }]);
 });
 ```
 

@@ -34,10 +34,14 @@ expect(getByRole("heading").textContent).toBe("Hello, Ada");
 ## Assert on reactive updates
 
 Because OTF Web updates the DOM surgically, you read the node again after an
-interaction — no flush, no `act()`:
+interaction — no `act()` is needed. This example uses the browser test tier for `userEvent`:
+
+```bash
+esdev test --config=esdev.test.json --browser
+```
 
 ```jsx
-import { test, expect } from "bun:test";
+import { test, expect } from "runtime:test";
 import { render, userEvent } from "@opentf/web-test";
 import Counter from "./Counter.jsx";
 
@@ -74,7 +78,7 @@ unmount(); // removes the component and runs onCleanup
 Group related cases with `describe`, and keep one behavior per `test`:
 
 ```jsx
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect } from "runtime:test";
 import { render } from "@opentf/web-test";
 import LoginForm from "./LoginForm.jsx";
 

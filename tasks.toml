@@ -88,9 +88,14 @@ run = "esdev test --config=esdev.test.json --dom packages/web-form/tests"
 deps = ["build-compiler"]
 run = "esdev test --config=esdev.test.json --dom packages/web-i18n/i18n.test.js"
 
+# Public testing helpers in the native DOM realm; setup registers automatic cleanup.
+[tasks.test-web-test]
+deps = ["build-compiler"]
+run = "esdev test --config=esdev.test.json --dom --setup=@opentf/web-test/setup packages/web-test/tests/render.test.js packages/web-test/tests/setup.test.js"
+
 # Independent processes — cargo and the ES-Runtime — so they overlap.
 [tasks.test]
-deps = ["test-rust", "test-esdev", "test-esdev-dom", "test-esdev-plugin", "test-web-docs", "test-web-docs-dom", "test-web-form", "test-web-i18n"]
+deps = ["test-rust", "test-esdev", "test-esdev-dom", "test-esdev-plugin", "test-web-docs", "test-web-docs-dom", "test-web-form", "test-web-i18n", "test-web-test"]
 parallel = true
 
 # Real-browser tier (docs/HYDRATION.md §5) — framework-behavior suites (docs shell
@@ -115,8 +120,12 @@ run = "esdev packages/web-docs/tests/e2e/hydration.mjs"
 [tasks.test-e2e-docs]
 deps = ["test-e2e-docs-drawer", "test-e2e-docs-sidebar", "test-e2e-docs-hydration"]
 
+[tasks.test-e2e-web-test]
+deps = ["build-compiler"]
+run = "esdev test --config=esdev.test.json --browser --setup=@opentf/web-test/setup packages/web-test/tests/browser"
+
 [tasks.test-e2e]
-deps = ["test-e2e-docs"]
+deps = ["test-e2e-docs", "test-e2e-web-test"]
 
 # Local convenience — CI runs the fast and browser tiers as separate parallel jobs, so this
 # is the "use my cores" path on a dev machine. `build-compiler` is de-duplicated to one run.

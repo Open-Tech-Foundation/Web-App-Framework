@@ -1,58 +1,88 @@
 # @opentf/web-test
 
-A testing utility for **OTF Web**, inspired by React Testing Library.
-
-## Features
-
-- **DOM Rendering**: Renders components into a virtual DOM (`happy-dom`).
-- **Reactive Assertions**: Supports testing components that use signals and effects.
-- **Compiler Integration**: Automatically transpiles JSX components using the framework's native compiler.
-- **Testing Library Utilities**: Bundles `@testing-library/dom` for familiar querying.
+DOM testing utilities for OTF Web: mount compiled components or page factories,
+query them with Testing Library, and tear down their lifecycle after each test.
 
 ## Installation
 
 ```bash
-bun add -d @opentf/web-test
+pnpm add -D @opentf/web-test @opentf/esdev-plugin-web
 ```
+
+Install esdev 0.14 or newer. The test runner supplies the DOM; this package does
+not install a replacement DOM or its own compiler plugin.
 
 ## Configuration
 
-To enable automatic JSX compilation for tests, add a `bunfig.toml` to your package or root:
+Create `esdev.test.json`:
 
-```toml
-[test]
-preload = ["@opentf/web-test/setup"]
+```json
+{
+  "plugins": [{
+    "module": "@opentf/esdev-plugin-web",
+    "export": "createOtfwPlugin",
+    "options": { "target": "csr", "failOnError": true }
+  }],
+  "test": { "setup": ["@opentf/web-test/setup"] }
+}
 ```
+
+The plugin compiles JSX imports. The per-file setup registers `afterEach(cleanup)`.
+This follows esdev's [test configuration](https://esrun.opentechf.org/esdev/test/configuration).
 
 ## Usage
 
-### Writing a Test
+```js
+import { expect, test } from "runtime:test";
+import { render } from "@opentf/web-test";
+import Counter from "./Counter.jsx";
 
-```jsx
-import { expect, test, describe } from "bun:test";
-import { render, userEvent } from "@opentf/web-test";
-import MyComponent from "./MyComponent.jsx";
-
-describe("MyComponent", () => {
-  test("reacts to clicks", async () => {
-    const { getByTestId } = render(MyComponent);
-    const user = userEvent.setup();
-    const btn = getByTestId("btn");
-
-    expect(btn.textContent).toBe("Count: 0");
-    await user.click(btn);
-    expect(btn.textContent).toBe("Count: 1");
-  });
+test("increments", () => {
+  const { getByRole } = render(Counter);
+  const button = getByRole("button", { name: "Count: 0" });
+  button.click();
+  expect(button.textContent).toBe("Count: 1");
 });
 ```
 
-### API Reference
+```bash
+esdev test --config=esdev.test.json --dom
+```
 
-#### `render(Component, props = {})`
-Renders a component into a container. Returns an object with:
-- `container`: The DOM element containing the component.
-- `unmount()`: A function to remove the component and trigger cleanup.
-- ...all queries from `@testing-library/dom` (e.g., `getByTestId`, `queryByText`).
+## User interactions
 
-#### `cleanup()`
-Removes all mounted components from the DOM. This is automatically called `afterEach` test if you use the recommended setup.
+`userEvent` is re-exported from `@testing-library/user-event`. Run its session,
+typing, selection and clipboard workflows in a real browser:
+
+```js
+import { userEvent } from "@opentf/web-test";
+const user = userEvent.setup();
+await user.click(button);
+await user.type(input, "Ada");
+```
+
+```bash
+esdev test --config=esdev.test.json --browser
+```
+
+Install a supported browser and its matching driver as described in
+[esdev browser testing](https://esrun.opentechf.org/esdev/test/browser).
+In esdev 0.14's native DOM, `userEvent.setup()` cannot replace the frozen
+navigator's clipboard, and input selection is incomplete. Use native DOM actions
+for `--dom` tests, or `--browser` for full Testing Library interaction sequences.
+
+## API
+
+- `render(Component, props = {})`: mounts a compiled component class using its
+  registered `.tag`, a page factory, or a tag string. Props are assigned before
+  connection. Returns `container`, `unmount()` and bound Testing Library queries.
+- `unmount()`: tears down factory lifecycle and reactive scopes, removes the
+  container, and lets custom-element disconnect run component cleanup. Repeated
+  calls are safe.
+- `cleanup()`: unmounts every view created by `render()`. The setup module calls
+  it after each test; otherwise import `afterEach` from `runtime:test` and register
+  `afterEach(cleanup)` yourself.
+- `userEvent`: Testing Library's interaction API for browser tests.
+
+DOM custom-element lifecycle reactions can settle asynchronously; await observable
+cleanup effects when testing teardown.

@@ -32,7 +32,8 @@ The usual variants apply:
 
 ## `userEvent`
 
-Re-exported from `@testing-library/user-event` for realistic interactions.
+Re-exported from `@testing-library/user-event` for realistic interactions in
+`esdev test --browser`. See [User Events](/packages/web-test/user-events).
 
 ```jsx
 import { userEvent } from "@opentf/web-test";
@@ -46,4 +47,4 @@ await user.type(getByLabelText("Email"), "ada@example.com");
 
 Removes all mounted components and disposes their effects. Called automatically after
 each test by the recommended setup; call it manually only if you opt out of the
-preload.
+`test.setup` setting.

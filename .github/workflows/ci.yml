@@ -76,6 +76,7 @@ jobs:
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
+          install-chromedriver: true
       - name: Install tsr
         shell: bash
         run: |

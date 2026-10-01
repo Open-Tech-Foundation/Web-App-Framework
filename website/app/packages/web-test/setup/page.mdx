@@ -1,6 +1,6 @@
 ---
 title: Setup
-description: Install web-test and wire automatic JSX compilation and cleanup for your test runner.
+description: Compile test components with the esdev plugin and register automatic cleanup.
 ---
 
 import { Callout, Steps } from "@opentf/web-docs";
@@ -12,24 +12,33 @@ import { Callout, Steps } from "@opentf/web-docs";
 ### Install
 
 ```bash
-bun add -d @opentf/web-test
+pnpm add -D @opentf/web-test @opentf/esdev-plugin-web
 ```
 
-### Preload the setup module
+Use esdev 0.14 or newer.
 
-The setup module compiles JSX in test files and resets the DOM between tests. Register
-it as a preload so every test file picks it up. Add a `bunfig.toml` at your package or
-workspace root:
+### Configure compilation and cleanup
 
-```toml bunfig.toml
-[test]
-preload = ["@opentf/web-test/setup"]
+Create a separate test config so components use CSR even when the app builds for SSG:
+
+```json esdev.test.json
+{
+  "plugins": [{
+    "module": "@opentf/esdev-plugin-web",
+    "export": "createOtfwPlugin",
+    "options": { "target": "csr", "failOnError": true }
+  }],
+  "test": { "setup": ["@opentf/web-test/setup"] }
+}
 ```
+
+The plugin compiles JSX imports. The setup module registers cleanup after every test;
+it uses the DOM provided by the runner.
 
 ### Write your first test
 
-```jsx Counter.test.jsx
-import { test, expect } from "bun:test";
+```js Counter.test.js
+import { test, expect } from "runtime:test";
 import { render } from "@opentf/web-test";
 import Counter from "./Counter.jsx";
 
@@ -42,29 +51,33 @@ test("renders", () => {
 ### Run
 
 ```bash
-bun test
+esdev test --config=esdev.test.json --dom
 ```
 
 </Steps>
 
 <Callout type="info" title="Automatic cleanup">
-  The setup module calls `cleanup()` after each test, so mounted components are removed
-  and their effects disposed without per-test boilerplate. Skip the preload only if you
-  want to call `cleanup()` yourself.
+  The setup module calls `cleanup()` after each test. Component disconnect and page
+  teardown dispose their lifecycle and effects. Await observable teardown when testing
+  custom-element cleanup reactions.
 </Callout>
 
-## Without the preload
+## Manual cleanup
 
-If you can't preload (or use a different runner), import and clean up manually:
+If you omit `test.setup`, register the hook in each test file:
 
-```jsx
-import { afterEach } from "bun:test";
+```js
+import { afterEach } from "runtime:test";
 import { cleanup } from "@opentf/web-test";
 
 afterEach(cleanup);
 ```
 
-<Callout type="warning" title="JSX compilation">
-  Test files that import `.jsx` components rely on the preload to transpile them. Without
-  it, import the already-compiled output instead, or add the setup as a preload.
-</Callout>
+Keep the compiler plugin in the test config: cleanup and JSX compilation are separate
+steps. See the official [test configuration](https://esrun.opentechf.org/esdev/test/configuration).
+
+## Browser interactions
+
+For full `userEvent.setup()` workflows, run `esdev test --config=esdev.test.json
+--browser` with a supported browser and matching driver. The native DOM does not yet
+support its clipboard stub or full input-selection API. See [User Events](/packages/web-test/user-events).

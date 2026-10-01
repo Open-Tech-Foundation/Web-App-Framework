@@ -1,57 +1,50 @@
 import { queries, getQueriesForElement } from '@testing-library/dom';
 import userEvent from '@testing-library/user-event';
 
-let mountedComponents = new Set();
+import { mount, runCleanup } from '@opentf/web/runtime';
 
-/**
- * Renders a compiled Web App Framework component into a DOM container.
- * 
- * @param {Function|HTMLElement} Component - The compiled component function or class.
- * @param {Object} props - Properties to pass to the component.
- * @returns {Object} - Testing library queries bound to the container.
- */
+const mountedComponents = new Map();
+
+/** Mount a registered component, page factory, or tag and bind DOM queries to it. */
 export function render(Component, props = {}) {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  
-  let element;
-  
-  // If the Component is a function, it should return a DOM node (since our compiler generates direct DOM nodes)
-  // Wait, the compiler returns a Web Component (HTMLElement) OR an instance of a function.
-  // Actually, functional components are compiled to standard HTMLElements that extend HTMLElement.
-  if (typeof Component === 'function' && Component.prototype instanceof HTMLElement) {
-    // If it's a registered Web Component class
-    const tagName = Component.prototype.tagName?.toLowerCase() || Component.name.toLowerCase();
-    element = document.createElement(tagName);
-    Object.assign(element, props);
-    container.appendChild(element);
-  } else if (typeof Component === 'function') {
-    // If it's a functional component not converted to a class (though our compiler usually does)
-    element = Component(props);
-    if (element instanceof Node) {
-      container.appendChild(element);
-    }
-  } else if (typeof Component === 'string') {
-    // It's a tag name
-    element = document.createElement(Component);
-    Object.assign(element, props);
-    container.appendChild(element);
-  } else {
-    throw new Error("Invalid component type passed to render()");
+  if (typeof document === 'undefined') {
+    throw new Error('render() requires esdev test --dom (or --browser)');
   }
-
-  mountedComponents.add(container);
-
-  return {
-    container,
-    unmount: () => {
-      if (container.parentNode) {
-        container.parentNode.removeChild(container);
-      }
-      mountedComponents.delete(container);
-    },
-    ...getQueriesForElement(container, queries)
+  const container = document.createElement('div');
+  let dispose = () => {};
+  try {
+    if (typeof Component === 'string' ||
+        (typeof Component === 'function' && Component.prototype instanceof HTMLElement)) {
+      const tag = typeof Component === 'string' ? Component : Component.tag;
+      if (!tag) throw new Error('render(): custom element must expose its registered .tag');
+      const element = document.createElement(tag);
+      Object.assign(element, props);
+      container.appendChild(element);
+      document.body.appendChild(container);
+    } else if (typeof Component === 'function') {
+      // Factory pages need the same reactive scope and lifecycle as app mounting.
+      document.body.appendChild(container);
+      let element;
+      mount(() => {
+        element = Component(props);
+        if (!(element instanceof Node)) throw new Error('render(): component function must return a DOM node');
+        return element;
+      }, container);
+      dispose = () => runCleanup(element);
+    } else {
+      throw new Error('render(): invalid component type');
+    }
+  } catch (error) {
+    container.remove();
+    throw error;
+  }
+  const unmount = () => {
+    if (!mountedComponents.has(container)) return;
+    mountedComponents.delete(container);
+    try { dispose(); } finally { container.remove(); }
   };
+  mountedComponents.set(container, unmount);
+  return { container, unmount, ...getQueriesForElement(container, queries) };
 }
 
 export { userEvent };
@@ -60,10 +53,5 @@ export { userEvent };
  * Cleans up all mounted components. Automatically called after each test if supported.
  */
 export function cleanup() {
-  mountedComponents.forEach(container => {
-    if (container.parentNode) {
-      container.parentNode.removeChild(container);
-    }
-  });
-  mountedComponents.clear();
+  for (const unmount of [...mountedComponents.values()]) unmount();
 }
