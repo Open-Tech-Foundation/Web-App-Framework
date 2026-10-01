@@ -1,7 +1,8 @@
 # esdev migration status
 
-Verified against the installed esdev 0.14.0 on 2026-10-01. Template files are
-embedded in the esdev binary; updating this repo's plugin cannot change them.
+Output hooks verified against esdev 0.15.0 on 2026-10-02. The starter, DOM and
+asset observations below were recorded against 0.14.0 and await re-verification.
+Template files are embedded in the esdev binary; updating this repo's plugin cannot change them.
 
 ## Working in this repository
 
@@ -53,13 +54,21 @@ happy-dom or a local DOM implementation.
 
 ## Output hooks and development SSG
 
-Until output hooks land, website/ssg.js runs from the existing target
-`then: run`. It indexes staged HTML after prerendering, propagates indexing
-failures, and skips prerender/indexing when no release staging directory exists.
+The configured `siteOutputPlugin` from `@opentf/web-cli/ssg` uses esdev 0.15's
+release-only `finish` hook. After all targets and `then: run` steps succeed, it
+indexes prerendered HTML and generates feeds/LLM files into the hook's staged
+`outDir`. An indexing error prevents publication and preserves the last deployment.
 
-Move orchestration into native plugin hooks once their upstream contract is
-available. Verify both development and release builds: development must not run
-release prerendering, and output indexing must finish before publication.
+`website/ssg.js` still prerenders routes and generates sitemap/robots from the
+actual rendered paths. It calls `writePrerenderReport` to pass resolved site
+metadata to the hook; the hook removes this temporary report before publication.
+Root and standalone website configs both register the output plugin.
+
+Development runs neither `finish` nor the prerender step by default. Browser-only
+selected builds skip output generation when their configured `prerenderTarget`
+was not built; they preserve the existing index rather than indexing a CSR shell.
+The integration fixture covers staging, searchable section links, public overrides,
+indexer failure, selected builds and an isolated development server.
 
 ## HTML entry hash references
 
@@ -95,6 +104,8 @@ Release the updated compiler archives and the packages that consume them:
 
 The compiler package must include both otfwc and otf-search for every supported
 platform. See [search/RELEASE.md](../packages/web-docs/search/RELEASE.md).
+The finish plugin additionally requires a new @opentf/web-cli release and esdev
+0.15 or newer. This output-hook change does not require rebuilding native binaries.
 The new web-test setup removes the Bun preload and happy-dom dependency; migrate
 consumers to esdev.test.json and runtime:test imports as documented in its README.
 

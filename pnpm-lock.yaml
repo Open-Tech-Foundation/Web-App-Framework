@@ -17,6 +17,9 @@ importers:
       '@opentf/std':
         specifier: ^0.19.0
         version: 0.19.0
+      '@opentf/web-cli':
+        specifier: workspace:*
+        version: link:packages/web-cli
       '@opentf/web-docs':
         specifier: workspace:*
         version: link:packages/web-docs

@@ -28,6 +28,15 @@
       "options": {
         "appDir": "app"
       }
+    },
+    {
+      "module": "@opentf/web-cli/ssg",
+      "export": "siteOutputPlugin",
+      "options": {
+        "root": ".",
+        "target": "web",
+        "prerenderTarget": "site-ssg"
+      }
     }
   ],
   "build": {

@@ -42,19 +42,17 @@ import {
   readText,
   resolveCompiler,
   resolveFrom,
-  runBlogFeed,
-  runDocsSearchIndex,
   runLastUpdated,
-  runLlmsFiles,
   runPrerender,
   stampHydrateSentinel,
   step,
+  writePrerenderReport,
 } from "@opentf/web-cli/ssg";
 
 const t0 = performance.now();
 
 // The dev loop (`esdev start`) builds this bundle too — but it must never run
-// there: start has no staging (the bundle runs straight from the `.dev` mirror),
+// there: start skips this target by default; explicitly watching it has no staging (the bundle runs straight from the `.dev` mirror),
 // so the outputs below would land in the FINAL tree, clobbering the release
 // deployment with dev-profile HTML — and the step only reruns when this bundle's
 // own files change, so page edits would serve stale routes anyway (observed).
@@ -205,31 +203,11 @@ apiStep.done(
     : "API routes — none",
 );
 
-// Docs search indexes the pre-rendered HTML above.
-if (config?.docs?.search?.provider === "otf") {
-  const searchStep = step("Building search index");
-  const search = await runDocsSearchIndex(root, config, stagedOut, otfwc);
-  searchStep.done(`Search index — ${search?.pages ?? 0} page(s)`);
-}
-
-if (config?.blog) {
-  const feedStep = step("Generating blog feeds");
-  const feed = await runBlogFeed(root, appDir, config, stagedOut, baseUrl, exclude);
-  if (feed) feedStep.done(`Blog feeds — ${feed.count} post(s) → ${feed.paths.join(", ")}`);
-  else feedStep.done("Blog feeds — skipped");
-}
-
-if (config?.docs || config?.blog) {
-  const llmsStep = step("Generating LLM context");
-  const llms = await runLlmsFiles(root, appDir, pages, config, stagedOut, baseUrl, {
-    siteDescription: ssg.siteDescription,
-  });
-  if (llms) llmsStep.done(`LLM context — ${llms.paths.join(", ")}`);
-  else llmsStep.done("LLM context — skipped");
-}
+// The finish plugin consumes this handoff and generates search, feeds and LLM files.
+await writePrerenderReport(stagedOut, ssg);
 
 // Stop the `otfwc serve` children: an open reader on a child's stdout keeps the
 // runtime alive, so this is what lets a finished build actually exit.
 await closeCompilers();
 
-console.log(`\n  → ${outName}/  ready in ${fmtMs(performance.now() - t0)}\n`);
+console.log(`\n  → ${outName}/  prerendered in ${fmtMs(performance.now() - t0)}\n`);

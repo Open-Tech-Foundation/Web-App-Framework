@@ -27,3 +27,5 @@ export {
 } from "./shared.js";
 export { runPrerender } from "./prerender.js";
 export { fmtMs, step } from "./reporter.js";
+
+export { siteOutputPlugin, writePrerenderReport } from "./output.js";

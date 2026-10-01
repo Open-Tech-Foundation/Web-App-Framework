@@ -16,7 +16,11 @@ Use the default OTF plugin with `mode: "ssg"` and add a second build target:
 
 ```json esdev.json
 {
-  "plugins": [{ "module": "@opentf/esdev-plugin-web", "options": { "mode": "ssg" } }],
+  "plugins": [
+    { "module": "@opentf/esdev-plugin-web", "options": { "mode": "ssg" } },
+    { "module": "@opentf/web-cli/ssg", "export": "siteOutputPlugin",
+      "options": { "target": "web", "prerenderTarget": "prerender" } }
+  ],
   "build": {
     "targets": {
       "web": { "entry": "index.html", "outdir": "dist" },
@@ -28,7 +32,10 @@ Use the default OTF plugin with `mode: "ssg"` and add a second build target:
 
 Provide `ssg.js`: it imports helpers from `@opentf/web-cli/ssg`, locates the staged
 site, discovers pages/loaders, and calls `runPrerender`. This repo's `website/ssg.js`
-is a working example. The script is required; the compiler plugin does not generate it.
+is a working example. Call `writePrerenderReport(outDir, result)` with the
+`runPrerender` result so the finish plugin receives resolved site metadata.
+The script is required; the compiler plugin does not generate it. The output plugin
+requires esdev 0.15 or newer.
 
 ```bash
 esdev build --minify
@@ -53,6 +60,10 @@ See [Hydration](/docs/deployment/hydration).
 
 ## Search and other generated files
 
-After rendering, this repo's script indexes opted-in docs/blog HTML into `_search/`,
-then generates feeds and LLM context. Indexing failures fail the release build.
-A future output-hook plugin can own this sequence once its upstream contract lands.
+After every build target and prerender step completes, `siteOutputPlugin` indexes
+opted-in docs/blog HTML into `_search/`, then generates feeds and LLM context.
+It uses esdev's release-only `finish` hook and writes into staged output before
+publication. Indexing failures preserve the previous deployment.
+
+Development runs neither this hook nor the prerender target by default. A selected
+browser-only build skips generation when its configured prerender target is absent.

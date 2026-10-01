@@ -1,4 +1,4 @@
-// Build-time OTF Search indexing; called after SSG until esdev output hooks land.
+// Build-time OTF Search indexing; called after prerendering by the finish plugin.
 
 import { join } from "runtime:path";
 import { Command } from "runtime:system";
