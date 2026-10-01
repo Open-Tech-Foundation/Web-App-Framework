@@ -6,7 +6,7 @@
 // explicit "No VDOM" marker instead of a gap. No timings, no scores: layer
 // names, one honest note each. Brand marks are official SVGs in public/img.
 //
-// "Play update" flashes both stacks top to bottom — the path one state change
+// The auto-tour flashes both stacks top to bottom — the path one state change
 // travels. Flashes are WAAPI fired imperatively; SSG renders the static stacks.
 
 import { onCleanup, onMediaQuery } from "@opentf/web";
@@ -98,9 +98,9 @@ export default function RenderPipeline() {
   const rootRef = $ref();
 
   // Auto-tour: advance through every framework, playing each update flow.
-  // Any manual interaction (tab or Play) stops the tour — the user owns it after.
   let tour = null;
   let tourStart = null;
+  const animations = new Set();
   const stopTour = () => {
     if (tourStart !== null) {
       clearTimeout(tourStart);
@@ -113,17 +113,21 @@ export default function RenderPipeline() {
   };
   const stopAnimations = () => {
     stopTour();
-    rootRef?.querySelectorAll(".pipe-chip").forEach((el) => {
-      if (typeof el.getAnimations === "function") {
-        el.getAnimations().forEach((animation) => animation.cancel());
-      }
-    });
+    // Child teardown can remove the chips before this component's cleanup.
+    // Keep animation handles so detached chips are cancelled too.
+    animations.forEach((animation) => animation.cancel());
+    animations.clear();
   };
 
   const current = () => FRAMEWORKS.find((f) => f.id === selected) ?? FRAMEWORKS[0];
 
   const animate = (el, frames, opts) => {
-    if (el && typeof el.animate === "function") el.animate(frames, opts);
+    if (el && typeof el.animate === "function") {
+      const animation = el.animate(frames, opts);
+      animations.add(animation);
+      animation.onfinish = () => animations.delete(animation);
+      animation.oncancel = () => animations.delete(animation);
+    }
   };
 
   // Flash one stack's chips top to bottom — the path a state change travels.
@@ -167,7 +171,7 @@ export default function RenderPipeline() {
     }, 800);
     tour = setInterval(tourStep, 3400);
   });
-  onCleanup(stopTour);
+  onCleanup(stopAnimations);
 
   return (
     <div ref={rootRef}>
