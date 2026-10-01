@@ -4,6 +4,14 @@
 
 ### Added
 
+- Default `createWebPlugin` factory combines JSX compilation and `@otfw/routes`
+  for native esdev starter configs without an explicit export name.
+- `mode: "spa" | "ssg" | "ssr"` chooses CSR, server rendering, or hydration
+  using esdev's command/platform hook context. Explicit compiler targets remain
+  supported. The default starter factory fails on compiler errors.
+- Standalone starter integration verifies published package files, browser and
+  server build targets, and execution of a stateful server-rendered route.
+
 - Initial release: OTF Web plugins for esdev's `runtime:build` bundler.
 - **`otfwPlugin` / `createOtfwPlugin`** — compile `.jsx`/`.tsx` (and
   `.mdx`/`.md`) through the `otfwc` IR compiler (csr/ssg/hydrate targets,

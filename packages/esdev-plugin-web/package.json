@@ -10,13 +10,14 @@
     "index.js",
     "compiler.js",
     "plugin.js",
-    "routes.js"
+    "routes.js",
+    "web.js"
   ],
   "dependencies": {
     "@opentf/web-compiler": "workspace:*"
   },
   "engines": {
-    "esdev": ">=0.10.0"
+    "esdev": ">=0.14.0"
   },
   "keywords": [
     "opentf",

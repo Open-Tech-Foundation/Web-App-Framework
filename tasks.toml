@@ -61,9 +61,9 @@ run = "esdev test --config=esdev.test.json packages/web-cli/tests packages/creat
 deps = ["build-compiler"]
 run = "esdev test --config=esdev.test.json --dom packages/web/core/errors.test.js packages/web/runtime/lifecycle.test.js packages/web/runtime/resource.test.js packages/web/runtime/clsx.test.js packages/web/runtime/dom.test.js packages/web/runtime/router.test.js packages/web/runtime/router-data.test.js packages/web/runtime/router-hydrate.test.js packages/web/runtime/router-nav.test.js packages/web/runtime/hydrate.e2e.test.js"
 
-# @opentf/esdev-plugin-web: the otfwc compiler service + runtime:build plugin.
-# Binary-free (the resolver is fully injectable), so no compiler build needed.
+# @opentf/esdev-plugin-web: resolver tests plus real compiler/context integration.
 [tasks.test-esdev-plugin]
+deps = ["build-compiler"]
 run = "esdev test --config=esdev.test.json packages/esdev-plugin-web/tests"
 
 # @opentf/create-web is deprecated (use `esdev create`); its tests stay until removal.

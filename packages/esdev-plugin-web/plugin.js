@@ -15,7 +15,18 @@
 // `./compiler.js`. One persistent `otfwc serve` child serves every module of
 // every build in the process (see `startCompilerServer`).
 
-import { compileError, resolveCompiler, startCompilerServer } from "./compiler.js";
+import { resolveCompiler, startCompilerServer } from "./compiler.js";
+
+const MODES = new Set(["spa", "ssg", "ssr"]);
+const TARGETS = new Set(["csr", "ssg", "hydrate"]);
+
+// The project has one plugin list. Its rendering mode is an option; the host
+// supplies the command/platform for each hook, including unbundled imports.
+function renderingTarget(mode, ctx) {
+  if (ctx?.platform === "server") return "ssg";
+  if (ctx?.command === "test" || ctx?.command === "start") return "csr";
+  return mode === "spa" ? "csr" : "hydrate";
+}
 
 /**
  * Project-plugin factory for `esdev.json`:
@@ -29,7 +40,11 @@ import { compileError, resolveCompiler, startCompilerServer } from "./compiler.j
  * `otfwc serve` child as `otfwPlugin`). An async factory would depend on the
  * host awaiting it; this shape works either way.
  */
-export function createOtfwPlugin({ target = "csr", failOnError = false, onResult, quiet } = {}) {
+export function createOtfwPlugin({ target, mode = "spa", failOnError = false, onResult, quiet } = {}) {
+  if (!MODES.has(mode)) throw new Error(`Unknown OTF rendering mode: ${mode} (expected spa, ssg, or ssr)`);
+  if (target !== undefined && !TARGETS.has(target)) {
+    throw new Error(`Unknown OTF compiler target: ${target} (expected csr, ssg, or hydrate)`);
+  }
   let serverPromise = null;
   const getServer = () =>
     (serverPromise ??= resolveCompiler().then(({ otfwc }) => startCompilerServer(otfwc)));
@@ -39,8 +54,13 @@ export function createOtfwPlugin({ target = "csr", failOnError = false, onResult
       // Same host-side filter as `otfwPlugin` below.
       filter: { id: /\.(mdx|md|[jt]sx)$/ },
       async handler(code, id, ctx) {
+        // A preceding transform may already have lowered this JSX to JS.
+        if (ctx?.type === "js" && /\.[jt]sx$/.test(id)) return null;
         const server = await getServer();
-        return compileModule(server, code, id, { target, failOnError, onResult, quiet, ctx });
+        return compileModule(server, code, id, {
+          target: target ?? renderingTarget(mode, ctx),
+          failOnError, onResult, quiet, ctx,
+        });
       },
     },
   };
@@ -68,7 +88,8 @@ async function compileModule(server, code, id, { target, failOnError, onResult, 
     // When the failure stops the build, the diagnostic travels with it and the
     // CLI prints it once, unwrapped — printing here too would show it twice.
     if (failOnError) {
-      ctx.error(`otfwc failed:\n${text}`);
+      if (ctx?.error) ctx.error(`otfwc failed:\n${text}`);
+      throw e;
     }
     console.error(`✗ otfwc failed:\n${text}`);
     const stub =

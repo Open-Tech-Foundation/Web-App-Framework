@@ -95,22 +95,34 @@ pub fn emit_module(
 
 fn import_header(core: &BTreeSet<&str>, server: &BTreeSet<&str>, runtime: &[String]) -> String {
     let mut out = String::new();
-    // `@opentf/web`: the signal helpers SSG itself needs (for `.value` reads) plus
-    // the source's own named imports (createContext, router, emit, Link, …) so
-    // module/handler code referencing them resolves. JSX tags like <Link> compile
-    // to the SSG registry, but the bindings stay valid exports — keep them.
-    let mut core_names: Vec<String> = core.iter().map(|s| s.to_string()).collect();
-    for r in runtime {
-        if !core_names.contains(r) {
-            core_names.push(r.clone());
-        }
+    // Generated state/computed helpers must stay usable without a DOM. The
+    // browser entry registers Custom Elements as soon as it is imported.
+    if !core.is_empty() {
+        let names: Vec<&str> = core.iter().copied().collect();
+        out.push_str(&format!(
+            "import {{ {} }} from \"@opentf/web/signals\";\n",
+            names.join(", ")
+        ));
     }
-    if !core_names.is_empty() {
-        out.push_str(&format!("import {{ {} }} from \"@opentf/web\";\n", core_names.join(", ")));
+    // Preserve the source's own runtime bindings independently of generated
+    // helpers; application imports may include router, Link, or createContext.
+    let runtime_names: Vec<&String> = runtime
+        .iter()
+        .filter(|name| !core.contains(name.as_str()))
+        .collect();
+    if !runtime_names.is_empty() {
+        let names: Vec<&str> = runtime_names.iter().map(|name| name.as_str()).collect();
+        out.push_str(&format!(
+            "import {{ {} }} from \"@opentf/web\";\n",
+            names.join(", ")
+        ));
     }
     if !server.is_empty() {
         let names: Vec<&str> = server.iter().copied().collect();
-        out.push_str(&format!("import {{ {} }} from \"@opentf/web/server\";\n", names.join(", ")));
+        out.push_str(&format!(
+            "import {{ {} }} from \"@opentf/web/server\";\n",
+            names.join(", ")
+        ));
     }
     out
 }

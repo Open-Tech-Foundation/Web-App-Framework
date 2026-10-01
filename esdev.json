@@ -2,15 +2,8 @@
   "plugins": [
     {
       "module": "@opentf/esdev-plugin-web",
-      "export": "createOtfwPlugin",
       "options": {
-        "target": "hydrate"
-      }
-    },
-    {
-      "module": "@opentf/esdev-plugin-web",
-      "export": "createOtfwRoutes",
-      "options": {
+        "mode": "ssg",
         "appDir": "website/app"
       }
     },

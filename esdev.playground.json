@@ -2,15 +2,8 @@
   "plugins": [
     {
       "module": "@opentf/esdev-plugin-web",
-      "export": "createOtfwPlugin",
       "options": {
-        "target": "csr"
-      }
-    },
-    {
-      "module": "@opentf/esdev-plugin-web",
-      "export": "createOtfwRoutes",
-      "options": {
+        "mode": "spa",
         "appDir": "playground/app"
       }
     }
