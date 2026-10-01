@@ -12,20 +12,20 @@ pre-rendered HTML — so today you build once and serve `dist/` from any static 
 CDN, with no runtime to operate.
 
 OTF Web is a fullstack framework. Alongside the static output, it can run a server:
-`otfw serve` renders routes per request (SSR) and mounts your
+an app-owned server entry renders routes per request (SSR) and mounts your
 [API routes](/docs/routing/api-routes) at their file paths (`route.{js,ts}` works in
 any folder, conventionally `app/api/`). Typed server functions are still in progress.
 
-There are three ways to deploy:
+Deployment options include to deploy:
 
 - **[Production Build](/docs/deployment/build)** — a single-page app: one `index.html`
   shell plus the bundle. The client renders every route. Best for app-like sites behind
   auth or with mostly dynamic content.
 - **[Static Generation](/docs/deployment/static-generation)** — additionally
-  pre-renders every route to its own `.html` file (`--ssg`). Best for content and
+  prerenders routes to their own HTML files through an explicit build step. Best for content and
   marketing sites that need SEO and instant first paint.
 - **[Server](/docs/deployment/server)** — run a server for per-request SSR and
-  [API routes](/docs/routing/api-routes), via `otfw serve` or a runtime adapter. Best for
+  [API routes](/docs/routing/api-routes), through a server entry or runtime adapter. Best for
   fullstack apps that need server logic.
 - **[Fetch handler](/docs/deployment/fetch-handler)** — deploy `dist/server/api.js` to any
   Fetch-native runtime (Workers, Deno, Bun edge, etc.): static assets plus middleware and
@@ -34,7 +34,7 @@ There are three ways to deploy:
 <Callout type="tip" title="Same bundle, more HTML">
   SSG doesn't change your app — it runs the same components through a string renderer at
   build time, then the client bundle adopts that markup on load ([Hydration](/docs/deployment/hydration)).
-  You can start with a plain build and turn on `--ssg` later with no code changes.
+  You can start with a plain build and add a prerender target later.
 </Callout>
 
 ## Hosting
@@ -51,6 +51,6 @@ paths so client-side routes resolve. A fully **static-generated** site needs no 
 ## Running a server
 
 If your app uses SSR or [API routes](/docs/routing/api-routes), run a server instead of
-serving `dist/` statically — either `otfw serve` (Bun) or the emitted
+serving `dist/` statically — through your server entry or an explicitly emitted
 `dist/server/api.js` behind a runtime adapter (Bun, Node, Cloudflare Workers, Deno). See
-**[Server](/docs/deployment/server)** for both paths.
+**[Server](/docs/deployment/server)** for the native entry and adapter options.

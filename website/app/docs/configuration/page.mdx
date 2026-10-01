@@ -7,9 +7,9 @@ import { Callout } from "@opentf/web-docs";
 
 # Configuration
 
-An OTF Web project is configured by a single **`otfw.config.js`** at the project root.
-It is read by the toolchain (`@opentf/web-cli`) at build and dev time, and by the
-themed UI (`@opentf/web-docs`) at runtime.
+Use **esdev.json** for build targets, compiler plugins and the development loop.
+Use **otfw.config.js** for site/theme settings read by the project's prerender
+script and `@opentf/web-docs` components. Neither replaces the other.
 
 ```js
 // otfw.config.js
@@ -31,8 +31,8 @@ export default defineDocsConfig({
 your editor full type hints.
 
 <Callout type="info" title="One file, three consumers">
-  The CLI uses it to wire build plugins (nav, posts, search, feeds, LLM context,
-  last-updated); the
+  Explicit build plugins and the prerender script use it for docs navigation, posts,
+  search, feeds, LLM context and last-updated; the
   `Navbar`/`DocsLayout` components read `docs` at runtime; and the SSG step reads
   `site.url` for canonical URLs, sitemap, and feeds.
 </Callout>
@@ -45,7 +45,7 @@ your editor full type hints.
 | `docs` | The documentation section (sidebar, navbar, search). |
 | `blog` | An optional blog section (post list, banners, feeds). |
 | `i18n` | Internationalization — locales for URL-prefix routing (`@opentf/web-i18n`). |
-| `proxy` | Dev-only request forwarding — send path prefixes to a separately-running backend (`otfw dev`). |
+| `proxy` | Legacy CLI setting; it is not consumed by the native esdev compiler plugin. |
 
 ## `site`
 
@@ -53,8 +53,8 @@ your editor full type hints.
 site: { url: "https://example.com" }
 ```
 
-Required for production docs/blog builds. Omit it and the build fails before writing
-`dist/`; pass `--base-url` at build time to override it for a specific deploy.
+Required by this repo’s production docs/blog prerender script, which validates the
+origin before rendering. Supply it through this config or your own prerender script.
 
 ## `docs`
 
@@ -114,9 +114,9 @@ blog: { dir: "blog", title: "My Blog", lastUpdated: true }
 
 ## `i18n`
 
-Enables URL path-prefix locale routing for `@opentf/web-i18n`. The toolchain threads it
-into the client `mountApp`, pre-renders one static page per locale (`esdev build`),
-and serves per-locale SSR with locale detection (`otfw serve`).
+Describes URL path-prefix locale routing for `@opentf/web-i18n`. Pass these settings
+to the client `mountApp` and your prerender script to generate a static page per
+locale. Per-locale SSR requires locale detection in the request server.
 
 ```js
 i18n: {
@@ -133,41 +133,19 @@ i18n: {
 See [Packages → web-i18n → Locale Routing](/packages/web-i18n/routing) for the full
 routing model and the message/formatting API.
 
-## `proxy`
+## Server routing and the legacy proxy setting
 
-**Dev-only.** Forward matching request path prefixes to another origin instead of handling
-them inside `otfw dev`. This keeps the framework provider-agnostic: run your backend on its
-real runtime and proxy to it, while the dev server keeps serving the SPA with hot reload.
-The primary use is reaching platform bindings the dev server can't host itself — e.g. a
-local `wrangler dev` that provides Cloudflare **D1**, KV, and secrets.
+The old CLI interpreted `otfw.config.js`'s `proxy` map. The native compiler plugin
+and esdev do not apply that setting. A fullstack app's server entry owns backend
+routing, static assets and any forwarding to another runtime.
 
-```js
-// otfw.config.js — forward /api/* to a locally running worker
-export default {
-  proxy: {
-    "/api": "http://localhost:8787",
-  },
-};
-```
+For a platform such as Workers, run the backend on its host's development runtime
+and configure forwarding in your app's server or an external proxy. Do not expect
+adding the old proxy key to enable it in esdev. See
+[Server](/docs/deployment/server) and [Fetch handler](/docs/deployment/fetch-handler).
 
-| Form | Meaning |
-| --- | --- |
-| `"/api": "http://localhost:8787"` | Prefix → target **origin**. The full path + query are preserved. |
-| `"/api": { target: "http://localhost:8787" }` | Object form (room for future options). |
-
-Keys are matched **longest-prefix-first**, so `"/api/admin"` can point elsewhere than
-`"/api"`. A matched prefix is forwarded before the in-process API handler runs, so proxied
-endpoints never also execute locally. `proxy` has **no effect on `otfw build` or a
-production deploy** — in production the backend runs for real (see
-[Fetch handler](/docs/deployment/fetch-handler)).
-
-<Callout type="info" title="Why proxy instead of running the API locally?">
-  Platform bindings often exist only inside the host's dev runtime. Running the API there
-  and proxying `/api/*` to it means the same handler code runs in dev and production — no
-  mocks, no drift.
-</Callout>
-
-<Callout type="info" title="Framework vs. theme config">
-  `otfw.config.js` is the project config. The `docs`/`api`/`blog` blocks are interpreted
-  by `@opentf/web-docs`; a non-docs app can use just `site` and the CLI still builds it.
+<Callout type="info" title="Tooling and theme configuration">
+  esdev.json controls compilation, outputs and the development loop. otfw.config.js
+  supplies theme and prerender data; adding docs, blog or i18n there does not
+  automatically install plugins or generate server entries.
 </Callout>

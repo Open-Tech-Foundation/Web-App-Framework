@@ -6,7 +6,7 @@ description: Content components shipped with web-docs — callouts, steps, tabs,
 import { Callout, Steps, Tabs, CodeBlock } from "@opentf/web-docs";
 
 export const demoTabs = [
-  { label: "bun", content: <CodeBlock code="bun add @opentf/web" /> },
+  { label: "bun", content: <CodeBlock code="pnpm add @opentf/web" /> },
   { label: "npm", content: <CodeBlock code="npm i @opentf/web" /> },
   { label: "pnpm", content: <CodeBlock code="pnpm add @opentf/web" /> },
 ];
@@ -43,19 +43,19 @@ import { Steps } from "@opentf/web-docs";
 
 <Steps>
 ### Install
-Run `bun add @opentf/web`.
+Run `pnpm add @opentf/web`.
 
 ### Start the dev server
-Run `bun run dev`.
+Run `esdev start`.
 </Steps>
 ```
 
 <Steps>
 ### Install
-Run `bun add @opentf/web`.
+Run `pnpm add @opentf/web`.
 
 ### Start the dev server
-Run `bun run dev` and open the printed URL.
+Run `esdev start` and open the printed URL.
 </Steps>
 
 ## Tabs
@@ -69,7 +69,7 @@ copy button, pass a `CodeBlock`.
 import { Tabs, CodeBlock } from "@opentf/web-docs";
 
 <Tabs tabs={[
-  { label: "bun", content: <CodeBlock code="bun add @opentf/web" /> },
+  { label: "bun", content: <CodeBlock code="pnpm add @opentf/web" /> },
   { label: "npm", content: <CodeBlock code="npm i @opentf/web" /> },
 ]} />
 ```
@@ -89,12 +89,12 @@ optional `lang` (a language chip) and `name` (a filename shown in the header).
 ```jsx
 import { CodeBlock } from "@opentf/web-docs";
 
-<CodeBlock lang="bash" name="terminal" code="bun add @opentf/web" />
+<CodeBlock lang="bash" name="terminal" code="pnpm add @opentf/web" />
 ```
 
 Rendered:
 
-<CodeBlock lang="bash" name="terminal" code="bun add @opentf/web" />
+<CodeBlock lang="bash" name="terminal" code="pnpm add @opentf/web" />
 
 <Callout type="warning" title="No syntax highlighting yet">
   `CodeBlock` renders its code as plain (unhighlighted) text. Highlighting happens at

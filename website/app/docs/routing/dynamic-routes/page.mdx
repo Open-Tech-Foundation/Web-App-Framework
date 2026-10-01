@@ -32,8 +32,8 @@ between matching routes.
 ## Per-path metadata
 
 Export `generateMetadata({ params })` on a dynamic page when each path needs its own
-`<title>`, description, or share image. With `otfw build --ssg`, pair it with
+`<title>`, description, or share image. With a configured prerender target, pair it with
 `getStaticPaths` so every enumerated path is pre-rendered with the correct head. A
 dynamic route **without** `getStaticPaths` is skipped at build time but still resolves
-`generateMetadata` on each request under `otfw serve` / SSR. See
+`generateMetadata` on each request through an app-provided request renderer / SSR. See
 [Metadata & SEO](/docs/routing/metadata).

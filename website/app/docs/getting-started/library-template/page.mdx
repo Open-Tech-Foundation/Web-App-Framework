@@ -1,119 +1,79 @@
 ---
 title: Library Template
-description: Scaffold a publishable OTF Web component package with tests.
+description: Publish JSX source components and test them through esdev.
 ---
 
-import { Callout, Steps } from "@opentf/web-docs";
+import { Callout } from "@opentf/web-docs";
 
 # Library Template
 
-The **Library** project type scaffolds a publishable component package. It ships source
-`.jsx` (or `.tsx`) from `index.js` — consumer apps compile those files through their
-own `otfw` toolchain. There is no separate build step in the library itself.
-
-## Scaffold
+Component libraries can ship JSX/TSX source from `index.js`. Consumer apps compile
+that source with `@opentf/esdev-plugin-web`; the library does not need to bundle a
+second copy of the framework.
 
 ```bash
-bun create @opentf/web my-lib
+esdev create my-lib --template=library --package-manager=pnpm
 ```
 
-Choose **Library** at the project-type prompt, then pick JavaScript or TypeScript and
-a styling solution. Dependencies are installed automatically.
+The installed esdev 0.14 library template's test checks only source-file exports.
+Add a compiler config and rendering test to exercise the component itself.
 
-## Project layout
-
-```text
-my-lib/
-├─ index.js           # package entry — re-exports components
-├─ src/
-│  └─ Counter.jsx     # sample component
-├─ tests/
-│  └─ counter.test.js
-├─ test-setup.js      # wires otfwc + @opentf/web-test/setup
-├─ bunfig.toml        # preloads test-setup.js
-└─ package.json
-```
-
-The entry file re-exports components:
+## Package entry
 
 ```js index.js
 export { default as Counter } from "./src/Counter.jsx";
 ```
 
+Include `index.js` and `src/` in the package's `files` list, and make `@opentf/web`
+a peer dependency. Install the runtime, plugin and test helpers for development:
+
+```bash
+pnpm add -D @opentf/web @opentf/esdev-plugin-web @opentf/web-test
+```
+
 ## Sample component
 
 ```jsx src/Counter.jsx
-export default function Counter({ initial = 0 }) {
-  let count = $state(initial);
-
-  return (
-    <button type="button" onclick={() => count++} data-testid="counter">
-      Count {count}
-    </button>
-  );
+export default function Counter(props) {
+  let count = $state(props.initial ?? 0);
+  return <button type="button" onclick={() => count++}>Count: {count}</button>;
 }
 ```
 
-## Testing
+## Rendering tests
 
-The template includes `@opentf/web-test` and a `test-setup.js` preload that points
-`OTFWC_BIN` at `@opentf/web-compiler` before loading the web-test setup module:
+Use the [Testing Setup](/packages/web-test/setup) config. A library test uses the
+compiler-only factory, so route discovery is unnecessary:
 
-```js test-setup.js
-import { otfwcPath } from "@opentf/web-compiler";
-
-process.env.OTFWC_BIN ??= otfwcPath();
-await import("@opentf/web-test/setup");
-```
-
-<Steps>
-
-### Run tests
-
-```bash
-bun test
-```
-
-### Publish
-
-Bump `version` in `package.json`, then publish to npm:
-
-```bash
-npm publish
-```
-
-The `files` field includes `index.js` and `src/` — consumers receive source, not a
-pre-built bundle.
-
-</Steps>
-
-## Consuming in an app
-
-Install the package in an OTF Web app and import components normally:
-
-```bash
-bun add my-lib
-```
-
-```jsx app/page.jsx
-import { Counter } from "my-lib";
-
-export default function Home() {
-  return <Counter initial={5} />;
+```json esdev.test.json
+{
+  "plugins": [{
+    "module": "@opentf/esdev-plugin-web",
+    "export": "createOtfwPlugin",
+    "options": { "target": "csr", "failOnError": true }
+  }],
+  "test": { "setup": ["@opentf/web-test/setup"] }
 }
 ```
 
-The app's `otfw` dev server and build pipeline compile the library's `.jsx` sources
-just like local components. `@opentf/web` is a **peer dependency** of the library — the
-host app provides the runtime.
+```js tests/counter.test.js
+import { expect, test } from "runtime:test";
+import { render, userEvent } from "@opentf/web-test";
+import { Counter } from "../index.js";
 
-<Callout type="tip" title="TypeScript libraries">
-  Choose TypeScript at the scaffold prompt to get `.tsx` sources, `index.ts`, and a
-  `tsconfig.json`. The consumption model is the same — apps compile the shipped
-  sources.
-</Callout>
+test("updates after a click", async () => {
+  const { getByRole } = render(Counter, { initial: 2 });
+  const button = getByRole("button", { name: "Count: 2" });
+  await userEvent.click(button);
+  expect(button.textContent).toBe("Count: 3");
+});
+```
 
-## Related
+```bash
+esdev test --config=esdev.test.json --dom
+```
 
-- [web-test setup](/packages/web-test/setup) — how the test preload works.
-- [Project structure](/docs/getting-started/project-structure) — App and Docs layouts.
+Use `--browser` for full user-event interaction sequences. Publishing source and
+publishing a compiled library are different workflows; see esdev's official
+[library build guide](https://esrun.opentechf.org/esdev/build/library) if consumers
+need precompiled output.

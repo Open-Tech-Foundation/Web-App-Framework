@@ -66,10 +66,10 @@ export function generateMetadata({ params }) {
 
 Use `generateMetadata` on [dynamic routes](/docs/routing/dynamic-routes) when each path
 needs its own title, description, or share image. Pair it with `getStaticPaths` when you
-pre-render those paths with `otfw build --ssg`.
+pre-render those paths with an esdev prerender target.
 
 A dynamic route **without** `getStaticPaths` produces no pre-rendered HTML, but
-`generateMetadata` still runs per request under `otfw serve` / SSR — so those pages get
+`generateMetadata` still runs per request through a request renderer / SSR — so those pages get
 their `<head>` at request time, including query params.
 
 ## Merge order
@@ -128,7 +128,7 @@ export const metadata = {
 
 ## Site URL and absolute links
 
-Set the canonical origin in `otfw.config.js` (or pass `--base-url` at build time). In a
+Set the canonical origin in `otfw.config.js`, read by your prerender script. In a
 plain SPA or fullstack project, export a plain config object:
 
 ```js
@@ -160,9 +160,9 @@ not ideal for production SEO.
 
 | Mode | `<head>` behavior |
 | --- | --- |
-| `otfw build --ssg` | Each pre-rendered `.html` file gets a resolved `<head>` per route |
-| `otfw serve` / SSR adapters | `<head>` is rendered per request |
-| Plain CSR (`otfw build`) | The single `index.html` shell gets the **root layout's** site-wide metadata — favicon/other `links`, `description`, and Open Graph site defaults. Per-**page** `title`, `canonical`, and `generateMetadata` are route-specific and need `--ssg` or `otfw serve` |
+| Configured prerender build | Each pre-rendered `.html` file gets a resolved `<head>` per route |
+| App-provided SSR renderer / adapters | `<head>` is rendered per request |
+| Plain CSR (`esdev build`) | Uses the head supplied by the HTML entry. Per-route metadata needs a prerender or request-render step that resolves and injects it. |
 
 <Callout type="info" title="Client navigation does not rewrite &lt;head&gt;">
   After first paint, SPA navigations via `<Link>` do not re-run metadata resolution.

@@ -9,10 +9,10 @@ import { Callout } from "@opentf/web-docs";
 
 OTF Web handlers are standard **`Request → Response`** functions. They never import a
 platform SDK, so the same `route.*`, `loader.*`, and `_middleware.*` code runs in
-`otfw dev`, in tests, and in production — on **any** host that exposes the Fetch API:
+an app-owned development server, in tests, and in production — on **any** host that exposes the Fetch API:
 Cloudflare Workers, Deno Deploy, Bun, Vercel Edge, Netlify Edge, and others.
 
-`otfw build` emits a self-contained **`dist/server/api.js`**. Pair it with the static
+An explicit build script can call `emitApiBundle` from `@opentf/web-cli/ssg` to emit a self-contained **`dist/server/api.js`**. Pair it with the static
 `dist/` output and a small **entry file** on your platform: wire
 `createFetchHandler` to the runtime's `fetch`, serve `dist/` through the host's static
 layer, and read databases or secrets from `context.env` when the platform provides them.
@@ -60,12 +60,12 @@ Full-stack deployments usually split **two outputs** from one build:
 
 | Output | Role |
 | --- | --- |
-| `dist/` | Hashed JS/CSS, `index.html`, optional pre-rendered HTML (`--ssg`) |
+| `dist/` | Hashed JS/CSS, `index.html`, optional prerendered HTML from an explicit build target |
 | `dist/server/api.js` | Middleware + API dispatch |
 
 Your platform serves `dist/` from its CDN or **assets binding**. Configure SPA fallback
 so unknown paths return `index.html` for client-side routes. For a fully pre-rendered site
-(`otfw build --ssg`), every route already has its own HTML — use a 404 page or direct file
+(a configured prerender target), every route already has its own HTML — use a 404 page or direct file
 serving instead.
 
 The exact config is platform-specific (Wrangler `assets`, Deno Deploy static sites, etc.).
@@ -125,32 +125,19 @@ wrangler dev
 # → http://localhost:8787
 ```
 
-**2. Proxy matching paths** from `otfw.config.js`:
+**2. Configure forwarding in your app server or an external proxy.** The retired
+CLI's `otfw.config.js` proxy setting is not consumed by esdev. Your server entry
+owns the browser endpoint, asset serving and backend forwarding in fullstack mode.
+See [Server](/docs/deployment/server).
 
-```js
-// otfw.config.js
-export default {
-  proxy: {
-    "/api": "http://localhost:8787",
-  },
-};
-```
-
-**3. Start the dev server** as usual:
-
-```bash
-otfw dev
-# → http://localhost:3000   (SPA + HMR)
-#   ↪ proxy /api → your backend origin
-```
-
-The browser hits the dev server; the SPA hot-reloads; proxied API requests run on the real
-platform runtime — same handler code as production. See [Configuration → proxy](/docs/configuration#proxy).
+**3. Build/watch the configured targets with esdev.** Use a native server target
+and configure esdev's fullstack development loop for that entry. See the official
+[development guide](https://esrun.opentechf.org/esdev/start).
 
 ## Deploy
 
 ```bash
-otfw build    # → dist/ (client) + dist/server/api.js
+esdev build --minify    # configured client/server targets and explicit build steps
 # then your platform's deploy command
 ```
 
@@ -159,7 +146,7 @@ Wire both steps into `package.json` when it helps:
 ```json
 {
   "scripts": {
-    "deploy": "otfw build && wrangler deploy"
+    "deploy": "esdev build --minify && wrangler deploy"
   }
 }
 ```
@@ -180,8 +167,8 @@ Same order in dev (via the proxy) and production (in your Fetch handler):
 
 ## Platform examples
 
-Nothing above is baked into the framework — it's your entry file, your host config, and an
-optional dev `proxy`. **Node** uses the `node:http` adapter instead; see
+Nothing above is baked into the framework — it's your entry file, your host config, and any
+app-owned development forwarding. **Node** uses the `node:http` adapter instead; see
 [Server](/docs/deployment/server).
 
 ### Cloudflare Workers

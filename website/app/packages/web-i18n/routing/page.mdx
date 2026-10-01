@@ -83,7 +83,7 @@ A language switcher, then, is just links to the current path under each locale:
 
 ## Static generation (SSG)
 
-`otfw build --ssg` pre-renders **every route once per locale** — the default bare,
+The prerender helper, supplied with the i18n configuration, renders **every route once per locale** — the default bare,
 others under their prefix — each with the right `<html lang>` and `hreflang`
 alternates for SEO:
 
@@ -98,10 +98,10 @@ dist/
 
 ## Server rendering (SSR) + detection
 
-`otfw serve` renders the locale from the URL prefix. A bare path whose visitor prefers
-a **non-default** locale (via `Accept-Language`, or an `otfw_locale` cookie) is
-`302`-redirected to the prefixed URL; the default locale serves bare, so default-locale
-visitors are never redirected.
+An app-provided request server can derive the locale from the URL prefix and use
+`Accept-Language` or an `otfw_locale` cookie to redirect a bare path to a non-default
+locale. This requires server wiring; the native compiler plugin does not install
+locale-detection middleware automatically.
 
 ## Programmatic control
 

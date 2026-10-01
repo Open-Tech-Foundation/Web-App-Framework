@@ -9,7 +9,7 @@ import { Callout } from "@opentf/web-docs";
 
 A **`_middleware.{js,ts}` file** applies to its folder and everything nested under it —
 the same scoping as pages and `route.*` endpoints. Middleware runs on the **server** for
-every matching request under `otfw dev`, `otfw serve`, and deploy adapters. It governs
+every matching request through an app-owned request pipeline and deploy adapters. It governs
 the whole pipeline: API dispatch, `<path>/__data.json` loader data, and SSR / the app shell.
 
 For client-side SPA navigation only, use [Route guards](/docs/routing/route-guards).
@@ -98,22 +98,22 @@ API routes, loaders, options, and the immutable-headers wrap pattern.
   pipeline.
 
 <Callout type="warning" title="Static hosting has no middleware">
-  A pure `otfw build` deployed to a static host has no server — middleware cannot run there.
-  Guarded pages need `otfw serve` or an edge/server adapter.
+  A static esdev browser build deployed to a static host has no server — middleware cannot run there.
+  Guarded pages need a request server or an edge/server adapter.
 </Callout>
 
 ## Where it runs
 
-**`otfw dev`** and **`otfw serve`** wrap the pipeline:
+Your server entry composes the pipeline with `createMiddleware`:
 
 ```
 middleware → API route.* → __data.json loaders → assets → SPA shell / SSR
 ```
 
-Edits to `route.*` or `_middleware.*` rebuild the server bundle and refresh the browser tab
-(full-page reload — see [CLI dev notes](/docs/cli#reload-on-save-not-module-hmr)).
+Configure server build/watch targets in esdev.json. Middleware runs only when the
+server entry or adapter includes it in the request pipeline.
 
-**`otfw build`** emits `dist/server/api.js` with three exports:
+A project build script can call `emitApiBundle` from `@opentf/web-cli/ssg` to emit `dist/server/api.js` with three exports:
 
 | Export | Use when |
 | --- | --- |
@@ -153,4 +153,4 @@ export default guard;
 - [Route guards](/docs/routing/route-guards) — client SPA navigation (not a security boundary)
 - [API routes](/docs/routing/api-routes) — `route.{js,ts}` handlers inside the pipeline
 - [Data fetching](/docs/data-fetching) — loaders read `locals` from middleware
-- [Server](/docs/deployment/server) — `otfw serve` and adapters
+- [Server](/docs/deployment/server) — native server entries and adapters

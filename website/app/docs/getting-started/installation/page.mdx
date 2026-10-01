@@ -1,118 +1,85 @@
 ---
 title: Installation
-description: Scaffold a new OTF Web project and start the dev server.
+description: Install esdev and configure the OTF Web compiler plugin.
 ---
 
-import { Callout, Tabs, Steps, CodeBlock } from "@opentf/web-docs";
-
-export const scaffoldTabs = [
-  { label: "bun", content: <CodeBlock code="bun create @opentf/web my-app" /> },
-  { label: "npm", content: <CodeBlock code="npm create @opentf/web@latest my-app" /> },
-  { label: "pnpm", content: <CodeBlock code="pnpm create @opentf/web my-app" /> },
-  { label: "yarn", content: <CodeBlock code="yarn create @opentf/web my-app" /> },
-];
+import { Callout } from "@opentf/web-docs";
 
 # Installation
 
-<Steps>
+Install ES-Runtime's **esdev** development binary using the official
+[installation guide](https://esrun.opentechf.org/docs/installation). Use esdev 0.14
+or newer and a package manager such as pnpm.
 
-### Scaffold a project
+## Choosing a project type
 
-Create a new project with the initializer. It's interactive — pick a project type,
-language, and (for apps and libraries) a styling solution. Use whichever package
-manager you prefer:
-
-<Tabs tabs={scaffoldTabs} />
-
-The scaffolder resolves every `@opentf/*` dependency to the latest published version
-on npm, writes the project files, then runs `<pm> install` with the package manager
-that invoked it (`npm`, `pnpm`, `yarn`, or `bun`).
-
-| Prompt | Options |
+| Template | Purpose |
 | --- | --- |
-| **Project type** | See [choosing a project type](#choosing-a-project-type) below |
-| **Language** | JavaScript (`.jsx`) or TypeScript (`.tsx` + `tsconfig.json`) |
-| **Styling** | Plain CSS or Tailwind CSS (SPA, Fullstack, and Library only) |
-
-#### Choosing a project type
-
-Not sure which to pick? Each option scaffolds a different shape of project:
-
-| Option | What it is | Pick this when… |
-| --- | --- | --- |
-| **SPA (browser-only)** | A normal web app whose UI runs in the browser. You deploy static files (`dist/`) — no server code in the repo. | You want a dashboard, marketing site, or client app with no backend logic (or you call an external API). |
-| **Fullstack (browser + server)** | Same UI **plus** server files: [middleware](/docs/routing/middleware), [API routes](/docs/routing/api-routes), and [route loaders](/docs/data-fetching). Includes `otfw serve` for per-request SSR. | You need auth, a database, or any logic that must not run in the browser. |
-| **Documentation site** | An MDX docs or blog site with navbar, sidebar, and search — powered by `@opentf/web-docs`. | You're building product docs, a handbook, or a content site (like this one). |
-| **Library** | A package of reusable components — not a runnable app. Ships with `bun test`. | You're publishing UI primitives or widgets for other apps to install. |
-
-<Callout type="tip" title="SPA vs Fullstack">
-  **SPA** = browser only, static hosting. **Fullstack** = browser + server files
-  (middleware, `/api/*` routes, loaders). If you might add a database or secrets later,
-  start with **Fullstack** — you can still deploy static output, but the server pieces
-  are already in place.
-</Callout>
-
-### Start developing
-
-For **SPA**, **Fullstack**, and **Documentation site** projects, start the dev server:
+| `spa` | A browser app with file-based routing and client rendering. |
+| `fullstack` | A browser app with a server entry for APIs, middleware and request rendering. |
+| `docs` | An MDX docs/blog site with prerendered HTML, navigation and search. |
+| `library` | A source package of reusable components compiled by its consumers. |
 
 ```bash
-cd my-app
-bun run dev
+esdev create my-app --template=spa --package-manager=pnpm
 ```
 
-The dev server compiles each route on first visit. Saving a file rebuilds the affected
-chunks and **refreshes the browser tab** (full-page reload) — not module-level HMR yet.
-It watches `app/`, any module your pages import from outside it (a shared `lib/`, a linked
-workspace package), `public/`, `index.html`, and `otfw.config.*` — so adding or deleting a
-route folder, or editing your config, takes effect without restarting.
+Use `--language=ts` for TypeScript and `esdev create --help` for supported options.
+Template files are embedded in esdev; package versions are resolved while scaffolding.
 
-For **Library** projects, run the included test suite instead:
-
-```bash
-cd my-library
-bun test
-```
-
-See [Library template](/docs/getting-started/library-template) for how to publish and
-consume a component package.
-
-</Steps>
-
-<Callout type="tip" title="Requirements">
-  OTF Web targets modern browsers and runs its toolchain on Bun or Node 18+.
+<Callout type="warning" title="OTF template migration">
+  The installed esdev 0.14 OTF app templates still emit retired CLI scripts and
+  omit esdev.json. They need an upstream update and a new esdev binary release.
+  Until then, provide the native config and entry files described below rather than
+  running the generated otfw scripts. The create-web package is deprecated.
 </Callout>
 
-## Production build
+## Configure a browser app
 
-Build a static bundle you can host anywhere (App and Docs projects):
+Install the runtime and compiler/routes plugin:
 
 ```bash
-bun run build
+pnpm add @opentf/web
+pnpm add -D @opentf/esdev-plugin-web
 ```
 
-See [Deployment](/docs/deployment) for build output, hosting, and a fully pre-rendered
-([Static Generation](/docs/deployment/static-generation)) site.
+Create `esdev.json`, an HTML module entry and `entry.js` as shown in
+[Production Build](/docs/deployment/build). Put pages/layouts under `app/`.
+Then run:
 
-## Editor setup
-
-The compiler uses a custom JSX pipeline. Point your `jsconfig.json` (or
-`tsconfig.json`) at it so the language server understands your components:
-
-```json jsconfig.json
-{
-  "compilerOptions": {
-    "jsx": "preserve",
-    "jsxImportSource": "@opentf/web"
-  }
-}
+```bash
+esdev start
+esdev build --minify
+esdev preview
 ```
 
-TypeScript projects scaffolded with `esdev create` (or the deprecated
-`create-web`) already include a `tsconfig.json`
-and macro typings in `app/otfw-env.d.ts`.
+Use [Static Generation](/docs/deployment/static-generation) for docs/blog prerendering,
+and [Server](/docs/deployment/server) for an app-owned request server.
 
-<Callout type="info" title="Why jsxImportSource">
-  It tells your editor where JSX types come from, so autocomplete and type-checking
-  match what the compiler actually emits — without affecting the build.
-</Callout>
+## Testing
+
+Install `@opentf/web-test` and configure CSR compilation plus cleanup in
+`esdev.test.json` as shown in [Testing Setup](/packages/web-test/setup).
+
+```bash
+esdev test --config=esdev.test.json --dom
+```
+
+Use `--browser` for full Testing Library user-event workflows. A real browser and
+its matching driver are required for that tier.
+
+## Repository development
+
+This repository uses `tsr` as the shared local/CI task entry point:
+
+```bash
+pnpm install
+tsr build-compiler
+tsr dev
+tsr site
+tsr test
+tsr site-build
+```
+
+The workspace configs are at the repo root so package links stay inside esdev's
+project root. See the repository README for prerequisites and all tasks.

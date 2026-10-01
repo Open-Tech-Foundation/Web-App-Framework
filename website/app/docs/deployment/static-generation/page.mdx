@@ -1,37 +1,58 @@
 ---
 title: Static Generation
-description: Pre-render every route to static HTML with otfw build --ssg.
+description: Prerender routes during esdev build with an explicit SSG target.
 ---
 
 import { Callout } from "@opentf/web-docs";
 
 # Static Generation
 
-OTF Web can pre-render your routes to static HTML at build time. The output is plain
-strings — there is no server and no DOM in the render path — so it deploys to any
-static host.
+The compiler's SSG backend emits string renderers. A project prerender script
+composes routes and layouts into HTML without a server-side DOM.
 
-## Build
+## Configure the build
 
-```bash
-otfw build --ssg
+Use the default OTF plugin with `mode: "ssg"` and add a second build target:
+
+```json esdev.json
+{
+  "plugins": [{ "module": "@opentf/esdev-plugin-web", "options": { "mode": "ssg" } }],
+  "build": {
+    "targets": {
+      "web": { "entry": "index.html", "outdir": "dist" },
+      "prerender": { "entry": "ssg.js", "out": ".ssg/ssg.js", "then": "run" }
+    }
+  }
+}
 ```
 
-Each route is rendered to an `.html` file under `dist/`, alongside the hashed JS and
-CSS bundles. On load, the same components take over the static markup.
+Provide `ssg.js`: it imports helpers from `@opentf/web-cli/ssg`, locates the staged
+site, discovers pages/loaders, and calls `runPrerender`. This repo's `website/ssg.js`
+is a working example. The script is required; the compiler plugin does not generate it.
 
-<Callout type="info" title="Hydration adopts, never rebuilds">
-  The static HTML is already the final markup. On first paint the client adopts those
-  server-rendered nodes in place — wiring reactivity without re-rendering or
-  reconciling a virtual tree. Full guide: [Hydration](/docs/deployment/hydration).
-</Callout>
+```bash
+esdev build --minify
+esdev preview
+```
 
-## What gets rendered
+The prerender step writes HTML into release staging, alongside the compiled assets,
+before esdev publishes the completed output. In development this repo skips that
+step when no release staging directory exists.
 
-Every `page.jsx`/`page.mdx` route is pre-rendered with its layout chain. Components
-that only run in the browser (those touching `window` during render) are skipped
-gracefully and filled in on the client.
+## Routes and data
 
-Each output `.html` file also gets a resolved `<head>` from the route's
-[metadata](/docs/routing/metadata) exports (title, description, Open Graph, canonical,
-and related tags).
+Static routes render with their layout chains. Dynamic routes need `getStaticPaths`.
+Page loaders run at build time; their data is included in the HTML and emitted as
+`<path>/__data.json`. The prerender script resolves route metadata for each `<head>`.
+
+## Hydration
+
+The client hydrate backend adopts supported server markup and attaches bindings.
+Unsupported compiler shapes can fall back to client rendering with diagnostics.
+See [Hydration](/docs/deployment/hydration).
+
+## Search and other generated files
+
+After rendering, this repo's script indexes opted-in docs/blog HTML into `_search/`,
+then generates feeds and LLM context. Indexing failures fail the release build.
+A future output-hook plugin can own this sequence once its upstream contract lands.

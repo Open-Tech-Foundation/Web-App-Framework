@@ -1,149 +1,87 @@
 ---
 title: Server
-description: Deploy per-request SSR, middleware, route loaders, and API routes with otfw serve or a runtime adapter.
+description: Supply a native Request/Response server entry for API routes, middleware and SSR.
 ---
 
 import { Callout } from "@opentf/web-docs";
 
 # Server
 
-A static `dist/` covers SPA and pre-rendered sites. When your app renders per request
-(SSR) or exposes [API routes](/docs/routing/api-routes), you run a **server** instead.
-There are two ways to ship it.
+API routes, middleware and loaders are standard server modules. A fullstack app
+provides a **server entry** that composes them and hosts the request pipeline.
+The retired CLI no longer supplies that server automatically.
 
-## Option 1 — `otfw serve` (Bun)
+## Native API server
 
-The simplest path. `otfw serve` builds the client, then runs a Bun server that renders
-each route on request and mounts your `route.{js,ts}` endpoints at their paths:
+This minimal entry mounts one API module on ES-Runtime:
+
+```js server.js
+import { serve } from "runtime:http";
+import { env } from "runtime:process";
+import { createApiHandler } from "@opentf/web/server";
+import * as hello from "./app/api/hello/route.js";
+
+const api = createApiHandler({ "/app/api/hello/route.js": hello });
+serve({ hostname: "127.0.0.1", port: Number(env.PORT || 8080) }, async (request) =>
+  await api(request) || new Response("Not found", { status: 404 })
+);
+```
+
+Add a server target alongside the browser target in `esdev.json`:
+
+```json
+"server": { "entry": "server.js", "out": "dist/server.js", "platform": "server" }
+```
+
+Use the default OTF plugin with `mode: "ssr"` when the server imports renderable
+components. Server modules compile to string renderers, while browser release
+modules compile for hydration.
 
 ```bash
-bun run serve
-# → otfw serve   (add --port 8080 to override)
+esdev build --minify
+esdev dist/server.js
 ```
 
-One process serves SSR **and** API routes, plus the static assets from `dist/`. For pages
-with a sibling `loader.{js,ts}`, the loader runs on each request **before** the page
-renders and its result is available as `router.data` — same wire format as SSG and SPA
-navigation. See [Data Fetching](/docs/data-fetching).
+This example hosts APIs only. Static assets, SSR and additional routes belong in
+the app's server entry. The native plugin integration tests verify compiled server
+rendering, real HTTP API requests, middleware and loader data endpoints.
 
-This is the recommended target when you control the runtime (a VM, container, or any Bun host).
+## Compose a full pipeline
 
-<Callout type="info" title="How a request resolves">
-  [Middleware](/docs/routing/middleware) runs first on pages, loader data, API routes, and
-  SSR alike. Then a matching API handler, then `<path>/__data.json`, then static assets from
-  `dist/`, and everything else falls through to SSR. Unmatched paths render your 404.
+Use `createMiddleware` around the request pipeline, then try API dispatch, loader
+data endpoints, static assets and page rendering. `createLoaderRegistry` supplies
+`match`, `load` and `handle`; `renderRoute` composes registered pages/layouts.
+
+Thread the live request, query and middleware locals into loaders. Include serialized
+route data and island props in server HTML so client navigation and hydration resume
+with the same data. Request rendering uses shared route/collector state; the server
+entry must account for overlapping requests rather than assuming isolated renderers.
+
+<Callout type="info" title="Starter work remains upstream">
+  The installed esdev 0.14 fullstack template still refers to the retired server
+  command. Its replacement needs a server entry, request pipeline and native build/dev
+  config. An updated compiler plugin alone does not supply those files.
 </Callout>
 
-## Option 2 — deploy `dist/server/api.js` with an adapter
+## Other runtimes
 
-`otfw build` emits a self-contained **`dist/server/api.js`** exporting `middleware`,
-`apiRoutes`, and `apiHandler` (the runtime dispatcher is bundled in; your npm deps stay
-external). Pair it with the static `dist/` — served by the platform's CDN / static layer —
-to run your server on any runtime.
+For Fetch-native platforms, `createFetchHandler` composes dispatch and middleware
+with a fallback for assets or SSR. When your build script emits `dist/server/api.js`,
+see [Fetch handler](/docs/deployment/fetch-handler) for adapter wiring.
 
-**Fetch-native runtimes** (Cloudflare Workers, Bun, Deno) use `createFetchHandler` with
-the pipeline middleware runner and API dispatch. The runtime's `fetch` arguments (`env`,
-`ctx`) are threaded into middleware and handlers as `context.env` / `context.ctx` — so on
-Workers a handler reads bindings via `env.DB`, and a `fallback` can serve static assets
-from the platform's assets binding:
+Node applications import `toNodeListener` from `@opentf/web/server/adapters/node`.
+Keep runtime-specific imports in the server entry, not in client components.
 
-```js
-import { apiRoutes, middleware } from "./dist/server/api.js";
-import { createFetchHandler } from "@opentf/web/server";
+## Environment and server-only imports
 
-export default {
-  fetch: createFetchHandler(apiRoutes, {
-    middleware,
-    fallback: (request, env) => env.ASSETS.fetch(request), // static assets / SPA
-  }),
-};
-```
+On ES-Runtime, read variables from `runtime:process`'s `env`. Other hosts expose
+variables through their own environment API, and Fetch platforms can pass bindings
+as `context.env`/`context.ctx`. Configure environment loading for your chosen host;
+the retired CLI's automatic Bun `.env` loading is not part of esdev integration.
 
-For a full worked example — Fetch entry, static assets, platform bindings, and the dev proxy —
-see **[Fetch handler](/docs/deployment/fetch-handler)**.
+Keep database clients and secrets in `loader.*`, `route.*`, `_middleware.*` and
+server entries. The compiler does not provide a guarantee that arbitrary imports
+placed in client components stay server-only.
 
-**Node** uses the `node:http` adapter:
-
-```js
-import { createServer } from "node:http";
-import { apiRoutes, middleware } from "./dist/server/api.js";
-import { createFetchHandler, toNodeListener } from "@opentf/web/server";
-
-const fetch = createFetchHandler(apiRoutes, { middleware });
-createServer(toNodeListener(fetch)).listen(3000);
-```
-
-See the [Server API reference](/docs/server) for the full adapter surface.
-
-<Callout type="tip" title="Pair with static output">
-  Build the client with `otfw build` (or `--ssg` for pre-rendered HTML) and let your host
-  serve `dist/` from its CDN, while the adapter above runs middleware and API dispatch.
-  This split — static edge + server handler — deploys cleanly to Workers, serverless, and
-  Node hosts alike.
-</Callout>
-
-## Route loaders
-
-Server-side data for pages ships today as **route loaders** — a `loader.{js,ts}` file
-next to `page.*` that never bundles to the client. Under `otfw serve` it runs per
-request; under `otfw build --ssg` it runs at build time and writes inline data plus
-`<path>/__data.json` for static hosts.
-
-```js
-// app/todos/loader.js — server-only; safe to import DB clients
-export default async function loader({ params, query, request, locale }) {
-  return { items: await db.todos.list() };
-}
-```
-
-```jsx
-// app/todos/page.jsx
-import { router } from "@opentf/web";
-
-export default function Todos() {
-  return (
-    <ul>
-      {(router.data?.items ?? []).map((t) => (
-        <li>{t.title}</li>
-      ))}
-    </ul>
-  );
-}
-```
-
-Loaders share the same `router.data` surface across SSR, SSG, and client navigation.
-For interaction-driven or per-user fetches after mount, use client-side [`resource()`](/docs/data-fetching#resource)
-or call your [API routes](/docs/routing/api-routes) with `fetch`.
-
-Full guide: [Data Fetching](/docs/data-fetching).
-
-## Environment variables
-
-Environment variables are never bundled into the client, so secrets can't leak to the
-browser. Loaders and API handlers read them via `process.env` — `otfw serve` loads your
-`.env` automatically (Bun), and a deployed `dist/server/api.js` uses whatever environment
-the host runtime provides.
-
-On runtimes that pass bindings through `fetch` (Cloudflare Workers), those arrive on
-`context.env` instead — `env.DB` for D1, KV namespaces, secrets — and `context.ctx` exposes
-`waitUntil` for background work. Use `context.env` for platform bindings and `process.env`
-for plain variables. See [Fetch handler](/docs/deployment/fetch-handler).
-
-## What ships today
-
-| Area | Status |
-| --- | --- |
-| Per-request SSR (`otfw serve`) | ✅ |
-| Route loaders → `router.data` | ✅ |
-| First-paint hydration | ✅ — [Hydration](/docs/deployment/hydration) |
-| Middleware (`_middleware.js`) | ✅ |
-| Cookie helpers (`@opentf/web/server`) | ✅ — [Cookies](/docs/routing/cookies) |
-| File-based API routes | ✅ |
-| Client `resource()` primitive | ✅ |
-| Compiler co-located `export loader` / queries / actions | 🔜 [roadmap](https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/docs/roadmap.md) |
-
-Until Phase B lands, keep server-only imports in `loader.*`, `route.*`, and `_middleware.*`
-files — not in components. Components reach the server through `router.data` (loader output),
-`resource()`, or `fetch` to API routes.
-
-Full middleware guide: [Middleware](/docs/routing/middleware).
+See [API Routes](/docs/routing/api-routes), [Middleware](/docs/routing/middleware)
+and [Data Fetching](/docs/data-fetching).

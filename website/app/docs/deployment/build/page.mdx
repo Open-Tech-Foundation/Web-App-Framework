@@ -1,104 +1,66 @@
 ---
 title: Production Build
-description: Compile and bundle your app to dist/ with otfw build.
+description: Compile and bundle your app with declarative esdev targets.
 ---
 
 import { Callout } from "@opentf/web-docs";
 
 # Production Build
 
-`otfw build` compiles every route and component (JSX/MDX → native DOM), bundles the
-result, and writes a deployable site to `dist/`.
+The OTF plugin compiles components and discovers routes. esdev processes the HTML
+entry, bundles JavaScript, compiles CSS and writes the configured output.
 
-```bash
-bun run build
-# → otfw build
-```
-
-## What it produces
-
-```
-dist/
-  index.html          the app shell, with the hashed bundle injected
-  assets/
-    bundle-<hash>.js   the entry bundle (code-split per route)
-    <chunk>-<hash>.js  lazily-loaded route chunks
-    <name>-<hash>.css  compiled stylesheets
-    <worker>-<hash>.js  bundled web workers (new Worker(new URL(…)))
-    <asset>-<hash>.wasm binary assets (new URL(…, import.meta.url))
-```
-
-Routes are code-split: visiting a page loads only its chunk. Filenames are content-
-hashed, so they can be cached forever. Web workers and files referenced with
-`new URL(…, import.meta.url)` are emitted here too — see
-[Assets & Workers](/docs/core-concepts/assets).
-
-## How route code splitting works
-
-`otfw build` generates a small entry bundle plus one lazy chunk per route (and shared
-chunks such as `layout.jsx`). The entry calls `mountApp` with a map of dynamic imports —
-each route is `() => import("…/page.jsx")` — and Rolldown emits separate hashed files
-under `dist/assets/`.
-
-On first navigation to a route, the browser fetches that route's chunk; other routes stay
-unloaded. In dev, the same model applies on demand: the first visit to a path compiles
-`/app/.../page.jsx` into a `/__route/<id>.js` module instead of bundling the whole app up
-front.
-
-<Callout type="info" title="Prefetch is not built yet">
-  Chunks load lazily on navigation today. Automatic prefetch (for example on link hover or
-  when a `<Link>` enters the viewport) is planned but not implemented in the router yet.
-</Callout>
-
-## Single-page output
-
-A plain build emits one `index.html`; the client bundle renders every route. Configure
-your host to serve `index.html` for unknown paths so deep links resolve:
-
-```nginx
-location / {
-  try_files $uri $uri/ /index.html;
+```json esdev.json
+{
+  "plugins": [{ "module": "@opentf/esdev-plugin-web", "options": { "mode": "spa" } }],
+  "build": {
+    "targets": {
+      "web": { "entry": "index.html", "outdir": "dist", "assets": ["public"] }
+    }
+  }
 }
 ```
 
-<Callout type="tip" title="Pre-render for SEO">
-  Add `--ssg` to also emit a static `.html` for every route — see
-  [Static Generation](/docs/deployment/static-generation). Crawlers then get full markup
-  without running your JS. Per-route `<head>` tags come from
-  [Metadata & SEO](/docs/routing/metadata) exports on your pages and layouts.
-</Callout>
+Your `index.html` includes the app root and its module entry:
 
-## Base URL
-
-Set `site.url` in `otfw.config.js` so the build can emit absolute canonical URLs, a
-sitemap, and (when a blog is configured) RSS/Atom feeds. Production docs/blog builds
-fail loudly when no site URL is configured:
-
-```js
-export default defineDocsConfig({
-  site: { url: "https://example.com" },
-});
+```html
+<div id="app"></div>
+<script type="module" src="./entry.js"></script>
 ```
 
-You can override it at build time with `--base-url=https://example.com`.
-
-## LLM context
-
-Docs/blog builds also write `/llms.txt` and `/llms-full.txt` from the filesystem router.
-The compact file links to key docs, API, and blog routes; the full file includes cleaned
-Markdown content for MD/MDX pages. Drop `public/llms.txt` or `public/llms-full.txt` to
-override either generated file.
-
-The summary line in `llms.txt` is your site's own description: `docs.description` from
-`otfw.config.js` when set, otherwise the description your app already resolves for
-`<meta name="description">` (home route, falling back to the root layout's site-wide
-metadata).
-
-## Previewing locally
-
-`dist/` is plain static files — serve it with any static server to smoke-test the
-production output before deploying:
+```js entry.js
+import { mountApp } from "@opentf/web";
+import { pages, guard } from "@otfw/routes";
+mountApp({ pages, guard, target: document.getElementById("app") });
+```
 
 ```bash
-bunx serve dist
+esdev build --minify
+esdev preview
 ```
+
+## Output
+
+`dist/` contains the processed HTML, JavaScript assets, compiled stylesheets and
+configured public files. The route map uses dynamic imports; esdev owns chunking
+and final asset names. See the official
+[project build configuration](https://esrun.opentechf.org/esdev/build/project).
+
+For a single-page app, configure the host to fall back to `index.html` for unknown
+paths so client routes resolve.
+
+<Callout type="warning" title="esdev 0.14 route-chunk references">
+  The OTF benchmark exposed an upstream HTML-build issue: a route chunk imports
+  entry.js after esdev has renamed that entry with a content hash. Verify navigation
+  in preview, not only build success, until the upstream fix is released.
+</Callout>
+
+## Static rendering and docs output
+
+Static generation requires a project prerender script; it is not a build flag.
+See [Static Generation](/docs/deployment/static-generation). That script reads
+`site.url` from `otfw.config.js` for canonical URLs, sitemap and feeds.
+
+This repo's prerender script also generates OTF Search, RSS/Atom feeds, `/llms.txt`
+and `/llms-full.txt`. Public LLM files can override the generated ones. These are
+explicit post-prerender steps until esdev output hooks are available.

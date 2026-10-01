@@ -154,9 +154,8 @@ this shares with docs pages.
 
 ## Feeds
 
-`otfw build` writes RSS 2.0 and Atom 1.0 feeds to `<dir>/rss.xml` and
-`<dir>/atom.xml` (e.g. `/blog/rss.xml` and `/blog/atom.xml`) whenever a `blog` block is
-configured. `site.url` is required so every feed URL is absolute. Posts appear
+The project prerender script calls the docs feed helper to write RSS 2.0 and Atom 1.0 feeds to `<dir>/rss.xml` and
+`<dir>/atom.xml` (e.g. `/blog/rss.xml` and `/blog/atom.xml`) when feed generation is enabled with a `blog` block. `site.url` is required so every feed URL is absolute. Posts appear
 newest-first with absolute links, dates from `date`, author metadata, and categories
 from `tags`.
 

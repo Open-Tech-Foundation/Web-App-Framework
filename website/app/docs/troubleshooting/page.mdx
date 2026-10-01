@@ -116,19 +116,13 @@ During SSG/SSR they do not run at all — only in the client bundle.
 
 See [Lifecycle](/docs/core-concepts/lifecycle).
 
-## Dev error overlay (`otfw dev`)
+## Compiler diagnostics (`esdev start`)
 
-The dev server injects an error overlay (Next.js-style) for:
-
-- **Compile errors** — pushed over the HMR WebSocket when a route fails to compile;
-  fixing the file and saving triggers a reload.
-- **Runtime errors** — uncaught exceptions, unhandled rejections, and `otfw:error`
-  events (render, effect, mount, route). A successful navigation sends
-  `otfw:error-clear` and dismisses the overlay.
-
-A compile error stays up until the build succeeds: a module that fails to compile is
-served as a stub that renders without throwing, so the navigation that follows is
-"successful" and would otherwise dismiss the panel a moment after it appeared.
+The compiler plugin returns located diagnostics to esdev. Compile errors fail the
+build by default; the development host presents build failures and clears them after
+a successful rebuild. Runtime errors use the framework's error-reporting surface and
+the browser console. The retired CLI's diagnostic-stub and overlay bridge are not the
+native esdev contract.
 
 ### Reading the panel
 
@@ -145,7 +139,7 @@ app/blog/page.mdx:12:9   parse error: Unexpected token
 13 |   return <article>{count}</article>;
 ```
 
-The same position is printed in the terminal running `otfw dev`, in the
+The same position is printed in the terminal running `esdev start`, in the
 `path:line:column` form editors can jump to. Compiler rejections that are not syntax
 errors — mutating a `$state` value in place, a callback `ref`, a component that builds
 JSX but never returns it — are located the same way.
@@ -168,16 +162,14 @@ clears it.
 
 - **Per-route titles and share cards** need SSG or SSR — each URL must ship its own
   `<title>`, `canonical`, and `generateMetadata` output. A plain CSR build serves one
-  shared `index.html` for every route; it injects only the **root layout's** site-wide
-  defaults (favicon, description, Open Graph site name) — not per-page head. See
+  shared `index.html` for every route, with the head provided by that HTML entry. See
   [Metadata & SEO](/docs/routing/metadata).
 - **SPA navigation never updates `<head>`** — after first paint, `<Link>` navigations do
   not re-run metadata. Crawlers and social previews use the document for the URL they
   fetched, not the client-rendered view.
-- **Missing absolute URLs** — set `site.url` in `otfw.config.js` (or `--base-url` at
-  build) so canonicals, `og:image`, and the sitemap are absolute.
+- **Missing absolute URLs** — set `site.url` in `otfw.config.js` for your prerender script so canonicals, `og:image`, and the sitemap are absolute.
 - **Dynamic routes not in the sitemap** — export `getStaticPaths` when pre-rendering
-  with `--ssg`; otherwise those paths have no static HTML (but `otfw serve` / SSR still
+  with a configured prerender target; otherwise those paths have no static HTML (but a request renderer / SSR still
   resolves `generateMetadata` per request).
 
 ## Quick decision tree
@@ -197,7 +189,7 @@ Flash or hydration warning on load?
   └─ fragment page root + observers?     → wrap in one element
 
 Wrong title in Slack/Google?
-  ├─ plain CSR only?                     → add --ssg or otfw serve for per-route <head>
+  ├─ plain CSR only?                     → configure prerendering or a request renderer for per-route <head>
   └─ deep link works but in-app nav wrong? → expected: <head> is not updated on <Link>
 ```
 

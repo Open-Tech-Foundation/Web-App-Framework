@@ -97,12 +97,16 @@ export default auth;
 
 ## Running & deploying
 
-- **`otfw dev`** serves your endpoints and rebuilds them on `route.*` / `_middleware.*` edits (full-page refresh).
-- **`otfw serve`** tries a matching `route.*` handler first, then SSR — so a request
-  that matches no handler falls through to your pages (pages and endpoints coexist).
-- **`otfw build`** emits `dist/server/api.js`, a self-contained handler you deploy
-  with a runtime adapter — see the [Server API reference](/docs/server).
+Supply a server entry that imports route modules and calls `createApiHandler` or
+`createFetchHandler`. Build that entry as an esdev server target. The compiler/routes
+plugin alone does not generate an HTTP server or discover API handlers automatically.
+See [Server](/docs/deployment/server) for a native API entry.
 
-Environment variables are never bundled into the client. Handlers read them via
-`process.env` — `otfw dev`/`otfw serve` load your `.env` automatically (Bun), and a
-deployed `dist/server/api.js` uses whatever environment the host runtime provides.
+A project prerender/build script can explicitly call `emitApiBundle` from
+`@opentf/web-cli/ssg` to write `dist/server/api.js`. This repo's SSG script does so
+when API routes exist. A plain esdev browser build does not emit it automatically.
+
+Keep server-only imports in route modules. On ES-Runtime, read variables from
+`runtime:process`'s `env`; on other runtimes, use the host's environment API or
+platform bindings supplied as `context.env`. The retired CLI's automatic Bun
+`.env` loading does not apply to this setup.

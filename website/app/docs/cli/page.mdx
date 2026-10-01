@@ -1,85 +1,51 @@
 ---
 title: CLI
-description: The otfw command — dev server, production build, and static generation.
+description: Develop, build, preview and test OTF Web projects with esdev.
 ---
 
 import { Callout } from "@opentf/web-docs";
 
 # CLI
 
-The `otfw` command (from `@opentf/web-cli`) drives the toolchain. Projects expose it
-through `package.json` scripts (`bun run dev`, `bun run build`).
+OTF Web projects use **esdev** with `@opentf/esdev-plugin-web`. The plugin compiles
+JSX/TSX/MDX and discovers routes; esdev bundles JavaScript, processes CSS, runs tests
+and manages the development loop. The historical `otfw` executable is retired.
 
-| Command | Description |
+| Command | Purpose |
 | --- | --- |
-| `otfw dev` | Start the dev server with on-demand compile and reload-on-save (full-page refresh). |
-| `otfw build` | Compile and bundle to `dist/` — per-route lazy chunks under `assets/`. |
-| `otfw build --ssg` | Build and pre-render every route to static HTML. |
-| `otfw serve` | Build, then run the per-request SSR server (`--port` to override). |
+| `esdev start` | Build and watch the targets configured in esdev.json. |
+| `esdev build --minify` | Build release output. |
+| `esdev preview` | Serve the existing static release output. |
+| `esdev test --config=esdev.test.json --dom` | Run tests in the native DOM realm. |
+| `esdev test --config=esdev.test.json --browser` | Run tests in a real browser with its matching driver. |
+| `esdev typecheck` | Run the project's TypeScript checker. |
 
-```bash
-otfw dev            # development
-otfw build --ssg    # production, static-rendered
-otfw serve          # production SSR + API routes
-```
-
-Both `otfw dev` and `otfw serve` serve your [API routes](/docs/routing/api-routes)
-(`route.{js,ts}` files); `otfw build` emits the handler bundle to `dist/server/api.js`.
+In this repository, `tsr dev`, `tsr site`, `tsr site-build`, `tsr test` and
+`tsr test-e2e` are the shared entry points for those operations.
 
 ## Scaffolding
 
-Create a new project with `esdev create`:
-
 ```bash
-esdev create my-app
+esdev create my-app --template=spa --package-manager=pnpm
 ```
 
-`@opentf/create-web` (`bun create @opentf/web`, `npm/pnpm/yarn create @opentf/web`)
-is deprecated — use `esdev create` for new projects. The legacy scaffolder below
-is kept for existing projects:
+OTF templates are `spa`, `fullstack`, `docs` and `library`. They support JavaScript
+or TypeScript. Use `esdev create --help` for options.
 
-```bash
-bun create @opentf/web my-app
-npm create @opentf/web@latest my-app
-pnpm create @opentf/web my-app
-yarn create @opentf/web my-app
-```
-
-The scaffolder (`@opentf/create-web`) is interactive:
-
-| Prompt | Options |
-| --- | --- |
-| **Project type** | **SPA (browser-only)** · **Fullstack (browser + server)** · **Documentation site** · **Library** — see [Installation](/docs/getting-started/installation#choosing-a-project-type) |
-| **Language** | JavaScript or TypeScript (`.tsx` pages, `.ts` API routes, `tsconfig.json`) |
-| **Styling** | Plain CSS or Tailwind CSS (SPA, Fullstack, and Library only) |
-
-Before writing files, it resolves every `@opentf/*` dependency in the generated
-`package.json` to `^<latest>` from npm. Scaffolding aborts if the registry is
-unreachable. After the project is written, it runs `<pm> install` with the package
-manager that invoked the command.
-
-<Callout type="info" title="Next steps">
-  SPA, Fullstack, and Docs projects suggest `bun run dev` (or the equivalent for your
-  package manager). Library projects suggest `bun test` — see
-  [Library template](/docs/getting-started/library-template).
+<Callout type="warning" title="Template migration">
+  The installed esdev 0.14 OTF app templates still generate retired otfw scripts and
+  omit esdev.json. They need an upstream template update and a new esdev release.
+  Do not assume that changing the plugin updates an installed binary's templates.
+  The deprecated create-web scaffolder is retained only for compatibility.
 </Callout>
 
-## Dev server notes
+## Project configuration
 
-- Serves your `public/` directory at the site root (e.g. `/logo.png`).
-- Compiles `.css` entries (including Tailwind) on request.
-- Surfaces compile errors in an overlay.
+Configure plugins and build targets in `esdev.json`. A browser app needs an HTML
+entry whose module script imports `@otfw/routes` and calls `mountApp`.
+SSG adds a prerender target with `then: run`; a fullstack app supplies a server entry.
+See [Production Build](/docs/deployment/build) and [Server](/docs/deployment/server).
 
-### Reload on save (not module HMR)
-
-`otfw dev` watches `app/` and, on a supported file change, drops cached route chunks and
-signals the browser over `/__hmr` to **`location.reload()`** — a full tab refresh, not
-in-place hot module replacement.
-
-| Works on save | Limitations |
-| --- | --- |
-| `app/**/*.{jsx,tsx,mdx,md,css}` (existing routes) | New `page.*` in a **new folder** may need a dev-server restart |
-| Imported components, layouts, loaders | Plain `app/**/*.js` (e.g. `_meta.js`) is not watched |
-| `route.js` / `loader.js` API and data bundles | `otfw.config.js` and `index.html` need a restart |
-
-Module-level HMR (swap a changed module without reloading the page) is on the roadmap.
+Development uses esdev's rebuild/reload behavior. The old `/__hmr` and `/__route`
+contracts belong to the retired CLI; refer to the official
+[development loop](https://esrun.opentechf.org/esdev/start) for current behavior.

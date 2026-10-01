@@ -12,7 +12,7 @@ rendering, the browser receives real HTML on first load. **Hydration** is what h
 the client **adopts** that markup in place — claims the nodes, wires signals and event handlers
 onto them, and never tears the tree down to reconcile a virtual DOM.
 
-A plain CSR `otfw build` skips this: `#app` starts empty and the client builds every route
+A plain CSR `esdev build` skips this: `#app` starts empty and the client builds every route
 from scratch. Hydration is what makes SSG and SSR genuinely cheaper at interactive time, not
 just better for SEO.
 
@@ -20,8 +20,8 @@ just better for SEO.
 
 | Situation | Client behavior |
 | --- | --- |
-| First load of an SSG page (`otfw build --ssg`) | Adopt the pre-rendered HTML |
-| First load of an SSR page (`otfw serve` or adapter) | Adopt the per-request HTML |
+| First load of an SSG page (a configured prerender build) | Adopt the pre-rendered HTML |
+| First load of an SSR page (an app server or adapter) | Adopt the per-request HTML |
 | Client navigation after first paint (`<Link>`) | **Build** the next route on the client (CSR) |
 | Plain CSR build, first visit | Build into an empty `#app` (no adopt) |
 
@@ -35,18 +35,18 @@ hydrates on that first paint. SPA navigation is layered on top as a progressive 
 
 ## How to enable it
 
-Hydration is automatic whenever the toolchain ships adoptable markup:
+Use plugin `mode: "ssg"` with a prerender target for static HTML, or `mode: "ssr"`
+with an app-owned server entry for request rendering. Both modes compile browser
+release modules for hydration. Server HTML must include the sentinel and island/data
+payloads that the client expects; the plugin does not produce that request server.
 
 ```bash
-# Pre-rendered HTML + hydrate client bundle
-otfw build --ssg
-
-# Per-request HTML + hydrate client bundle
-otfw serve
+esdev build --minify
 ```
 
-A plain `otfw build` emits the leaner CSR bundle and an empty app shell — fine for a
-client-only SPA behind a catch-all `index.html` rule.
+Plugin `mode: "spa"` emits CSR output for a client-only app. See
+[Static Generation](/docs/deployment/static-generation) and
+[Server](/docs/deployment/server) for the required entries.
 
 The app shell stamps a sentinel on the mount root when hydration is expected:
 
@@ -114,7 +114,7 @@ There is no tree-wide reconcile pass.
 ## Related
 
 - [Static Generation](/docs/deployment/static-generation) — pre-render routes at build time.
-- [Server](/docs/deployment/server) — per-request SSR with `otfw serve` or adapters.
+- [Server](/docs/deployment/server) — per-request SSR with an app server or adapters.
 - [Data Fetching](/docs/data-fetching) — loaders and `router.data` across SSG, SSR, and SPA nav.
 - [Portal](/docs/core-concepts/portal) — relocation deferred until hydration completes.
 - [Navigation](/docs/routing/navigation) — `<Link>` and client-side routing after first paint.

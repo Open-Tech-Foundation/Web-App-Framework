@@ -26,12 +26,14 @@ my-app/
 │  │  └─ page.jsx     # route: /about
 │  └─ global.css
 ├─ public/            # static files copied to dist/ as-is (favicon, images, …)
-├─ index.html         # mount point + injected bundle
+├─ esdev.json         # compiler plugin and build targets
+├─ entry.js           # client bootstrap
+├─ index.html         # mount point + module script
 └─ package.json
 ```
 
 Add an optional `otfw.config.js` at the root when you need `site.url` (for
-`otfw build --ssg`), dev `proxy`, or i18n — see [Configuration](/docs/configuration).
+a prerender target), or i18n — see [Configuration](/docs/configuration).
 
 ## Fullstack (browser + server)
 
@@ -57,7 +59,7 @@ my-app/
 └─ package.json
 ```
 
-Run `otfw serve` for per-request SSR, loaders, and API routes in one process. See
+Provide a native server entry to compose per-request rendering, loaders and API routes. See
 [Server](/docs/deployment/server).
 
 ## Documentation site
@@ -76,6 +78,8 @@ my-docs/
 │  │  └─ page.mdx         # /docs introduction
 │  └─ global.css
 ├─ public/                # logos, og images — served at /
+├─ esdev.json             # browser + prerender targets
+├─ ssg.js                 # staged release prerender step
 ├─ otfw.config.js         # site URL, docs/blog sections (@opentf/web-docs)
 ├─ index.html
 └─ package.json
@@ -92,8 +96,7 @@ my-lib/
 │  └─ Counter.jsx
 ├─ tests/
 │  └─ counter.test.js
-├─ test-setup.js
-├─ bunfig.toml
+├─ esdev.test.json  # CSR compiler plugin and native cleanup
 └─ package.json
 ```
 
@@ -121,10 +124,12 @@ Files the toolchain recognizes beyond ordinary components. Extensions `.js`, `.t
 
 | File / folder | Role |
 | --- | --- |
-| `index.html` | The HTML shell. The toolchain mounts the app into `#app` and injects the bundle. |
+| `esdev.json` | Compiler plugins, build targets, output locations and development settings. |
+| `entry.js` | Client bootstrap: imports @otfw/routes and calls mountApp. |
+| `index.html` | The HTML shell with an explicit module script. The toolchain mounts the app into `#app` and injects the bundle. |
 | `public/` | Static assets copied to `dist/` at build time and served at the site root (`public/favicon.svg` → `/favicon.svg`). Overrides generated files when names collide (e.g. a hand-written `public/robots.txt`). |
-| `otfw.config.js` | Optional for SPA/fullstack (`site.url`, `proxy`, `i18n`). Required for docs/blog production builds and drives `@opentf/web-docs` (navbar, search, feeds). See [Configuration](/docs/configuration). |
-| `dist/` | Build output — created by `otfw build`. Not checked in; safe to delete and rebuild. |
+| `otfw.config.js` | Optional for SPA/fullstack (`site.url`, `i18n`). Required for docs/blog production builds and drives `@opentf/web-docs` (navbar, search, feeds). See [Configuration](/docs/configuration). |
+| `dist/` | Build output — created by `esdev build`. Not checked in; safe to delete and rebuild. |
 
 Every other PascalCase `.jsx`/`.tsx` file under `app/` is a reusable component — no
 registration needed (see [Components](/docs/core-concepts/components)).
