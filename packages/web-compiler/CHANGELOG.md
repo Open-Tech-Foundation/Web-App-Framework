@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-01
+
 ### Changed
 
 - Ship one native toolchain executable per platform. `otfwc docs index`,

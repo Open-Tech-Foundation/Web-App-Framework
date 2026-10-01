@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-01
+
 ### Fixed
 
 - SPA navigation moves focus to the new page's heading, falling back to its main

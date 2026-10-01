@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-10-01
+
 ### Changed
 
 - Use stable `@opentf/std` `^0.19.0` instead of `^1.0.0-beta.2`.

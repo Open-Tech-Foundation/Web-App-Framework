@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-10-01
+
 ### Changed
 
 - Run setup through esdev's `runtime:test` with its native DOM or browser mode.

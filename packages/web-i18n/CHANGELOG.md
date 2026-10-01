@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-10-01
+
 ### Fixed
 
 - Keep `<html lang>` synchronized with the active locale, including locale changes
