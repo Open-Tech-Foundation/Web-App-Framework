@@ -20,9 +20,9 @@
 // Route keys keep their `/app/...` shape because the runtime's `routeFromPath`
 // anchors on it; layouts compose by path (`layout.jsx` wraps its directory).
 // Page / layout / 404 modules compile through the `otfw` transform plugin —
-// list both. Only `resolve` + `load` here, so this half runs under
-// `esdev start` / `esdev build`, not under `esdev test` (which runs
-// `transform` only); tests hand-write the map instead.
+// list both. The `resolve` + `load` hooks run during builds and, in esdev
+// 0.14+, unbundled tests/scripts too. Tests that hand-write their map can
+// omit this plugin from their config.
 
 import { Glob, stat } from "runtime:fs";
 import { cwd } from "runtime:process";
@@ -38,7 +38,7 @@ async function isFile(path) {
 
 async function isDir(path) {
   try {
-    return (await stat(path)).isDirectory;
+    return (await stat(path)).isDir;
   } catch {
     return false;
   }
