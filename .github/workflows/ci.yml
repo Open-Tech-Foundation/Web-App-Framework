@@ -43,6 +43,8 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/tsr/main/install.sh | bash
           echo "$HOME/.tsr/bin" >> "$GITHUB_PATH"
       - run: pnpm install --frozen-lockfile
+      - name: Install released site dependencies
+        run: tsr site-install
       # What `tsr test` runs lives in tasks.toml (Rust + esdev suites).
       - name: Typecheck
         run: tsr typecheck

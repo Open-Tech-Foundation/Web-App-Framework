@@ -5,19 +5,14 @@
 // own path instead (see Anchor below).
 //
 // - SOURCES (app/, otfw.config.js, public/ overrides) live in the REAL tree —
-//   staging mirrors outputs only. The enclosing project root is found by walking
-//   up from this bundle's own path to the first `package.json` (staging carries
-//   none).
+//   staging mirrors outputs only. The source project is the staging directory's
+//   parent.
 // - OUTPUTS (the staged site) sit under the staging root. No staging area (the
 //   dev loop runs the bundle straight from the `.dev` mirror) means "not a
 //   release build" — the step skips rather than touch the final tree (see below).
 //
-// LAYOUTS: the same file builds the site in two places — this monorepo (site
-// root `website/`, output `dist/`) and standalone from npm with `website/`
-// as the project root (a Cloudflare root directory; site root `.`, output
-// `dist/`). The layout follows the bundle's own location: a `/website/.ssg/`
-// segment means monorepo, anything else standalone. Tooling imports stay bare
-// (`@opentf/web-cli/ssg`) so both layouts resolve them identically.
+// The site owns its esdev.json and installed packages. Its project root is
+// always `website/`, including when copied for a standalone deploy.
 //
 // Everything else is the `otfw build --ssg` second half: the shell is the site
 // target's own `index.html` output (bundle script + stylesheet already injected,
@@ -25,29 +20,8 @@
 // build doesn't know about.
 
 import { env, exit } from "runtime:process";
+import { realPath } from "runtime:fs";
 import { basename, dirname, fromFileURL, join, toFileURL } from "runtime:path";
-
-import {
-  assertNoRouteConflicts,
-  closeCompilers,
-  discoverLoaders,
-  discoverPages,
-  emitApiBundle,
-  emitLoaderBundle,
-  exists,
-  findUp,
-  fmtMs,
-  loadConfig,
-  loadDocsPlugins,
-  readText,
-  resolveCompiler,
-  resolveFrom,
-  runLastUpdated,
-  runPrerender,
-  stampHydrateSentinel,
-  step,
-  writePrerenderReport,
-} from "@opentf/web-cli/ssg";
 
 const t0 = performance.now();
 
@@ -79,22 +53,39 @@ for (let dir = bundleDir; ; ) {
   if (up === dir) break;
   dir = up;
 }
-const projectRoot = stagingRoot
-  ? dirname(stagingRoot)
-  : await findUp("package.json", bundleDir);
 if (!stagingRoot) {
   console.log("ssg: no staging area — prerender runs on a release `esdev build`, skipping.");
   exit(0);
 }
-// LAYOUTS (see header): the bundle's own location names the layout.
-const monorepo = bundlePath.includes("/website/.ssg/");
-const root = monorepo ? join(projectRoot, "website") : projectRoot;
+// Keep package-relative binary paths intact: load installed tooling at runtime.
+// A computed import keeps esdev from inlining its import.meta.url into this bundle.
+const ssgModule = ["@opentf", "web-cli", "ssg"].join("/");
+const {
+  assertNoRouteConflicts,
+  closeCompilers,
+  discoverLoaders,
+  discoverPages,
+  emitApiBundle,
+  emitLoaderBundle,
+  exists,
+  fmtMs,
+  loadConfig,
+  loadDocsPlugins,
+  readText,
+  resolveCompiler,
+  resolveFrom,
+  runLastUpdated,
+  runPrerender,
+  stampHydrateSentinel,
+  step,
+  writePrerenderReport,
+} = await import(ssgModule);
+
+const root = dirname(stagingRoot);
 const outName = "dist";
 const appDir = join(root, "app");
-const stagedOut = stagingRoot
-  ? join(stagingRoot, monorepo ? "website/dist" : "dist")
-  : join(root, outName);
-if (!projectRoot || !(await exists(appDir))) {
+const stagedOut = join(stagingRoot, outName);
+if (!(await exists(appDir))) {
   console.error(`✗ ssg: cannot anchor sources (bundle at ${bundleDir})`);
   exit(1);
 }
@@ -135,7 +126,9 @@ const docsPlugins = await loadDocsPlugins(root, appDir, config, exclude);
 // `#app` sentinel so the client adopts the server markup instead of rebuilding it.
 const shellHtml = stampHydrateSentinel(await readText(shellPath));
 
-const webEntry = await resolveFrom("@opentf/web", root).catch(() => {
+// Use the same canonical package path as the bundler's package resolver; pnpm
+// symlink paths otherwise create separate router instances in the server bundle.
+const webEntry = await resolveFrom("@opentf/web", root).then(realPath).catch(() => {
   console.error(`✗ cannot resolve "@opentf/web" from ${root}`);
   exit(1);
 });
@@ -182,6 +175,10 @@ const ssg = await runPrerender({
   onCompile: (id) => ssgStep.update(`compiling ${id.split("/").pop()}  (${++ssgCompiled})`),
   onRender: (done, total) => ssgStep.update(`rendering ${done}/${total}`),
 });
+if (!ssg.count || ssg.failed.length) {
+  await closeCompilers();
+  throw new Error(`Site prerender failed: ${ssg.count} page(s) rendered, ${ssg.failed.length} failed`);
+}
 ssgStep.done(
   `Pre-rendered ${ssg.count} page(s)` +
     (ssg.skipped.length ? ` · ${ssg.skipped.length} dynamic route(s) skipped` : ""),

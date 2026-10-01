@@ -1,0 +1,14 @@
+packages:
+  - "."
+
+allowBuilds:
+  '@opentf/web-compiler': false
+
+minimumReleaseAgeExclude:
+  - '@opentf/esdev-plugin-web@0.2.0'
+  - '@opentf/web-cli@1.27.0'
+  - '@opentf/web-compiler@0.18.0'
+  - '@opentf/web-docs@0.27.0'
+  - '@opentf/web-form@1.24.0'
+  - '@opentf/web-i18n@1.24.0'
+  - '@opentf/web@0.29.0'

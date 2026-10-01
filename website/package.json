@@ -2,19 +2,21 @@
   "name": "website",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.21.0",
   "scripts": {
     "build": "esdev build",
-    "start": "esdev start --port=3005"
+    "start": "esdev start --port=3005",
+    "preview": "esdev preview"
   },
   "dependencies": {
-    "@opentf/web": "workspace:*",
-    "@opentf/web-docs": "workspace:*",
-    "@opentf/web-form": "workspace:*",
-    "@opentf/web-i18n": "workspace:*"
+    "@opentf/web": "0.29.0",
+    "@opentf/web-docs": "0.27.0",
+    "@opentf/web-form": "1.24.0",
+    "@opentf/web-i18n": "1.24.0"
   },
   "devDependencies": {
-    "@opentf/esdev-plugin-web": "workspace:*",
-    "@opentf/web-cli": "workspace:*",
+    "@opentf/esdev-plugin-web": "0.2.0",
+    "@opentf/web-cli": "1.27.0",
     "tailwindcss": "4.2.2"
   }
 }

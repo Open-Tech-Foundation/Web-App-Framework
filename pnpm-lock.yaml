@@ -187,31 +187,6 @@ importers:
         specifier: workspace:*
         version: link:../packages/web-cli
 
-  website:
-    dependencies:
-      '@opentf/web':
-        specifier: workspace:*
-        version: link:../packages/web
-      '@opentf/web-docs':
-        specifier: workspace:*
-        version: link:../packages/web-docs
-      '@opentf/web-form':
-        specifier: workspace:*
-        version: link:../packages/web-form
-      '@opentf/web-i18n':
-        specifier: workspace:*
-        version: link:../packages/web-i18n
-    devDependencies:
-      '@opentf/esdev-plugin-web':
-        specifier: workspace:*
-        version: link:../packages/esdev-plugin-web
-      '@opentf/web-cli':
-        specifier: workspace:*
-        version: link:../packages/web-cli
-      tailwindcss:
-        specifier: 4.2.2
-        version: 4.2.2
-
 packages:
 
   '@babel/code-frame@7.29.7':

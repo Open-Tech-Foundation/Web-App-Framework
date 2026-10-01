@@ -62,7 +62,11 @@ indexes prerendered HTML and generates feeds/LLM files into the hook's staged
 `website/ssg.js` still prerenders routes and generates sitemap/robots from the
 actual rendered paths. It calls `writePrerenderReport` to pass resolved site
 metadata to the hook; the hook removes this temporary report before publication.
-Root and standalone website configs both register the output plugin.
+The website owns `website/esdev.json`; repository site tasks run from that
+directory. It installs locked, published packages independently of the workspace
+and registers both the compiler/routes plugin and the output plugin locally.
+The prerender entry loads installed SSG helpers at runtime so package-relative
+compiler archive paths are preserved when esdev bundles the entry.
 
 Development runs neither `finish` nor the prerender step by default. Browser-only
 selected builds skip output generation when their configured `prerenderTarget`

@@ -107,7 +107,7 @@ methodology, and caveats. Reproduce locally with `tsr bench -- all`.
 
 ## Documentation
 
-For repository development, install ES-Runtime (`esdev` 0.14 or newer), the Rust
+For repository development, install ES-Runtime (`esdev` 0.15 or newer), the Rust
 toolchain, pnpm, and [tsr](https://tsr.opentechf.org/), then run `pnpm install`
 at the root. Run workspace tasks from the root so pnpm's package links stay
 inside esdev's project root.
@@ -116,12 +116,20 @@ The tasks in [`tasks.toml`](tasks.toml) are the shared local and CI entry points
 ```bash
 tsr --list          # Discover available tasks
 tsr dev            # Playground development server
+tsr site-install   # Install the site's locked, released packages
 tsr site           # Documentation development server
 tsr build          # Build the playground
 tsr site-build     # Build and prerender the documentation site
+tsr site-preview   # Serve the built documentation site
 tsr test           # Rust and esdev tests, including forms and i18n
 tsr test-e2e       # Browser tests (Chrome and matching ChromeDriver)
 ```
+
+The website is an independent pnpm project using published framework and plugin
+packages. Its build configuration and lockfile live in `website/`; site tasks run
+from that directory. You can also run `esdev start`, `esdev build` and
+`esdev preview` directly there. Changes to workspace packages reach the site after
+their released versions are updated in `website/package.json`.
 
 Component sources compile on import through `@opentf/esdev-plugin-web` in
 esdev's DOM realm: `tsr test-web-docs-dom`, `tsr test-web-form`, and
