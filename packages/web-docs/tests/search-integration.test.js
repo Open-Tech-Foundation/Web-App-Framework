@@ -45,3 +45,14 @@ test('the Rust writer and JS reader agree on content, metadata, and deployment g
     await remove(site, { recursive: true });
   }
 });
+
+test('enabled indexing failures propagate instead of producing a successful SSG build', async () => {
+  const { runDocsSearchIndex } = await import('../../web-cli/src/shared.js');
+  expect(await runDocsSearchIndex(root, {}, '/missing-site', binary)).toBeNull();
+  let error;
+  try {
+    await runDocsSearchIndex(root, { docs: { search: { provider: 'otf' } } }, join(root, '.cache', 'missing-search-site'), join(dirname(binary), platform === 'windows' ? 'otfwc.exe' : 'otfwc'));
+  } catch (e) { error = e; }
+  expect(Boolean(error)).toBe(true);
+  expect(error.message).toContain('Search site directory does not exist');
+});

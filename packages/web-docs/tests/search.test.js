@@ -122,11 +122,11 @@ test("prefix expansion crosses every matching shard", async () => {
 });
 
 test("uses immutable fragment generations and produces match-centered excerpts", async () => {
-  const text = `${"Unrelated introduction. ".repeat(30)}Routing details at the end.`;
-  await withIndex({ chunks: [{ first: "routing", file: "t/a.bin", bytes: termsChunk([["routing", [[0, 500]]]]) }],
+  const text = `${"Use unrelated introduction. ".repeat(30)}useState details at the end.`;
+  await withIndex({ chunks: [{ first: "usestate", file: "t/a.bin", bytes: termsChunk([["usestate", [[0, 500]]]]) }],
     manifest: { fragmentsDir: "f/generation-a" }, fragments: [{ url: "/guide/", title: "Guide", text }] }, async (search, seen) => {
-    const result = await search.query("routing");
-    expect(result.results[0].excerpt.includes("Routing details")).toBe(true);
+    const result = await search.query("useState");
+    expect(result.results[0].excerpt.includes("useState details")).toBe(true);
     expect(seen.includes("/_search/f/generation-a/0.json")).toBe(true);
   });
 });

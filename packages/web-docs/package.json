@@ -1,7 +1,7 @@
 {
   "name": "@opentf/web-docs",
   "version": "0.26.0",
-  "description": "Documentation-site generator for OTF Web — themed shell components (sidebar, TOC, callouts, tabs), a build-time nav generator, and a default light/dark theme.",
+  "description": "Documentation-site generator for OTF Web \u2014 themed shell components (sidebar, TOC, callouts, tabs), a build-time nav generator, and a default light/dark theme.",
   "type": "module",
   "exports": {
     ".": "./index.js",
@@ -10,10 +10,12 @@
     "./nav": "./nav-virtual.js",
     "./posts": "./posts-virtual.js",
     "./updated": "./updated-virtual.js",
-    "./build": "./build/index.js"
+    "./build": "./build/index.js",
+    "./search": "./search.js"
   },
   "files": [
     "index.js",
+    "search.js",
     "config.js",
     "nav-virtual.js",
     "posts-virtual.js",
@@ -46,7 +48,7 @@
     "access": "public"
   },
   "dependencies": {
-    "pagefind": "^1.5.2"
+    "@opentf/web-compiler": "workspace:*"
   },
   "devDependencies": {
     "@opentf/web": "workspace:*",

@@ -45,12 +45,12 @@ export default function Breadcrumbs(props) {
   // Direct-child `.map` (not wrapped in a `{() => …}` thunk) so the compiler
   // lowers it to a reactive list whose item renderer receives `it`/`i`. The
   // source re-runs on `router.pathname`, so the trail tracks navigation.
-  // `data-pagefind-meta="breadcrumb"` exposes this trail to the search index, so each
+  // `data-otf-search-meta="breadcrumb"` exposes this trail to the search index, so each
   // result can show which page (and section) it belongs to.
   // The JSON-LD trail below re-reads the same source (a second subscription, kept
   // out of the list so the lowering above is untouched).
   return (
-    <nav class="otfw-breadcrumbs" aria-label="Breadcrumb" data-pagefind-meta="breadcrumb">
+    <nav class="otfw-breadcrumbs" aria-label="Breadcrumb" data-otf-search-meta="breadcrumb">
       <RawHtml
         html={breadcrumbJsonLd(findTrail(nav, router.pathname, []) || [], siteUrl)}
       />

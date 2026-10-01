@@ -7,4 +7,4 @@
 // `OTFWC_BIN` overrides everything (used in this repo's own dev to point at the
 // cargo build). See extract.js for the decompression logic.
 
-export { otfwcPath } from "./extract.js";
+export { otfwcPath, otfSearchPath } from "./extract.js";

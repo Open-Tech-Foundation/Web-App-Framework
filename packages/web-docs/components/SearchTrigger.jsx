@@ -1,4 +1,4 @@
-// Search box trigger in the navbar. Calls the global opener that the Pagefind-backed
+// Search box trigger in the navbar. Calls the global opener that the OTF Search-backed
 // <Search> modal installs on `window` (the ⌘K / Ctrl+K shortcut opens it too). Shows
 // the shortcut as a hint; the modifier resolves to ⌘ on Apple platforms, Ctrl
 // elsewhere, on mount.

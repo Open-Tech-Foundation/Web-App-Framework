@@ -26,10 +26,10 @@ function hostKey() {
   return os && cpu ? `${os}-${cpu}` : `${platform}-${arch}`;
 }
 
-function hostBinPath() {
+function hostBinPath(name = "otfwc") {
   const key = hostKey();
   if (!SUPPORTED.has(key)) return null;
-  return join(here, "bin", key, platform === "windows" ? "otfwc.exe" : "otfwc");
+  return join(here, "bin", key, platform === "windows" ? `${name}.exe` : name);
 }
 
 /** Decompress the host's `.br` archive to a runnable binary; returns its path. */
@@ -75,5 +75,30 @@ export async function otfwcPath() {
   throw new Error(
     `otfwc: prebuilt binary missing at ${out}. ` +
       `Reinstall @opentf/web-compiler, or set OTFWC_BIN.`,
+  );
+}
+
+/**
+ * Resolve the internal search indexer shipped alongside otfwc. Source checkouts
+ * can use a sibling binary; OTF_SEARCH_BIN explicitly overrides the resolver.
+ */
+export async function otfSearchPath({ otfwc, binaryDir = here, environment = env, os = platform } = {}) {
+  const name = os === "windows" ? "otf-search.exe" : "otf-search";
+  if (environment.OTF_SEARCH_BIN) {
+    if (await exists(environment.OTF_SEARCH_BIN)) return environment.OTF_SEARCH_BIN;
+    throw new Error(`otf-search: OTF_SEARCH_BIN is set but ${environment.OTF_SEARCH_BIN} does not exist`);
+  }
+  const compiler = otfwc || environment.OTFWC_BIN;
+  const candidates = [];
+  if (compiler) candidates.push(join(dirname(compiler), name));
+  if (SUPPORTED.has(hostKey())) candidates.push(join(binaryDir, "bin", hostKey(), name));
+  for (const candidate of [...new Set(candidates)]) {
+    if (await exists(candidate)) return candidate;
+    if (await exists(`${candidate}.br`)) return decompress(candidate);
+  }
+  throw new Error(
+    `otf-search: binary missing for ${hostKey()}. ` +
+    `Install @opentf/web-compiler with the search binary, set OTF_SEARCH_BIN, ` +
+    `or build the source checkout with cargo build -p otfw_cli.`,
   );
 }

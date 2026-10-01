@@ -194,7 +194,9 @@ export function createSearch({ base = "/_search/" } = {}) {
       throwIfAborted(signal);
       const results = await Promise.all(top.map(async ([doc, score]) => {
         const fragment = await (await fetchIndex(`${state.manifest.fragmentsDir || "f"}/${doc}.json`, { signal })).json();
-        return { ...fragment, ...excerptFor(fragment.text, groups.flat()), score };
+        const lower = fragment.text.toLowerCase();
+        const terms = groups.map((group) => group.find((term) => lower.includes(term))).filter(Boolean);
+        return { ...fragment, ...excerptFor(fragment.text, terms), score };
       }));
       throwIfAborted(signal);
       return { results, total: ranked.length, partial };

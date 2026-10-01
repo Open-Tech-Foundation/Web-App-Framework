@@ -1,7 +1,7 @@
 // Build-time entry for the docs toolchain integration.
 //
 // Re-exports the nav plugin (registered by @opentf/web-cli when a project
-// has a `docs` config) and the Pagefind post-build hook (Phase 2). Importing this
+// has a `docs` config) and the OTF Search indexing function. Importing this
 // from web-cli keeps all docs-specific build logic owned by this package.
 
 export { docsNavPlugin } from "./docs-nav-plugin.js";
@@ -9,4 +9,4 @@ export { blogPostsPlugin, loadPosts } from "./blog-posts-plugin.js";
 export { lastUpdatedPlugin, loadLastUpdated } from "./last-updated-plugin.js";
 export { renderAtomFeed, renderBlogFeed } from "./feed.js";
 export { renderLlmsFullTxt, renderLlmsTxt } from "./llms.js";
-export { indexWithOtfSearch } from "./pagefind.js";
+export { indexWithOtfSearch } from "./search.js";

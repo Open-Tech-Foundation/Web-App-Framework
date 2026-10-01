@@ -35,7 +35,7 @@
  *                            (e.g. `app/api` → `/api`) — no extra config needed.
  * @property {DocsNavLink[]} [nav]   Top-level navbar links.
  * @property {DocsFooter} [footer]   Footer content.
- * @property {{ provider?: string }} [search]  Search provider (Phase 2: "pagefind").
+ * @property {{ provider?: string }} [search]  Search provider (Phase 2: "otf").
  * @property {boolean} [lastUpdated] Show a "Last updated" line per docs page (from the
  *                            file's last git commit, or a `lastUpdated` frontmatter
  *                            override; `lastUpdated: false` in frontmatter hides a page).

@@ -25,7 +25,7 @@ const isBrowser = typeof window !== "undefined";
 /**
  * Drop a trailing slash (except for the root "/") so `router.pathname` matches the
  * no-trailing-slash route table and nav paths regardless of how the URL was entered —
- * a static host serves `/docs/x/`, a Pagefind result links to `/docs/x/`, etc. Without
+ * a static host serves `/docs/x/`, a OTF Search result links to `/docs/x/`, etc. Without
  * this, `/docs/x/` wouldn't match the `/docs/x` nav entry and the breadcrumb / active
  * sidebar link / TOC would silently blank out.
  */

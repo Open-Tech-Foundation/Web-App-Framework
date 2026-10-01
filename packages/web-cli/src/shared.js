@@ -468,22 +468,12 @@ export async function runLastUpdated(root, appDir, config, exclude = new Set()) 
   }
 }
 
-/**
- * Run Pagefind over the built site when the docs config opts into it
- * (`docs.search.provider === "pagefind"`). Indexes the pre-rendered HTML in `siteDir`
- * and writes `<siteDir>/pagefind/`. No-op (returns null) otherwise. Resolved from the
- * app's `@opentf/web-docs` so the hook ships with the docs package.
- */
+/** Index the completed SSG output when static search is enabled. Errors fail the build. */
 export async function runDocsSearchIndex(root, config, siteDir, otfwc) {
   if (config?.docs?.search?.provider !== "otf") return null;
-  try {
-    const entry = await resolveFrom("@opentf/web-docs/build", root);
-    const { indexWithOtfSearch } = await import(toFileURL(entry).href);
-    return await indexWithOtfSearch({ siteDir, otfwc });
-  } catch (e) {
-    console.warn(`⚠ OTF Search indexing skipped: ${e?.message ?? e}`);
-    return null;
-  }
+  const entry = await resolveFrom("@opentf/web-docs/build", root);
+  const { indexWithOtfSearch } = await import(toFileURL(entry).href);
+  return indexWithOtfSearch({ siteDir, otfwc });
 }
 
 /**
