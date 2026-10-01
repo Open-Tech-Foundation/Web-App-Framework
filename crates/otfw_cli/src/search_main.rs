@@ -464,12 +464,30 @@ fn ignored(element: ElementRef<'_>) -> bool {
         || e.attr("aria-hidden") == Some("true")
 }
 fn normalized_text(element: ElementRef<'_>) -> String {
-    element
-        .text()
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    fn visible_text(element: ElementRef<'_>, text: &mut Vec<String>, root: bool) {
+        let e = element.value();
+        if matches!(e.name(), "script" | "style" | "noscript" | "template" | "svg")
+            || e.attr("hidden").is_some()
+            || e.attr("aria-hidden") == Some("true")
+            || (!root && (e.attr("data-otf-search-ignore").is_some()
+                || e.attr("data-pagefind-ignore").is_some()))
+        {
+            return;
+        }
+        for child in element.children() {
+            if let Some(el) = ElementRef::wrap(child) {
+                visible_text(el, text, false);
+            } else if let Some(node) = child.value().as_text() {
+                let value = node.text.split_whitespace().collect::<Vec<_>>().join(" ");
+                if !value.is_empty() {
+                    text.push(value);
+                }
+            }
+        }
+    }
+    let mut text = Vec::new();
+    visible_text(element, &mut text, true);
+    text.join(" ")
 }
 
 fn extract_document(page: &Html, root: &str, explicit: bool) -> Result<Option<Document>, String> {
@@ -666,6 +684,18 @@ mod tests {
         let utf16 = doc.text.encode_utf16().collect::<Vec<_>>();
         let (start, end) = doc.excerpt_omit[0];
         assert_eq!(String::from_utf16(&utf16[start..end]).unwrap(), "<div class=\"card\">example</div>");
+    }
+
+    #[test]
+    fn metadata_uses_visible_labels_and_excludes_structured_data() {
+        let html = r#"<main data-otf-search-body><h1>Reactivity</h1></main>
+          <nav data-otf-search-meta="breadcrumb"><web-raw-html><script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList"}</script></web-raw-html>
+          <span>Core Concepts</span><span>/</span><a>Reactivity</a>
+          <style>StyleNoise</style><template>TemplateNoise</template><span hidden>HiddenNoise</span>
+          <span aria-hidden="true">DecorationNoise</span><span data-otf-search-ignore>IgnoredNoise</span></nav>"#;
+        let doc = extract_document(&Html::parse_document(html), "main", true).unwrap().unwrap();
+        assert_eq!(doc.meta["breadcrumb"], "Core Concepts / Reactivity");
+        assert_eq!(doc.text, "Reactivity");
     }
 
     #[test]

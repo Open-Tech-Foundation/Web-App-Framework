@@ -21,7 +21,7 @@ test('the Rust writer and JS reader agree on content, metadata, and deployment g
     catch { return new Response(null, { status: 404 }); }
   };
   try {
-    await write(join(site, 'index.html'), '<main data-otf-search-body><h1>Guide &amp; Reference</h1><p>😀 café</p><h2 id="routing">Routing</h2><p>route.<em>params</em> Alpha</p><div class="otfw-code-head">JSX Copy</div><pre><code>&lt;div class="UniqueExampleToken"&gt;sample&lt;/div&gt;</code></pre><span data-otf-search-ignore>IgnoreSentinel</span></main><p>OutsideSentinel</p><nav data-otf-search-meta="breadcrumb">Docs &amp; Guides</nav>');
+    await write(join(site, 'index.html'), '<main data-otf-search-body><h1>Guide &amp; Reference</h1><p>😀 café</p><h2 id="routing">Routing</h2><p>route.<em>params</em> Alpha</p><div class="otfw-code-head">JSX Copy</div><pre><code>&lt;div class="UniqueExampleToken"&gt;sample&lt;/div&gt;</code></pre><span data-otf-search-ignore>IgnoreSentinel</span></main><p>OutsideSentinel</p><nav data-otf-search-meta="breadcrumb"><web-raw-html><script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList"}</script></web-raw-html><span>Docs</span><span>/</span><span>Guides</span><span hidden>HiddenMetadataNoise</span></nav>');
     await write(join(site, '404.html'), '<main>Not searchable</main>');
     await build();
     const old = createSearch();
@@ -29,7 +29,7 @@ test('the Rust writer and JS reader agree on content, metadata, and deployment g
     expect(result.partial).toBe(false);
     expect(result.results[0].title).toBe('Guide & Reference');
     expect(result.results[0].url).toBe('/#routing');
-    expect(result.results[0].meta.breadcrumb).toBe('Docs & Guides');
+    expect(result.results[0].meta.breadcrumb).toBe('Docs / Guides');
     expect(result.results[0].text.includes('route.params')).toBe(true);
     expect(result.results[0].section).toBe('Routing');
     expect(result.results[0].excerpt.includes('<div')).toBe(false);
