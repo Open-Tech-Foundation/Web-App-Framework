@@ -25,7 +25,7 @@ esdev preview
 
 The project owns its HTML entry and build targets. For static rendering, add a
 second target with a prerender entry and `"then": "run"`, following this repo's
-[`esdev.json`](../../esdev.json) and [`website/ssg.js`](../../website/ssg.js).
+[`website/esdev.json`](../../website/esdev.json) and [`website/ssg.js`](../../website/ssg.js).
 The script checks for release staging and prerenders pages, including sitemap and
 robots output. A release-only `siteOutputPlugin` then generates search, feeds and
 LLM files in staging before publication:

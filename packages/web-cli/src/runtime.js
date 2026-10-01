@@ -6,8 +6,8 @@
 // what Bun used to supply as globals: package resolution anchored at the *project*
 // (not at this file), base64url without `Buffer`, and subprocesses.
 
-import { copy, exists as fsExists, file, mkdir, readDir, remove, stat, write } from "runtime:fs";
-import { dirname, join } from "runtime:path";
+import { copy, exists as fsExists, file, mkdir, readDir, realPath, remove, stat, write } from "runtime:fs";
+import { dirname, fromFileURL, join } from "runtime:path";
 import { Command } from "runtime:system";
 
 // ------------------------------------------------------------------ filesystem
@@ -154,7 +154,8 @@ export function throughExports(exports, sub, conditions = ["import", "default"])
 
 /**
  * Resolve a bare specifier to an absolute file, anchored at `fromDir` — the project
- * root, so the app's own copy of a package wins.
+ * root, so the app's own copy of a package wins. Return its canonical path so
+ * aliases and package imports share one module instance under symlinked installs.
  *
  * `import.meta.resolve` cannot do this: it resolves against *this* module, which is
  * the CLI's location, not the project's. It is still the fallback for the case where
@@ -178,15 +179,14 @@ export async function resolveFrom(spec, fromDir, conditions) {
         throughExports(json.exports, sub, conditions) ??
         (sub === "." ? (json.module ?? json.main ?? "index.js") : rest);
       const abs = join(pkgDir, target);
-      if (await exists(abs)) return abs;
+      if (await exists(abs)) return realPath(abs);
     }
     const up = dirname(dir);
     if (up === dir) break;
     dir = up;
   }
 
-  const url = import.meta.resolve(spec); // throws when it genuinely isn't installed
-  return new URL(url).pathname;
+  return realPath(fromFileURL(import.meta.resolve(spec)));
 }
 
 /** The directory of the package that declares `name`, resolved from `fromDir`. */

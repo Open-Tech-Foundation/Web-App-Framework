@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Canonicalize resolved package paths before using them as bundler aliases.
+  Symlinked installs share one framework runtime instead of registering routes
+  in a different instance from the server renderer.
+
 ## [1.27.0] - 2026-10-01
 
 ### Changed

@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolve the installed compiler package before locating its binary archive.
+  Bundling the resolver into a prerender entry no longer makes it look for
+  `bin/` beside the generated SSG bundle. Resolve transitive compiler dependencies
+  from the installed plugin or CLI using esdev 0.15's `runtime:build.resolve`.
+
+### Changed
+
+- Require esdev `>=0.15.0`.
+
 ## [0.18.0] - 2026-10-01
 
 ### Changed

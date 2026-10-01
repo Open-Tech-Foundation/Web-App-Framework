@@ -17,7 +17,7 @@
     "@opentf/web-compiler": "workspace:*"
   },
   "engines": {
-    "esdev": ">=0.14.0"
+    "esdev": ">=0.15.0"
   },
   "keywords": [
     "opentf",

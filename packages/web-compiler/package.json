@@ -12,6 +12,9 @@
     "extract.js",
     "bin"
   ],
+  "engines": {
+    "esdev": ">=0.15.0"
+  },
   "keywords": [
     "opentf",
     "compiler",

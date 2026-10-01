@@ -7,7 +7,7 @@ framework dev server stop being a Node program.
 
 ## esdev create integration
 
-Requires esdev 0.14 or newer. A native OTF starter uses the package's default
+Requires esdev 0.15 or newer. A native OTF starter uses the package's default
 factory in the top-level `plugins` array; no `export` name or custom CLI is needed:
 
 ```json

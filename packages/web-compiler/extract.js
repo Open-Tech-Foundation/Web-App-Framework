@@ -10,8 +10,26 @@
 import { chmod, exists, file, write } from "runtime:fs";
 import { dirname, fromFileURL, join } from "runtime:path";
 import { arch, env, platform } from "runtime:process";
+import { resolve } from "runtime:build";
 
 const here = dirname(fromFileURL(import.meta.url));
+
+// A build can inline this resolver into a prerender entry. Resolve the installed
+// package by name so its binary stays anchored to the package, not that bundle.
+function packageDirectory() {
+  try {
+    return dirname(fromFileURL(import.meta.resolve("@opentf/web-compiler")));
+  } catch {}
+  // With pnpm the compiler may only be visible to the tool that depends on it.
+  // Resolve from that installed module, rather than from the generated bundle.
+  for (const tool of ["@opentf/esdev-plugin-web", "@opentf/web-cli/ssg"]) {
+    try {
+      const importer = resolve(tool, import.meta.url);
+      return dirname(fromFileURL(resolve("@opentf/web-compiler", importer)));
+    } catch {}
+  }
+  return here;
+}
 
 // The shipped `bin/` subdirectories are named the way node reports a host, which is
 // not how the runtime does; map onto them rather than renaming what we publish.
@@ -26,7 +44,7 @@ function hostKey(platformName = platform, architecture = arch) {
   return os && cpu ? `${os}-${cpu}` : `${platformName}-${architecture}`;
 }
 
-function hostBinPath({ binaryDir = here, os = platform, cpuArch = arch } = {}) {
+function hostBinPath({ binaryDir = packageDirectory(), os = platform, cpuArch = arch } = {}) {
   const key = hostKey(os, cpuArch);
   if (!SUPPORTED.has(key)) return null;
   return join(binaryDir, "bin", key, os === "windows" ? "otfwc.exe" : "otfwc");
@@ -58,7 +76,7 @@ export async function extractIfPackaged() {
 }
 
 /** Absolute path to the otfwc executable, or throw with a clear message. */
-export async function otfwcPath({ binaryDir = here, environment = env, os = platform, cpuArch = arch } = {}) {
+export async function otfwcPath({ binaryDir = packageDirectory(), environment = env, os = platform, cpuArch = arch } = {}) {
   if (environment.OTFWC_BIN) {
     if (await exists(environment.OTFWC_BIN)) return environment.OTFWC_BIN;
     throw new Error(`otfwc: OTFWC_BIN is set but ${environment.OTFWC_BIN} does not exist`);

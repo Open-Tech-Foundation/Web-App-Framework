@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Require esdev `>=0.15.0` for the compiler package resolver used by bundled
+  prerender entries and isolated package installations.
+
 ## [0.2.0] - 2026-10-01
 
 ### Added

@@ -1,7 +1,9 @@
 # esdev migration status
 
-Output hooks verified against esdev 0.15.0 on 2026-10-02. The starter, DOM and
-asset observations below were recorded against 0.14.0 and await re-verification.
+Output hooks and generated SPA/docs templates verified against esdev 0.15.0 on
+2026-10-02. OTF template integration is intentionally pending upstream, after
+validation here. The DOM and asset observations below were recorded against
+0.14.0 and await re-verification.
 Template files are embedded in the esdev binary; updating this repo's plugin cannot change them.
 
 ## Working in this repository
@@ -26,12 +28,12 @@ Template files are embedded in the esdev binary; updating this repo's plugin can
 Reproduce with `esdev create <dir> --template=<name> --package-manager=pnpm
 --no-install --yes`.
 
-| Template | Observed output in esdev 0.14 | Required change |
+| Template | Observed output | Required change |
 | --- | --- | --- |
-| `spa` | No esdev.json; otfw dev/build/build --ssg scripts; HTML lacks a module entry | Emit native config, OTF plugin dependency and a client entry that imports @otfw/routes and calls mountApp; use esdev scripts |
-| `docs` | No esdev.json; otfw dev/build --ssg scripts | Emit client/config plus a release prerender target; use provider otf and index the prerendered output |
-| `fullstack` | No esdev.json; otfw dev/build/serve scripts | Emit client and server targets, a Request/Response server entry, API/middleware/loader wiring, and native run/watch scripts |
-| `library` | esdev test script, but no compiler/test config; test only checks source files | Configure CSR compilation with routes disabled and native DOM cleanup; test an imported, rendered component |
+| `spa` (0.15) | No esdev.json; otfw dev/build/build --ssg scripts; HTML lacks a module entry | Emit native config, OTF plugin dependency and a client entry that imports @otfw/routes and calls mountApp; use esdev scripts; make the stylesheet URL relative |
+| `docs` (0.15) | No esdev.json; otfw dev/build --ssg scripts | Emit client/config plus a release prerender target; use provider otf and index the prerendered output; make the stylesheet URL relative |
+| `fullstack` (0.14) | No esdev.json; otfw dev/build/serve scripts | Emit client and server targets, a Request/Response server entry, API/middleware/loader wiring, and native run/watch scripts |
+| `library` (0.14) | esdev test script, but no compiler/test config; test only checks source files | Configure CSR compilation with routes disabled and native DOM cleanup; test an imported, rendered component |
 
 SPA/docs/fullstack currently request the retired @opentf/web-cli executable.
 They need an upstream template change and a new esdev binary release, followed
@@ -76,7 +78,14 @@ indexer failure, selected builds and an isolated development server.
 
 ## HTML entry hash references
 
-The native OTF benchmark build in esdev 0.14 emits
+Reproduced against esdev 0.15.0 with a converted, installed SPA starter. Its
+native build emits `dist/assets/entry-<hash>.js`, while the route's generated
+`page-<hash>.js` still imports `./entry.js`. The missing module prevents the
+page from mounting in preview. The converted docs starter has the same imports
+in its layout and shared docs chunks. Development serves correctly; a successful
+release build alone does not establish browser readiness.
+
+The native OTF benchmark build in esdev 0.14 also emits
 `benchmarks/otfw/dist/assets/entry-<hash>.js`, while its generated `page-<hash>.js`
 imports `./entry.js`. That un-hashed file does not exist, so the browser cannot
 load the route. Reproduce with `tsr bench -- otfw --throttle=1`, or build with
@@ -115,3 +124,26 @@ consumers to esdev.test.json and runtime:test imports as documented in its READM
 
 The deprecated create-web package remains compatibility source until removal;
 it is not the location for new starter development.
+
+## Validation before updating upstream templates
+
+Fresh SPA and docs projects were generated outside this workspace with esdev
+0.15.0 and installed from npm. Their temporary configs were converted to native
+esdev targets and the published `@opentf/esdev-plugin-web` 0.2.0.
+
+- SPA: native build and a `@opentf/web-test` reactive component test pass. Chromium
+  verifies that the development route mounts and its counter responds to clicks.
+- Docs: with the local compiler/CLI resolver fixes overlaid into the temporary
+  installation, an ordinary bundled SSG import prerenders four pages, indexes two,
+  and emits blog feeds and LLM context. No binary override, workspace sources,
+  dynamic SSG import or site-specific canonicalization is needed.
+- The committed regressions cover bundled compiler extraction with both direct
+  and transitive dependencies, plus shared runtime state through symlinked package
+  resolution and aliases.
+- Release preview is blocked by the upstream HTML chunk-reference issue above.
+  Recheck SPA mounting and docs hydration/search after that esdev fix.
+
+Release the resolver fixes in `@opentf/web-compiler` and `@opentf/web-cli` before
+upstream templates consume them. The plugin's minimum esdev version is now 0.15;
+release that manifest update with its compiler dependency update. The native
+compiler's Rust code and indexing format did not change.
