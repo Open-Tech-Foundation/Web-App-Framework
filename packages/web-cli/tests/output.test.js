@@ -16,7 +16,7 @@ test("finish indexes prerendered staging, preserves overrides, and protects depl
   const originalFetch = globalThis.fetch;
   const run = (args = [], overrides = {}) => new Command(executable, {
     args: ["build", `--config=${configPath}`, ...args], cwd: dir, inheritEnv: true,
-    env: { OTFWC_BIN: join(dir, "bin/otfwc"), OTF_SEARCH_BIN: join(dir, "bin/otf-search"), ...overrides },
+    env: { OTFWC_BIN: join(dir, "bin/otfwc"), ...overrides },
     timeout: 15000,
   }).output();
   try {
@@ -38,7 +38,7 @@ test("finish indexes prerendered staging, preserves overrides, and protects depl
       }
     }
     await mkdir(join(dir, "bin"), { recursive: true });
-    for (const name of ["otfwc", "otf-search"]) await copy(join(root, "target/debug", name), join(dir, "bin", name));
+    for (const name of ["otfwc"]) await copy(join(root, "target/debug", name), join(dir, "bin", name));
     await write(join(dir, "package.json"), '{"type":"module"}');
     await mkdir(join(dir, "app/blog/hello"), { recursive: true });
     await mkdir(join(dir, "public/blog"), { recursive: true });
@@ -75,9 +75,9 @@ await writePrerenderReport(out, { siteDescription: "Resolved home description & 
     globalThis.fetch = originalFetch;
     const manifest = await file(join(output, "_search/manifest.json")).text();
     await write(join(output, "deployment-sentinel.txt"), "Last working build");
-    const bad = await run([], { OTF_SEARCH_BIN: join(dir, "missing-indexer") });
+    const bad = await run([], { OTFWC_BIN: join(dir, "missing-indexer") });
     expect(bad.success).toBe(false);
-    expect(new TextDecoder().decode(bad.stderr)).toContain("otf-search: OTF_SEARCH_BIN is set");
+    expect(new TextDecoder().decode(bad.stderr)).toContain("missing-indexer");
     expect(await file(join(output, "deployment-sentinel.txt")).text()).toBe("Last working build");
     expect(await file(join(output, "_search/manifest.json")).text()).toBe(manifest);
     const prerenderPath = join(dir, "prerender.js");
@@ -97,7 +97,7 @@ await writePrerenderReport(out, { siteDescription: "Resolved home description & 
     const port = 20000 + Math.floor(Math.random() * 20000);
     const dev = await new Command(executable, {
       args: ["start", `--config=${configPath}`, `--port=${port}`], cwd: dir, inheritEnv: true,
-      env: { OTF_SEARCH_BIN: join(dir, "missing-indexer") }, stdout: "piped", stderr: "piped",
+      env: { OTFWC_BIN: join(dir, "missing-indexer") }, stdout: "piped", stderr: "piped",
     }).spawn();
     const logs = Promise.all([new Response(dev.stdout).text(), new Response(dev.stderr).text()]);
     let html, lastProblem;

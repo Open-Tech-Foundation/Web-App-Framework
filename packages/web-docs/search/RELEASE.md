@@ -1,45 +1,43 @@
 # Shipping OTF Search
 
 Search remains owned by `@opentf/web-docs`; there is no new npm search package.
-The Rust executable is a second binary in `otfw_cli`, shipped by `@opentf/web-compiler`.
+Compilation and documentation indexing share the `otfwc` executable shipped by
+`@opentf/web-compiler`.
 
 ## Release CI artifacts
 
-For each target already listed in the root `release.toml`, build both binaries:
+For each target in root `release.toml`, build the unified toolchain:
 
 ```sh
-cargo build --release -p otfw_cli --bins --target <triple>
+cargo build --release -p otfw_cli --bin otfwc --target <triple>
 ```
 
-`otf-release` stages `otfwc`. The temporary
-`scripts/stage-search-binary.mjs` step then compresses and stages `otf-search`
-inside the same `.artifacts/@opentf/web-compiler/bin/<stage_as>/` tree before
-upload. It requires the compiler archive and search executable to exist; a
-missing binary fails that matrix leg. The publish job merges all platform trees
-into the compiler package.
+`otf-release` stages and Brotli-compresses the one executable per target:
 
-The search archives are:
+| Target | Package archive |
+| --- | --- |
+| `x86_64-unknown-linux-gnu` | `bin/linux-x64/otfwc.br` |
+| `aarch64-apple-darwin` | `bin/darwin-arm64/otfwc.br` |
+| `x86_64-apple-darwin` | `bin/darwin-x64/otfwc.br` |
+| `x86_64-pc-windows-msvc` | `bin/win32-x64/otfwc.exe.br` |
 
-| Target | Source executable | Package archive |
-| --- | --- | --- |
-| `x86_64-unknown-linux-gnu` | `target/<triple>/release/otf-search` | `bin/linux-x64/otf-search.br` |
-| `aarch64-apple-darwin` | `target/<triple>/release/otf-search` | `bin/darwin-arm64/otf-search.br` |
-| `x86_64-apple-darwin` | `target/<triple>/release/otf-search` | `bin/darwin-x64/otf-search.br` |
-| `x86_64-pc-windows-msvc` | `target/<triple>/release/otf-search.exe` | `bin/win32-x64/otf-search.exe.br` |
+`otfwcPath()` lazily extracts the archive, sets executable permissions on Unix,
+and supports `OTFWC_BIN` for source builds. Both JSX compilation and indexing use
+this path. The former separate search executable, resolver and staging script
+have been removed. There is no second binary to build or upload.
 
-Keep the existing `otfwc[.exe].br` artifacts too. Workflow regeneration currently
-overwrites the manual staging step: restore it until the release tool supports
-multiple binaries in one package. Keep pnpm setup reading `packageManager` from
-package.json rather than requesting a conflicting `latest` version. Use the same Brotli compression
-as the compiler. `otfSearchPath()` lazily extracts the search archive, sets the
-executable permission on Unix, and supports `OTF_SEARCH_BIN` for source builds.
-A missing executable fails enabled search builds with an actionable error.
+The indexing commands are:
 
-Release the updated `@opentf/web-compiler` before/with `@opentf/web-docs`, whose
-runtime dependency must resolve to the version exporting `otfSearchPath` and
-containing the binary. Also release `@opentf/web-cli`: its shared SSG helper now
-propagates indexing failures instead of producing a successful build without search.
-Versions and the release matrix are managed by the maintainer and release CI.
+```sh
+otfwc docs index <site-dir> [--out <index-dir>] [--root <selector>]
+otfwc docs inspect <index-dir> --term <term>
+otfwc docs query <index-dir> <query>
+```
+
+Release the updated `@opentf/web-compiler` before/with `@opentf/web-docs` and
+`@opentf/web-cli`. The docs build helper requires the binary containing `docs index`;
+an older compiler that only prints its help is rejected rather than accepted as
+a successful indexing run. Versions and publishing are managed by the maintainer.
 
 Ship the updated native indexer together with the docs reader for prose previews:
 new fragments include `excerptOmit` ranges for code blocks. Rebuild site indexes

@@ -1,7 +1,7 @@
 {
   "name": "@opentf/web-compiler",
   "version": "0.17.0",
-  "description": "OTF Web IR compiler (otfwc) — prebuilt platform binaries + host resolver (ARCHITECTURE.md §8).",
+  "description": "OTF Web native toolchain (otfwc) — component compilation and documentation indexing in one platform binary.",
   "type": "module",
   "main": "index.js",
   "exports": {

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Generate static search indexes with `otfwc docs index` from the unified
+  toolchain. Reject older compiler binaries that only print help instead of
+  producing an index. Requires the matching `@opentf/web-compiler` release.
+
 ### Added
 
 - **Collapse-all button in the docs sidebar** (`Sidebar.jsx`, `SidebarNode.jsx`, new

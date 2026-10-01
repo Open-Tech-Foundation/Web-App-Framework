@@ -2,24 +2,26 @@
 
 import { join } from "runtime:path";
 import { Command } from "runtime:system";
-import { otfSearchPath } from "@opentf/web-compiler";
+import { otfwcPath } from "@opentf/web-compiler";
 
 /**
- * Build the binary index from prerendered HTML using the internal Rust indexer.
- * Published toolchains will ship the two binaries together; source checkouts get both
+ * Build the index from prerendered HTML using the unified native toolchain.
+ * Published toolchains ship one otfwc binary; source checkouts build it
  * from `cargo build -p otfw_cli`.
  */
 export async function indexWithOtfSearch({ siteDir, otfwc }) {
-  const binary = await otfSearchPath({ otfwc });
+  const binary = otfwc || await otfwcPath();
   const out = new Command(binary, {
-    args: ["build", siteDir, "--out", join(siteDir, "_search"), "--root", "main"],
+    args: ["docs", "index", siteDir, "--out", join(siteDir, "_search"), "--root", "main"],
     stdout: "piped",
     stderr: "piped",
     inheritEnv: true,
   });
   const result = await out.output();
-  if (!result.success) throw new Error(new TextDecoder().decode(result.stderr).trim() || "otf-search failed");
+  if (!result.success) throw new Error(new TextDecoder().decode(result.stderr).trim() || "otfwc docs index failed");
   const message = new TextDecoder().decode(result.stderr);
-  const pages = Number(/indexed\s+(\d+)\s+page/.exec(message)?.[1] ?? 0);
+  const indexed = /indexed\s+(\d+)\s+page/.exec(message);
+  if (!indexed) throw new Error("otfwc docs index did not report an index. Install the updated @opentf/web-compiler containing the docs indexing command.");
+  const pages = Number(indexed[1]);
   return { pages };
 }

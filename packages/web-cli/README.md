@@ -53,9 +53,10 @@ collection, compiler resolution, `runPrerender`, API/loader bundle emission,
 docs build helpers and build reporting. It does not supply a dev server or an
 SSR request server. A fullstack app must provide its own server entry and adapter.
 
-`OTFWC_BIN` overrides the compiler binary. `OTF_SEARCH_BIN` overrides the search
-indexer. Published installations use the binaries shipped by `@opentf/web-compiler`;
-this repository can use its Cargo debug builds.
+`OTFWC_BIN` overrides the unified toolchain binary. Compilation and documentation
+indexing (`otfwc docs index`) use that same executable. Published installations
+use the archive shipped by `@opentf/web-compiler`; this repository can use its
+Cargo debug build.
 
 ## Starter migration
 

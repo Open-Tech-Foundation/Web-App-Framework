@@ -102,10 +102,10 @@ Release the updated compiler archives and the packages that consume them:
 @opentf/web-compiler, @opentf/esdev-plugin-web, @opentf/web-cli,
 @opentf/web-docs and @opentf/web-test.
 
-The compiler package must include both otfwc and otf-search for every supported
-platform. See [search/RELEASE.md](../packages/web-docs/search/RELEASE.md).
+The compiler package ships one otfwc executable per supported platform, including
+the `docs index`, `docs inspect` and `docs query` commands. See [search/RELEASE.md](../packages/web-docs/search/RELEASE.md).
 The finish plugin additionally requires a new @opentf/web-cli release and esdev
-0.15 or newer. This output-hook change does not require rebuilding native binaries.
+0.15 or newer. The unified indexing command requires rebuilding and publishing the compiler archives.
 The new web-test setup removes the Bun preload and happy-dom dependency; migrate
 consumers to esdev.test.json and runtime:test imports as documented in its README.
 

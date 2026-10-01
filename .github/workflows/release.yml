@@ -77,34 +77,8 @@ jobs:
         env:
           OTF_RELEASE_VERSION: v0.38.0
         run: irm https://raw.githubusercontent.com/Open-Tech-Foundation/release/v0.38.0/install.ps1 | iex
-      - name: Install esdev for binary staging
-        if: runner.os != 'Windows'
-        shell: bash
-        env:
-          ESDEV_VERSION: 0.15.0
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/Open-Tech-Foundation/ES-Runtime/main/install.sh | bash -s -- --only=esdev
-          echo "$HOME/.es-runtime/bin" >> "$GITHUB_PATH"
-      - name: Install esdev for binary staging
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          ESDEV_VERSION: 0.15.0
-          ES_RUNTIME_ONLY: esdev
-        run: |
-          irm https://raw.githubusercontent.com/Open-Tech-Foundation/ES-Runtime/main/install.ps1 | iex
-          Join-Path $HOME '.es-runtime/bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Build @opentf/web-compiler
         run: otf-release build --package @opentf/web-compiler --target ${{ matrix.name }}/${{ matrix.arch }}
-      # Temporary: otf-release stages only one binary per npm matrix package.
-      # Keep this step when regenerating the workflow until multi-binary support lands.
-      - name: Stage search indexer alongside compiler
-        shell: bash
-        env:
-          SEARCH_TARGET_TRIPLE: ${{ matrix.triple }}
-          SEARCH_STAGE_AS: ${{ matrix.stage_as }}
-          SEARCH_BINARY_EXT: ${{ matrix.ext }}
-        run: esdev scripts/stage-search-binary.mjs "$SEARCH_TARGET_TRIPLE" "$SEARCH_STAGE_AS" "$SEARCH_BINARY_EXT"
       - uses: actions/upload-artifact@v4
         with:
           name: opentf-web-compiler-${{ matrix.name }}-${{ matrix.arch }}

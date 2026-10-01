@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Ship one native toolchain executable per platform. `otfwc docs index`,
+  `otfwc docs inspect` and `otfwc docs query` now share the compiler binary.
+  Remove the separate search executable, `otfSearchPath` export and
+  `OTF_SEARCH_BIN` override; use `otfwcPath` and `OTFWC_BIN` for both features.
+
 ### Added
 
 - `otfwc build --sourcemap` emits an inline version-3 source map. Copied

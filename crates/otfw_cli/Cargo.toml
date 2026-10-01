@@ -10,12 +10,6 @@ description = "OTF Web — the IR compiler binary (otfwc), invoked by the toolch
 name = "otfwc"
 path = "src/main.rs"
 
-# Internal static-search indexer. It is deliberately not a separately published
-# crate: web-docs is its only product-facing consumer.
-[[bin]]
-name = "otf-search"
-path = "src/search_main.rs"
-
 [dependencies]
 otfw_compiler = { workspace = true }
 blake3 = "1"

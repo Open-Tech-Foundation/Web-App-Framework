@@ -1,19 +1,19 @@
 import { expect, test } from '../../web-cli/tests/harness.js';
-import { file, makeTempDir, mkdir, remove, write } from 'runtime:fs';
+import { chmod, file, makeTempDir, mkdir, remove, write } from 'runtime:fs';
 import { dirname, fromFileURL, join } from 'runtime:path';
 import { env, platform } from 'runtime:process';
 import { Command } from 'runtime:system';
 import { createSearch } from '../search.js';
 
 const root = dirname(dirname(dirname(dirname(fromFileURL(import.meta.url)))));
-const binary = env.OTF_SEARCH_BIN || join(root, 'target', 'debug', platform === 'windows' ? 'otf-search.exe' : 'otf-search');
+const binary = env.OTFWC_BIN || join(root, 'target', 'debug', platform === 'windows' ? 'otfwc.exe' : 'otfwc');
 
 test('the Rust writer and JS reader agree on content, metadata, and deployment generations', async () => {
   await mkdir(join(root, '.cache'), { recursive: true });
   const site = await makeTempDir({ dir: join(root, '.cache'), prefix: '.otf-search-test-' });
   const original = globalThis.fetch;
   const build = async () => {
-    const result = await new Command(binary, { args: ['build', site], stdout: 'piped', stderr: 'piped' }).output();
+    const result = await new Command(binary, { args: ['docs', 'index', site], stdout: 'piped', stderr: 'piped' }).output();
     if (!result.success) throw Error(new TextDecoder().decode(result.stderr));
   };
   globalThis.fetch = async (url) => {
@@ -61,4 +61,20 @@ test('enabled indexing failures propagate instead of producing a successful SSG 
   } catch (e) { error = e; }
   expect(Boolean(error)).toBe(true);
   expect(error.message).toContain('Search site directory does not exist');
+});
+
+
+test('an older compiler printing help cannot silently succeed at indexing', async () => {
+  if (platform === 'windows') return; // The fake executable uses a Unix shebang.
+  const { indexWithOtfSearch } = await import('../build/search.js');
+  await mkdir(join(root, '.cache'), { recursive: true });
+  const dir = await makeTempDir({ dir: join(root, '.cache'), prefix: 'old-toolchain-' });
+  try {
+    const old = join(dir, 'otfwc');
+    await write(old, '#!/bin/sh\nprintf "usage: otfwc build <file>\\n"\n');
+    await chmod(old, 0o755);
+    let error;
+    try { await indexWithOtfSearch({ siteDir: dir, otfwc: old }); } catch (e) { error = e; }
+    expect(error.message).toContain('did not report an index');
+  } finally { await remove(dir, { recursive: true }); }
 });

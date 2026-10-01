@@ -21,6 +21,7 @@ use otfw_compiler::mdx::mdx_to_jsx;
 use otfw_compiler::parse::ParseSession;
 
 mod diagnostic;
+mod docs_indexing;
 use diagnostic::Diag;
 
 /// Which codegen backend to run (ARCHITECTURE.md §6). CSR builds the live DOM; SSG
@@ -59,13 +60,15 @@ fn main() -> ExitCode {
         }
         Some("serve") => serve(args.iter().any(|a| a == "--sourcemap")),
         Some("graph") => graph_cmd(&args[2..]),
+        Some("docs") => docs_indexing::run(&args[2..]),
         _ => {
-            println!("otfwc: OTF Web IR compiler (foundation). See ARCHITECTURE.md.");
+            println!("otfwc: OTF Web native toolchain — component compilation and docs indexing.");
             println!("usage: otfwc build [--component] [--stdin] <file.tsx>   # parse → lower → CSR codegen");
             println!("  default emits a page factory; --component emits a Custom Element class");
             println!("  --stdin reads source from stdin; <file> is used only for the module id");
             println!("  --sourcemap emits an inline map for JSX/TSX; Markdown maps to generated JSX");
             println!("       otfwc serve [--sourcemap]   # long-lived compiler: framed requests on stdin, results on stdout");
+            println!("       otfwc docs <index|inspect|query> …   # static HTML search indexes");
             println!("       otfwc graph [--web=<path>] <entry...>   # crawl the module graph as JSON");
             ExitCode::SUCCESS
         }

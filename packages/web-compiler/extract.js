@@ -20,24 +20,24 @@ const ARCH_NAMES = { x86_64: "x64", aarch64: "arm64" };
 
 const SUPPORTED = new Set(["linux-x64", "darwin-x64", "darwin-arm64", "win32-x64"]);
 
-function hostKey() {
-  const os = OS_NAMES[platform];
-  const cpu = ARCH_NAMES[arch];
-  return os && cpu ? `${os}-${cpu}` : `${platform}-${arch}`;
+function hostKey(platformName = platform, architecture = arch) {
+  const os = OS_NAMES[platformName];
+  const cpu = ARCH_NAMES[architecture];
+  return os && cpu ? `${os}-${cpu}` : `${platformName}-${architecture}`;
 }
 
-function hostBinPath(name = "otfwc") {
-  const key = hostKey();
+function hostBinPath({ binaryDir = here, os = platform, cpuArch = arch } = {}) {
+  const key = hostKey(os, cpuArch);
   if (!SUPPORTED.has(key)) return null;
-  return join(here, "bin", key, platform === "windows" ? `${name}.exe` : name);
+  return join(binaryDir, "bin", key, os === "windows" ? "otfwc.exe" : "otfwc");
 }
 
 /** Decompress the host's `.br` archive to a runnable binary; returns its path. */
-async function decompress(out) {
+async function decompress(out, os = platform) {
   const compressed = await file(`${out}.br`).stream();
   const plain = compressed.pipeThrough(new DecompressionStream("brotli"));
   await write(out, new Uint8Array(await new Response(plain).arrayBuffer()));
-  if (platform !== "windows") await chmod(out, 0o755);
+  if (os !== "windows") await chmod(out, 0o755);
   return out;
 }
 
@@ -58,47 +58,22 @@ export async function extractIfPackaged() {
 }
 
 /** Absolute path to the otfwc executable, or throw with a clear message. */
-export async function otfwcPath() {
-  if (env.OTFWC_BIN) {
-    if (await exists(env.OTFWC_BIN)) return env.OTFWC_BIN;
-    throw new Error(`otfwc: OTFWC_BIN is set but ${env.OTFWC_BIN} does not exist`);
+export async function otfwcPath({ binaryDir = here, environment = env, os = platform, cpuArch = arch } = {}) {
+  if (environment.OTFWC_BIN) {
+    if (await exists(environment.OTFWC_BIN)) return environment.OTFWC_BIN;
+    throw new Error(`otfwc: OTFWC_BIN is set but ${environment.OTFWC_BIN} does not exist`);
   }
-  const out = hostBinPath();
+  const out = hostBinPath({ binaryDir, os, cpuArch });
   if (!out) {
     throw new Error(
-      `otfwc: no prebuilt binary for ${hostKey()}. ` +
+      `otfwc: no prebuilt binary for ${hostKey(os, cpuArch)}. ` +
         `Supported: ${[...SUPPORTED].join(", ")}. Build from source and set OTFWC_BIN.`,
     );
   }
   if (await exists(out)) return out;
-  if (await exists(`${out}.br`)) return decompress(out);
+  if (await exists(`${out}.br`)) return decompress(out, os);
   throw new Error(
     `otfwc: prebuilt binary missing at ${out}. ` +
       `Reinstall @opentf/web-compiler, or set OTFWC_BIN.`,
-  );
-}
-
-/**
- * Resolve the internal search indexer shipped alongside otfwc. Source checkouts
- * can use a sibling binary; OTF_SEARCH_BIN explicitly overrides the resolver.
- */
-export async function otfSearchPath({ otfwc, binaryDir = here, environment = env, os = platform } = {}) {
-  const name = os === "windows" ? "otf-search.exe" : "otf-search";
-  if (environment.OTF_SEARCH_BIN) {
-    if (await exists(environment.OTF_SEARCH_BIN)) return environment.OTF_SEARCH_BIN;
-    throw new Error(`otf-search: OTF_SEARCH_BIN is set but ${environment.OTF_SEARCH_BIN} does not exist`);
-  }
-  const compiler = otfwc || environment.OTFWC_BIN;
-  const candidates = [];
-  if (compiler) candidates.push(join(dirname(compiler), name));
-  if (SUPPORTED.has(hostKey())) candidates.push(join(binaryDir, "bin", hostKey(), name));
-  for (const candidate of [...new Set(candidates)]) {
-    if (await exists(candidate)) return candidate;
-    if (await exists(`${candidate}.br`)) return decompress(candidate);
-  }
-  throw new Error(
-    `otf-search: binary missing for ${hostKey()}. ` +
-    `Install @opentf/web-compiler with the search binary, set OTF_SEARCH_BIN, ` +
-    `or build the source checkout with cargo build -p otfw_cli.`,
   );
 }

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The release-only `siteOutputPlugin` uses the unified toolchain for documentation
+  indexing. `OTFWC_BIN` controls compilation and indexing; only one native
+  executable is required in installed projects.
+
 ### Fixed
 
 - **The site's description reaches `llms.txt`** (`build.js`, `prerender.js`, `shared.js`).

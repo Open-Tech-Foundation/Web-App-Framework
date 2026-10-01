@@ -14,22 +14,27 @@ use std::{
 use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
 use walkdir::WalkDir;
 
-fn main() -> ExitCode {
-    let args: Vec<_> = std::env::args().skip(1).collect();
+pub(super) fn run(args: &[String]) -> ExitCode {
     match args.first().map(String::as_str) {
-        Some("build") => build_cmd(&args),
-        Some("inspect") => inspect_cmd(&args),
-        Some("query") => query_cmd(&args),
+        Some("--help" | "-h") => {
+            println!("usage: otfwc docs index <site-dir> [--out <index-dir>] [--root <selector>]");
+            println!("       otfwc docs inspect <index-dir> --term <term>");
+            println!("       otfwc docs query <index-dir> <query>");
+            ExitCode::SUCCESS
+        }
+        Some("index") => index_cmd(args),
+        Some("inspect") => inspect_cmd(args),
+        Some("query") => query_cmd(args),
         _ => {
-            eprintln!("usage: otf-search <build|inspect|query> …");
+            eprintln!("usage: otfwc docs <index|inspect|query> …");
             ExitCode::FAILURE
         }
     }
 }
 
-fn build_cmd(args: &[String]) -> ExitCode {
+fn index_cmd(args: &[String]) -> ExitCode {
     let Some(site) = args.get(1) else {
-        eprintln!("otf-search: missing export directory");
+        eprintln!("otfwc docs: missing export directory");
         return ExitCode::FAILURE;
     };
     let mut out = PathBuf::from(site).join("_search");
@@ -39,18 +44,22 @@ fn build_cmd(args: &[String]) -> ExitCode {
         match args[i].as_str() {
             "--out" => {
                 i += 1;
-                if let Some(value) = args.get(i) {
-                    out = PathBuf::from(value);
-                }
+                let Some(value) = args.get(i).filter(|value| !value.starts_with("--")) else {
+                    eprintln!("otfwc docs: --out requires an index directory");
+                    return ExitCode::FAILURE;
+                };
+                out = PathBuf::from(value);
             }
             "--root" => {
                 i += 1;
-                if let Some(value) = args.get(i) {
-                    root = value.clone();
-                }
+                let Some(value) = args.get(i).filter(|value| !value.starts_with("--")) else {
+                    eprintln!("otfwc docs: --root requires a selector");
+                    return ExitCode::FAILURE;
+                };
+                root = value.clone();
             }
             flag => {
-                eprintln!("otf-search: unknown option {flag}");
+                eprintln!("otfwc docs: unknown option {flag}");
                 return ExitCode::FAILURE;
             }
         }
@@ -58,11 +67,11 @@ fn build_cmd(args: &[String]) -> ExitCode {
     }
     match build(Path::new(site), &out, &root) {
         Ok(count) => {
-            eprintln!("otf-search: indexed {count} page(s) → {}", out.display());
+            eprintln!("otfwc docs: indexed {count} page(s) → {}", out.display());
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("otf-search: {error}");
+            eprintln!("otfwc docs: {error}");
             ExitCode::FAILURE
         }
     }
@@ -94,11 +103,11 @@ fn read_index(dir: &str) -> Result<Value, String> {
 
 fn inspect_cmd(args: &[String]) -> ExitCode {
     let (Some(dir), Some(flag), Some(term)) = (args.get(1), args.get(2), args.get(3)) else {
-        eprintln!("usage: otf-search inspect <index-dir> --term <term>");
+        eprintln!("usage: otfwc docs inspect <index-dir> --term <term>");
         return ExitCode::FAILURE;
     };
     if flag != "--term" {
-        eprintln!("usage: otf-search inspect <index-dir> --term <term>");
+        eprintln!("usage: otfwc docs inspect <index-dir> --term <term>");
         return ExitCode::FAILURE;
     }
     match read_index(dir).and_then(|index| Ok(index["terms"][term.to_lowercase()].clone())) {
@@ -119,7 +128,7 @@ fn inspect_cmd(args: &[String]) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("otf-search: {error}");
+            eprintln!("otfwc docs: {error}");
             ExitCode::FAILURE
         }
     }
@@ -127,13 +136,13 @@ fn inspect_cmd(args: &[String]) -> ExitCode {
 
 fn query_cmd(args: &[String]) -> ExitCode {
     let (Some(dir), Some(query)) = (args.get(1), args.get(2)) else {
-        eprintln!("usage: otf-search query <index-dir> <query>");
+        eprintln!("usage: otfwc docs query <index-dir> <query>");
         return ExitCode::FAILURE;
     };
     let index = match read_index(dir) {
         Ok(value) => value,
         Err(error) => {
-            eprintln!("otf-search: {error}");
+            eprintln!("otfwc docs: {error}");
             return ExitCode::FAILURE;
         }
     };
@@ -466,11 +475,14 @@ fn ignored(element: ElementRef<'_>) -> bool {
 fn normalized_text(element: ElementRef<'_>) -> String {
     fn visible_text(element: ElementRef<'_>, text: &mut Vec<String>, root: bool) {
         let e = element.value();
-        if matches!(e.name(), "script" | "style" | "noscript" | "template" | "svg")
-            || e.attr("hidden").is_some()
+        if matches!(
+            e.name(),
+            "script" | "style" | "noscript" | "template" | "svg"
+        ) || e.attr("hidden").is_some()
             || e.attr("aria-hidden") == Some("true")
-            || (!root && (e.attr("data-otf-search-ignore").is_some()
-                || e.attr("data-pagefind-ignore").is_some()))
+            || (!root
+                && (e.attr("data-otf-search-ignore").is_some()
+                    || e.attr("data-pagefind-ignore").is_some()))
         {
             return;
         }
@@ -677,13 +689,18 @@ mod tests {
     #[test]
     fn markup_and_code_toolbars_are_not_indexed_and_examples_have_preview_omissions() {
         let html = "<main data-otf-search-body><h2 id='styling'>Styling</h2><p>😀 Use <code>class</code> as usual.</p><div class='otfw-code-head'>JSX Copy</div><pre><code>&lt;div class=\"card\"&gt;example&lt;/div&gt;</code></pre><p data-unwanted='AttributeNoise'>Scoped styles.</p></main>";
-        let doc = extract_document(&Html::parse_document(html), "main", true).unwrap().unwrap();
+        let doc = extract_document(&Html::parse_document(html), "main", true)
+            .unwrap()
+            .unwrap();
         assert!(!doc.text.contains("Copy"));
         assert!(!doc.text.contains("AttributeNoise"));
         assert!(doc.terms.iter().any(|(term, _, _)| term == "card"));
         let utf16 = doc.text.encode_utf16().collect::<Vec<_>>();
         let (start, end) = doc.excerpt_omit[0];
-        assert_eq!(String::from_utf16(&utf16[start..end]).unwrap(), "<div class=\"card\">example</div>");
+        assert_eq!(
+            String::from_utf16(&utf16[start..end]).unwrap(),
+            "<div class=\"card\">example</div>"
+        );
     }
 
     #[test]
@@ -693,7 +710,9 @@ mod tests {
           <span>Core Concepts</span><span>/</span><a>Reactivity</a>
           <style>StyleNoise</style><template>TemplateNoise</template><span hidden>HiddenNoise</span>
           <span aria-hidden="true">DecorationNoise</span><span data-otf-search-ignore>IgnoredNoise</span></nav>"#;
-        let doc = extract_document(&Html::parse_document(html), "main", true).unwrap().unwrap();
+        let doc = extract_document(&Html::parse_document(html), "main", true)
+            .unwrap()
+            .unwrap();
         assert_eq!(doc.meta["breadcrumb"], "Core Concepts / Reactivity");
         assert_eq!(doc.text, "Reactivity");
     }

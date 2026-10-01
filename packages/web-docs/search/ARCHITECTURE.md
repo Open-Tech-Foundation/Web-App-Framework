@@ -1,11 +1,11 @@
 # OTF Search architecture
 
-The Rust `otf-search` binary crawls emitted HTML after SSG. It owns extraction,
+The unified Rust toolchain’s `otfwc docs index` command crawls emitted HTML after SSG. It owns extraction,
 tokenization, deterministic document IDs, and index encoding. `@opentf/web-docs` owns
 the post-build hook, the DOM-free reader, and the optional modal component.
 
 ```text
-SSG HTML → otf-search → _search/{manifest, docs, chunks, fragments}
+SSG HTML → otfwc docs index → _search/{manifest, docs, chunks, fragments}
                               ↓
                          headless reader → Search component
 ```
