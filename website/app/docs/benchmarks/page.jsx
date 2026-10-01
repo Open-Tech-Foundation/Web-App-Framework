@@ -146,8 +146,8 @@ export default function Benchmarks() {
       <h2 className={H2}>Reproduce them</h2>
       <pre className="max-w-3xl overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 text-sm leading-relaxed">
         <code>{`# runtime — repeat a few times, then pool
-bun run bench all
-bun benchmarks/aggregate.mjs --latest 3
+tsr bench -- all
+esdev benchmarks/aggregate.mjs --latest 3
 
 # build cost — see benchmarks/ssg-build/README.md`}</code>
       </pre>

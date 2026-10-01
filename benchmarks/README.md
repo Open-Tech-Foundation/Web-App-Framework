@@ -85,23 +85,29 @@ area is identical across engines and runs.
 From the repo root:
 
 ```bash
-bun run bench                      # the OTF Web case, headless, with a table
-bun run bench react                # a single sibling case
-bun run bench otfw react solid svelte   # several cases + a comparison table
-bun run bench all                  # every case directory, compared
-bun run bench -- --headful         # watch it run in a real browser window
-bun run bench -- --no-build        # reuse existing dist/ (skip the compile step)
-bun run bench -- --throttle=1      # disable CPU throttling (default is 4×)
+tsr bench --                      # the OTF Web case, headless, with a table
+tsr bench -- react                # a single sibling case
+tsr bench -- otfw react solid svelte   # several cases + a comparison table
+tsr bench -- all                  # every case directory, compared
+tsr bench -- --headful         # watch it run in a real browser window
+tsr bench -- --no-build        # reuse existing dist/ (skip the compile step)
+tsr bench -- --throttle=1      # disable CPU throttling (default is 4×)
 ```
 
 With more than one case the runner appends a side-by-side comparison (median per
 operation, fastest in **bold**) and writes a `comparison-<timestamp>.json`.
 
 The runner (`benchmarks/run.mjs`) is dependency-free: it builds the case with the
-normal `otfw` toolchain, serves `dist/`, drives a headless Chrome/Chromium over
+native esdev configuration for OTF Web (other cases retain their own builds), serves `dist/`, drives a headless Chrome/Chromium over
 the DevTools Protocol (no Playwright/Puppeteer install), collects the in-page
 results, writes `benchmarks/results/<case>-<timestamp>.json`, and prints a
 Markdown table.
+
+The installed esdev 0.14 HTML build currently leaves a route chunk importing
+`./entry.js` after renaming that entry with a hash. The real OTF run fails
+before measurements; fix the upstream chunk reference before publishing a new
+comparison. Runner behavior is covered by a controlled browser fixture. See
+[the migration status](../docs/ESDEV_MIGRATION.md).
 
 ### Pooling runs for the website table
 
@@ -115,23 +121,22 @@ reporting a coin flip.
 So the homepage table pools runs:
 
 ```bash
-bun run bench all                      # repeat a few times
-bun benchmarks/aggregate.mjs --latest 3   # → website/app/benchmark-report.json
+tsr bench -- all                      # repeat a few times
+esdev benchmarks/aggregate.mjs --latest 3   # → website/app/benchmark-report.json
 ```
 
 `aggregate.mjs` pools the raw *samples* of the named runs and takes the median of
 the pool — the same median-over-samples statistic `run.mjs` reports, at N≈30 rather
 than N≈10, with the identical timing-resolution tie rule. It prints each run's own
 median per cell and the spread between them, so a cell that is still moving is
-visible rather than averaged into false precision. `bun run bench all` on its own
+visible rather than averaged into false precision. `tsr bench -- all` on its own
 also writes the report (single run), which is fine for a quick local check but
 should not be what gets published.
 
 ### Manual run (no runner)
 
 ```bash
-cd benchmarks/otfw
-bun run dev            # then open http://localhost:3010
+tsr bench-otfw-dev     # from the repo root; http://localhost:3010
 ```
 
 Click **▶ Run all (measured)**, or load `http://localhost:3010/?autorun` to run
@@ -145,7 +150,7 @@ benchmarks/
   README.md         ← this file
   run.mjs           ← dependency-free CDP runner (build → serve → drive → compare)
   results/          ← JSON result files (git-ignored)
-  otfw/             ← OTF Web implementation (a real app, built by `otfw`)
+  otfw/             ← OTF Web implementation (built with esdev.bench.json)
     index.html
     app/page.jsx    ← the benchmark component + in-page harness
     app/_bench.js   ← pure helpers (row data, median, frame waiting)
@@ -157,8 +162,8 @@ benchmarks/
     build.mjs · src/main.js · src/App.svelte · src/_bench.js · global.css
 ```
 
-Each non-OTF case carries its own `build.mjs` (the OTF case uses the real `otfw`
-toolchain) and a verbatim copy of `_bench.js`. The runner is engine-agnostic: it
+Each non-OTF case carries its own Bun `build.mjs` (the OTF case uses the native
+esdev toolchain) and a verbatim copy of `_bench.js`. The runner is engine-agnostic: it
 only relies on the in-page contract below.
 
 ## Adding a case
@@ -174,7 +179,7 @@ drives them all:
 - use the identical row shape, counts, sample counts, and the shared
   `measure`/`nextFrame` helpers (copy `app/_bench.js` verbatim).
 
-Then `bun run bench <name>` runs it. Keep the DOM structure (a single `<table>`
+Then `tsr bench -- <name>` runs it. Keep the DOM structure (a single `<table>`
 of rows) equivalent across cases so the comparison is apples-to-apples.
 
 ## Roadmap
@@ -196,3 +201,14 @@ of rows) equivalent across cases so the comparison is apples-to-apples.
    vs. a committed baseline.
 </content>
 </invoke>
+
+## Toolchain migration
+
+The shared runner and report aggregator use esdev and `runtime:*` modules. The
+OTF case builds with esdev. React, Solid and Svelte retain their Bun build scripts
+and package dependencies so changing our orchestration does not alter their
+comparison toolchains. Install Bun only when building those comparison cases.
+Set `CHROME_BIN` to select a Chrome/Chromium executable for the shared runner.
+
+Published benchmark reports retain their measured toolchain and dates. Migrating
+the runner does not remeasure historical data or justify relabelling those results.

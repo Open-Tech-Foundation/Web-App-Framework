@@ -15,6 +15,8 @@ embedded in the esdev binary; updating this repo's plugin cannot change them.
   real-browser coverage verifies the full Testing Library user-event workflow.
 - The standalone plugin integration test builds browser/server targets from package
   files and verifies real HTTP API, middleware, loader and SSR requests.
+- Shared benchmark orchestration, aggregation and fixture generation use esdev.
+  Comparison-framework build scripts retain their existing Bun toolchains.
 - Release site builds prerender pages and generate OTF Search, feeds and LLM files.
   CI runs a release site build as well as unit and browser suites.
 
@@ -58,6 +60,31 @@ failures, and skips prerender/indexing when no release staging directory exists.
 Move orchestration into native plugin hooks once their upstream contract is
 available. Verify both development and release builds: development must not run
 release prerendering, and output indexing must finish before publication.
+
+## HTML entry hash references
+
+The native OTF benchmark build in esdev 0.14 emits
+`benchmarks/otfw/dist/assets/entry-<hash>.js`, while its generated `page-<hash>.js`
+imports `./entry.js`. That un-hashed file does not exist, so the browser cannot
+load the route. Reproduce with `tsr bench -- otfw --throttle=1`, or build with
+`tsr bench-otfw-build` and inspect the route chunk's first import.
+
+Fix references to renamed entry chunks in esdev's HTML build pipeline. The native
+runner itself is verified with a controlled browser fixture; a real OTF benchmark
+measurement is blocked by the generated asset reference. Do not publish timings
+from the failed run or relabel historical benchmark reports.
+
+## JavaScript asset URLs
+
+A native browser fixture verified that module workers created with
+`new Worker(new URL("./worker.js", import.meta.url), { type: "module" })` are
+bundled and rewritten correctly. However, an ordinary
+`new URL("./icon.svg", import.meta.url)` is preserved without emitting the icon.
+It resolves next to the output bundle and can point at a missing file.
+
+Use configured public assets for ordinary image/WebAssembly URLs until esdev's
+asset pipeline supports these references. The old framework CLI's rewriting
+helper is not installed by the native compiler plugin.
 
 ## Release handoff
 

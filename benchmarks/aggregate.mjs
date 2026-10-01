@@ -1,8 +1,8 @@
-#!/usr/bin/env bun
-// Pool several `bun run bench all` runs into one website report.
+#!/usr/bin/env esdev
+// Pool several `tsr bench -- all` runs into one website report.
 //
-//   bun benchmarks/aggregate.mjs results/comparison-A.json results/comparison-B.json …
-//   bun benchmarks/aggregate.mjs --latest 3        # the N newest comparison files
+//   esdev benchmarks/aggregate.mjs results/comparison-A.json results/comparison-B.json …
+//   esdev benchmarks/aggregate.mjs --latest 3        # the N newest comparison files
 //
 // Why this exists: one run's per-operation median moves enough between consecutive
 // runs on an idle machine that the *fastest* label turns over. Three runs taken
@@ -19,36 +19,37 @@
 // Writes website/app/benchmark-report.json (the homepage table imports it) and
 // prints per-cell diagnostics: each run's own median, and how far they spread.
 
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { file, readDir, write } from "runtime:fs";
+import { dirname, fromFileURL, join, resolve } from "runtime:path";
+import { args, cwd, exit } from "runtime:process";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+const HERE = dirname(fromFileURL(import.meta.url));
 const RESULTS = join(HERE, "results");
-const OUT = join(HERE, "..", "website", "app", "benchmark-report.json");
+const outputArg = args.find(arg => arg.startsWith("--out="));
+const OUT = outputArg ? resolve(cwd(), outputArg.slice(6)) : join(HERE, "..", "website", "app", "benchmark-report.json");
 
 // Must stay in step with run.mjs: double-rAF timing quantizes to frame
 // boundaries, so medians closer than half a frame are indistinguishable.
 const RESOLUTION_MS = 1000 / 60 / 2;
 
-const argv = process.argv.slice(2);
+const argv = args.filter(arg => !arg.startsWith("--out="));
 let files;
 const latestIdx = argv.indexOf("--latest");
 if (latestIdx !== -1) {
   const n = Number(argv[latestIdx + 1]);
   if (!Number.isInteger(n) || n < 1) die("--latest needs a positive integer");
-  files = readdirSync(RESULTS)
+  files = (await readDir(RESULTS)).map(entry => entry.name)
     .filter((f) => f.startsWith("comparison-") && f.endsWith(".json"))
     .sort()
     .slice(-n)
     .map((f) => join(RESULTS, f));
   if (files.length < n) die(`only ${files.length} comparison file(s) in ${RESULTS}`);
 } else {
-  files = argv;
+  files = argv.map(path => resolve(cwd(), path));
 }
 if (files.length === 0) die("usage: aggregate.mjs <comparison.json…>  |  --latest <n>");
 
-const runs = files.map((f) => JSON.parse(readFileSync(f, "utf8")));
+const runs = await Promise.all(files.map(f => file(f).json()));
 const engines = runs[0].engines;
 const labels = runs[0].results[0].cases.map((c) => c.label);
 
@@ -86,13 +87,13 @@ const rows = labels.map((label) => {
   return { label, values, best, diagnostics };
 });
 
-writeFileSync(
+await write(
   OUT,
   JSON.stringify(
     {
       generatedAt: new Date().toISOString(),
       source: files.map((f) => "benchmarks/results/" + f.split("/").pop()),
-      method: `Median of the pooled samples of ${runs.length} full runs (bun run bench all) on one machine.`,
+      method: `Median of the pooled samples of ${runs.length} full runs (tsr bench -- all) on one machine.`,
       engines,
       highlightEngine: "otfw",
       resolutionMs: RESOLUTION_MS,
@@ -130,5 +131,5 @@ function round(n) {
 }
 function die(msg) {
   console.error(`✗ ${msg}`);
-  process.exit(1);
+  exit(1);
 }

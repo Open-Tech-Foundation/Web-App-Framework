@@ -237,7 +237,7 @@ python3 measure.py <label> <outdir> -- <command...>
 `make-ladder.mjs` writes the 1×…32× fixtures from a source `.mdx`:
 
 ```bash
-node make-ladder.mjs path/to/spec.mdx ./out   # writes spec-1x.mdx … spec-32x.mdx
+esdev benchmarks/ssg-build/make-ladder.mjs path/to/spec.mdx ./out   # writes spec-1x.mdx … spec-32x.mdx
 ```
 
 The five projects are not vendored — each needs its own `node_modules`, and
@@ -254,3 +254,11 @@ else), then measure each build. Points worth knowing if you rebuild the set:
   RAM and corrupts the memory measurement.
 - Discard the first run of each project; cold dependency-optimization caches cost
   seconds (Astro's first 72 KB build took 5.8 s against 1.1 s warm).
+
+## Native esdev builds
+
+The results above measured the historical `otfw build --ssg` toolchain. Keep
+that command label with those numbers. For a new native run, use an app with
+esdev.json and a release prerender target, measure `esdev build --minify`,
+and record its esdev/compiler versions separately. `make-ladder.mjs` now runs
+on esdev; `measure.py` remains a tool-independent process-tree measurement script.

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env esdev
 // Dependency-free benchmark runner.
 //
 // Builds one or more benchmark cases with their own toolchain, serves each
@@ -7,13 +7,13 @@
 // under benchmarks/results/, and prints a Markdown table. With more than one
 // case it also prints a side-by-side comparison.
 //
-//   bun run bench                 # case "otfw"
-//   bun run bench react           # a single sibling case
-//   bun run bench otfw react      # several cases + comparison table
-//   bun run bench all             # every case directory, compared
-//   bun run bench -- --headful    # show the browser window
-//   bun run bench -- --no-build   # reuse existing dist/ (skip the compile step)
-//   bun run bench -- --throttle=1 # disable CPU throttling (default 4×)
+//   tsr bench --                 # case "otfw"
+//   tsr bench -- react           # a single sibling case
+//   tsr bench -- otfw react      # several cases + comparison table
+//   tsr bench -- all             # every case directory, compared
+//   tsr bench -- --headful    # show the browser window
+//   tsr bench -- --no-build   # reuse existing dist/ (skip the compile step)
+//   tsr bench -- --throttle=1 # disable CPU throttling (default 4×)
 //
 // The page is loaded only after the CDP session applies CPU throttling
 // (Emulation.setCPUThrottlingRate, 4× by default, as in js-framework-benchmark):
@@ -24,15 +24,13 @@
 //   window.__BENCH_RESULTS__ = { engine, ua, cases: [{ label, median, runs, samples }] }
 //   window.__BENCH_DONE__    = true
 
-import {
-  existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, dirname, extname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { exists, file, makeTempDir, mkdir, readDir, remove, write } from "runtime:fs";
+import { basename, dirname, extname, fromFileURL, join } from "runtime:path";
+import { args, env, exit } from "runtime:process";
+import { Command } from "runtime:system";
+import { serve } from "runtime:http";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const args = process.argv.slice(2);
+const HERE = dirname(fromFileURL(import.meta.url));
 const flags = new Set(args.filter((a) => a.startsWith("--")));
 const positionals = args.filter((a) => !a.startsWith("--"));
 const headful = flags.has("--headful");
@@ -47,7 +45,7 @@ const FRAME_MS = 1000 / 60;
 const RESOLUTION_MS = FRAME_MS / 2;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const die = (msg) => { console.error(`✗ ${msg}`); process.exit(1); };
+const die = (msg) => { console.error(`✗ ${msg}`); exit(1); };
 
 // Declared before the driver loop below: with top-level `await`, the loop
 // suspends before any `const` declared lower in the module initializes (TDZ).
@@ -63,15 +61,14 @@ const HOME_REPORT_PATH = join(HERE, "..", "website", "app", "benchmark-report.js
 // Resolve the list of cases to run.
 let cases;
 if (positionals.length === 0) cases = ["otfw"];
-else if (positionals.length === 1 && positionals[0] === "all") cases = discoverCases();
+else if (positionals.length === 1 && positionals[0] === "all") cases = await discoverCases();
 else cases = positionals;
 
 for (const c of cases) {
-  if (!existsSync(join(HERE, c, "package.json"))) die(`no benchmark case "${c}" (looked in ${join(HERE, c)})`);
+  if (!(await exists(join(HERE, c, "package.json")))) die(`no benchmark case "${c}" (looked in ${join(HERE, c)})`);
 }
 
-const chromeBin =
-  Bun.which("google-chrome") ?? Bun.which("chromium") ?? Bun.which("chromium-browser");
+const chromeBin = env.CHROME_BIN || await findChrome();
 if (!chromeBin) die("no Chrome/Chromium found (tried google-chrome, chromium, chromium-browser)");
 
 const collected = [];
@@ -79,20 +76,20 @@ for (const c of cases) {
   try {
     const result = await runCase(c);
     collected.push(result);
-    reportOne(result);
+    await reportOne(result);
   } catch (err) {
     console.error(`✗ [${c}] ${err.message}`);
   }
 }
 
-if (collected.length === 0) process.exit(1);
+if (collected.length === 0) exit(1);
 if (collected.length > 1) {
-  const comparisonFile = reportComparison(collected);
+  const comparisonFile = await reportComparison(collected);
   // The full standard comparison also refreshes the website's benchmark report
   // (app/benchmark-report.json), which the homepage table imports directly.
-  if (hasHomeComparison(collected)) writeHomeReport(collected, comparisonFile);
+  if (hasHomeComparison(collected)) await writeHomeReport(collected, comparisonFile);
 }
-process.exit(0);
+exit(0);
 
 // --- per-case orchestration -------------------------------------------------
 
@@ -105,28 +102,30 @@ async function runCase(caseName) {
       caseName === "otfw"
         ? ["esdev", "build", "--minify", "--config=esdev.bench.json"]
         : ["bun", "build.mjs"];
-    const b = Bun.spawnSync(command, {
+    const b = await new Command(command[0], {
+      args: command.slice(1), inheritEnv: true,
       cwd: caseName === "otfw" ? join(HERE, "..") : appDir,
       stdout: "inherit", stderr: "inherit",
-    });
+    }).output();
     if (!b.success) throw new Error("build failed");
   }
   const dist = join(appDir, "dist");
-  if (!existsSync(join(dist, "index.html"))) throw new Error(`no dist/index.html in ${dist}`);
+  if (!(await exists(join(dist, "index.html")))) throw new Error(`no dist/index.html in ${dist}`);
 
-  const server = serveStatic(dist);
-  const appUrl = `http://127.0.0.1:${server.port}/?autorun`;
+  const server = await serveStatic(dist);
+  const appUrl = `http://127.0.0.1:${(await server.addr).port}/?autorun`;
   console.log(`• [${caseName}] serving → ${appUrl}`);
 
   const cdpPort = await freePort();
-  const profile = mkdtempSync(join(tmpdir(), "otfw-bench-"));
+  const cache = join(HERE, "..", ".cache");
+  await mkdir(cache, { recursive: true });
+  const profile = await makeTempDir({ dir: cache, prefix: "otfw-bench-" });
   // Opens on about:blank; driveAndCollect navigates to the app only after CPU
   // throttling is applied, so no timed sample runs unthrottled. Fixed window
   // size + scale factor keep the layout area identical across runs; --expose-gc
   // lets the in-page harness collect garbage between samples.
-  const chrome = Bun.spawn(
-    [
-      chromeBin,
+  const chrome = await new Command(chromeBin, {
+    args: [
       ...(headful ? [] : ["--headless=new"]),
       "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
       "--disable-extensions", "--disable-background-timer-throttling",
@@ -136,33 +135,48 @@ async function runCase(caseName) {
       `--remote-debugging-port=${cdpPort}`, `--user-data-dir=${profile}`,
       "about:blank",
     ],
-    { stdout: "ignore", stderr: "ignore" },
-  );
+    stdout: "null", stderr: "null", inheritEnv: true,
+  }).spawn();
   console.log(`• [${caseName}] running suite (${throttle}× CPU throttle) …`);
 
   try {
     return await driveAndCollect(cdpPort, appUrl);
   } finally {
     chrome.kill();
-    server.stop(true);
+    await chrome.status;
+    await server.stop();
+    await removeChromeProfile(profile);
+  }
+}
+
+async function removeChromeProfile(profile) {
+  // Chrome's child processes can finish profile writes after its main process
+  // exits. Retry this specific race without hiding other filesystem failures.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await remove(profile, { recursive: true });
+      return;
+    } catch (error) {
+      if (attempt >= 9 || !error.message.includes("Directory not empty")) throw error;
+      await sleep(100);
+    }
   }
 }
 
 // --- static server ----------------------------------------------------------
 
-function serveStatic(dist) {
-  return Bun.serve({
-    port: 0,
-    fetch(req) {
-      let path = new URL(req.url).pathname;
-      if (path === "/") path = "/index.html";
-      let file = join(dist, path);
-      if (!existsSync(file)) file = join(dist, "index.html"); // SPA fallback
-      return new Response(Bun.file(file), {
-        headers: { "content-type": MIME[extname(file)] ?? "application/octet-stream" },
-      });
-    },
+async function serveStatic(dist) {
+  const server = serve({ hostname: "127.0.0.1", port: 0 }, async (req) => {
+    let path = new URL(req.url).pathname;
+    if (path === "/") path = "/index.html";
+    let filename = join(dist, path);
+    if (!(await exists(filename))) filename = join(dist, "index.html");
+    return new Response(file(filename), {
+      headers: { "content-type": MIME[extname(filename)] ?? "application/octet-stream" },
+    });
   });
+  await server.addr;
+  return server;
 }
 
 function hasHomeComparison(results) {
@@ -171,7 +185,7 @@ function hasHomeComparison(results) {
   return HOME_ENGINES.every((engine) => engines.has(engine));
 }
 
-function writeHomeReport(results, comparisonFile) {
+async function writeHomeReport(results, comparisonFile) {
   const ordered = HOME_ENGINES.map((engine) => results.find((r) => r.engine === engine));
   const caseLabels = ordered[0]?.cases.map((c) => c.label) ?? [];
   const generatedAt = new Date().toISOString();
@@ -196,8 +210,8 @@ function writeHomeReport(results, comparisonFile) {
     resolutionMs: RESOLUTION_MS,
     rows,
   };
-  mkdirSync(dirname(HOME_REPORT_PATH), { recursive: true });
-  writeFileSync(HOME_REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`);
+  await mkdir(dirname(HOME_REPORT_PATH), { recursive: true });
+  await write(HOME_REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`• updated website benchmark report → ${HOME_REPORT_PATH}`);
 }
 
@@ -212,9 +226,14 @@ async function driveAndCollect(port, appUrl) {
   });
 
   let nextId = 0;
+  let pageError;
   const pending = new Map();
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
+    if (msg.method === "Runtime.exceptionThrown") pageError = msg.params.exceptionDetails?.exception?.description || msg.params.exceptionDetails?.text;
+    if (msg.method === "Runtime.consoleAPICalled" && msg.params.type === "error") {
+      pageError = msg.params.args.map(arg => arg.value || arg.description).join(" ");
+    }
     if (msg.id != null && pending.has(msg.id)) {
       pending.get(msg.id)(msg);
       pending.delete(msg.id);
@@ -243,6 +262,7 @@ async function driveAndCollect(port, appUrl) {
   // Generous ceiling: 12-sample cases under 4× throttling take a while.
   const deadline = Date.now() + 300_000;
   while (Date.now() < deadline) {
+    if (pageError) { ws.close(); throw new Error(`benchmark page failed: ${pageError}`); }
     if (await evaluate("window.__BENCH_DONE__ === true")) {
       const json = await evaluate("JSON.stringify(window.__BENCH_RESULTS__)");
       ws.close();
@@ -272,7 +292,7 @@ async function waitForPageTarget(port) {
 
 // --- reporting --------------------------------------------------------------
 
-function reportOne(results) {
+async function reportOne(results) {
   const rows = results.cases ?? [];
   const spread = (c) =>
     c.samples?.length
@@ -292,14 +312,14 @@ function reportOne(results) {
   console.log([head, sep, body].join("\n"));
 
   const outDir = join(HERE, "results");
-  mkdirSync(outDir, { recursive: true });
+  await mkdir(outDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const out = join(outDir, `${results.engine}-${stamp}.json`);
-  writeFileSync(out, JSON.stringify(results, null, 2));
+  await write(out, JSON.stringify(results, null, 2));
   console.log(`→ ${out}`);
 }
 
-function reportComparison(all) {
+async function reportComparison(all) {
   const engines = all.map((r) => r.engine);
   const labels = all[0].cases.map((c) => c.label);
   const lookup = (r, label) => r.cases.find((c) => c.label === label)?.median ?? null;
@@ -337,26 +357,36 @@ function reportComparison(all) {
   );
 
   const outDir = join(HERE, "results");
-  mkdirSync(outDir, { recursive: true });
+  await mkdir(outDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const out = join(outDir, `comparison-${stamp}.json`);
-  writeFileSync(out, JSON.stringify({ engines, results: all }, null, 2));
+  await write(out, JSON.stringify({ engines, results: all }, null, 2));
   console.log(`\n→ ${out}`);
   return out;
 }
 
 // --- misc -------------------------------------------------------------------
 
-function discoverCases() {
-  return readdirSync(HERE, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && d.name !== "results" && existsSync(join(HERE, d.name, "package.json")))
-    .map((d) => d.name)
-    .sort();
+async function discoverCases() {
+  const cases = [];
+  for (const entry of await readDir(HERE)) {
+    if (entry.isDir && entry.name !== "results" && await exists(join(HERE, entry.name, "package.json"))) cases.push(entry.name);
+  }
+  return cases.sort();
+}
+
+async function findChrome() {
+  for (const candidate of ["google-chrome", "chromium", "chromium-browser"]) {
+    try {
+      if ((await new Command(candidate, { args: ["--version"], inheritEnv: true, timeout: 2000 }).output()).success) return candidate;
+    } catch { /* Try the next installed browser. */ }
+  }
+  return null;
 }
 
 async function freePort() {
-  const s = Bun.serve({ port: 0, fetch: () => new Response("") });
-  const p = s.port;
-  s.stop(true);
-  return p;
+  const server = serve({ hostname: "127.0.0.1", port: 0 }, () => new Response(""));
+  const port = (await server.addr).port;
+  await server.stop();
+  return port;
 }

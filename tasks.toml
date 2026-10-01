@@ -93,9 +93,12 @@ run = "esdev test --config=esdev.test.json --dom packages/web-i18n/i18n.test.js"
 deps = ["build-compiler"]
 run = "esdev test --config=esdev.test.json --dom --setup=@opentf/web-test/setup packages/web-test/tests/render.test.js packages/web-test/tests/setup.test.js"
 
+[tasks.test-benchmark-tooling]
+run = "esdev test --config=esdev.test.json benchmarks/tests/tooling.test.js"
+
 # Independent processes — cargo and the ES-Runtime — so they overlap.
 [tasks.test]
-deps = ["test-rust", "test-esdev", "test-esdev-dom", "test-esdev-plugin", "test-web-docs", "test-web-docs-dom", "test-web-form", "test-web-i18n", "test-web-test"]
+deps = ["test-rust", "test-esdev", "test-esdev-dom", "test-esdev-plugin", "test-web-docs", "test-web-docs-dom", "test-web-form", "test-web-i18n", "test-web-test", "test-benchmark-tooling"]
 parallel = true
 
 # Real-browser tier (docs/HYDRATION.md §5) — framework-behavior suites (docs shell
@@ -124,8 +127,11 @@ deps = ["test-e2e-docs-drawer", "test-e2e-docs-sidebar", "test-e2e-docs-hydratio
 deps = ["build-compiler"]
 run = "esdev test --config=esdev.test.json --browser --setup=@opentf/web-test/setup packages/web-test/tests/browser"
 
+[tasks.test-e2e-benchmark-runner]
+run = "esdev test --config=esdev.test.json benchmarks/tests/browser-runner.test.js"
+
 [tasks.test-e2e]
-deps = ["test-e2e-docs", "test-e2e-web-test"]
+deps = ["test-e2e-docs", "test-e2e-web-test", "test-e2e-benchmark-runner"]
 
 # Local convenience — CI runs the fast and browser tiers as separate parallel jobs, so this
 # is the "use my cores" path on a dev machine. `build-compiler` is de-duplicated to one run.
@@ -149,7 +155,7 @@ run = "esdev build --minify"
 # See benchmarks/README.md. The SSG build benchmark is a separate, manual procedure —
 # benchmarks/ssg-build/README.md.
 [tasks.bench]
-run = "bun benchmarks/run.mjs"
+run = "esdev benchmarks/run.mjs"
 
 [tasks.bench-react-build]
 run = "bun build.mjs"
