@@ -11,6 +11,13 @@ html {
   scroll-behavior: smooth;
 }
 
+/* The router focuses page headings to announce navigation. Keep that focus
+ * without drawing a box around the heading; interactive controls keep their
+ * keyboard focus indicators. */
+h1[tabindex='-1']:focus {
+  outline: none;
+}
+
 /* Demo component hosts behave as blocks. Hosts are addressed by the stable
  * `web-<kebab>` class the compiler stamps on every component (the element tag is
  * module-hashed for collision-freedom, so it is not a reliable selector). `.web-link`
@@ -782,4 +789,3 @@ body {
   line-height: 1.5;
   color: #94a3b8;
 }
-
