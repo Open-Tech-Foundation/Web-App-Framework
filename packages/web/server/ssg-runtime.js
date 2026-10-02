@@ -3,6 +3,8 @@
 //! return HTML strings. Component output is composed via a tag→renderer registry,
 //! mirroring how CSR composes by Custom Element tag.
 
+import { getRenderContext } from "../core/render-context.js";
+
 const VOID = new Set([
   "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
   "param", "source", "track", "wbr",
@@ -34,9 +36,20 @@ export function defineSSG(tag, render) {
 // render with `beginHydrationCollect()` / `endHydrationCollect()`.
 let _collect = null;
 
+function hydrationCollector() {
+  const context = getRenderContext();
+  return context ? context.hydration : _collect;
+}
+
+function setHydrationCollector(value) {
+  const context = getRenderContext();
+  if (context) context.hydration = value;
+  else _collect = value;
+}
+
 /** Start collecting per-island hydration props for one render. */
 export function beginHydrationCollect() {
-  _collect = [];
+  setHydrationCollector([]);
 }
 
 /**
@@ -45,8 +58,8 @@ export function beginHydrationCollect() {
  * `<script>` (a `</script>` / `<!--` injection).
  */
 export function endHydrationCollect() {
-  const data = _collect;
-  _collect = null;
+  const data = hydrationCollector();
+  setHydrationCollector(null);
   if (!data || data.length === 0) return "";
   return JSON.stringify(data).replace(/</g, "\\u003c");
 }
@@ -58,11 +71,12 @@ export function endHydrationCollect() {
  * `undefined`, and anything cyclic/DOM/signal-shaped, so only plain data crosses.
  */
 function collectHydrationProps(props) {
-  if (!_collect) return null;
+  const collector = hydrationCollector();
+  if (!collector) return null;
   const safe = jsonSafeProps(props);
   if (!safe) return null;
-  const id = _collect.length;
-  _collect.push(safe);
+  const id = collector.length;
+  collector.push(safe);
   return id;
 }
 

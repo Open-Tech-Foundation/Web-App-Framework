@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "runtime:test";
 
-import { registerRoutes, router, routes } from "../runtime/router.js";
+import { configureI18n, localizePath, registerRoutes, router, routes, setRouteState } from "../runtime/router.js";
 import { defineSSG, ssgComponent } from "./ssg-runtime.js";
 import { collectRoutePaths, renderRoute, renderToString } from "./render.js";
 
@@ -23,6 +23,150 @@ beforeEach(resetRoutes);
 afterEach(resetRoutes);
 
 describe("server render (SSG, string-based)", () => {
+  test("concurrent lazy pages and layouts keep router state and hydration props separate", async () => {
+    defineSSG("web-request", () => "island");
+    const island = (where) => ssgComponent("web-request", { where, id: router.params.id, token: router.data.token }, "");
+    registerRoutes({
+      "/app/post/[id]/page.jsx": async () => page(() =>
+        `<article>${router.pathname}|${router.params.id}|${router.query.q}|${router.data.token}${island("page")}</article>`),
+      "/app/layout.jsx": async () => ({
+        default: ({ children }) => `<main>${router.params.id}|${router.data.token}${children}${island("layout")}</main>`,
+      }),
+    });
+    const results = await Promise.all(["A", "B"].map((id) =>
+      renderRoute(`/post/${id}`, null, `?q=query-${id}`, { data: { token: `token-${id}` } })));
+    for (const [index, id] of ["A", "B"].entries()) {
+      const result = results[index];
+      expect(result.html).toContain(`<main>${id}|token-${id}`);
+      expect(result.html).toContain(`/post/${id}|${id}|query-${id}|token-${id}`);
+      expect(result.html).toContain('data-h="0"');
+      expect(result.html).toContain('data-h="1"');
+      expect(JSON.parse(result.hydration)).toEqual([
+        { where: "page", id, token: `token-${id}` },
+        { where: "layout", id, token: `token-${id}` },
+      ]);
+    }
+  });
+
+  test("async metadata keeps request state across awaits without changing ambient router state", async () => {
+    setRouteState({ pathname: "/ambient", search: "?q=ambient", params: { id: "ambient" }, data: "ambient" });
+    registerRoutes({
+      "/app/post/[id]/page.jsx": {
+        default: () => "<p>Post</p>",
+        async generateMetadata() {
+          const before = router.params.id;
+          await new Promise((resolve) => setTimeout(resolve, before === "A" ? 10 : 0));
+          return { title: `${before}|${router.params.id}|${router.query.q}|${router.data.token}` };
+        },
+      },
+    });
+    const [a, b] = await Promise.all([
+      renderRoute("/post/A", null, "?q=one", { data: { token: "token-A" } }),
+      renderRoute("/post/B", null, "?q=two", { data: { token: "token-B" } }),
+    ]);
+    expect(a.metadata.title).toBe("A|A|one|token-A");
+    expect(b.metadata.title).toBe("B|B|two|token-B");
+    expect(router.pathname).toBe("/ambient");
+    expect(router.params).toEqual({ id: "ambient" });
+    expect(router.query).toEqual({ q: "ambient" });
+    expect(router.data).toBe("ambient");
+    setRouteState();
+  });
+
+  test("concurrent locales remain separate in router getters and localized links", async () => {
+    configureI18n({ locales: ["en", "fr"], defaultLocale: "en" });
+    try {
+      registerRoutes({
+        "/app/post/[id]/page.jsx": {
+          default: () => `<p>${router.locale}|${localizePath("/about")}</p>`,
+          async generateMetadata() {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            return { title: `${router.locale}|${localizePath("/about")}` };
+          },
+        },
+      });
+      const [en, fr] = await Promise.all([renderRoute("/post/A"), renderRoute("/fr/post/B")]);
+      expect(en.html).toBe("<p>en|/about</p>");
+      expect(fr.html).toBe("<p>fr|/fr/about</p>");
+      expect(en.metadata.title).toBe("en|/about");
+      expect(fr.metadata.title).toBe("fr|/fr/about");
+      expect(router.locale).toBe("en");
+    } finally {
+      configureI18n(null);
+    }
+  });
+
+  test("failed page and metadata renders do not leak state or hydration into other renders", async () => {
+    defineSSG("web-failure-probe", () => "island");
+    const island = () => ssgComponent("web-failure-probe", { token: router.data.token }, "");
+    const ambient = router.pathname;
+    registerRoutes({
+      "/app/bad-page/page.jsx": page(() => { island(); throw Error("page failed"); }),
+      "/app/bad-metadata/page.jsx": {
+        default: island,
+        async generateMetadata() { await Promise.resolve(); throw Error("metadata failed"); },
+      },
+      "/app/good/page.jsx": page(island),
+    });
+    const [badPage, badMetadata, good] = await Promise.allSettled([
+      renderRoute("/bad-page", null, "", { data: { token: "bad-page" } }),
+      renderRoute("/bad-metadata", null, "", { data: { token: "bad-metadata" } }),
+      renderRoute("/good", null, "", { data: { token: "good" } }),
+    ]);
+    expect(badPage.status).toBe("rejected");
+    expect(badPage.reason.message).toBe("page failed");
+    expect(badMetadata.status).toBe("rejected");
+    expect(badMetadata.reason.message).toBe("metadata failed");
+    expect(good.status).toBe("fulfilled");
+    expect(JSON.parse(good.value.hydration)).toEqual([{ token: "good" }]);
+    expect(good.value.html).toContain('data-h="0"');
+    expect(router.pathname).toBe(ambient);
+    const outside = ssgComponent("web-failure-probe", { token: "outside" }, "");
+    expect(outside).toContain("data-hp=");
+    expect(outside).not.toContain("data-h=");
+    expect(JSON.parse((await renderRoute("/good", null, "", { data: { token: "next" } })).hydration))
+      .toEqual([{ token: "next" }]);
+  });
+
+  test("nested renders restore their parent's route state and keep island payloads separate", async () => {
+    defineSSG("web-nested-probe", () => "island");
+    let nested;
+    registerRoutes({
+      "/app/post/[id]/page.jsx": {
+        default: () => ssgComponent("web-nested-probe", { id: router.params.id, token: router.data.token }, ""),
+        async generateMetadata() {
+          if (router.params.id === "outer") {
+            nested = await renderRoute("/post/inner", null, "", { data: { token: "inner" } });
+          }
+          return { title: `${router.params.id}|${router.data.token}` };
+        },
+      },
+    });
+    const outer = await renderRoute("/post/outer", null, "", { data: { token: "outer" } });
+    expect(outer.metadata.title).toBe("outer|outer");
+    expect(nested.metadata.title).toBe("inner|inner");
+    expect(JSON.parse(outer.hydration)).toEqual([{ id: "outer", token: "outer" }]);
+    expect(JSON.parse(nested.hydration)).toEqual([{ id: "inner", token: "inner" }]);
+    expect(outer.html).toContain('data-h="0"');
+    expect(nested.html).toContain('data-h="0"');
+  });
+
+  test("cached module-level JSX keeps inline props independent of route hydration ids", async () => {
+    defineSSG("web-module-probe", () => "island");
+    let module;
+    registerRoutes({
+      "/app/page.jsx": async () => {
+        module ??= page(ssgComponent("web-module-probe", { value: "cached" }, ""));
+        return module;
+      },
+    });
+    for (const result of await Promise.all([renderRoute("/"), renderRoute("/")])) {
+      expect(result.html).toContain("data-hp=");
+      expect(result.html).not.toContain("data-h=");
+      expect(result.hydration).toBe("");
+    }
+  });
+
   test("renderToString returns a matched route's HTML", async () => {
     registerRoutes({ "/app/about/page.jsx": page("<h1>About us</h1>") });
     expect(await renderToString("/about")).toBe("<h1>About us</h1>");

@@ -16,6 +16,7 @@ import {
 } from "../runtime/router.js";
 import { resolveMetadata } from "./head.js";
 import { beginHydrationCollect, endHydrationCollect } from "./ssg-runtime.js";
+import { withRenderContext } from "./render-context.js";
 
 /**
  * Render `pathname` to `{ html, metadata, status, hydration }`: the markup for inside
@@ -29,6 +30,11 @@ import { beginHydrationCollect, endHydrationCollect } from "./ssg-runtime.js";
  * Returns `null` if there's no match and no 404 page.
  */
 export async function renderRoute(pathname, params = null, search = "", { data } = {}) {
+  return withRenderContext({ route: {}, hydration: null }, () =>
+    renderInContext(pathname, params, search, data));
+}
+
+async function renderInContext(pathname, params, search, data) {
   const real = matchRoute(pathname);
   const match =
     real || (routes.notFound ? { entry: routes.notFound, params: {}, route: null } : null);
@@ -41,18 +47,24 @@ export async function renderRoute(pathname, params = null, search = "", { data }
   const query = Object.fromEntries(new URLSearchParams(search));
   const props = { params: match.params, query };
 
-  // Collect each island's rich props while the tree renders (ssgComponent records them
-  // and stamps `data-h` ids), then serialize the payload for the shell.
-  beginHydrationCollect();
-  let html = (await resolveFactory(match.entry))(props);
-
-  // Wrap with layouts, most-specific inward to root outermost.
+  // Import modules before collecting: module-level JSX must keep its inline
+  // props rather than capture hydration ids belonging to just the first request.
+  const page = await resolveFactory(match.entry);
   const chain = layoutChain(match.route);
-  for (let i = chain.length - 1; i >= 0; i--) {
-    const layout = await resolveFactory(chain[i]);
-    html = layout({ ...props, children: html });
+  const layouts = await Promise.all(chain.map(resolveFactory));
+
+  // Each context owns its hydration ids, including when another render is nested.
+  let html, hydration;
+  beginHydrationCollect();
+  try {
+    html = page(props);
+    // Wrap with layouts, most-specific inward to root outermost.
+    for (let i = layouts.length - 1; i >= 0; i--) {
+      html = layouts[i]({ ...props, children: html });
+    }
+  } finally {
+    hydration = endHydrationCollect();
   }
-  const hydration = endHydrationCollect();
 
   const metadata = await resolveMetadata({
     route: match.route,

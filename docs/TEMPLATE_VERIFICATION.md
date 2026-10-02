@@ -143,6 +143,15 @@ routes, preventing homepage conflicts even for manually supplied maps. The MDX
 failures above describe the audit baseline; they are now explicit unsupported-file
 errors. Ordinary MDX pages and JSX/TSX custom 404s remain supported.
 
+Second follow-up: concurrent SSR isolation is fixed. Each `renderRoute` owns its
+route state and hydration collector through async context, including async metadata,
+localized links, nested renders and failures. Six regression tests cover these
+cases and cached module-level JSX. The original compiled fullstack A/B probe now
+returns A/token-A and B/token-B correctly. A separate server probe passed 40
+simultaneous HTTP requests without a render queue; the built fullstack server and
+docs SSG build also passed with the local runtime. The audit rows below retain the
+original observations; concurrent SSR is no longer pending.
+
 | Priority | Issue and reproduction | Code to change |
 | --- | --- | --- |
 | P1 | Concurrent SSR mixes request data. Render `/concurrent/A` with `token-A` and `/concurrent/B` with `token-B` using `Promise.all`; both HTML responses contain B and `token-B`. Sequential rendering passes. | `packages/web/server/render.js` and request state in `packages/web/runtime/router.js` |
@@ -153,9 +162,9 @@ errors. Ordinary MDX pages and JSX/TSX custom 404s remain supported.
 | P2 | DOM-free server setup crashes. Import `registerRoutes` from `@opentf/web` without a DOM; importing `runtime/context.js` throws. The server entry does not currently expose route registration. | `packages/web/server/index.js` and public runtime import boundaries |
 | P2 | Dynamic docs links contain placeholders. Prerender `/docs/topic/one`; sidebar and next-page navigation still link to `/docs/topic/[slug]`. | `packages/web-docs/build/docs-nav-plugin.js`: expand concrete paths or omit unresolved navigation entries |
 
-The MDX homepage-conflict guard is implemented; full MDX fallback support is
-deferred. Next address production page effect cleanup. Concurrent SSR isolation deserves a dedicated change because
-it affects correctness across requests. Lazy metadata and static paths can share a
+The MDX homepage-conflict guard and concurrent SSR isolation are implemented; full
+MDX fallback support is deferred. Next address production page effect cleanup.
+Lazy metadata and static paths can share a
 module-namespace resolution change with separate regression coverage.
 
 ## Coverage limits

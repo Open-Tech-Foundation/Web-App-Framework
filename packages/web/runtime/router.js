@@ -16,6 +16,7 @@
 
 import { clearError, reportError } from "../core/errors.js";
 import { signal } from "../core/signals.js";
+import { getRenderContext } from "../core/render-context.js";
 import { beginHydration, cursor, endHydration } from "./hydrate.js";
 import { runCleanup, runMount } from "./mount.js";
 import { fetchRouteData, readInlineRouteData } from "./route-data.js";
@@ -100,7 +101,7 @@ export function resolveLocale(pathname) {
  * `path` is replaced. Used by `<Link>` and programmatic navigation to keep links
  * in the active locale. Pass-through when i18n is off.
  */
-export function localizePath(path, locale = state.locale.value) {
+export function localizePath(path, locale = router.locale) {
   if (!i18nConfig) return path;
   // Strip ANY existing locale prefix (default included, unlike `resolveLocale`
   // which keeps the canonical default bare) so a link can be re-pointed cleanly.
@@ -117,29 +118,39 @@ export function localizePath(path, locale = state.locale.value) {
  * from the URL prefix (docs/I18N.md §2), so navigation is the normal path.
  */
 export function setLocale(locale) {
+  const route = getRenderContext()?.route;
+  if (route) {
+    route.locale = locale;
+    return;
+  }
   state.locale.value = locale;
 }
 let currentNodes = [];
 
+function routeValue(key) {
+  const route = getRenderContext()?.route;
+  return route ? route[key] : state[key].value;
+}
+
 /** Reactive router facade — getters read signal values (tracked in effects). */
 export const router = {
   get pathname() {
-    return state.pathname.value;
+    return routeValue("pathname");
   },
   get searchParams() {
-    return state.searchParams.value;
+    return routeValue("searchParams");
   },
   get query() {
-    return Object.fromEntries(state.searchParams.value);
+    return Object.fromEntries(routeValue("searchParams"));
   },
   get params() {
-    return state.params.value;
+    return routeValue("params");
   },
   get locale() {
-    return state.locale.value;
+    return routeValue("locale");
   },
   get data() {
-    return state.data.value;
+    return routeValue("data");
   },
   push: (path) => navigate(path),
   replace: (path) => navigate(path, true),
@@ -313,6 +324,17 @@ async function resolveModule(entry) {
  * pre-rendered. The client uses `navigate` instead.
  */
 export function setRouteState({ pathname = "/", search = "", params = {}, locale, data } = {}) {
+  const route = getRenderContext()?.route;
+  if (route) {
+    Object.assign(route, {
+      pathname: normalizePath(pathname),
+      searchParams: new URLSearchParams(search),
+      params,
+      locale: locale !== undefined ? locale : resolveLocale(pathname).locale,
+      data,
+    });
+    return;
+  }
   state.pathname.value = normalizePath(pathname);
   state.searchParams.value = new URLSearchParams(search);
   state.params.value = params;

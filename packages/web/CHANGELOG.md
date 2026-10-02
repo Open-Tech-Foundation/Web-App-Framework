@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- Concurrent SSR renders keep route parameters, query, locale, loader data and
+  island hydration payloads isolated across async imports and metadata generation.
+  Nested and failed renders no longer change another render's state.
 - Reject unsupported `404.mdx` and `404.md` routes before changing the route table,
   preventing them from overwriting the homepage. Use `404.jsx` or `404.tsx` instead.
 - Derived values can release owned subscriptions during view teardown. Effect
