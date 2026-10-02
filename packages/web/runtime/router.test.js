@@ -1,4 +1,5 @@
 import { describe, expect, test } from "runtime:test";
+import { computed, effect, signal } from "../core/signals.js";
 
 import {
   configureI18n,
@@ -23,6 +24,107 @@ function page(label) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+test("navigation disposes page and layout effects, derived values and mount-created effects", async () => {
+  routes.pages = {};
+  routes.layouts = {};
+  routes.notFound = null;
+  const source = signal(1);
+  const runs = { page: 0, layout: 0, mount: 0 };
+  let derived;
+  const app = document.createElement("div");
+  document.body.appendChild(app);
+  window.history.replaceState({}, "", "/owned");
+  await mountApp({ target: app, pages: {
+    "/app/owned/page.jsx": { default: () => {
+      const node = page("owned")();
+      derived = computed(() => source.value * 2);
+      effect(() => { derived.value; runs.page++; });
+      node.__lifecycle = { mounts: [() => { effect(() => { source.value; runs.mount++; }); }], cleanups: [] };
+      return node;
+    } },
+    "/app/owned/layout.jsx": { default: ({ children }) => {
+      effect(() => { source.value; runs.layout++; });
+      const node = document.createElement("main");
+      node.appendChild(children);
+      return node;
+    } },
+    "/app/page.jsx": { default: page("home") },
+  } });
+  source.value = 2;
+  expect(runs).toEqual({ page: 2, layout: 2, mount: 2 });
+  await navigate("/");
+  source.value = 3;
+  expect(runs).toEqual({ page: 2, layout: 2, mount: 2 });
+  expect(derived.value).toBe(4);
+  app.remove();
+});
+
+test("a failed layout build cleans partial views and the replaced page", async () => {
+  routes.pages = {};
+  routes.layouts = {};
+  routes.notFound = null;
+  const source = signal(0);
+  const runs = { old: 0, page: 0, layout: 0 };
+  const app = document.createElement("div");
+  document.body.appendChild(app);
+  window.history.replaceState({}, "", "/");
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    await mountApp({ target: app, pages: {
+      "/app/page.jsx": { default: () => { effect(() => { source.value; runs.old++; }); return page("home")(); } },
+      "/app/broken/page.jsx": { default: () => { effect(() => { source.value; runs.page++; }); return page("partial")(); } },
+      "/app/broken/layout.jsx": { default: () => { effect(() => { source.value; runs.layout++; }); throw Error("layout failed"); } },
+    } });
+    await navigate("/broken");
+    expect(app.textContent).toContain("layout failed");
+    source.value = 1;
+    expect(runs).toEqual({ old: 1, page: 1, layout: 1 });
+  } finally {
+    console.error = originalError;
+    app.remove();
+  }
+});
+
+for (const fail of [false, true]) {
+  test(`a superseded lazy navigation disposes its ${fail ? "failed" : "unmounted"} view`, async () => {
+    routes.pages = {};
+    routes.layouts = {};
+    routes.notFound = null;
+    const source = signal(0);
+    let runs = 0, cleanups = 0, release, started;
+    const gate = new Promise(resolve => { release = resolve; });
+    const loading = new Promise(resolve => { started = resolve; });
+    const app = document.createElement("div");
+    document.body.appendChild(app);
+    window.history.replaceState({}, "", "/");
+    await mountApp({ target: app, pages: {
+      "/app/page.jsx": { default: page("home") },
+      "/app/fast/page.jsx": { default: page("fast") },
+      "/app/slow/page.jsx": async () => {
+        started();
+        await gate;
+        return { default: () => {
+          effect(() => { source.value; runs++; return () => { cleanups++; }; });
+          if (fail) throw Error("superseded build failed");
+          const node = page("slow")();
+          return node;
+        } };
+      },
+    } });
+    const slow = navigate("/slow");
+    await loading;
+    await navigate("/fast");
+    release();
+    await slow;
+    source.value = 1;
+    expect(app.textContent).toBe("fast");
+    expect(runs).toBe(1);
+    expect(cleanups).toBe(1);
+    app.remove();
+  });
+}
 
 test("Markdown 404 rejection preserves the entire existing route table", () => {
   const originalPages = routes.pages;

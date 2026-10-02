@@ -152,6 +152,22 @@ simultaneous HTTP requests without a render queue; the built fullstack server an
 docs SSG build also passed with the local runtime. The audit rows below retain the
 original observations; concurrent SSR is no longer pending.
 
+Third follow-up: production page/layout effect cleanup is fixed. Both CSR route
+builds and hydrated route adoption attach owned reactive scopes to node teardown;
+mount-hook effects are owned too. Failed partial builds and superseded navigations
+dispose their wiring. Six new regression cases cover navigation, derived values,
+mount hooks, failed layouts, successful/failed superseded builds, and successful/
+failed hydration. Verification: **820 existing + six new = 826 tests passed**;
+the existing browser suite and typechecking passed.
+
+The local-plugin SPA Chromium probe now passes in development and production
+preview, including the original removed-page effect check and four new assertions
+for reentry and repeated removal (**18 existing checks + four new = 22 passed**).
+The optional unsupported MDX fallback fixture was replaced temporarily by a JSX
+fallback for this rerun; production entry-reference normalization remains as
+documented above. Logs: `spa-route-scope-build.log` and
+`spa-route-scope-browser.log` in the audit log directory.
+
 | Priority | Issue and reproduction | Code to change |
 | --- | --- | --- |
 | P1 | Concurrent SSR mixes request data. Render `/concurrent/A` with `token-A` and `/concurrent/B` with `token-B` using `Promise.all`; both HTML responses contain B and `token-B`. Sequential rendering passes. | `packages/web/server/render.js` and request state in `packages/web/runtime/router.js` |
@@ -162,9 +178,9 @@ original observations; concurrent SSR is no longer pending.
 | P2 | DOM-free server setup crashes. Import `registerRoutes` from `@opentf/web` without a DOM; importing `runtime/context.js` throws. The server entry does not currently expose route registration. | `packages/web/server/index.js` and public runtime import boundaries |
 | P2 | Dynamic docs links contain placeholders. Prerender `/docs/topic/one`; sidebar and next-page navigation still link to `/docs/topic/[slug]`. | `packages/web-docs/build/docs-nav-plugin.js`: expand concrete paths or omit unresolved navigation entries |
 
-The MDX homepage-conflict guard and concurrent SSR isolation are implemented; full
-MDX fallback support is deferred. Next address production page effect cleanup.
-Lazy metadata and static paths can share a
+The MDX homepage-conflict guard, concurrent SSR isolation and production route
+effect cleanup are implemented; full MDX fallback support is deferred.
+Next address lazy SSR metadata and static paths. They can share a
 module-namespace resolution change with separate regression coverage.
 
 ## Coverage limits

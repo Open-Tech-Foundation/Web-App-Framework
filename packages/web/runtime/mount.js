@@ -4,6 +4,35 @@
 import { reportError } from "../core/errors.js";
 import { scope } from "../core/signals.js";
 
+// Keep partial builds owned too: scope() only returns a disposer when its
+// callback finishes, so capture an error until we can dispose and rethrow it.
+function ownedScope(fn) {
+  let failed = false, failure;
+  const owned = scope(() => {
+    try { return fn(); }
+    catch (error) { failed = true; failure = error; }
+  });
+  if (failed) {
+    try { owned.dispose(); } catch (error) { console.error(error); }
+    throw failure;
+  }
+  return owned;
+}
+
+/** Build a factory view and attach its reactive scope to the node's teardown. */
+export function buildScopedView(view) {
+  const owned = ownedScope(view);
+  const node = owned.result;
+  try {
+    const lc = (node.__lifecycle ??= { mounts: [], cleanups: [] });
+    lc.cleanups.push(owned.dispose);
+    return node;
+  } catch (error) {
+    try { owned.dispose(); } catch (cleanupError) { console.error(cleanupError); }
+    throw error;
+  }
+}
+
 /**
  * Mount a view into `target`. `view` is either a factory function returning a
  * DOM node or an already-built node. Returns the mounted node.
@@ -18,15 +47,7 @@ import { scope } from "../core/signals.js";
  * created, so a replaced page's subscriptions don't outlive it.
  */
 export function mount(view, target) {
-  let node;
-  if (typeof view === "function") {
-    const s = scope(view);
-    node = s.result;
-    const lc = (node.__lifecycle ??= { mounts: [], cleanups: [] });
-    lc.cleanups.push(s.dispose);
-  } else {
-    node = view;
-  }
+  const node = typeof view === "function" ? buildScopedView(view) : view;
   target.appendChild(node);
   runMount(node);
   return node;
@@ -38,7 +59,9 @@ export function runMount(node) {
   if (!lc) return;
   for (const cb of lc.mounts) {
     try {
-      const disposer = cb();
+      const owned = ownedScope(cb);
+      lc.cleanups.push(owned.dispose);
+      const disposer = owned.result;
       if (typeof disposer === "function") lc.cleanups.push(disposer);
     } catch (e) {
       reportError(e, { phase: "mount" });

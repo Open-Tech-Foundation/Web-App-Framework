@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- Production route builds and hydrated pages/layouts own their reactive scopes,
+  disposing effects and derived subscriptions on navigation. Effects created by
+  mount hooks, partial failed builds and superseded navigations are also cleaned up.
 - Concurrent SSR renders keep route parameters, query, locale, loader data and
   island hydration payloads isolated across async imports and metadata generation.
   Nested and failed renders no longer change another render's state.

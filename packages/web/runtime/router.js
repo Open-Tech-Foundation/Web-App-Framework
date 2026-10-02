@@ -18,7 +18,7 @@ import { clearError, reportError } from "../core/errors.js";
 import { signal } from "../core/signals.js";
 import { getRenderContext } from "../core/render-context.js";
 import { beginHydration, cursor, endHydration } from "./hydrate.js";
-import { runCleanup, runMount } from "./mount.js";
+import { buildScopedView, runCleanup, runMount } from "./mount.js";
 import { fetchRouteData, readInlineRouteData } from "./route-data.js";
 
 const isBrowser = typeof window !== "undefined";
@@ -252,7 +252,7 @@ async function resolveAll(entries, resolve) {
  * Build the DOM node for a matched route: the page factory wrapped by its layout
  * chain (most-specific inward, root outermost). Returns the outermost `node` plus
  * the ordered `nodes` list (page → … → root) so callers can run lifecycle on each.
- * Shared by the client router (`navigate`) and server render (`renderToString`).
+ * Each factory owns a reactive scope, disposed with its node on navigation.
  */
 export async function buildRouteNode(match, query = {}) {
   const props = { params: match.params, query };
@@ -261,11 +261,16 @@ export async function buildRouteNode(match, query = {}) {
     [match.entry, ...chain],
     resolveFactory,
   );
-  let node = pageFactory(props);
+  let node = buildScopedView(() => pageFactory(props));
   const nodes = [node];
-  for (let i = chain.length - 1; i >= 0; i--) {
-    node = layoutFactories[i]({ ...props, children: node });
-    nodes.push(node);
+  try {
+    for (let i = chain.length - 1; i >= 0; i--) {
+      node = buildScopedView(() => layoutFactories[i]({ ...props, children: node }));
+      nodes.push(node);
+    }
+  } catch (error) {
+    for (const n of nodes) runCleanup(n);
+    throw error;
   }
   return { node, nodes };
 }
@@ -296,7 +301,7 @@ export async function hydrateRouteNode(match, query, rootEl) {
   // thunk runs — and pushes — during the outer layout's walk, before the outer pushes).
   const nodes = [];
   let thunk = (c) => {
-    const n = pageMod.hydrateAt(c, props);
+    const n = buildScopedView(() => pageMod.hydrateAt(c, props));
     nodes.push(n);
     return n;
   };
@@ -304,12 +309,17 @@ export async function hydrateRouteNode(match, query, rootEl) {
     const layout = layoutMods[i];
     const inner = thunk;
     thunk = (c) => {
-      const n = layout.hydrateAt(c, { ...props, children: inner });
+      const n = buildScopedView(() => layout.hydrateAt(c, { ...props, children: inner }));
       nodes.push(n);
       return n;
     };
   }
-  thunk(cursor(rootEl)); // outermost adopts at the container; the chain threads inward
+  try {
+    thunk(cursor(rootEl)); // outermost adopts at the container; the chain threads inward
+  } catch (error) {
+    for (const node of nodes) runCleanup(node);
+    throw error;
+  }
   return { nodes };
 }
 
@@ -573,13 +583,19 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
   if (match) {
     try {
       const built = await buildRouteNode(match, Object.fromEntries(url.searchParams));
+      if (seq !== navSeq) {
+        for (const node of built.nodes) runCleanup(node);
+        return;
+      }
       nodes = built.nodes;
     } catch (e) {
+      if (seq !== navSeq) return;
       // A failed route-chunk import (stale after a redeploy, or the network dropped):
       // try one guarded full reload for fresh HTML + hashes. If we already reloaded once
       // and it still fails, fall through to the error overlay instead of looping.
       if (isChunkLoadError(e) && reloadForFreshAssets()) return;
       reportError(e, { phase: "route", path: url.pathname });
+      for (const node of currentNodes) runCleanup(node);
       rootEl.replaceChildren();
       rootEl.innerHTML = `<pre style="color:#f87171;padding:1rem">Failed to load ${url.pathname}\n${e?.message ?? e}</pre>`;
       currentNodes = [];

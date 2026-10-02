@@ -5,7 +5,7 @@
 
 import { afterEach, describe, expect, test } from "runtime:test";
 
-import { signal } from "../core/signals.js";
+import { effect, signal } from "../core/signals.js";
 import { bindText } from "./dom.js";
 import {
   beginHydration,
@@ -17,7 +17,7 @@ import {
   isHydrating,
   skipNode,
 } from "./hydrate.js";
-import { mountApp, registerRoutes, routes } from "./router.js";
+import { mountApp, navigate, registerRoutes, routes } from "./router.js";
 
 afterEach(() => {
   routes.pages = {};
@@ -70,6 +70,56 @@ function serverRoot(withSentinel) {
   document.body.appendChild(root);
   window.history.replaceState({}, "", "/");
   return root;
+}
+
+for (const failLayout of [false, true]) {
+  test(`hydrated page/layout effects are disposed ${failLayout ? "on fallback and navigation" : "on navigation"}`, async () => {
+    routes.pages = {};
+    routes.layouts = {};
+    routes.notFound = null;
+    const source = signal(0);
+    const runs = { adoptedPage: 0, adoptedLayout: 0, builtPage: 0, builtLayout: 0 };
+    const observe = key => effect(() => { source.value; runs[key]++; });
+    const app = document.createElement("div");
+    app.setAttribute("data-otfw-hydrate", "");
+    app.innerHTML = "<main><section>server</section></main>";
+    document.body.appendChild(app);
+    window.history.replaceState({}, "", "/owned");
+    const originalError = console.error;
+    if (failLayout) console.error = () => {};
+    try {
+      await mountApp({ target: app, pages: {
+        "/app/page.jsx": { default: () => document.createElement("div") },
+        "/app/owned/page.jsx": {
+          default: () => { observe("builtPage"); return document.createElement("section"); },
+          hydrateAt(c) { observe("adoptedPage"); return claimElement(c, "section"); },
+        },
+        "/app/owned/layout.jsx": {
+          default: ({ children }) => {
+            observe("builtLayout");
+            const node = document.createElement("main"); node.appendChild(children); return node;
+          },
+          hydrateAt(c, { children }) {
+            observe("adoptedLayout");
+            const node = claimElement(c, "main"); children(cursor(node));
+            if (failLayout) throw Error("partial adoption failed");
+            return node;
+          },
+        },
+      } });
+      source.value = 1;
+      expect(runs.adoptedPage).toBe(failLayout ? 1 : 2);
+      expect(runs.adoptedLayout).toBe(failLayout ? 1 : 2);
+      expect(runs.builtPage).toBe(failLayout ? 2 : 0);
+      expect(runs.builtLayout).toBe(failLayout ? 2 : 0);
+      const before = { ...runs };
+      await navigate("/");
+      source.value = 2;
+      expect(runs).toEqual(before);
+    } finally {
+      console.error = originalError;
+    }
+  });
 }
 
 describe("router boot — hydrate vs build", () => {
