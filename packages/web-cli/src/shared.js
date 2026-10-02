@@ -573,6 +573,9 @@ export async function discoverPages(dir, exclude) {
     if (entry.isDir && exclude.has(entry.name)) continue;
     const full = `${dir}/${entry.name}`;
     if (entry.isDir) out.push(...(await discoverPages(full, exclude)));
+    else if (/^404\.(mdx|md)$/.test(entry.name)) {
+      throw new Error(`Unsupported Markdown 404 route: ${full}. Use 404.jsx or 404.tsx instead.`);
+    }
     else if (/^(page|layout|404)\.(mdx|md|[jt]sx)$/.test(entry.name)) out.push(full);
   }
   return out;

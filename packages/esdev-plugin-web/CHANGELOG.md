@@ -14,6 +14,11 @@
 - Require esdev `>=0.15.0` for the compiler package resolver used by bundled
   prerender entries and isolated package installations.
 
+### Fixed
+
+- Route discovery rejects unsupported Markdown/MDX 404 files with a clear error
+  instead of registering them as homepage routes.
+
 ## [0.2.0] - 2026-10-01
 
 ### Added

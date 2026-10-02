@@ -10,6 +10,8 @@
 
 ### Fixed
 
+- Reject unsupported `404.mdx` and `404.md` routes before changing the route table,
+  preventing them from overwriting the homepage. Use `404.jsx` or `404.tsx` instead.
 - Derived values can release owned subscriptions during view teardown. Effect
   disposal detaches dependencies even when a cleanup throws, and scope teardown
   continues through all owned consumers.

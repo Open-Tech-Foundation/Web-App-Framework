@@ -162,6 +162,13 @@ function routeFromPath(filePath) {
  * register as layouts (wrapping nested pages), `404.jsx` as the fallback.
  */
 export function registerRoutes(modules) {
+  // Validate before changing the table: an unsupported fallback otherwise
+  // falls through as a page and resolves to "/", overwriting the homepage.
+  for (const file in modules) {
+    if (/\/404\.(mdx|md)$/.test(file)) {
+      throw new Error(`Unsupported Markdown 404 route: ${file}. Use 404.jsx or 404.tsx instead.`);
+    }
+  }
   for (const file in modules) {
     const entry = modules[file];
     if (/\/404\.(jsx|tsx)$/.test(file)) routes.notFound = entry;

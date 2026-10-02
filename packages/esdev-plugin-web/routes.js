@@ -53,6 +53,9 @@ async function discoverPages(dir, exclude = new Set()) {
   const scan = new Glob("**/{page,layout,404}.{mdx,md,jsx,tsx}").scan(dir);
   for await (const rel of scan) {
     if ([...exclude].some((name) => rel === name || rel.startsWith(`${name}/`))) continue;
+    if (/(^|\/)404\.(mdx|md)$/.test(rel)) {
+      throw new Error(`Unsupported Markdown 404 route: ${join(dir, rel)}. Use 404.jsx or 404.tsx instead.`);
+    }
     out.push(join(dir, rel));
   }
   return out;

@@ -6,8 +6,10 @@ import {
   matchRoute,
   mountApp,
   navigate,
+  registerRoutes,
   resolveLocale,
   router,
+  routes,
   setLocale,
 } from "./router.js";
 
@@ -21,6 +23,36 @@ function page(label) {
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+test("Markdown 404 rejection preserves the entire existing route table", () => {
+  const originalPages = routes.pages;
+  const originalLayouts = routes.layouts;
+  const originalNotFound = routes.notFound;
+  try {
+    const home = { default: page("home") };
+    const fallback = { default: page("missing") };
+    routes.pages = { "/": home };
+    routes.layouts = {};
+    routes.notFound = fallback;
+    for (const extension of ["mdx", "md"]) {
+      for (const invalidFirst of [true, false]) {
+        const invalid = [`/proj/app/404.${extension}`, { default: page("invalid") }];
+        const valid = ["/proj/app/new/page.jsx", { default: page("new") }];
+        const modules = Object.fromEntries(invalidFirst ? [invalid, valid] : [valid, invalid]);
+        expect(() => registerRoutes(modules)).toThrow(
+          `Unsupported Markdown 404 route: /proj/app/404.${extension}. Use 404.jsx or 404.tsx instead.`,
+        );
+        expect(routes.pages).toEqual({ "/": home });
+        expect(routes.layouts).toEqual({});
+        expect(routes.notFound).toBe(fallback);
+      }
+    }
+  } finally {
+    routes.pages = originalPages;
+    routes.layouts = originalLayouts;
+    routes.notFound = originalNotFound;
+  }
+});
 
 describe("router", () => {
   test("registers routes, matches dynamic params, swaps on navigation", async () => {

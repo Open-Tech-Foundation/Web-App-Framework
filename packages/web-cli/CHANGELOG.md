@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- SSG route discovery rejects unsupported Markdown/MDX 404 files with an error
+  directing authors to `404.jsx` or `404.tsx`.
 - Canonicalize resolved package paths before using them as bundler aliases.
   Symlinked installs share one framework runtime instead of registering routes
   in a different instance from the server renderer.
