@@ -220,6 +220,22 @@ placeholder hrefs. The existing temporary JSX fallback adaptation was used.
 Logs: `/tmp/otfw-docs-nav-tests.log`, `/tmp/otfw-docs-nav-typecheck.log`,
 `/tmp/otfw-docs-nav-e2e.log` and `/tmp/otfw-docs-nav-build.log`.
 
+Eighth follow-up: blog indexing had the same unresolved-parameter problem as docs
+navigation. A failing regression reproduced `/blog/[slug]` and `/blog/[...path]`
+in both `loadPosts()` and the virtual post list. The scanner now omits parameterized
+post folders before reading frontmatter. Static post metadata, explicit ordering,
+reading time, tags and exclusions retain their behavior; RSS/Atom receive the same
+filtered index.
+Verification: **850 existing + two new = 852 tests passed**, plus type checking.
+The local-plugin docs build included temporary parameterized Markdown posts. Blog
+HTML and XML-parsed RSS/Atom retained the real post link and contained no generated
+placeholder entries. Eight new Chromium checks passed across development and
+production preview, including opening the static card's actual post; neither phase
+reported browser errors. The previously documented JSX fallback substitution and
+production entry-reference normalization were used.
+Logs: `/tmp/otfw-blog-posts-tests.log`, `/tmp/otfw-blog-posts-typecheck.log`,
+`/tmp/otfw-blog-posts-build.log` and `/tmp/otfw-blog-posts-browser.log`.
+
 | Priority | Issue and reproduction | Code to change |
 | --- | --- | --- |
 | P1 | Concurrent SSR mixes request data. Render `/concurrent/A` with `token-A` and `/concurrent/B` with `token-B` using `Promise.all`; both HTML responses contain B and `token-B`. Sequential rendering passes. | `packages/web/server/render.js` and request state in `packages/web/runtime/router.js` |
@@ -245,7 +261,9 @@ lifecycle, routing, SSR, SSG, search, blog and source-library probes. It did not
 regenerate and exhaustively check every TypeScript/styling/package-manager variant,
 exercise registry publishing, or rerun the previous HMR suite. HMR evidence remains
 in [HMR_VERIFICATION.md](HMR_VERIFICATION.md). Generated sitemap/feed/LLM files were
-checked for presence and build success, not a complete content/schema audit.
+initially checked for presence and build success. The blog follow-up also parses
+RSS/Atom XML and checks concrete post links; a complete content/schema audit remains
+outside this report.
 Favicon 404s were incidental and are excluded from the framework issue list.
 Temporary fixtures/logs may be removed by system cleanup; this report preserves
 the observed results and reproductions.

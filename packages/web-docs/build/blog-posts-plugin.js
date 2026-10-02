@@ -68,6 +68,8 @@ export async function loadPosts({ appDir, contentDir = "blog", exclude = new Set
   return collectPosts(root, "/" + contentDir, exclude, []);
 }
 
+// Automatic post metadata describes concrete folders; generated parameters are
+// unavailable during this scan and must not become card or feed URLs.
 async function collectPosts(root, base, exclude, watch) {
   const posts = [];
   for (const entry of await readEntries(root)) {
@@ -75,6 +77,7 @@ async function collectPosts(root, base, exclude, watch) {
       !entry.isDir ||
       entry.name.startsWith(".") ||
       entry.name.startsWith("_") ||
+      /\[[^\]]+\]/.test(entry.name) ||
       exclude.has(entry.name)
     ) {
       continue;

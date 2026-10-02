@@ -46,6 +46,9 @@ This supplies the blog settings. Add `blogPostsPlugin` explicitly to the top-lev
 
 The plugin scans `app/<contentDir>` and resolves `@opentf/web-docs/posts` to your
 post list, sorted newest-first with reading time computed at build time.
+Automatic post lists and feeds omit parameterized folders such as `[slug]` and
+`[...path]`. Use concrete post folders for entries that should appear in the blog
+index and RSS/Atom feeds.
 Keep `contentDir` aligned with `blog.dir`. Use the
 [SSG output setup](/docs/deployment/static-generation) for search and feeds.
 

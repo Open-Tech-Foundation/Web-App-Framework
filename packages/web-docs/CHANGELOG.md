@@ -11,6 +11,9 @@
 
 ### Fixed
 
+- Exclude parameterized post folders from automatic blog cards and RSS/Atom
+  feed input, preventing links to unresolved `[slug]` and catch-all paths.
+
 - Omit parameterized folder branches from automatic navigation so sidebars,
   breadcrumbs and previous/next links never point to literal route placeholders.
   Keep static sibling pages and landing pages, and remove empty generated groups.
