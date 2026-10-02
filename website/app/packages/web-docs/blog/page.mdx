@@ -167,9 +167,13 @@ this shares with docs pages.
 After prerendering, `siteOutputPlugin` uses the feed helpers to write RSS 2.0 and
 Atom 1.0 feeds to `<dir>/rss.xml` and `<dir>/atom.xml` (for example, `/blog/rss.xml`
 and `/blog/atom.xml`) when a `blog` block is configured. Set `site.url` so feed URLs
-are absolute. Posts appear
-newest-first with absolute links, dates from `date`, author metadata, and categories
-from `tags`.
+are absolute. Posts appear newest-first unless `order` overrides their display
+order, with absolute links, publication dates from `date`, author metadata, and
+categories from `tags`.
+
+The feed timestamp uses the newest valid post date even when an older post is
+pinned first. Invalid or missing dates are skipped when selecting that timestamp;
+if no post has a valid date, the feed uses its generation time.
 
 ```js otfw.config.js
 export default defineDocsConfig({

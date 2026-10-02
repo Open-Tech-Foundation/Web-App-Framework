@@ -32,6 +32,17 @@ function iso8601(date) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+/** Newest valid publication instant, independent of post display order. */
+function newestPostDate(posts) {
+  let newest = -Infinity;
+  for (const post of posts) {
+    if (!post.date) continue;
+    const timestamp = new Date(post.date).getTime();
+    if (!Number.isNaN(timestamp) && timestamp > newest) newest = timestamp;
+  }
+  return newest === -Infinity ? null : new Date(newest);
+}
+
 /**
  * Render an RSS 2.0 feed.
  *
@@ -48,7 +59,7 @@ export function renderBlogFeed({ posts = [], baseUrl, feedPath = "/blog/rss.xml"
   const link = channel.link ? abs(baseUrl, channel.link) : abs(baseUrl, "/blog");
   const language = channel.language || "en";
   const self = abs(baseUrl, feedPath);
-  const lastBuild = rfc822(posts.find((p) => p.date)?.date) || new Date().toUTCString();
+  const lastBuild = rfc822(newestPostDate(posts)) || new Date().toUTCString();
 
   const items = posts
     .map((p) => {
@@ -99,7 +110,7 @@ export function renderAtomFeed({ posts = [], baseUrl, feedPath = "/blog/atom.xml
   const description = channel.description || title;
   const link = channel.link ? abs(baseUrl, channel.link) : abs(baseUrl, "/blog");
   const self = abs(baseUrl, feedPath);
-  const updated = iso8601(posts.find((p) => p.date)?.date) || new Date().toISOString();
+  const updated = iso8601(newestPostDate(posts)) || new Date().toISOString();
   const fallbackAuthor = channel.author || title;
 
   const entries = posts

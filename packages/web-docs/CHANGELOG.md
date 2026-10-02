@@ -11,6 +11,10 @@
 
 ### Fixed
 
+- RSS/Atom feed timestamps use the newest valid post date independently of pinned
+  display order. Skip invalid or missing dates and use generation time when no
+  valid dates exist, while retaining individual publication dates and item order.
+
 - Exclude parameterized post folders from automatic blog cards and RSS/Atom
   feed input, preventing links to unresolved `[slug]` and catch-all paths.
 

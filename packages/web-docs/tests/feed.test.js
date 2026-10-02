@@ -49,3 +49,51 @@ describe("renderAtomFeed", () => {
     expect(xml).toContain(`<category term="docs"/>`);
   });
 });
+
+for (const [name, render, tag] of [
+  ["RSS", renderBlogFeed, "lastBuildDate"],
+  ["Atom", renderAtomFeed, "updated"],
+]) {
+  const feedTimestamp = xml => Date.parse(xml.match(new RegExp(`<${tag}>([^<]+)</${tag}>`))[1]);
+  describe(`${name} feed timestamps`, () => {
+    test("uses the newest post date while retaining pinned item order and individual dates", () => {
+      const pinned = Object.freeze([
+        Object.freeze({ path: "/blog/pinned", title: "Pinned", date: "2026-01-01", order: 0 }),
+        Object.freeze({ path: "/blog/latest", title: "Latest", date: "2026-10-02" }),
+        Object.freeze({ path: "/blog/older", title: "Older", date: "2026-09-01" }),
+      ]);
+      const xml = render({ posts: pinned, baseUrl: "https://example.com" });
+      expect(feedTimestamp(xml)).toBe(Date.parse("2026-10-02T00:00:00Z"));
+      expect(xml.indexOf("<title>Pinned</title>") < xml.indexOf("<title>Latest</title>")).toBe(true);
+      expect(xml).toContain(name === "RSS"
+        ? "<pubDate>Thu, 01 Jan 2026 00:00:00 GMT</pubDate>"
+        : "<published>2026-01-01T00:00:00.000Z</published>");
+    });
+
+    test("ignores invalid and missing dates when later posts supply valid dates", () => {
+      const xml = render({ posts: [
+        { path: "/blog/invalid", title: "Invalid", date: "not-a-date" },
+        { path: "/blog/undated", title: "Undated" },
+        { path: "/blog/latest", title: "Latest", date: "2026-10-02" },
+        { path: "/blog/older", title: "Older", date: "2026-09-01" },
+      ], baseUrl: "https://example.com" });
+      expect(feedTimestamp(xml)).toBe(Date.parse("2026-10-02T00:00:00Z"));
+    });
+
+    test("compares dates by their absolute instants across time zones", () => {
+      const xml = render({ posts: [
+        { path: "/blog/earlier", title: "Earlier", date: "2026-10-03T00:30:00+14:00" },
+        { path: "/blog/later", title: "Later", date: "2026-10-02T23:00:00-02:00" },
+      ], baseUrl: "https://example.com" });
+      expect(feedTimestamp(xml)).toBe(Date.parse("2026-10-03T01:00:00Z"));
+    });
+
+    test("falls back to generation time when the feed has no valid dates", () => {
+      for (const entries of [[], [{ path: "/blog/undated", title: "Undated" }, { path: "/blog/invalid", title: "Invalid", date: "invalid" }]]) {
+        const before = Math.floor(Date.now() / 1000) * 1000;
+        const timestamp = feedTimestamp(render({ posts: entries, baseUrl: "https://example.com" }));
+        expect(timestamp >= before && timestamp <= Date.now()).toBe(true);
+      }
+    });
+  });
+}

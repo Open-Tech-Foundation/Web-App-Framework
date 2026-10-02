@@ -236,6 +236,20 @@ production entry-reference normalization were used.
 Logs: `/tmp/otfw-blog-posts-tests.log`, `/tmp/otfw-blog-posts-typecheck.log`,
 `/tmp/otfw-blog-posts-build.log` and `/tmp/otfw-blog-posts-browser.log`.
 
+Ninth follow-up: RSS/Atom feed timestamps previously used the first dated post,
+so an older pinned post reported a stale feed date. Both renderers now select the
+newest valid publication instant independently of item ordering. Invalid/missing
+dates are skipped, with generation time retained as the fallback when none are
+valid. Item order and individual publication dates remain intact.
+Verification: **852 existing + eight new = 860 tests passed**, plus type checking.
+The new regressions cover pinned ordering, invalid/missing dates, time-zone
+comparisons and empty/undated fallback behavior for both formats. A local-plugin
+release build with a January 1 pinned post and an October 2 post produces XML-parsed
+RSS/Atom with October 2 feed timestamps; January 1 stays the first item's date.
+The existing temporary JSX fallback adaptation was used.
+Logs: `/tmp/otfw-feed-timestamps-tests.log`, `/tmp/otfw-feed-timestamps-typecheck.log`
+and `/tmp/otfw-feed-timestamps-build.log`.
+
 | Priority | Issue and reproduction | Code to change |
 | --- | --- | --- |
 | P1 | Concurrent SSR mixes request data. Render `/concurrent/A` with `token-A` and `/concurrent/B` with `token-B` using `Promise.all`; both HTML responses contain B and `token-B`. Sequential rendering passes. | `packages/web/server/render.js` and request state in `packages/web/runtime/router.js` |
