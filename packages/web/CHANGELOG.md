@@ -4,12 +4,23 @@
 
 ### Added
 
+- Route metadata updates the browser head on SPA navigation and component route
+  refresh. Async generators can await resolved parent metadata through their
+  second argument.
+
 - Development component refresh retains compatible state and props, disposes old
   effects/hooks, rebinds refs, and preserves slotted child hosts. Page/layout refresh
   updates the active route without navigation and remounts its views.
 
 ### Fixed
 
+- Static path generation validates parameter values, encodes URL segments and
+  rejects duplicate URLs. Route matching decodes captured parameters once.
+  Unsupported generated `props` now points developers to loaders and `router.data`.
+
+- SSR metadata and dynamic static-path collection resolve lazy route modules.
+  Page/layout metadata keeps its merge precedence and async parameters; rendering
+  reuses the same namespaces for HTML and metadata instead of loading them twice.
 - Production route builds and hydrated pages/layouts own their reactive scopes,
   disposing effects and derived subscriptions on navigation. Effects created by
   mount hooks, partial failed builds and superseded navigations are also cleaned up.

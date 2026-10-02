@@ -312,3 +312,25 @@ describe("router boot — hydrate vs build", () => {
     expect(root.textContent).toContain("DOCS");
   });
 });
+
+
+test("hydration retains server head until navigation and removes managed custom tags", async () => {
+  const originalHead = document.head.innerHTML;
+  document.head.innerHTML = '<title data-otfw-head>Server title</title><meta data-otfw-head name="custom-route" content="old"><meta name="viewport" content="width=device-width">';
+  let generated = 0;
+  const root = serverRoot(true);
+  try {
+    const module = makeModule({});
+    module.generateMetadata = () => { generated++; return { title: "Client title" }; };
+    await mountApp({ target: root, pages: {
+      "/app/page.jsx": module,
+      "/app/next/page.jsx": { default: () => document.createElement("div"), metadata: { title: "Next" } },
+    } });
+    expect(document.title).toBe("Server title");
+    expect(generated).toBe(0);
+    await navigate("/next");
+    expect(document.title).toBe("Next");
+    expect(document.head.querySelector('meta[name="custom-route"]')).toBe(null);
+    expect(document.head.querySelector('meta[name="viewport"]') !== null).toBe(true);
+  } finally { document.head.innerHTML = originalHead; }
+});

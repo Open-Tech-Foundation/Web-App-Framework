@@ -29,6 +29,25 @@ export default function Post() {
 Reading `router.params` inside a binding keeps the view in sync as you navigate
 between matching routes.
 
+## Generating static paths
+
+Export `getStaticPaths()` from a dynamic page to list its URLs for prerendering:
+
+```jsx
+export function getStaticPaths() {
+  return [{ params: { slug: "hello" } }, { params: { slug: "hello world" } }];
+}
+```
+
+Pass raw parameter values: the framework encodes URL segments and decodes them
+when matching a route. For catch-all routes, pass an array such as
+`{ params: { path: ["guides", "getting started"] } }`.
+
+Missing parameters, empty segments, invalid values and duplicate URLs fail the
+build with an error. `getStaticPaths()` must return an array. It describes URLs;
+`props` entries are unsupported. Use a [route loader](/docs/data-fetching)
+and `router.data` to supply page data during prerendering, SSR and navigation.
+
 ## Per-path metadata
 
 Export `generateMetadata({ params })` on a dynamic page when each path needs its own

@@ -136,17 +136,21 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
         if (path === "/" && (!locale || locale === defaultLocale) && typeof metadata?.description === "string") {
           siteDescription = metadata.description;
         }
-        let head = mod.renderHead(meta, { path: urlPath, baseUrl });
+        let head = mod.renderHead(meta, { path: urlPath, baseUrl, managed: true });
         const preload = preloadFor(route);
         if (preload) head += `\n${preload}`;
         // SEO: expose the page's last-updated time (git/frontmatter) as Open Graph's
         // article:modified_time so crawlers see when the content actually changed,
         // and a frontmatter `date` as article:published_time (blog posts).
         const iso = lastUpdated[path];
-        if (iso) head += `\n<meta property="article:modified_time" content="${escapeXml(iso)}">`;
+        if (iso) head += `\n<meta data-otfw-head="" property="article:modified_time" content="${escapeXml(iso)}">`;
         const published = typeof metadata?.date === "string" ? metadata.date.trim() : "";
-        if (published) head += `\n<meta property="article:published_time" content="${escapeXml(published)}">`;
-        const file = htmlPathFor(outDir, urlPath);
+        if (published) head += `\n<meta data-otfw-head="" property="article:published_time" content="${escapeXml(published)}">`;
+        // Static hosts decode requested URLs when locating files. Decode generated
+        // segments once; leave literal static folder names unchanged.
+        const outputPath = Object.keys(params).length
+          ? urlPath.split("/").map(decodeURIComponent).join("/") : urlPath;
+        const file = htmlPathFor(outDir, outputPath);
         await writeFile(
           file,
           injectRouteData(
@@ -161,8 +165,7 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
           // The static data file SPA navigation fetches on a plain static host —
           // byte-identical to the inline payload ("null" when the loader returned
           // undefined, so a 200 still parses as JSON).
-          const dataFile =
-            urlPath === "/" ? join(outDir, DATA_FILE) : join(outDir, urlPath, DATA_FILE);
+          const dataFile = join(dirname(file), DATA_FILE);
           await writeFile(dataFile, dataJson || "null");
         }
         rendered.push(urlPath);
@@ -179,7 +182,7 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
   try {
     const result = await mod.renderRoute("/__otfw_404__");
     if (result) {
-      let head = mod.renderHead({ robots: "noindex", ...result.metadata }, { baseUrl });
+      let head = mod.renderHead({ robots: "noindex", ...result.metadata }, { baseUrl, managed: true });
       const preload = modulepreloadTags(chunkManifest?.notFound);
       if (preload) head += `\n${preload}`;
       await writeFile(

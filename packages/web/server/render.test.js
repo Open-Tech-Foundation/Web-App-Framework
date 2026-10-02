@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "runtime:test";
 
-import { configureI18n, localizePath, registerRoutes, router, routes, setRouteState } from "../runtime/router.js";
+import { configureI18n, localizePath, matchRoute, registerRoutes, router, routes, setRouteState } from "../runtime/router.js";
 import { defineSSG, ssgComponent } from "./ssg-runtime.js";
 import { collectRoutePaths, renderRoute, renderToString } from "./render.js";
 
@@ -23,6 +23,74 @@ beforeEach(resetRoutes);
 afterEach(resetRoutes);
 
 describe("server render (SSG, string-based)", () => {
+  test("lazy bare factories keep props and attached metadata without being invoked as loaders again", async () => {
+    const factory = Object.assign(({ params }) => `<p>${params.id}</p>`, {
+      metadata: { description: "Factory metadata" },
+      generateMetadata: ({ params }) => ({ title: `Post ${params.id}` }),
+    });
+    registerRoutes({ "/app/post/[id]/page.jsx": async () => factory });
+    const result = await renderRoute("/post/7");
+    expect(result.html).toBe("<p>7</p>");
+    expect(result.metadata).toEqual({ description: "Factory metadata", title: "Post 7" });
+  });
+
+  test("SSR renders and reads metadata from the same lazily resolved namespaces", async () => {
+    let pageLoads = 0, layoutLoads = 0;
+    registerRoutes({
+      "/app/layout.jsx": async () => {
+        layoutLoads++;
+        return { default: ({ children }) => `<main>${children}</main>`, metadata: { titleTemplate: "%s — Site" } };
+      },
+      "/app/post/[id]/page.jsx": async () => {
+        pageLoads++;
+        const load = pageLoads;
+        return {
+          default: ({ params }) => `<p>${params.id}:${load}</p>`,
+          async generateMetadata({ params, query }) {
+            await Promise.resolve();
+            return { title: `${params.id}:${query.title}:${load}:${router.data.token}` };
+          },
+        };
+      },
+    });
+    const result = await renderRoute("/post/9", null, "?title=Hello", { data: { token: "request" } });
+    expect(result.html).toBe("<main><p>9:1</p></main>");
+    expect(result.metadata).toEqual({ titleTemplate: "%s — Site", title: "9:Hello:1:request" });
+    expect(pageLoads).toBe(1);
+    expect(layoutLoads).toBe(1);
+  });
+
+  test("lazy static paths expand dynamic and catch-all routes and skip missing exports", async () => {
+    registerRoutes({
+      "/app/page.jsx": async () => { throw Error("static page should not need importing"); },
+      "/app/post/[id]/page.jsx": async () => ({
+        async getStaticPaths() { return [{ params: { id: "one" } }, { id: "two" }]; },
+      }),
+      "/app/docs/[...slug]/page.jsx": async () => ({
+        default: Object.assign(() => "", { getStaticPaths: () => [{ slug: ["guide", "start"] }] }),
+      }),
+      "/app/unlisted/[id]/page.jsx": async () => ({}),
+    });
+    const result = await collectRoutePaths();
+    expect(result.paths).toEqual([
+      { path: "/", params: {}, route: "/" },
+      { path: "/post/one", params: { id: "one" }, route: "/post/[id]" },
+      { path: "/post/two", params: { id: "two" }, route: "/post/[id]" },
+      { path: "/docs/guide/start", params: { slug: ["guide", "start"] }, route: "/docs/[...slug]" },
+    ]);
+    expect(result.skipped).toEqual(["/unlisted/[id]"]);
+  });
+
+  test("lazy static-path import and generator failures propagate", async () => {
+    for (const entry of [
+      async () => { throw Error("static paths failed"); },
+      async () => ({ getStaticPaths: async () => { throw Error("static paths failed"); } }),
+    ]) {
+      routes.pages = { "/post/[id]": entry };
+      await expect(collectRoutePaths()).rejects.toThrow("static paths failed");
+    }
+  });
+
   test("concurrent lazy pages and layouts keep router state and hydration props separate", async () => {
     defineSSG("web-request", () => "island");
     const island = (where) => ssgComponent("web-request", { where, id: router.params.id, token: router.data.token }, "");
@@ -284,4 +352,52 @@ describe("server render (SSG, string-based)", () => {
     expect(paths.find((p) => p.path === "/post/1").params).toEqual({ id: "1" });
     expect(skipped).toEqual([]);
   });
+});
+
+
+test("generated URL segments encode and decode once, including catch-all segments", async () => {
+  resetRoutes();
+  registerRoutes({ "/app/post/[...slug]/page.jsx": {
+    default: () => "",
+    getStaticPaths: () => [{ params: { slug: ["hello world", "தமிழ்", "100%", "what?#"] } }],
+  } });
+  const { paths } = await collectRoutePaths();
+  expect(paths[0].path).toBe("/post/hello%20world/%E0%AE%A4%E0%AE%AE%E0%AE%BF%E0%AE%B4%E0%AF%8D/100%25/what%3F%23");
+  expect(matchRoute(paths[0].path).params).toEqual(paths[0].params);
+  expect(matchRoute("/post/%broken")).toBe(null);
+});
+
+test("static paths reject missing, unsafe and invalid parameter values", async () => {
+  for (const params of [{}, { id: "" }, { id: ".." }, { id: "a/b" }, { id: "a\\b" },
+    { id: "\u0000" }, { id: "\ud800" }, { id: null }, { id: true }, { id: {} }, { id: Infinity }]) {
+    resetRoutes();
+    registerRoutes({ "/app/post/[id]/page.jsx": { default: () => "", getStaticPaths: () => [{ params }] } });
+    await expect(collectRoutePaths()).rejects.toThrow("getStaticPaths for /post/[id]");
+  }
+  resetRoutes();
+  registerRoutes({ "/app/post/[...id]/page.jsx": { default: () => "", getStaticPaths: () => [{ params: { id: [] } }] } });
+  await expect(collectRoutePaths()).rejects.toThrow("must not be empty");
+});
+
+test("static paths reject malformed results and unsupported page props", async () => {
+  for (const entries of [null, {}, [null], ["hello"], [{ params: null }], [{ params: { id: "1" }, props: { title: "One" } }]]) {
+    resetRoutes();
+    registerRoutes({ "/app/post/[id]/page.jsx": { default: () => "", getStaticPaths: () => entries } });
+    await expect(collectRoutePaths()).rejects.toThrow();
+  }
+});
+
+test("static paths reject repeated generated URLs", async () => {
+  resetRoutes();
+  registerRoutes({ "/app/post/[id]/page.jsx": { default: () => "", getStaticPaths: () => [{ id: 1 }, { id: "1" }] } });
+  await expect(collectRoutePaths()).rejects.toThrow("Duplicate static path");
+});
+
+test("static paths reject collisions with existing static routes", async () => {
+  resetRoutes();
+  registerRoutes({
+    "/app/post/hello/page.jsx": page("Hello"),
+    "/app/post/[id]/page.jsx": { default: () => "", getStaticPaths: () => [{ id: "hello" }] },
+  });
+  await expect(collectRoutePaths()).rejects.toThrow("Duplicate static path");
 });

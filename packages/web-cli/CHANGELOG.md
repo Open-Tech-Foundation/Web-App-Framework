@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Prerendered metadata tags are marked for cleanup on client navigation. Encoded
+  dynamic URLs write decoded HTML and loader-data paths for static hosts.
+
 - SSG route discovery rejects unsupported Markdown/MDX 404 files with an error
   directing authors to `404.jsx` or `404.tsx`.
 - Canonicalize resolved package paths before using them as bundler aliases.

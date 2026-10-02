@@ -3,6 +3,9 @@
 //! return HTML strings. Component output is composed via a tag→renderer registry,
 //! mirroring how CSR composes by Custom Element tag.
 
+import { escapeAttr, escapeHtml } from "../core/html.js";
+export { escapeAttr, escapeHtml } from "../core/html.js";
+
 import { getRenderContext } from "../core/render-context.js";
 
 const VOID = new Set([
@@ -111,16 +114,6 @@ function inlineHydrationProps(props) {
   const safe = jsonSafeProps(props);
   if (!safe) return "";
   return JSON.stringify(safe).replace(/[&"<]/g, (c) => (c === "&" ? "&amp;" : c === '"' ? "&quot;" : "&lt;"));
-}
-
-/** Escape text content for HTML. */
-export function escapeHtml(s) {
-  return String(s).replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
-}
-
-/** Escape an attribute value. */
-export function escapeAttr(s) {
-  return String(s).replace(/[&"]/g, (c) => (c === "&" ? "&amp;" : "&quot;"));
 }
 
 /** clsx-style class normalization (mirrors runtime/dom.js). */

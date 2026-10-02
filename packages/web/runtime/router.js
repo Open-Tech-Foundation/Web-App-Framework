@@ -17,6 +17,8 @@
 import { clearError, reportError } from "../core/errors.js";
 import { signal } from "../core/signals.js";
 import { getRenderContext } from "../core/render-context.js";
+import { resolveMetadataModules } from "../core/metadata.js";
+import { prepareRouteHead, updateRouteHead } from "./head.js";
 import { beginHydration, cursor, endHydration } from "./hydrate.js";
 import { buildScopedView, runCleanup, runMount } from "./mount.js";
 import { fetchRouteData, readInlineRouteData } from "./route-data.js";
@@ -222,7 +224,7 @@ export function layoutChain(route) {
 
 /** Resolve a route entry (module namespace or lazy loader) to its factory. */
 export async function resolveFactory(entry) {
-  const mod = typeof entry === "function" ? await entry() : entry;
+  const mod = await resolveModule(entry);
   return mod && mod.default ? mod.default : mod;
 }
 
@@ -257,10 +259,14 @@ async function resolveAll(entries, resolve) {
 export async function buildRouteNode(match, query = {}) {
   const props = { params: match.params, query };
   const chain = layoutChain(match.route);
-  const [pageFactory, ...layoutFactories] = await resolveAll(
+  const [pageModule, ...layoutModules] = await resolveAll(
     [match.entry, ...chain],
-    resolveFactory,
+    resolveModule,
   );
+  const namespace = module => typeof module === "function" ? { default: module } : module;
+  const modules = [...layoutModules, pageModule].map(namespace);
+  const pageFactory = pageModule?.default ?? pageModule;
+  const layoutFactories = layoutModules.map(module => module?.default ?? module);
   let node = buildScopedView(() => pageFactory(props));
   const nodes = [node];
   try {
@@ -272,7 +278,7 @@ export async function buildRouteNode(match, query = {}) {
     for (const n of nodes) runCleanup(n);
     throw error;
   }
-  return { node, nodes };
+  return { node, nodes, modules };
 }
 
 /**
@@ -324,7 +330,7 @@ export async function hydrateRouteNode(match, query, rootEl) {
 }
 
 /** Resolve a route entry (lazy loader or module namespace) to its module. */
-async function resolveModule(entry) {
+export async function resolveModule(entry) {
   return typeof entry === "function" ? await entry() : entry;
 }
 
@@ -376,7 +382,10 @@ export function matchRoute(pathname) {
     if (m) {
       const params = { ...(m.groups || {}) };
       for (const k in params) {
-        if (route.includes(`[...${k}]`)) params[k] = params[k].split("/");
+        try {
+          params[k] = route.includes(`[...${k}]`)
+            ? params[k].split("/").map(decodeURIComponent) : decodeURIComponent(params[k]);
+        } catch { return null; }
       }
       return { entry: routes.pages[route], params, route };
     }
@@ -580,15 +589,19 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
   // Resolve (and lazily load) the page + its layout chain before tearing down the
   // current view, so a slow/failed import doesn't leave a blank page.
   let nodes = null;
+  let metadata = {};
   if (match) {
+    let built;
     try {
-      const built = await buildRouteNode(match, Object.fromEntries(url.searchParams));
+      built = await buildRouteNode(match, Object.fromEntries(url.searchParams));
+      metadata = await resolveMetadataModules(built.modules, { params: match.params, query: Object.fromEntries(url.searchParams) });
       if (seq !== navSeq) {
         for (const node of built.nodes) runCleanup(node);
         return;
       }
       nodes = built.nodes;
     } catch (e) {
+      if (built) for (const node of built.nodes) runCleanup(node);
       if (seq !== navSeq) return;
       // A failed route-chunk import (stale after a redeploy, or the network dropped):
       // try one guarded full reload for fresh HTML + hashes. If we already reloaded once
@@ -605,6 +618,7 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
 
   for (const n of currentNodes) runCleanup(n);
   rootEl.replaceChildren();
+  updateRouteHead(metadata, url.pathname);
 
   if (nodes) {
     rootEl.appendChild(nodes[nodes.length - 1]); // outermost node
@@ -634,8 +648,10 @@ export async function refreshHotRoute(factory) {
   const match = matchRoute(state.pathname.value) ||
     (routes.notFound ? { entry: routes.notFound, route: state.pathname.value, params: {} } : null);
   if (!match) return;
+  let built;
   try {
-    const built = await buildRouteNode(match, Object.fromEntries(state.searchParams.value));
+    built = await buildRouteNode(match, Object.fromEntries(state.searchParams.value));
+    const metadata = await resolveMetadataModules(built.modules, { params: match.params, query: Object.fromEntries(state.searchParams.value) });
     if (seq !== navSeq) {
       for (const node of built.nodes) runCleanup(node);
       return;
@@ -644,12 +660,14 @@ export async function refreshHotRoute(factory) {
     const scroll = [window.scrollX, window.scrollY];
     for (const node of currentNodes) runCleanup(node);
     rootEl.replaceChildren(built.node);
+    updateRouteHead(metadata, state.pathname.value);
     currentNodes = built.nodes;
     for (const node of currentNodes) runMount(node);
     if (focusedId) document.getElementById(focusedId)?.focus({ preventScroll: true });
     window.scrollTo(...scroll);
     clearError({ phase: "route" });
   } catch (error) {
+    if (built) for (const node of built.nodes) runCleanup(node);
     reportError(error, { phase: "route", path: state.pathname.value });
   }
 }
@@ -708,6 +726,7 @@ export function mountApp({ pages, target, guard: g, i18n, nav, loaders } = {}) {
     typeof rootEl.hasAttribute === "function" &&
     rootEl.hasAttribute("data-otfw-hydrate")
   );
+  if (isBrowser) prepareRouteHead(hydrate);
   // The flag is seeded `true` from the sentinel at module load (so eagerly-defined
   // framework components adopt on upgrade — see hydrate.js). If this mount is NOT
   // hydrating after all (no sentinel, or an empty root), clear it now so the CSR build

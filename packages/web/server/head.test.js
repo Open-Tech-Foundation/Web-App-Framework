@@ -10,6 +10,42 @@ afterEach(() => {
 });
 
 describe("resolveMetadata (layout → page → generateMetadata merge)", () => {
+  test("lazy page and nested layouts preserve metadata precedence and async params/query", async () => {
+    const calls = [];
+    registerRoutes({
+      "/app/layout.jsx": async () => ({
+        metadata: { titleTemplate: "%s — Site", openGraph: { siteName: "Site", type: "website" } },
+        async generateMetadata() { calls.push("root"); await Promise.resolve(); return { description: "Root" }; },
+      }),
+      "/app/post/layout.jsx": async () => ({
+        metadata: { description: "Nested", openGraph: { type: "article" } },
+        async generateMetadata({ params }) { calls.push("nested"); return { description: `Post ${params.id}` }; },
+      }),
+    });
+    const entry = async () => ({
+      metadata: { title: "Static", openGraph: { image: "/post.png" } },
+      async generateMetadata({ params, query }) {
+        calls.push("page"); await Promise.resolve(); return { title: `${params.id}: ${query.title}` };
+      },
+    });
+    const meta = await resolveMetadata({ route: "/post/[id]", entry, params: { id: "9" }, query: { title: "Hello" } });
+    expect(meta).toEqual({
+      title: "9: Hello", titleTemplate: "%s — Site", description: "Post 9",
+      openGraph: { siteName: "Site", type: "article", image: "/post.png" },
+    });
+    expect(calls).toEqual(["root", "nested", "page"]);
+  });
+
+  test("layout-only metadata resolves lazy layouts without importing a page", async () => {
+    registerRoutes({ "/app/layout.jsx": async () => ({ metadata: { title: "Site" } }) });
+    expect(await resolveMetadata({ route: "/", entry: null })).toEqual({ title: "Site" });
+  });
+
+  test("lazy metadata import errors propagate instead of returning an empty head", async () => {
+    await expect(resolveMetadata({ entry: async () => { throw Error("metadata import failed"); } }))
+      .rejects.toThrow("metadata import failed");
+  });
+
   test("merges layout defaults under page metadata, deep-merging sub-objects", async () => {
     registerRoutes({
       "/app/layout.jsx": {
@@ -140,4 +176,48 @@ describe("renderHead", () => {
     const html = renderHead({ description: 'a "b" & c' }, {});
     expect(html).toContain('content="a &quot;b&quot; &amp; c"');
   });
+});
+
+
+test("generateMetadata receives resolved parent layouts without current segment metadata", async () => {
+  const parents = [];
+  registerRoutes({
+    "/app/layout.jsx": {
+      metadata: { title: "Root", openGraph: { siteName: "Site" } },
+      async generateMetadata(_context, parent) {
+        parents.push(await parent);
+        return { description: "Root description" };
+      },
+    },
+    "/app/post/layout.jsx": {
+      metadata: { title: "Posts" },
+      async generateMetadata(_context, parent) {
+        parents.push(await parent);
+        return { description: "Posts description" };
+      },
+    },
+  });
+  const metadata = await resolveMetadata({ route: "/post/[id]", params: { id: "7" }, entry: {
+    metadata: { title: "Static page" },
+    async generateMetadata({ params }, parent) {
+      parents.push(await parent);
+      return { title: `${(await parent).title} ${params.id}` };
+    },
+  } });
+  expect(parents).toEqual([
+    {},
+    { title: "Root", openGraph: { siteName: "Site" }, description: "Root description" },
+    { title: "Posts", openGraph: { siteName: "Site" }, description: "Posts description" },
+  ]);
+  expect(metadata.title).toBe("Posts 7");
+});
+
+test("mutating parent metadata cannot change inherited metadata", async () => {
+  const metadata = await resolveMetadata({ layouts: [{ metadata: { openGraph: { siteName: "Original" } } }], entry: {
+    async generateMetadata(_context, parent) {
+      (await parent).openGraph.siteName = "Mutated";
+      return { title: "Page" };
+    },
+  } });
+  expect(metadata.openGraph.siteName).toBe("Original");
 });

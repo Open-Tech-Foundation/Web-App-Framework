@@ -8,6 +8,7 @@ import {
   mountApp,
   navigate,
   registerRoutes,
+  refreshHotRoute,
   resolveLocale,
   router,
   routes,
@@ -491,4 +492,81 @@ describe("i18n locale routing (prefix_except_default)", () => {
     expect(router.locale).toBe("en");
     configureI18n(null);
   });
+});
+
+
+test("SPA navigation replaces route metadata while preserving shell resources and canonical origin", async () => {
+  routes.pages = {}; routes.layouts = {}; routes.notFound = null;
+  const originalHead = document.head.innerHTML;
+  const app = document.createElement("div");
+  document.body.appendChild(app);
+  document.head.innerHTML = '<title>Shell</title><meta data-otfw-head name="description" content="Root shell"><meta name="viewport" content="width=device-width"><style id="shell-style">body{}</style><script id="shell-script" type="module"></script><link rel="canonical" href="https://site.example/">';
+  window.history.replaceState({}, "", "/one");
+  try {
+    await mountApp({ target: app, pages: {
+      "/app/one/page.jsx": { default: page("One"), metadata: { title: "One", description: "First", canonical: "https://other.example/one", jsonLd: { "@type": "Article" } } },
+      "/app/two/page.jsx": { default: page("Two"), metadata: { title: "Two" } },
+      "/app/empty/page.jsx": { default: page("Empty") },
+    } });
+    expect(document.title).toBe("One");
+    expect(document.head.querySelector('meta[name="description"]').getAttribute("content")).toBe("First");
+    await navigate("/two");
+    expect(document.title).toBe("Two");
+    expect(document.head.querySelector('meta[name="description"]')).toBe(null);
+    expect(document.head.querySelector('script[type="application/ld+json"]')).toBe(null);
+    expect(document.head.querySelector('link[rel="canonical"]').getAttribute("href")).toBe("https://site.example/two");
+    expect(document.head.querySelectorAll("title").length).toBe(1);
+    expect(document.head.querySelector("#shell-style") !== null).toBe(true);
+    expect(document.head.querySelector("#shell-script") !== null).toBe(true);
+    expect(document.head.querySelector('meta[name="viewport"]') !== null).toBe(true);
+    await navigate("/empty");
+    expect(document.title).toBe("Shell");
+    await navigate("/one");
+    expect(document.title).toBe("One");
+    expect(document.head.querySelectorAll('meta[name="description"]').length).toBe(1);
+  } finally { app.remove(); document.head.innerHTML = originalHead; }
+});
+
+test("superseded async metadata cannot overwrite the current route head", async () => {
+  routes.pages = {}; routes.layouts = {}; routes.notFound = null;
+  const originalHead = document.head.innerHTML;
+  const app = document.createElement("div"); document.body.appendChild(app);
+  let release, entered;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { entered = resolve; });
+  window.history.replaceState({}, "", "/");
+  try {
+    await mountApp({ target: app, pages: {
+      "/app/page.jsx": { default: page("Home"), metadata: { title: "Home" } },
+      "/app/slow/[id]/page.jsx": { default: page("Slow"), async generateMetadata({ params, query }) {
+        entered(); await gate; return { title: `${params.id} ${query.q}` };
+      } },
+      "/app/fast/page.jsx": { default: page("Fast"), metadata: { title: "Fast" } },
+    } });
+    const slow = navigate("/slow/one?q=query");
+    await started;
+    await navigate("/fast");
+    release(); await slow;
+    expect(document.title).toBe("Fast");
+    expect(app.textContent).toBe("Fast");
+  } finally { release(); app.remove(); document.head.innerHTML = originalHead; }
+});
+
+
+test("component route refresh updates its head without changing history", async () => {
+  routes.pages = {}; routes.layouts = {}; routes.notFound = null;
+  const originalHead = document.head.innerHTML;
+  const app = document.createElement("div"); document.body.appendChild(app);
+  const factory = () => { const node = page("Hot")(); node.__otfwHotFactory = factory; return node; };
+  const module = { default: factory, metadata: { title: "Before" } };
+  window.history.replaceState({}, "", "/hot");
+  try {
+    await mountApp({ target: app, pages: { "/app/hot/page.jsx": module } });
+    expect(document.title).toBe("Before");
+    module.metadata = { title: "After", description: "Updated" };
+    await refreshHotRoute(factory);
+    expect(document.title).toBe("After");
+    expect(document.head.querySelector('meta[name="description"]').getAttribute("content")).toBe("Updated");
+    expect(window.location.pathname).toBe("/hot");
+  } finally { app.remove(); document.head.innerHTML = originalHead; }
 });

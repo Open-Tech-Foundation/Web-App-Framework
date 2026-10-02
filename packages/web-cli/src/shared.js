@@ -1409,7 +1409,7 @@ export async function resolveLayoutShellHead({ root, appDir, pages, webEntry, ot
   try {
     // `entry: null` → layout chain only (no page); `path: null` → route-independent head.
     const meta = await mod.resolveMetadata({ route: "/", entry: null });
-    return mod.renderHead(meta, { path: null, baseUrl });
+    return mod.renderHead(meta, { path: null, baseUrl, managed: true });
   } finally {
     cleanup();
   }

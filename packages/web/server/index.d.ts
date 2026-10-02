@@ -19,16 +19,20 @@ export function renderRoute(
   options?: { data?: unknown },
 ): Promise<RenderResult | null>;
 export function renderToString(pathname: string, search?: string): Promise<string>;
-export function collectRoutePaths(): Promise<string[]>;
+export function collectRoutePaths(): Promise<{
+  paths: Array<{ path: string; params: Record<string, unknown>; route: string }>;
+  skipped: string[];
+}>;
 
 // ── <head> / metadata (head.js) ─────────────────────────────────────────────────
 export function resolveMetadata(args?: {
   route?: string;
   entry?: unknown;
+  layouts?: unknown[];
   params?: Record<string, unknown>;
   query?: Record<string, unknown>;
 }): Promise<Record<string, unknown>>;
-export function renderHead(meta?: Record<string, unknown>, opts?: { path?: string; baseUrl?: string }): string;
+export function renderHead(meta?: Record<string, unknown>, opts?: { path?: string; baseUrl?: string; managed?: boolean }): string;
 export function localeAlternateLinks(
   routePath: string,
   cfg?: { locales?: string[]; defaultLocale?: string },

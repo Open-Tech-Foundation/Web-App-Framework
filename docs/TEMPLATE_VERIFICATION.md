@@ -168,6 +168,35 @@ fallback for this rerun; production entry-reference normalization remains as
 documented above. Logs: `spa-route-scope-build.log` and
 `spa-route-scope-browser.log` in the audit log directory.
 
+Fourth follow-up: lazy SSR metadata and static-path exports are fixed. Server
+rendering resolves page/layout namespaces once and reuses them for HTML and head
+resolution. Standalone metadata resolution loads lazy layouts/pages; dynamic path
+enumeration loads modules before reading `getStaticPaths`, including catch-all
+paths and exports attached to default factories. Import/generator errors propagate.
+Seven new regressions cover metadata merging, layout-only metadata, import errors,
+namespace reuse, bare factories, dynamic/catch-all paths and static-path failures.
+The original local-plugin fullstack probe now passes all 11 existing assertions,
+including lazy metadata and static paths (`fullstack-lazy-routes-fixed.log`).
+Verification: **826 existing + seven new = 833 tests passed**.
+
+Fifth follow-up: SPA navigation and active route refresh update metadata while
+preserving shell resources; hydration retains the server head until navigation.
+Async metadata generators receive an isolated promise of resolved parent metadata.
+Static paths validate parameter values, encode/decode segments and reject duplicate
+URLs or unsupported `props`. Page data continues through loaders and `router.data`.
+Generated output uses decoded filesystem paths for HTML and loader JSON while
+canonical URLs remain encoded. A local-plugin docs build and HTTP preview confirm
+that `/docs/topic/hello%20world` serves its actual prerendered page.
+Verification: **833 existing + 12 new = 845 tests passed**; type checking and the
+full browser suite also pass. The new output regression checks HTML, canonical URLs,
+loader JSON and single decoding of percent signs through the actual prerender driver.
+The local-plugin Chromium probe passes **18 existing + eight new = 26 checks** in
+SPA development and production preview, including inherited async metadata, stale
+custom-tag/JSON-LD cleanup and preserved shell resources. The previously documented
+JSX fallback substitution and production entry-reference normalization were used.
+Logs: `/tmp/otfw-metadata-paths-spa-browser.log` and
+`/tmp/otfw-metadata-paths-docs-build.log`.
+
 | Priority | Issue and reproduction | Code to change |
 | --- | --- | --- |
 | P1 | Concurrent SSR mixes request data. Render `/concurrent/A` with `token-A` and `/concurrent/B` with `token-B` using `Promise.all`; both HTML responses contain B and `token-B`. Sequential rendering passes. | `packages/web/server/render.js` and request state in `packages/web/runtime/router.js` |
@@ -178,10 +207,10 @@ documented above. Logs: `spa-route-scope-build.log` and
 | P2 | DOM-free server setup crashes. Import `registerRoutes` from `@opentf/web` without a DOM; importing `runtime/context.js` throws. The server entry does not currently expose route registration. | `packages/web/server/index.js` and public runtime import boundaries |
 | P2 | Dynamic docs links contain placeholders. Prerender `/docs/topic/one`; sidebar and next-page navigation still link to `/docs/topic/[slug]`. | `packages/web-docs/build/docs-nav-plugin.js`: expand concrete paths or omit unresolved navigation entries |
 
-The MDX homepage-conflict guard, concurrent SSR isolation and production route
-effect cleanup are implemented; full MDX fallback support is deferred.
-Next address lazy SSR metadata and static paths. They can share a
-module-namespace resolution change with separate regression coverage.
+The MDX homepage-conflict guard, concurrent SSR isolation, production route effect
+cleanup, lazy SSR metadata and static paths are implemented. Full MDX fallback
+support is deferred. The remaining confirmed local issues are DOM-free server
+initialization and placeholder links in dynamic docs navigation.
 
 ## Coverage limits
 

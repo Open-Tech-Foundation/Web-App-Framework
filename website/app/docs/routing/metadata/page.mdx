@@ -9,8 +9,8 @@ import { Callout } from "@opentf/web-docs";
 
 Pages and layouts export **metadata** — a plain-data object (or a `generateMetadata`
 function) that the toolchain turns into `<head>` tags during [Static Generation](/docs/deployment/static-generation)
-and [Server](/docs/deployment/server) rendering. Layout defaults merge down the folder
-tree; each page overrides what it needs.
+and [Server](/docs/deployment/server) rendering, and on client navigation. Layout
+defaults merge down the folder tree; each page overrides what it needs.
 
 ## Static metadata
 
@@ -71,6 +71,26 @@ pre-render those paths with an esdev prerender target.
 A dynamic route **without** `getStaticPaths` produces no pre-rendered HTML, but
 `generateMetadata` still runs per request through a request renderer / SSR — so those pages get
 their `<head>` at request time, including query params.
+
+Client navigation also resolves metadata and updates the document head. Old route
+metadata is removed while styles, executable scripts and viewport settings remain.
+Hydrated pages retain their server-rendered head until the next navigation.
+Prerendering marks generated tags automatically. In a custom SSR renderer, use
+`renderHead(metadata, { path, baseUrl, managed: true })` so navigation can also
+remove custom meta tags and links from the previous page.
+
+To read metadata inherited from parent layouts, await the second argument. It
+contains the resolved parent metadata, before this file's own metadata is merged:
+
+```jsx
+export async function generateMetadata({ params }, parent) {
+  const inherited = await parent;
+  return {
+    title: `Post ${params.id}`,
+    openGraph: { image: inherited.openGraph?.image ?? "/default-share.png" },
+  };
+}
+```
 
 ## Merge order
 
@@ -162,12 +182,11 @@ not ideal for production SEO.
 | --- | --- |
 | Configured prerender build | Each pre-rendered `.html` file gets a resolved `<head>` per route |
 | App-provided SSR renderer / adapters | `<head>` is rendered per request |
-| Plain CSR (`esdev build`) | Uses the head supplied by the HTML entry. Per-route metadata needs a prerender or request-render step that resolves and injects it. |
+| Plain CSR (`esdev build`) | Starts with the HTML entry head, then resolves route metadata on mount and navigation |
 
-<Callout type="info" title="Client navigation does not rewrite &lt;head&gt;">
-  After first paint, SPA navigations via `<Link>` do not re-run metadata resolution.
-  Crawlers and social previews rely on the document you shipped for that URL — use SSG
-  or SSR when SEO and share cards matter.
+<Callout type="info" title="Initial HTML for crawlers">
+  Client navigation updates the browser head. Use SSG or SSR to include route
+  metadata in the initial HTML for crawlers and social previews.
 </Callout>
 
 ## MDX and docs pages
