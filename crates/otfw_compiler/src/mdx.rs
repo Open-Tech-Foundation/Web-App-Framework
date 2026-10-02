@@ -500,7 +500,7 @@ fn slugify(text: &str) -> String {
 }
 
 /// Minimal frontmatter → JS object literal: flat `key: value` scalar lines. Values
-/// are emitted as strings (booleans/numbers passed through). Good enough for docs
+/// are emitted as strings (unquoted booleans/numbers passed through). Good enough for docs
 /// metadata (title/description/…); richer YAML is a follow-up.
 ///
 /// One conventional mapping: a `cover` image (the web-docs blog frontmatter field)
@@ -522,11 +522,16 @@ fn frontmatter_object(yaml: &str) -> String {
         if key.is_empty() {
             continue;
         }
-        let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
+        let value = value.trim();
+        let quoted = value.len() >= 2 && (
+            (value.starts_with('"') && value.ends_with('"')) ||
+            (value.starts_with('\'') && value.ends_with('\''))
+        );
+        let value = if quoted { &value[1..value.len() - 1] } else { value };
         if key == "cover" && !value.is_empty() {
             cover = Some(value.to_string());
         }
-        let rendered = if matches!(value, "true" | "false") || value.parse::<f64>().is_ok() {
+        let rendered = if !quoted && (matches!(value, "true" | "false") || value.parse::<f64>().is_ok()) {
             value.to_string()
         } else {
             js_string(value)
@@ -740,6 +745,45 @@ mod tests {
         assert!(out.contains("export const metadata = {"), "{out}");
         assert!(out.contains("\"title\": \"Intro\""), "{out}");
         assert!(out.contains("\"description\": \"A page\""), "{out}");
+    }
+
+    #[test]
+    fn frontmatter_quoted_scalars_keep_string_types() {
+        let out = mdx_to_jsx(
+            "---\ntitle: \"001\"\ndescription: 'false'\nflag: \"true\"\namount: '1.25'\nexponent: \"1e3\"\nempty: ''\n---\n# Hi",
+            "doc.mdx",
+        ).unwrap();
+        for field in [
+            r#""title": "001""#, r#""description": "false""#,
+            r#""flag": "true""#, r#""amount": "1.25""#,
+            r#""exponent": "1e3""#, r#""empty": """#,
+        ] {
+            assert!(out.contains(field), "missing {field}: {out}");
+        }
+    }
+
+    #[test]
+    fn frontmatter_strips_only_one_matching_quote_pair() {
+        let out = frontmatter_object(r##"title: "'quoted'"
+description: '"quoted"'
+incomplete: "001'
+marker: "
+"##);
+        assert!(out.contains(r#""title": "'quoted'""#), "{out}");
+        assert!(out.contains(r#""description": "\"quoted\"""#), "{out}");
+        assert!(out.contains(r#""incomplete": "\"001'""#), "{out}");
+        assert!(out.contains(r#""marker": "\"""#), "{out}");
+    }
+
+    #[test]
+    fn frontmatter_unquoted_scalars_keep_existing_types() {
+        let out = frontmatter_object("enabled: true\nhidden: false\norder: 2\namount: 1.25\nempty:\ndate: 2026-10-03");
+        for field in [
+            r#""enabled": true"#, r#""hidden": false"#, r#""order": 2"#,
+            r#""amount": 1.25"#, r#""empty": """#, r#""date": "2026-10-03""#,
+        ] {
+            assert!(out.contains(field), "missing {field}: {out}");
+        }
     }
 
     #[test]

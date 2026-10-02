@@ -10,6 +10,10 @@
 
 ### Fixed
 
+- Preserve quoted MDX frontmatter scalars as JavaScript strings. Numeric-looking
+  titles such as `"001"` no longer emit invalid octal literals, and quotes inside
+  the value are retained. Requires rebuilding the `otfwc` archives.
+
 - Resolve the installed compiler package before locating its binary archive.
   Bundling the resolver into a prerender entry no longer makes it look for
   `bin/` beside the generated SSG bundle. Resolve transitive compiler dependencies

@@ -2,8 +2,8 @@
 //
 // Mirrors the flat-scalar parser in the Rust MDX front-end
 // (crates/otfw_compiler/src/mdx.rs `frontmatter_object`): a leading `---` block of
-// `key: value` lines, scalars only. Booleans/numbers are coerced; everything else is
-// a string. Nested maps / lists are out of scope (a follow-up, same as the Rust side).
+// `key: value` lines, scalars only. Unquoted booleans/numbers are coerced;
+// everything else is a string. Nested maps / lists are out of scope (a follow-up, same as the Rust side).
 
 import { readText } from "./host.js";
 
@@ -25,13 +25,16 @@ export async function readFrontmatter(file) {
     if (idx < 0) continue;
     const key = line.slice(0, idx).trim();
     if (!key) continue;
-    let value = line.slice(idx + 1).trim();
+    const value = line.slice(idx + 1).trim();
     // Strip a single matching pair of surrounding quotes.
     if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
+      value.length >= 2 && (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      )
     ) {
-      value = value.slice(1, -1);
+      out[key] = value.slice(1, -1);
+      continue;
     }
     if (value === "true") out[key] = true;
     else if (value === "false") out[key] = false;

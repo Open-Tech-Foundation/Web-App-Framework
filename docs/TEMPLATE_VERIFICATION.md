@@ -250,6 +250,24 @@ The existing temporary JSX fallback adaptation was used.
 Logs: `/tmp/otfw-feed-timestamps-tests.log`, `/tmp/otfw-feed-timestamps-typecheck.log`
 and `/tmp/otfw-feed-timestamps-build.log`.
 
+Tenth follow-up: quoted frontmatter scalars now stay strings in both the docs
+reader and Rust MDX compiler. Previously, `title: "001"` became a number in docs
+data and an invalid octal literal in compiled metadata; `description: "false"`
+became a boolean. Both parsers now remove only one matching outer quote pair,
+preserve inner/unmatched quotes, and retain existing unquoted scalar behavior.
+Verification: **860 existing + seven new = 867 tests passed** (three Rust and four
+esdev regressions), plus type checking and the full browser suite. The integration
+regression loads native-compiled metadata as JavaScript and compares it with docs
+frontmatter data. A local-plugin release build with the rebuilt compiler preserves
+quoted values in HTML head, blog cards and RSS; six new Chromium checks pass in
+development and preview for title, description and sidebar label. The existing JSX
+fallback and production entry-reference adaptations were used.
+The next package release requires updated `@opentf/web-docs` and rebuilt `otfwc`
+archives in `@opentf/web-compiler`.
+Logs: `/tmp/otfw-frontmatter-tests.log`, `/tmp/otfw-frontmatter-typecheck.log`,
+`/tmp/otfw-frontmatter-e2e.log`, `/tmp/otfw-frontmatter-build.log` and
+`/tmp/otfw-frontmatter-browser.log`.
+
 | Priority | Issue and reproduction | Code to change |
 | --- | --- | --- |
 | P1 | Concurrent SSR mixes request data. Render `/concurrent/A` with `token-A` and `/concurrent/B` with `token-B` using `Promise.all`; both HTML responses contain B and `token-B`. Sequential rendering passes. | `packages/web/server/render.js` and request state in `packages/web/runtime/router.js` |

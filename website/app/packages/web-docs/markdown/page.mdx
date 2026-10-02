@@ -217,6 +217,10 @@ description: Scaffold a project and start the dev server.
 ---
 ```
 
+Quoted frontmatter values stay strings. For example, `title: "001"` keeps the
+leading zeros and `description: "false"` remains text. Unquoted boolean and numeric
+values such as `lastUpdated: false` and `order: 2` keep their scalar types.
+
 ### Imports
 
 Pull in components (or anything else) with a normal `import`:
