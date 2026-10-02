@@ -63,6 +63,28 @@ test('enabled indexing failures propagate instead of producing a successful SSG 
   expect(error.message).toContain('Search site directory does not exist');
 });
 
+test('one indexed page produces separate highlighted cards for its matching sections', async () => {
+  await mkdir(join(root, '.cache'), { recursive: true });
+  const site = await makeTempDir({ dir: join(root, '.cache'), prefix: 'search-sections-' });
+  const original = globalThis.fetch;
+  try {
+    await write(join(site, 'index.html'), '<main data-otf-search-body><h1>Guide</h1><h2 id="first">First section</h2><p>Routing alpha.</p><h2 id="second">Second section</h2><p>Routing beta.</p><script type="application/ld+json">{"noise":"Routing schema"}</script></main>');
+    const built = await new Command(binary, { args: ['docs', 'index', site], stdout: 'piped', stderr: 'piped' }).output();
+    if (!built.success) throw Error(new TextDecoder().decode(built.stderr));
+    globalThis.fetch = async url => new Response(await file(join(site, String(url).replace(/^\//, ''))).arrayBuffer());
+    const result = await createSearch().query('routing');
+    expect(result.total).toBe(1);
+    expect(result.results.map(card => card.url)).toEqual(['/#first', '/#second']);
+    expect(result.results.map(card => card.section)).toEqual(['First section', 'Second section']);
+    expect(result.results[0].excerpt.includes('beta')).toBe(false);
+    expect(result.results[1].excerpt.includes('alpha')).toBe(false);
+    for (const card of result.results) {
+      expect(card.excerpt.includes('schema')).toBe(false);
+      expect(card.highlights.map(([from, to]) => card.excerpt.slice(from, to))).toEqual(['Routing']);
+    }
+  } finally { globalThis.fetch = original; await remove(site, { recursive: true }); }
+});
+
 
 test('an older compiler printing help cannot silently succeed at indexing', async () => {
   if (platform === 'windows') return; // The fake executable uses a Unix shebang.

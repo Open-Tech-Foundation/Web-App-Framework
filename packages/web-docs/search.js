@@ -1,5 +1,5 @@
 // DOM-free reader for the OTF Search binary format.
-/** @typedef {{ limit?: number, signal?: AbortSignal }} SearchOptions */
+/** @typedef {{ limit?: number, maxSectionsPerPage?: number, signal?: AbortSignal }} SearchOptions */
 /** @typedef {{ url: string, title: string, text: string, section: string, excerpt: string, highlights: number[][], meta: Record<string, string>, anchors: Array<{ id: string, text: string, pos: number }>, score: number }} SearchResult */
 const encoder = new TextEncoder();
 // Rust's String ordering is UTF-8 byte ordering, not locale collation.
@@ -121,9 +121,10 @@ export function excerptParts(excerpt, highlights = []) {
   return parts;
 }
 // Posting offsets already account for Unicode normalization and identifier variants.
-// Pick the section containing the strongest matches, then use that same location
-// for the link and excerpt so a result card describes where it will take you.
-function sectionMatch(fragment, groups, fieldWeights) {
+// Rank distinct sections, keeping the link and excerpt at the same location.
+// When query words only match across separate sections, keep the best page card
+// rather than presenting every incomplete section as a complete query match.
+function sectionMatches(fragment, groups, fieldWeights) {
   const anchors = (fragment.anchors || []).filter((anchor) => anchor.id).sort((a, b) => a.pos - b.pos);
   const sections = new Map();
   groups.forEach((positions, group) => {
@@ -139,12 +140,15 @@ function sectionMatch(fragment, groups, fieldWeights) {
       }
     }
   });
-  return [...sections.values()].sort((a, b) => b.weights.size - a.weights.size ||
+  const ranked = [...sections.values()].sort((a, b) => b.weights.size - a.weights.size ||
     [...b.weights.values()].reduce((sum, weight) => sum + weight, 0) - [...a.weights.values()].reduce((sum, weight) => sum + weight, 0) ||
-    a.position - b.position)[0];
+    a.position - b.position);
+  return ranked[0]?.weights.size === groups.length ? ranked.filter(section => section.weights.size === groups.length) : ranked.slice(0, 1);
 }
 /**
  * Create a reusable client for one static `_search/` directory.
+ * `limit` bounds cards; `total` counts matching pages. Each page's best section
+ * comes first, then more matches, up to `maxSectionsPerPage` (default 3).
  * @param {{ base?: string }} options
  * @returns {{ preload(): Promise<void>, query(query: string, options?: SearchOptions): Promise<{ results: SearchResult[], total: number, partial: boolean }> }}
  */
@@ -193,7 +197,7 @@ export function createSearch({ base = "/_search/" } = {}) {
   };
   return {
     async preload() { await init(); },
-    async query(query, { limit = 10, signal } = {}) {
+    async query(query, { limit = 10, maxSectionsPerPage = 3, signal } = {}) {
       throwIfAborted(signal);
       const groups = wordGroups(query);
       if (!groups.length) return { results: [], total: 0, partial: false };
@@ -227,10 +231,18 @@ export function createSearch({ base = "/_search/" } = {}) {
             const weight = Math.max(...positions.map(([, field]) => fieldWeights[field]));
             const exact = term === group[0] ? 4 : group.includes(term) ? 0.75 : 0.5;
             const score = exact * weight * idf * (tf * 2.2) / (tf + 1.2 * (0.25 + 0.75 * state.lengths[doc] / avgdl));
-            if (!best.has(doc) || best.get(doc).score < score) best.set(doc, { score, positions });
+            const previous = best.get(doc);
+            if (!previous) best.set(doc, { score, positions: [...positions] });
+            else {
+              previous.score = Math.max(previous.score, score);
+              // Prefix and identifier alternatives can match different sections.
+              // Keep every location while counting this query word only once.
+              previous.positions.push(...positions);
+            }
           }
         }
         for (const [doc, { score, positions }] of best) {
+          positions.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
           scores.set(doc, (scores.get(doc) || 0) + score);
           matches.set(doc, (matches.get(doc) || 0) + 1);
           const perDoc = locations.get(doc) || [];
@@ -246,15 +258,27 @@ export function createSearch({ base = "/_search/" } = {}) {
       let ranked = [...scores].filter(([doc]) => matches.get(doc) === groups.length);
       const partial = ranked.length === 0 && scores.size > 0;
       if (partial) ranked = [...scores];
-      const top = ranked.sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, Math.max(0, limit));
+      const resultLimit = Math.max(0, Math.floor(limit));
+      const sectionLimit = Number.isFinite(maxSectionsPerPage) ? Math.max(1, Math.floor(maxSectionsPerPage)) : 3;
+      const top = ranked.sort((a, b) => b[1] - a[1] || a[0] - b[0]).slice(0, resultLimit);
       throwIfAborted(signal);
-      const results = await Promise.all(top.map(async ([doc, score]) => {
+      const pages = await Promise.all(top.map(async ([doc, score]) => {
         const fragment = await (await fetchIndex(`${state.manifest.fragmentsDir || "f"}/${doc}.json`, { signal })).json();
-        const match = sectionMatch(fragment, matchedPositions.get(doc) || [], fieldWeights);
-        const url = match?.anchor ? `${fragment.url.split("#")[0]}#${encodeURIComponent(match.anchor.id)}` : fragment.url;
-        return { ...fragment, url, section: match?.anchor?.text || "", ...excerptFor(fragment, groups, match), score };
+        return sectionMatches(fragment, matchedPositions.get(doc) || [], fieldWeights).slice(0, sectionLimit).map(match => {
+          const url = match.anchor ? `${fragment.url.split("#")[0]}#${encodeURIComponent(match.anchor.id)}` : fragment.url;
+          return { ...fragment, url, section: match.anchor?.text || "", ...excerptFor(fragment, groups, match), score };
+        });
       }));
       throwIfAborted(signal);
+      // Give each relevant page its best card before adding more sections.
+      const results = [];
+      for (let section = 0; section < Math.min(sectionLimit, resultLimit); section++) {
+        for (const page of pages) {
+          if (page[section]) results.push(page[section]);
+          if (results.length === resultLimit) break;
+        }
+        if (results.length === resultLimit) break;
+      }
       return { results, total: ranked.length, partial };
     },
   };

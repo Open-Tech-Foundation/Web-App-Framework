@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- Search returns distinct cards for matching sections on the same page, with
+  section-specific excerpts, highlights and anchor links. Show each page's best
+  result before additional sections, with a default maximum of three cards per
+  page (`maxSectionsPerPage`). `limit` bounds cards and `total` counts pages.
+
+### Fixed
+
+- Keep section locations from all matching prefix and identifier alternatives
+  instead of discarding locations from lower-scoring alternatives.
+
 ## [0.27.0] - 2026-10-01
 
 ### Changed

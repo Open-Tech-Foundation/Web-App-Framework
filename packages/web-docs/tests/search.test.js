@@ -67,7 +67,13 @@ function termsChunk(entries) {
     table.push(0, ...varint(bytes.length), ...bytes, ...varint(docs.length), ...varint(blob.length));
     let previous = 0;
     for (const [doc, position = 0, field = 6] of docs) {
-      blob.push(...varint(doc - previous), 1, ...varint(position * 8 + field));
+      const positions = Array.isArray(position) ? position : [[position, field]];
+      blob.push(...varint(doc - previous), ...varint(positions.length));
+      let offset = 0;
+      for (const [position, field] of positions) {
+        blob.push(...varint((position - offset) * 8 + field));
+        offset = position;
+      }
       previous = doc;
     }
   }
@@ -214,5 +220,70 @@ test("highlight ranges preserve original accents, identifier spelling, and safe 
     expect(parts.filter((part) => part.match).map((part) => part.text)).toEqual(["Café", "useState"]);
     expect(parts.map((part) => part.text).join('')).toBe(result.excerpt);
     expect(parts.some((part) => !part.match && part.text.includes('<img'))).toBe(true);
+  });
+});
+
+test("expands distinct sections without crowding out other pages or refetching a fragment", async () => {
+  const text = 'Guide First routing routing Second routing Third routing Fourth routing';
+  const positions = [...text.matchAll(/routing/g)].map(match => [match.index, 6]);
+  await withIndex({ chunks: [{ first: 'routing', file: 't/a.bin', bytes: termsChunk([
+    ['routing', [[0, positions], [1, 6]]],
+  ]) }], fragments: [
+    { url: '/guide/', title: 'Guide', text, anchors: ['First', 'Second', 'Third', 'Fourth'].map(section => ({ id: section.toLowerCase(), text: section, pos: text.indexOf(section) })) },
+    { url: '/other/', title: 'Other', text: 'Other routing' },
+  ] }, async (search, seen) => {
+    const result = await search.query('routing');
+    expect(result.total).toBe(2); // Matching pages, not the expanded card count.
+    expect(result.results.map(card => card.url)).toEqual(['/guide/#first', '/other/', '/guide/#second', '/guide/#third']);
+    expect(result.results[0].section).toBe('First');
+    expect(result.results[0].excerpt).toBe('First routing routing');
+    expect(result.results[2].excerpt).toBe('Second routing');
+    expect(result.results[2].highlights.map(([from, to]) => result.results[2].excerpt.slice(from, to))).toEqual(['routing']);
+    expect(seen.filter(url => url.endsWith('f/0.json')).length).toBe(1);
+    expect((await search.query('routing', { limit: 3 })).results.map(card => card.url)).toEqual(['/guide/#first', '/other/', '/guide/#second']);
+    expect((await search.query('routing', { maxSectionsPerPage: 1 })).results.length).toBe(2);
+    expect((await search.query('routing', { maxSectionsPerPage: 4 })).results.length).toBe(5);
+    expect((await search.query('routing', { limit: 0 })).results.length).toBe(0);
+  });
+});
+
+test("retains matching sections from different prefix alternatives", async () => {
+  const text = 'First routingAlpha Second routingBeta';
+  await withIndex({ chunks: [{ first: 'routingalpha', file: 't/a.bin', bytes: termsChunk([
+    ['routingalpha', [[0, text.indexOf('routingAlpha')]]],
+    ['routingbeta', [[0, text.indexOf('routingBeta')]]],
+  ]) }], fragments: [{ url: '/guide/', text, anchors: [
+    { id: 'first', text: 'First', pos: 0 },
+    { id: 'second', text: 'Second', pos: text.indexOf('Second') },
+  ] }] }, async search => {
+    const result = await search.query('rout');
+    expect(result.results.map(card => card.url)).toEqual(['/guide/#first', '/guide/#second']);
+    expect(result.results[1].highlights.map(([from, to]) => result.results[1].excerpt.slice(from, to))).toEqual(['routingBeta']);
+  });
+});
+
+test("expands only sections containing all query words when complete sections exist", async () => {
+  const text = 'First alpha beta Second alpha Third beta Fourth alpha beta';
+  const occurrences = word => [...text.matchAll(new RegExp(word, 'g'))].map(match => [match.index, 6]);
+  await withIndex({ chunks: [{ first: 'alpha', file: 't/a.bin', bytes: termsChunk([
+    ['alpha', [[0, occurrences('alpha')]]], ['beta', [[0, occurrences('beta')]]],
+  ]) }], fragments: [{ url: '/guide/', text, anchors: ['First', 'Second', 'Third', 'Fourth'].map(section => ({ id: section.toLowerCase(), text: section, pos: text.indexOf(section) })) }] }, async search => {
+    const result = await search.query('alpha beta');
+    expect(result.partial).toBe(false);
+    expect(result.results.map(card => card.url)).toEqual(['/guide/#first', '/guide/#fourth']);
+  });
+});
+
+test("keeps one best card when query words match across separate sections", async () => {
+  const text = 'First alpha Second beta';
+  await withIndex({ chunks: [{ first: 'alpha', file: 't/a.bin', bytes: termsChunk([
+    ['alpha', [[0, text.indexOf('alpha')]]], ['beta', [[0, text.indexOf('beta')]]],
+  ]) }], fragments: [{ url: '/guide/', text, anchors: [
+    { id: 'first', text: 'First', pos: 0 }, { id: 'second', text: 'Second', pos: text.indexOf('Second') },
+  ] }] }, async search => {
+    const result = await search.query('alpha beta');
+    expect(result.partial).toBe(false);
+    expect(result.total).toBe(1);
+    expect(result.results.map(card => card.url)).toEqual(['/guide/#first']);
   });
 });
