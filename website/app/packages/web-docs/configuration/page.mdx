@@ -1,11 +1,11 @@
 ---
-title: Configuration
+title: Docs Configuration
 description: Site-wide options in otfw.config.js and per-folder ordering with _meta.js.
 ---
 
 import { Callout } from "@opentf/web-docs";
 
-# Configuration
+# Docs Configuration
 
 ## Site config
 
@@ -21,7 +21,7 @@ export default defineDocsConfig({
     version: "v0.16.0",
     logo: "/logo.png",
     github: "https://github.com/Open-Tech-Foundation/Web-App-Framework",
-    // Source repo — required for per-page "Edit this page" links (with lastUpdated on).
+    // Source repo — edit links also need lastUpdatedPlugin's source-path data.
     repoUrl: "https://github.com/Open-Tech-Foundation/Web-App-Framework",
     nav: [
       { label: "Home", href: "/" },
@@ -34,6 +34,8 @@ export default defineDocsConfig({
 ```
 
 ## The sidebar tree
+
+Register `docsNavPlugin` as described below to generate the sidebar data.
 
 The sidebar is generated from the folder tree under your docs directory. A folder
 with a `page.*` becomes a link; a folder **without** one becomes a group subheading
@@ -55,7 +57,7 @@ export default {
 
 <Callout type="tip" title="Labels and order in one place">
   A string value is the label (`"getting-started": "Getting Started"`). Omit a folder
-  from `_meta.js` and it still appears — just alphabetically, using a humanized name.
+  from `_meta.js` and it still appears — just alphabetically, using its frontmatter title or a humanized folder name.
 </Callout>
 
 ## Mobile navigation
@@ -90,10 +92,10 @@ Per-page frontmatter controls how a page shows up:
 
 | Key | Effect |
 | --- | --- |
-| `title` | Sidebar label, breadcrumb, and document title. |
+| `title` | Default sidebar label and breadcrumb (unless `_meta` or `sidebar_label` overrides it), plus document title. |
 | `description` | Meta description for SEO. |
-| `sidebar_label` | Overrides the sidebar text when it should differ from `title`. |
-| `order` | Tie-breaks ordering among siblings. |
+| `sidebar_label` | Overrides `title` for the sidebar; `_meta` labels take priority over both. |
+| `order` | Included in generated navigation data; the default sidebar order comes from `_meta.js`, then alphabetical folder names. |
 | `lastUpdated` | Override the "Last updated" date, or `false` to hide it on this page. |
 
 ## Last updated & Edit this page
@@ -117,9 +119,10 @@ export default defineDocsConfig({
 });
 ```
 
-`repoUrl` alone is not enough — the last-updated build plugin must be active
-(`lastUpdated: true` on `docs` or `blog`) to emit the per-route source paths the edit
-link needs.
+Register `lastUpdatedPlugin` to emit the dates and per-route source paths. The
+`lastUpdated` config flag alone does not register it. Edit links require the
+generated source path and `repoUrl`; they can still appear when a page's timestamp
+is hidden with `lastUpdated: false`.
 
 The same SSG build also emits an Open Graph `article:modified_time` meta tag per page,
 so crawlers see the modification date.
@@ -133,3 +136,35 @@ so crawlers see the modification date.
 
 The blog supports the same option: `blog.lastUpdated: true` adds the line to a post
 only when it was edited *after* its publish date, so a fresh post stays clean.
+
+## Build plugins
+
+Add these entries to the top-level `plugins` array in your existing `esdev.json`,
+alongside the OTF compiler/routes and site-output plugins:
+
+```json
+{
+  "plugins": [
+    { "module": "@opentf/esdev-plugin-web", "options": { "mode": "ssg" } },
+    { "module": "@opentf/web-docs/build", "export": "docsNavPlugin",
+      "options": { "appDir": "app" } },
+    { "module": "@opentf/web-docs/build", "export": "lastUpdatedPlugin",
+      "options": { "appDir": "app" } }
+  ]
+}
+```
+
+Keep your build targets and `siteOutputPlugin` entry from
+[Static Generation](/docs/deployment/static-generation). A blog also needs
+`blogPostsPlugin`, with `appDir: "app"` and a `contentDir` matching `blog.dir`.
+
+## Search
+
+Set `docs.search: { provider: "otf" }` and configure `siteOutputPlugin` after
+prerendering. It runs the native `otfwc docs index` command and writes `_search/`
+into the static output. `DocsLayout` and `BlogLayout` mark their article content
+for indexing; navigation and page chrome are excluded.
+
+The search UI loads that index in the browser. Test with a release build and
+`esdev preview`; development does not regenerate the release index. See
+[Static Generation](/docs/deployment/static-generation#search-and-other-generated-files).

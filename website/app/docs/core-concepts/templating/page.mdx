@@ -7,8 +7,8 @@ import { Callout } from "@opentf/web-docs";
 
 # Templating
 
-JSX is standard — use ordinary JavaScript for control flow. The compiler turns dynamic
-expressions into surgical DOM updates anchored by hidden comment nodes.
+JSX is standard — use ordinary JavaScript for control flow. The compiler binds dynamic expressions to DOM nodes. Text updates change their
+text node; conditional regions use comment markers to locate the nodes to replace.
 
 ## Conditionals
 

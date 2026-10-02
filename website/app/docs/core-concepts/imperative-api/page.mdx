@@ -11,11 +11,11 @@ Sometimes a parent needs to **tell** a child what to do — open a dialog, focus
 scroll a row into view — without re-rendering the whole tree through props. In React this
 is `useImperativeHandle`; in OTF Web it is **`$expose`**.
 
-A child publishes a small object of methods (and optionally getters). The parent holds a
+A child publishes a small object of methods. The parent holds a
 **`$ref`** to the child component and calls those methods directly. The parent gets an
 **API**, not the child's internal DOM.
 
-```jsx
+```jsx Modal.jsx
 // Child — owns its state and DOM, exposes only what the parent needs
 export default function Modal(props) {
   let open = $state(false);
@@ -32,6 +32,11 @@ export default function Modal(props) {
     </dialog>
   ) : null;
 }
+
+```
+
+```jsx App.jsx
+import Modal from "./Modal.jsx";
 
 // Parent — triggers the child imperatively
 export default function App() {
@@ -75,8 +80,7 @@ force the parent to know too much about the child's implementation.
 Wrap the input, expose `focus()`, and let the parent trigger it (e.g. a "Jump to search"
 button):
 
-```jsx
-// SearchField.jsx
+```jsx SearchField.jsx
 export default function SearchField() {
   const input = $ref();
 
@@ -87,7 +91,11 @@ export default function SearchField() {
   return <input ref={input} type="search" placeholder="Search…" />;
 }
 
-// Toolbar.jsx
+```
+
+```jsx Toolbar.jsx
+import SearchField from "./SearchField.jsx";
+
 export default function Toolbar() {
   const search = $ref();
 
@@ -100,7 +108,7 @@ export default function Toolbar() {
 }
 ```
 
-The parent never touches the `<input>` — only the method you chose to publish.
+The parent calls the published method without depending on the child's input markup.
 
 ---
 
@@ -158,7 +166,7 @@ export default function Page() {
 }
 ```
 
-See the live version in the playground: **Ref & Expose** demo (`/ref-demo` in a scaffolded app).
+See the repository playground: **Ref & Expose** demo (`/ref-demo` after `tsr dev`).
 
 ---
 
@@ -167,8 +175,7 @@ See the live version in the playground: **Ref & Expose** demo (`/ref-demo` in a 
 For a dynamic list, give **each row its own component** with its own `$ref` and expose
 only `scrollIntoView()`. The parent keeps refs to row components, not a map of DOM nodes:
 
-```jsx
-// MessageRow.jsx
+```jsx MessageRow.jsx
 export default function MessageRow(props) {
   const row = $ref();
 
@@ -179,7 +186,11 @@ export default function MessageRow(props) {
   return <li ref={row}>{props.label}</li>;
 }
 
-// Inbox.jsx
+```
+
+```jsx Inbox.jsx
+import MessageRow from "./MessageRow.jsx";
+
 export default function Inbox() {
   const rows = $state([
     { id: 1, label: "Welcome" },
@@ -216,23 +227,24 @@ own their lifecycle.
 
 Expose a minimal transport API; keep buffering, events, and the `<video>` element private:
 
-```jsx
-// Player.jsx
+```jsx Player.jsx
 export default function Player(props) {
   const video = $ref();
 
   $expose({
     play: () => video.play(),
     pause: () => video.pause(),
-    get paused() {
-      return video.paused;
-    },
+    isPaused: () => video.paused,
   });
 
   return <video ref={video} src={props.src} />;
 }
 
-// Controls.jsx
+```
+
+```jsx Controls.jsx
+import Player from "./Player.jsx";
+
 export default function Controls() {
   const player = $ref();
 

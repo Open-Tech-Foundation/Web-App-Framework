@@ -80,10 +80,12 @@ it still throws, the boundary catches it again.
   content, `handleError` hops from the portal target back to the host and finds the
   enclosing boundary. See [Portal](/docs/core-concepts/portal).
 
-## Dev overlay and logging
+## Error reporting
 
-Every caught error is still **reported** to the dev overlay and the `otfw:error` window
-event before the fallback renders. The boundary
+Every caught error is still **reported** to runtime error subscribers and the
+`otfw:error` window event before the fallback renders. With no subscribers, the
+runtime also logs it to the console. A development host can display these reports,
+but the native plugin does not install the retired CLI's overlay bridge. The boundary
 contains user-visible failure; it does not hide errors from developers.
 
 ## SSR and hydration

@@ -26,8 +26,9 @@ expect(component._count.value).toBe(1);
 
 ## Async and effects
 
-Reactive effects and data loads settle asynchronously. Wait for the resulting DOM with
-a `findBy*` query rather than a fixed timeout:
+Signal writes update dependent bindings synchronously. Fetches and other async work
+settle later; wait for their resulting DOM with a `findBy*` query rather than a fixed
+timeout:
 
 ```jsx
 test("loads the profile", async () => {

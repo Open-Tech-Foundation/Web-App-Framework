@@ -15,6 +15,7 @@ export default function ExpressionDemo() {
         </p>
         <div class="demo-jsx-controls">
           <input
+            aria-label="Name"
             value={name}
             oninput={(e) => (name = e.target.value)}
             placeholder="Name"

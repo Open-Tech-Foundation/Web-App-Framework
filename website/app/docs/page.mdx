@@ -9,24 +9,27 @@ import CounterDemo from "../components/CounterDemo.jsx";
 # Introduction
 
 OTF Web compiles JSX directly into imperative native DOM operations. There is no virtual
-DOM and no diffing: every component compiles to a standard Custom Element, and a state
-change updates only the DOM node bound to it.
+DOM tree. Reusable components compile to Custom Elements; route pages and layouts
+compile to factories. State changes run the dependent DOM bindings.
 
 ## Why OTF Web
 
 - **No virtual DOM** — the compiler emits exactly the DOM calls a view requires and binds
-  each update to the node it affects. No reconciliation loop runs at runtime.
+  each update to the node it affects. Keyed lists still reconcile their items when
+  the list changes.
 - **Standards-based components** — every component is a real `HTMLElement`, usable in any
   page, with or without a framework.
 - **Fine-grained reactivity** — the `$state`, `$derived`, and `$effect` macros wire
-  dependencies at compile time, so application code never handles `.value` directly.
-- **Full-stack by default** — file-based routing and layouts,
+  bindings at compile time. Signals track dependencies when those bindings run,
+  so component code reads and writes state without `.value`.
+- **Client and server building blocks** — file-based routing and layouts,
   [middleware](/docs/routing/middleware) and [API routes](/docs/routing/api-routes),
   [route loaders](/docs/data-fetching) and [cookies](/docs/routing/cookies), client-side
   [route guards](/docs/routing/route-guards), plus
   [static generation](/docs/deployment/static-generation),
   [server rendering](/docs/deployment/server), and
-  [hydration](/docs/deployment/hydration).
+  [hydration](/docs/deployment/hydration). Server features require an app-owned
+  server entry; a browser build alone does not start one.
 
 ## A first component
 
@@ -50,3 +53,8 @@ The button above is that snippet, compiled and running on this page — click it
   server rendering or static generation, first paint adopts the server-rendered nodes in
   place rather than re-rendering them — see [Hydration](/docs/deployment/hydration).
 </Callout>
+
+Start with [Installation](/docs/getting-started/installation), then learn the
+[Project Structure](/docs/getting-started/project-structure). The
+[Components](/docs/core-concepts/components) and
+[Reactivity](/docs/core-concepts/reactivity) guides explain how to build your UI.

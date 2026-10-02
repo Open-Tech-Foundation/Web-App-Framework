@@ -37,9 +37,9 @@ Layouts nest: `app/layout.jsx` wraps `app/blog/layout.jsx` wraps `app/blog/page.
 Export `metadata` or `generateMetadata` from a page or layout to control `<title>`,
 descriptions, Open Graph tags, and canonical URLs. Layout defaults merge down the tree;
 pages override what they need. On SSG and SSR each route gets a full resolved `<head>`;
-on a plain CSR build only the **root layout's** site-wide fields (favicon, description,
-Open Graph site defaults) are injected into the shared `index.html` shell — per-page
-`title` and `canonical` require a prerender or request-render step. See
+on a plain CSR build, the shared head comes from your `index.html`. The native
+compiler plugin does not inject root-layout metadata into that shell. Per-route
+metadata requires a prerender or request-render step. See
 [Metadata & SEO](/docs/routing/metadata).
 
 ## Not found

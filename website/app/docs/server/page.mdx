@@ -1,16 +1,16 @@
 ---
-title: Server
+title: Server API
 description: The @opentf/web/server surface — middleware, cookies, API routes, createFetchHandler, and runtime adapters.
 ---
 
 import { Callout } from "@opentf/web-docs";
 
-# Server
+# Server API
 
 The `@opentf/web/server` entry powers [middleware](/docs/routing/middleware) and file-based
-[API routes](/docs/routing/api-routes). Most apps never call these directly —
-the toolchain wires them up — but they're the contract for TypeScript authoring and for
-deploying `dist/server/api.js` to a custom runtime.
+[API routes](/docs/routing/api-routes). Your server entry composes these helpers,
+or your build script emits a handler bundle. The browser compiler plugin does not
+create a request server. See [Server setup](/docs/deployment/server).
 
 ## Types
 
@@ -56,8 +56,8 @@ Options: `appDir`, `i18n` (locale-prefix stripping).
 
 ### `createApiHandler(routeModules?, middlewareModules?, options?)`
 
-Builds a **routes-only** `RequestHandler` for API `route.*` files. API-folder middleware
-is composed into this handler. For full-stack servers, prefer `apiRoutes` + pipeline
+Builds a `RequestHandler` for API `route.*` files. When middleware modules are
+supplied, they are composed into this handler. For full-stack servers, prefer `apiRoutes` + pipeline
 `middleware` instead of `apiHandler` (see below).
 
 ### `createFetchHandler(handler, options?)`
@@ -152,7 +152,8 @@ Fetch-native runtimes use `createFetchHandler` as above. Node uses the `node:htt
 ```js
 import { createServer } from "node:http";
 import { apiRoutes, middleware } from "./dist/server/api.js";
-import { createFetchHandler, toNodeListener } from "@opentf/web/server";
+import { createFetchHandler } from "@opentf/web/server";
+import { toNodeListener } from "@opentf/web/server/adapters/node";
 
 const fetch = createFetchHandler(apiRoutes, { middleware });
 createServer(toNodeListener(fetch)).listen(3000);

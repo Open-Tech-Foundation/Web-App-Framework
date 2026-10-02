@@ -3,6 +3,6 @@ export default {
   build: "Production Build",
   "static-generation": "Static Generation",
   hydration: "Hydration",
-  server: "Server",
+  server: "Server Setup",
   "fetch-handler": "Fetch handler",
 };

@@ -14,22 +14,25 @@ const pillOff = "px-2.5 py-1 rounded-full text-xs font-semibold text-[var(--text
 const k = "text-[11px] font-mono text-[var(--text-muted)]";
 const v = "text-sm font-bold text-[var(--text-main)]";
 const cell = "rounded-lg border border-[var(--border)] bg-[var(--bg-main)] px-3 py-2";
+const LOCALES = ["en-US", "fr-FR", "de-DE", "ja-JP", "ar-EG"];
 
 export default function FormatMini() {
-  const pill = (code, label) => (
-    <button onclick={() => setLocale(code)} class={router.locale === code ? pillOn : pillOff}>{label}</button>
-  );
-
   return (
     <div class={frame}>
       <div class="flex items-center justify-between gap-3 mb-4">
         <div class={tag}><span class="w-1.5 h-1.5 rounded-full bg-accent"></span>fmt.*</div>
         <div class="flex flex-wrap items-center justify-end gap-1.5">
-          {pill("en-US", "en-US")}
-          {pill("fr-FR", "fr-FR")}
-          {pill("de-DE", "de-DE")}
-          {pill("ja-JP", "ja-JP")}
-          {pill("ar-EG", "ar-EG")}
+          {LOCALES.map((locale) => (
+            <button
+              key={locale}
+              type="button"
+              aria-pressed={router.locale === locale}
+              onclick={() => setLocale(locale)}
+              class={router.locale === locale ? pillOn : pillOff}
+            >
+              {locale}
+            </button>
+          ))}
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2.5">

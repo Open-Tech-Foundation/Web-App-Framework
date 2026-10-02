@@ -20,7 +20,7 @@ export default function BlogIndex() {
       <p className="text-[var(--text-muted)] mt-2 mb-4 max-w-2xl">
         These sample posts exist to demonstrate the <code>@opentf/web-docs</code> blog
         feature — post list, banner, reading time, and TOC. This is not the OTF Web
-        product blog; the only intentional link here is in the{" "}
+        product blog. Setup details are in the{" "}
         <a href="/packages/web-docs/blog" className="text-[var(--accent)] underline">
           web-docs Blog guide
         </a>
@@ -28,8 +28,7 @@ export default function BlogIndex() {
       </p>
       <Callout type="info" title="Demo only">
         Browse <code>website/app/blog/</code> in the repo to see how the demo is wired.
-        Your own docs site can omit a blog entirely, or copy this pattern from the
-        scaffolder&apos;s Documentation site template.
+        Your own site can omit a blog or follow the Blog guide to add one.
       </Callout>
       <div className="mt-6">
         <PostList posts={posts} />

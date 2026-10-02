@@ -15,7 +15,7 @@ second copy of the framework.
 esdev create my-lib --template=library --package-manager=pnpm
 ```
 
-The installed esdev 0.14 library template's test checks only source-file exports.
+The installed esdev 0.15 library template's test checks only source-file exports.
 Add a compiler config and rendering test to exercise the component itself.
 
 ## Package entry
@@ -58,13 +58,13 @@ compiler-only factory, so route discovery is unnecessary:
 
 ```js tests/counter.test.js
 import { expect, test } from "runtime:test";
-import { render, userEvent } from "@opentf/web-test";
+import { render } from "@opentf/web-test";
 import { Counter } from "../index.js";
 
 test("updates after a click", async () => {
   const { getByRole } = render(Counter, { initial: 2 });
   const button = getByRole("button", { name: "Count: 2" });
-  await userEvent.click(button);
+  button.click();
   expect(button.textContent).toBe("Count: 3");
 });
 ```

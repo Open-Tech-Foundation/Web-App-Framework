@@ -15,7 +15,7 @@ import ClassesDemo from "./ClassesDemo.jsx";
 
 OTF Web uses standard JSX. You write familiar markup; the compiler lowers it to imperative
 DOM operations and fine-grained signal bindings. There is no virtual DOM — dynamic
-expressions become surgical updates anchored by comment nodes, and PascalCase tags compile
+expressions update their dependent nodes, and PascalCase tags compile
 to Custom Elements.
 
 This guide is the reference for **every JSX pattern the framework supports**. For how
@@ -33,7 +33,8 @@ reactive conditionals, lists, and refs in depth, see [Templating](/docs/core-con
 </div>
 ```
 
-**Components** use PascalCase (or a member expression — see [Unsupported patterns](#unsupported-patterns)).
+**Components** use PascalCase. Member expressions such as `<UI.Button />` are
+unsupported; import `Button` directly.
 They compile to Custom Elements registered under module-scoped tags:
 
 ```jsx
@@ -151,6 +152,10 @@ const attrs = { type: "text", placeholder: "Search…" };
 
 Spread works on both host elements and components. Rest props on components (`function Card({ title, ...rest })`)
 collect unlisted attributes into a static snapshot at connect time.
+
+The SSG backend does not yet serialize spread attributes; it emits a warning and
+omits them from prerendered HTML. Use explicit attributes for values that must be
+present before hydration.
 
 ### React aliases
 

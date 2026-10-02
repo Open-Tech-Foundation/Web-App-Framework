@@ -23,7 +23,7 @@ Use the default OTF plugin with `mode: "ssg"` and add a second build target:
   ],
   "build": {
     "targets": {
-      "web": { "entry": "index.html", "outdir": "dist" },
+      "web": { "entry": "index.html", "outdir": "dist", "assets": ["public"] },
       "prerender": { "entry": "ssg.js", "out": ".ssg/ssg.js", "then": "run" }
     }
   }
@@ -32,7 +32,8 @@ Use the default OTF plugin with `mode: "ssg"` and add a second build target:
 
 Provide `ssg.js`: it imports helpers from `@opentf/web-cli/ssg`, locates the staged
 site, discovers pages/loaders, and calls `runPrerender`. This repo's `website/ssg.js`
-is a working example. Call `writePrerenderReport(outDir, result)` with the
+is a working example. Install `@opentf/web-cli` as a development dependency
+and provide the browser entry from [Production Build](/docs/deployment/build). Call `writePrerenderReport(outDir, result)` with the
 `runPrerender` result so the finish plugin receives resolved site metadata.
 The script is required; the compiler plugin does not generate it. The output plugin
 requires esdev 0.15 or newer.
@@ -65,5 +66,7 @@ opted-in docs/blog HTML into `_search/`, then generates feeds and LLM context.
 It uses esdev's release-only `finish` hook and writes into staged output before
 publication. Indexing failures preserve the previous deployment.
 
-Development runs neither this hook nor the prerender target by default. A selected
-browser-only build skips generation when its configured prerender target is absent.
+The finish hook is release-only. esdev 0.15 can still execute a target marked
+`then: "run"` during development, so the prerender script must check for release
+staging and skip rendering when it is absent. A selected browser-only build skips
+output generation when its configured prerender target is absent.

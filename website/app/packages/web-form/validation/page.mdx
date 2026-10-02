@@ -8,8 +8,9 @@ import ValidationMini from "./ValidationMini.jsx";
 
 # Validation
 
-A validator is any function that receives the current values and returns an `errors`
-object keyed by field path. Return an empty object when everything is valid.
+A validator receives the current values. With the `validator` option, return
+`{ errors }`, where `errors` maps field paths to messages. With `validate`, return
+the errors object directly. Use an empty errors object when all fields are valid.
 
 Try it — flip the `mode` knob and watch when errors appear:
 

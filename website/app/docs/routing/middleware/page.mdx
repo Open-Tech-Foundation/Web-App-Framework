@@ -92,10 +92,10 @@ API routes, loaders, options, and the immutable-headers wrap pattern.
   `/admin/__data.json`, so protected loader data cannot be fetched around the middleware.
 - **Non-default locale prefixes are stripped** before matching (same as loaders): `/fr/admin`
   is governed by `app/admin/_middleware.js`.
-- **Static assets bypass middleware.** A dotted path that resolves to a real file (bundles,
-  CSS, `public/` files) is served directly — a root auth guard must not break the login
-  page's stylesheet. Dotted paths that are *not* files (e.g. `/api/v1.0`) still enter the
-  pipeline.
+- **Static asset handling belongs to the server.** `createMiddleware` does not
+  detect files or bypass dotted paths. If assets must be served before middleware,
+  implement that order in the server entry or host configuration. A dotted API
+  path such as `/api/v1.0` can still be a route.
 
 <Callout type="warning" title="Static hosting has no middleware">
   A static esdev browser build deployed to a static host has no server — middleware cannot run there.

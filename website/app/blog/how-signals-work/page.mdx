@@ -26,5 +26,6 @@ must be updated, so there is nothing to diff.
 
 ## Why it matters
 
-Without diffing there is no per-update reconciliation pass whose cost scales with the
-size of the view. Update cost scales with what actually changed.
+A signal write runs its dependent computations rather than visiting an entire
+virtual DOM tree. The cost depends on those computations: changing one text binding
+is small, while changing a list can still scan and reconcile its items.

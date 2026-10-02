@@ -1,17 +1,63 @@
 ---
 title: Installation
-description: Install esdev and configure the OTF Web compiler plugin.
+description: Install esdev and create an OTF Web project.
 ---
 
-import { Callout } from "@opentf/web-docs";
+import { Callout, Tabs, CodeBlock } from "@opentf/web-docs";
+
+export const installTabs = [
+  {
+    label: "Linux / macOS",
+    content: <CodeBlock lang="bash" name="Terminal" code="curl -fsSL https://esrun.opentechf.org/install.sh | bash -s -- --only=esdev" />,
+  },
+  {
+    label: "Windows (PowerShell)",
+    content: (
+      <div>
+        <CodeBlock lang="powershell" name="PowerShell" code={"$env:ES_RUNTIME_ONLY = 'esdev'\nirm https://esrun.opentechf.org/install.ps1 | iex"} />
+        <p>Restart PowerShell after installation to pick up the updated PATH.</p>
+      </div>
+    ),
+  },
+];
 
 # Installation
 
-Install ES-Runtime's **esdev** development binary using the official
-[installation guide](https://esrun.opentechf.org/docs/installation). Use esdev 0.14
-or newer and a package manager such as pnpm.
+## Install esdev
 
-## Choosing a project type
+Install ES-Runtime's **esdev** development binary before creating a project.
+Use esdev 0.15 or newer and a package manager such as pnpm.
+
+<Tabs tabs={installTabs} />
+
+Verify the installation before continuing:
+
+```bash
+esdev --version
+```
+
+See the official [installation guide](https://esrun.opentechf.org/docs/install)
+for version pinning, upgrades and custom install locations.
+
+## Create a project
+
+```bash
+esdev create my-app
+```
+
+Follow the prompts to choose a template, language and package manager.
+
+## Non-interactive usage
+
+Specify your choices with flags for scripts or CI:
+
+```bash
+esdev create my-app --template=spa --language=js --package-manager=pnpm
+```
+
+Use `--language=ts` for TypeScript and `esdev create --help` for supported options.
+
+Available templates:
 
 | Template | Purpose |
 | --- | --- |
@@ -20,66 +66,12 @@ or newer and a package manager such as pnpm.
 | `docs` | An MDX docs/blog site with prerendered HTML, navigation and search. |
 | `library` | A source package of reusable components compiled by its consumers. |
 
-```bash
-esdev create my-app --template=spa --package-manager=pnpm
-```
-
-Use `--language=ts` for TypeScript and `esdev create --help` for supported options.
 Template files are embedded in esdev; package versions are resolved while scaffolding.
 
 <Callout type="warning" title="OTF template migration">
-  The installed esdev 0.14 OTF app templates still emit retired CLI scripts and
+  The installed esdev 0.15 OTF app templates still emit retired CLI scripts and
   omit esdev.json. They need an upstream update and a new esdev binary release.
-  Until then, provide the native config and entry files described below rather than
-  running the generated otfw scripts. The create-web package is deprecated.
+  Until then, use the native config and entry files from
+  [Production Build](/docs/deployment/build) instead of the generated otfw scripts.
+  The create-web package is deprecated.
 </Callout>
-
-## Configure a browser app
-
-Install the runtime and compiler/routes plugin:
-
-```bash
-pnpm add @opentf/web
-pnpm add -D @opentf/esdev-plugin-web
-```
-
-Create `esdev.json`, an HTML module entry and `entry.js` as shown in
-[Production Build](/docs/deployment/build). Put pages/layouts under `app/`.
-Then run:
-
-```bash
-esdev start
-esdev build --minify
-esdev preview
-```
-
-Use [Static Generation](/docs/deployment/static-generation) for docs/blog prerendering,
-and [Server](/docs/deployment/server) for an app-owned request server.
-
-## Testing
-
-Install `@opentf/web-test` and configure CSR compilation plus cleanup in
-`esdev.test.json` as shown in [Testing Setup](/packages/web-test/setup).
-
-```bash
-esdev test --config=esdev.test.json --dom
-```
-
-Use `--browser` for full Testing Library user-event workflows. A real browser and
-its matching driver are required for that tier.
-
-## Repository development
-
-This repository uses `tsr` as the shared local/CI task entry point:
-
-```bash
-pnpm install
-tsr build-compiler
-tsr dev
-tsr site
-tsr test
-tsr site-build
-```
-
-The workspace configs are at the repo root so package links stay inside esdev's
-project root. See the repository README for prerequisites and all tasks.

@@ -29,8 +29,8 @@ export default function StatusMini() {
       </div>
       <form onsubmit={form.handleSubmit(onSubmit)} class="mt-3 space-y-3">
         <div>
-          <label class={label}>Email</label>
-          <input {...form.register("email")} type="email" placeholder="you@example.com" class={field} />
+          <label for="status-email" class={label}>Email</label>
+          <input id="status-email" {...form.register("email")} type="email" placeholder="you@example.com" class={field} />
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <span class={form.isValid ? on : off}>isValid</span>

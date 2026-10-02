@@ -35,6 +35,12 @@ export default function Benchmarks() {
         compares a different category — read the framing before the figures.
       </p>
 
+      <p className={NOTE}>
+        These tables retain July–August 2026 measurements from the earlier toolchain.
+        They have not been re-measured after the esdev migration. The current runner
+        needs the upstream route-chunk fix before we can publish a fresh comparison.
+      </p>
+
       {/* ── Runtime ─────────────────────────────────────────────────────────── */}
       <h2 className={H2}>Runtime — a rendering-layer comparison</h2>
       <p className={P}>

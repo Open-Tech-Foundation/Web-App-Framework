@@ -36,9 +36,9 @@ export default function WebsiteLayout(props) {
     <div className="min-h-screen flex flex-col bg-[var(--bg-main)] text-[var(--text-main)]">
       <Navbar config={config.docs} />
 
-      <main className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col">
         {props.children}
-      </main>
+      </div>
 
       <footer className="py-12 border-t border-[#1e293b] flex justify-start items-center px-8 text-xs text-slate-400 bg-[#020617] mt-auto transition-colors">
         <a

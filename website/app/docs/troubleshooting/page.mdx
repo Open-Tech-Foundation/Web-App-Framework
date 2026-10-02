@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Common OTF Web pitfalls — init-once JSX, signal mutation, hydration mismatches, compile errors, and the dev overlay.
+description: Resolve state updates, compile errors, hydration mismatches and metadata issues.
 ---
 
 import { Callout } from "@opentf/web-docs";
@@ -28,7 +28,7 @@ return user ? <Main user={user} /> : <Login />;
 return <div>{user ? <Main user={user} /> : <Login />}</div>;
 ```
 
-Full walkthrough: [Templating → Init-once](/docs/core-concepts/templating#init-once--frozen-at-first-connect)
+Full walkthrough: [Templating → Init-once](/docs/core-concepts/templating#init-once-vs-reactive-conditionals)
 and [JSX → Unsupported patterns](/docs/core-concepts/jsx#unsupported-patterns).
 
 ### Do not cache JSX in a local variable
@@ -48,7 +48,7 @@ return <div>{user ? <Main /> : <Login />}</div>;
 ### Reassign `$state`, do not mutate it
 
 Signals notify on **reassignment**, not in-place mutation. The compiler rejects common
-mutators (`push`, `splice`, property assignment, `++`) on `$state` variables with an
+mutators (`push`, `splice`, property assignment, nested `++`) on `$state` values with an
 error that points at the immutable rewrite.
 
 ```jsx
@@ -70,7 +70,7 @@ When nested objects need direct mutation, use `reactive()` instead — see
 | --- | --- |
 | `ref={(el) => …}` callback ref | Use `$ref()` + `onMount` / `$effect` / [`$expose`](/docs/core-concepts/imperative-api) |
 | `<Foo.Bar />` member component | Import `Bar` and render `<Bar />` |
-| `$state` mutation (`push`, `x.y = …`, `++`) | Reassign a new value, or switch to `reactive()` |
+| `$state` mutation (`push`, `x.y = …`, nested `++`) | Reassign a new value, or switch to `reactive()` |
 | `{ [key]: val }` computed prop keys | Use static identifier keys in JSX attributes |
 | Lifecycle hook inside a helper / `if` / after `await` | Move `onMount`, `onCleanup`, etc. to **top-level** statements in the component body |
 
@@ -81,7 +81,7 @@ Callback refs and member components are called out in the
 
 With [SSG](/docs/deployment/static-generation) or [SSR](/docs/deployment/server), the
 client **adopts** the server HTML on first paint. If structure diverges, the runtime
-reports a **hydration mismatch** (visible in the dev overlay) and rebuilds that
+reports a **hydration mismatch** through the runtime error API and rebuilds that
 component via CSR. The rest of the page stays adopted.
 
 **Common causes:**
@@ -111,52 +111,29 @@ needs a **single element root** — not a bare fragment. The compiler warns when
 is a fragment.
 
 `onMediaQuery` has no element constraint. All lifecycle macros must be **top-level**
-statements; calls inside functions, conditions, or after `await` are silent no-ops.
+statements. Calls inside helpers or conditions are unsupported; component bodies
+must remain synchronous.
 During SSG/SSR they do not run at all — only in the client bundle.
 
 See [Lifecycle](/docs/core-concepts/lifecycle).
 
 ## Compiler diagnostics (`esdev start`)
 
-The compiler plugin returns located diagnostics to esdev. Compile errors fail the
-build by default; the development host presents build failures and clears them after
-a successful rebuild. Runtime errors use the framework's error-reporting surface and
-the browser console. The retired CLI's diagnostic-stub and overlay bridge are not the
-native esdev contract.
+The compiler plugin returns file, line and column diagnostics to esdev. With the
+default project plugin, compile errors fail the build. Fix the reported location
+and wait for a successful rebuild.
 
-### Reading the panel
+The compiler emits source maps for JSX/TSX transforms, which esdev can compose
+with the bundle's map. Enable build source maps when you need to debug release
+output. Markdown and MDX first become generated JSX, so their diagnostics and
+maps can still point into that generated source rather than the original prose.
 
-A compile error shows **where** in its header — the file relative to your project, plus
-line and column — and a code frame with a caret under the offending span:
+Runtime errors go through the framework's error-reporting API, including the
+`otfw:error` event and console logging. `<ErrorBoundary>` can show a fallback
+while still reporting the error. The native compiler plugin does not supply the
+retired CLI's `/__route` stack rewriting or error-overlay controls.
 
-```text
-app/blog/page.mdx:12:9   parse error: Unexpected token
-
-10 | export default function Post() {
-11 |   let count = $state(0);
-12 |   const =
-   |         ^
-13 |   return <article>{count}</article>;
-```
-
-The same position is printed in the terminal running `esdev start`, in the
-`path:line:column` form editors can jump to. Compiler rejections that are not syntax
-errors — mutating a `$state` value in place, a callback `ref`, a component that builds
-JSX but never returns it — are located the same way.
-
-Runtime stack traces are rewritten to name the source file each dev chunk was built
-from, instead of the internal `/__route/…` URL. The `line:column` in those frames is
-labelled `(chunk:…)` because it is a position in the served chunk: the compiler does not
-emit source maps yet, so a runtime frame identifies the module, not the source line.
-An `.mdx`/`.md` module compiles through generated JSX, so a compile error in one reports
-a position in that JSX and says so.
-
-`<ErrorBoundary>` catches user-visible failures but still **reports** to the overlay
-before rendering fallback UI — boundaries contain crashes; they do not hide them from
-developers. See [Error boundaries](/docs/core-concepts/error-boundary).
-
-Press **Esc** or click outside the panel to dismiss; a clean rebuild or navigation also
-clears it.
+See [Error boundaries](/docs/core-concepts/error-boundary).
 
 ## SEO and metadata
 

@@ -46,7 +46,7 @@ export default function HomePage() {
   const resolutionMs = benchmark.resolutionMs.toFixed(1);
 
   return (
-    <div className="flex-1 max-w-6xl mx-auto px-8 w-full pb-24">
+    <main className="flex-1 max-w-6xl mx-auto px-8 w-full pb-24">
       {/* Hero */}
       <section className="hero-glow py-28">
         <div className="grid md:grid-cols-2 gap-12 items-center max-w-6xl mx-auto">
@@ -93,6 +93,7 @@ export default function HomePage() {
           <p className="text-[var(--text-muted)] max-w-2xl mx-auto">
             Our runtime against the React, Solid and Svelte&nbsp;5 <strong>libraries</strong>.
             Median ms over {benchmark.runs ?? 3} pooled runs, 4× throttled; lower is better.
+            Recorded {benchmark.generatedAt.slice(0, 10)} with the earlier toolchain.
           </p>
         </div>
 
@@ -119,7 +120,7 @@ export default function HomePage() {
           <BenchmarkTable report={ssgBenchmark} rowHeader="Metric" />
         </div>
         <div className="text-center text-sm text-[var(--text-muted)]">
-          The columns do not represent equal work.{" "}
+          Historical measurements from July–August 2026; the columns do not represent equal work.{" "}
           <Link href="/docs/benchmarks" className={METHOD_LINK}>Method &amp; caveats →</Link>
         </div>
       </section>
@@ -151,7 +152,7 @@ export default function HomePage() {
       <section className="py-12">
         <div className="max-w-4xl mx-auto text-center bg-[var(--bg-surface)] border border-[var(--border)] rounded-3xl px-8 py-16 space-y-6">
           <h2 className="text-3xl md:text-4xl font-black tracking-tight text-[var(--text-main)]">Start building</h2>
-          <p className="text-[var(--text-muted)] max-w-xl mx-auto">Scaffold a project and follow the guides from an empty directory to a compiled app.</p>
+          <p className="text-[var(--text-muted)] max-w-xl mx-auto">Follow the setup guide to configure and build your first app.</p>
           <div className="flex justify-center gap-4 flex-wrap">
             <Link href="/docs" className="transition-all active:scale-95">
               <span className="inline-flex items-center gap-2 bg-[var(--text-main)] text-[var(--bg-main)] px-7 py-3 rounded-xl font-bold hover:opacity-90 shadow-lg">Read the docs</span>
@@ -162,6 +163,6 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-    </div>
+    </main>
   );
 }

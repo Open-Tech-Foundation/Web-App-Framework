@@ -14,6 +14,7 @@ export default function EventsDemo() {
           Clicked {clicks} {clicks === 1 ? "time" : "times"}
         </button>
         <input
+            aria-label="Type a key"
           onkeydown={(e) => (lastKey = e.key)}
           placeholder="Type a key…"
           class="demo-jsx-input"

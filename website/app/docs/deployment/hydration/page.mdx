@@ -13,8 +13,8 @@ the client **adopts** that markup in place — claims the nodes, wires signals a
 onto them, and never tears the tree down to reconcile a virtual DOM.
 
 A plain CSR `esdev build` skips this: `#app` starts empty and the client builds every route
-from scratch. Hydration is what makes SSG and SSR genuinely cheaper at interactive time, not
-just better for SEO.
+from scratch. Hydration reuses supported server-rendered nodes and attaches their
+client behavior; its cost depends on the page and the bindings involved.
 
 ## When hydration runs
 
@@ -28,9 +28,9 @@ just better for SEO.
 Direct URL hits, refresh, and open-in-new-tab always get a full document — SSG/SSR HTML
 hydrates on that first paint. SPA navigation is layered on top as a progressive enhancement.
 
-<Callout type="info" title="Adopt, never rebuild (on first paint)">
-  The server HTML is already the final structure. Hydration wires reactivity onto those nodes;
-  it does not diff or replace the page the way a VDOM `hydrateRoot` would.
+<Callout type="info" title="Reuse server markup">
+  When the structure matches, hydration attaches bindings to the existing nodes.
+  Unsupported shapes or mismatches can fall back to client rendering, as described below.
 </Callout>
 
 ## How to enable it
@@ -97,7 +97,7 @@ routing when you want every navigation to hit the server.
 ## Mismatches and recovery
 
 If the client cannot adopt what the server sent — wrong tag, missing marker, divergent
-structure — the runtime reports a **hydration mismatch** (surfaced in the dev error overlay)
+structure — the runtime reports a **hydration mismatch** through its error-reporting API
 and **rebuilds that component** via CSR. The rest of the page stays adopted; recovery is
 per component, not a whole-page bail-out.
 

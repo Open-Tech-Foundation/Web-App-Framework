@@ -34,7 +34,7 @@ Returns a stable `form` object.
 | `values` | Reactive proxy of the current values (read nested paths directly). |
 | `errors` | Reactive proxy of current errors, keyed by path. |
 | `touched` | Reactive proxy of blurred fields. |
-| `changed` | Reactive proxy of fields changed since mount. |
+| `changed` | Reactive proxy of top-level fields that differ from the current baseline. |
 
 ### Status flags
 
@@ -54,7 +54,7 @@ Returns a stable `form` object.
 | --- | --- |
 | `name` | The field path. |
 | `value` | Current value, read reactively from the values store. |
-| `checked` | Same signal, for checkbox/radio inputs. |
+| `checked` | Current field value, used as a boolean by checkbox inputs. |
 | `error` | Current error for this path, if any. |
 | `isTouched` | Whether this field has been blurred. |
 | `oninput` | Writes the input's value (or `checked`) back to state. |

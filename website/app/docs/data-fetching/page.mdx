@@ -31,7 +31,7 @@ app/items/[id]/loader.ts  → dynamic params work like pages
 ```js
 // app/todos/loader.js
 export default async function loader({ params, query, request, locale }) {
-  return db.todos.list(); // any JSON-serializable value
+  return { items: await db.todos.list() }; // JSON-serializable data
 }
 ```
 
@@ -45,7 +45,7 @@ export default function Todos() {
   return (
     <ul>
       {(router.data ? router.data.items : []).map((t) => (
-        <li>{t.title}</li>
+        <li key={t.id}>{t.title}</li>
       ))}
     </ul>
   );
@@ -94,6 +94,28 @@ Any other thrown error is a 500. On the client, a failed data fetch is reported
 (`phase: "data"`) and the navigation still commits with `router.data`
 undefined — pages should treat "no data" as a valid state.
 
+### Register loaders in the browser entry
+
+Pass the patterns of pages with loaders to `mountApp` so the router knows which
+data endpoints to fetch. The native `@otfw/routes` module exports `pages` and
+`guard`; it does not currently discover loader patterns for the client:
+
+```js entry.js
+import { mountApp } from "@opentf/web";
+import { pages, guard } from "@otfw/routes";
+
+mountApp({
+  pages,
+  guard,
+  loaders: ["/todos", "/items/[id]"],
+  target: document.getElementById("app"),
+});
+```
+
+Keep this list in sync with your loader files. The prerender script must also
+discover and run the loaders; a request server must serve their `__data.json`
+endpoints. Registering the client patterns alone does neither.
+
 ### Current limits
 
 - Loaders are **page-level** (no layout loaders yet).
@@ -116,14 +138,18 @@ import { resource, router } from "@opentf/web";
 export default function UserProfile() {
   const user = resource(
     () => router.params.id, // reactive source — re-fetches when it changes
-    (id, { signal }) => fetch(`/api/users/${id}`, { signal }).then((r) => r.json()),
+    async (id, { signal }) => {
+      const response = await fetch(`/api/users/${encodeURIComponent(id)}`, { signal });
+      if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+      return response.json();
+    },
   );
 
   return (
     <div>
       {user.error ? <p>Failed: {user.error.message}</p> :
        user.loading ? <p>Loading…</p> :
-       <h1>{user.data.name}</h1>}
+       user.data ? <h1>{user.data.name}</h1> : <p>No user selected.</p>}
     </div>
   );
 }

@@ -56,7 +56,7 @@ export default function WorkerStatus() {
 
 ## Ordinary files referenced from JavaScript
 
-In the installed esdev 0.14 build, `new URL("./icon.svg", import.meta.url)` remains
+In the verified esdev 0.15 build, `new URL("./icon.svg", import.meta.url)` remains
 in the generated JavaScript without copying that file. It then resolves beside the
 emitted bundle, where the original source file may not exist. This migration gap
 needs an upstream asset-pipeline fix. Use configured public assets for ordinary

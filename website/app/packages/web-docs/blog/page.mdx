@@ -14,10 +14,9 @@ layout and components (banner, meta, reading time, table of contents).
 <Callout type="tip" title="See it live">
   The [blog on this site](/blog) is the reference demo for this feature — the index,
   the post pages, cover images, author info, reading time, and the on-page TOC are all
-  built with the components described here. Browse `website/app/blog/` in the repo to
-  see the exact files. It's intentionally **not** in the site's top navigation: it
-  exists only to demonstrate `@opentf/web-docs`, not as this project's own blog — so the
-  only link to it is right here in the docs.
+  built with the components described here. Browse `website/app/blog/` in the repo
+  for the source. These are sample posts; some describe historical tooling rather
+  than the current esdev setup.
 </Callout>
 
 ## Turn it on
@@ -37,9 +36,18 @@ export default defineDocsConfig({
 });
 ```
 
-This activates a build-time plugin that scans `app/<dir>` and resolves the virtual
-module `@opentf/web-docs/posts` to your post list — sorted newest-first, with reading
-time computed for you.
+This supplies the blog settings. Add `blogPostsPlugin` explicitly to the top-level
+`plugins` array in `esdev.json`:
+
+```json
+{ "module": "@opentf/web-docs/build", "export": "blogPostsPlugin",
+  "options": { "appDir": "app", "contentDir": "blog" } }
+```
+
+The plugin scans `app/<contentDir>` and resolves `@opentf/web-docs/posts` to your
+post list, sorted newest-first with reading time computed at build time.
+Keep `contentDir` aligned with `blog.dir`. Use the
+[SSG output setup](/docs/deployment/static-generation) for search and feeds.
 
 ### Write a post
 
@@ -139,10 +147,9 @@ import { posts } from "@opentf/web-docs/posts";
 
 ## Search
 
-Posts are indexed automatically. `BlogLayout` marks the post article with
-`data-otf-search-body`, so `esdev build` picks blog posts up in the same OTF Search
-index as your docs — no extra configuration. The index page is intentionally not
-indexed (it's just a list of links).
+With `docs.search: { provider: "otf" }` and `siteOutputPlugin` configured,
+`BlogLayout`'s `data-otf-search-body` marker includes post articles in the same index
+as docs pages. The blog index is excluded because it only lists posts.
 
 ## Last updated
 
@@ -154,8 +161,10 @@ this shares with docs pages.
 
 ## Feeds
 
-The project prerender script calls the docs feed helper to write RSS 2.0 and Atom 1.0 feeds to `<dir>/rss.xml` and
-`<dir>/atom.xml` (e.g. `/blog/rss.xml` and `/blog/atom.xml`) when feed generation is enabled with a `blog` block. `site.url` is required so every feed URL is absolute. Posts appear
+After prerendering, `siteOutputPlugin` uses the feed helpers to write RSS 2.0 and
+Atom 1.0 feeds to `<dir>/rss.xml` and `<dir>/atom.xml` (for example, `/blog/rss.xml`
+and `/blog/atom.xml`) when a `blog` block is configured. Set `site.url` so feed URLs
+are absolute. Posts appear
 newest-first with absolute links, dates from `date`, author metadata, and categories
 from `tags`.
 

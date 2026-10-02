@@ -43,8 +43,9 @@ todos[0].done = true;              // ❌ no re-render
 
 To catch this, **the compiler rejects in-place mutation of `$state`** — array mutators
 (`push`, `splice`, `sort`, …), `Map`/`Set` mutators (`set`, `add`, `delete`, `clear`),
-index/property assignment (`todos[0] = …`, `user.name = …`), `++`/`--`, and `delete` —
-with an error pointing you at the immutable rewrite. Reach for `reactive()` (below) when
+index/property assignment (`todos[0] = …`, `user.name = …`), nested `++`/`--`, and `delete` —
+with an error pointing you at the immutable rewrite. Updating the signal variable
+itself with `count++` is supported. Reach for `reactive()` (below) when
 you'd rather mutate directly.
 
 <Callout type="note" title="Why replace instead of mutate?">
@@ -120,5 +121,6 @@ Helpers that ship alongside it:
 
 ## Single source of reactivity
 
-All reactive primitives come from `@opentf/web`. The runtime guards against duplicate
-copies of the signals engine being bundled, which would silently break tracking.
+Use one resolved copy of `@opentf/web` throughout the app. Duplicate copies can
+create separate signal and router state, so avoid aliases or package links that
+resolve the same runtime through different paths.

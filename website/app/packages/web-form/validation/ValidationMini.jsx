@@ -61,13 +61,13 @@ export default function ValidationMini() {
       </div>
       <form onsubmit={form.handleSubmit(onSubmit)} class="mt-3 space-y-3">
         <div>
-          <label class={label}>Email</label>
-          <input {...form.register("email")} type="email" placeholder="you@example.com" class={field} />
+          <label for="validation-email" class={label}>Email</label>
+          <input id="validation-email" {...form.register("email")} type="email" placeholder="you@example.com" class={field} />
           {show("email") && <span class="text-[11px] text-red-500 font-bold">{show("email")}</span>}
         </div>
         <div>
-          <label class={label}>Age</label>
-          <input {...form.register("age")} type="number" placeholder="18" class={field} />
+          <label for="validation-age" class={label}>Age</label>
+          <input id="validation-age" {...form.register("age")} type="number" placeholder="18" class={field} />
           {show("age") && <span class="text-[11px] text-red-500 font-bold">{show("age")}</span>}
         </div>
         <div class="flex items-center gap-3 pt-1">

@@ -16,18 +16,21 @@ measurements, subscriptions, or timers.
 
 ```jsx
 export default function Clock() {
-  let now = $state(Date.now());
+  let now = $state(null);
 
   onMount(() => {
+    now = Date.now();
     const id = setInterval(() => (now = Date.now()), 1000);
     return () => clearInterval(id);
   });
 
-  return <time>{now}</time>;
+  return <time>{now ?? "Loading clock…"}</time>;
 }
 ```
 
 Returning a function from `onMount` registers it as cleanup.
+The initial placeholder is the same on the server and client, avoiding a timestamp
+mismatch during hydration.
 
 ## onCleanup
 
@@ -134,6 +137,6 @@ otherwise). `onMediaQuery` has no such constraint.
 - Hooks run in **FIFO order** per kind; `onMount` callbacks run before the observer
   hooks are wired.
 - Hooks are compiler macros, recognized only as **top-level statements** of the
-  component or page body. A call inside a helper function, condition, or after an
-  `await` is a silent no-op.
+  component or page body. Calls inside helpers or conditions are unsupported.
+  Keep the component body synchronous and put async work inside the callback.
 - During SSG/SSR none of them run — they exist only in the client output.

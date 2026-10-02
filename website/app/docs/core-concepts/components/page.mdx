@@ -26,7 +26,9 @@ export default function App() {
 
 ## Props
 
-Props are passed as attributes and destructured from the parameter. They are
+Props are passed to the component instance; rich values such as objects and
+callbacks are not serialized as HTML attribute strings. Destructure them from the
+parameter or read them through `props`. They are
 **reactive** — when a parent passes a new value, the child updates in place.
 
 ```jsx
@@ -62,12 +64,17 @@ When a parent needs to **command** a child — open a dialog, focus a field, scr
 — use [`$expose`](/docs/core-concepts/imperative-api) to publish methods on the component
 instance. The parent holds a `$ref` to the child and calls those methods:
 
-```jsx
+```jsx Modal.jsx
 export default function Modal() {
   let open = $state(false);
   $expose({ show: () => (open = true), hide: () => (open = false) });
   return open ? <dialog open>…</dialog> : null;
 }
+
+```
+
+```jsx App.jsx
+import Modal from "./Modal.jsx";
 
 export default function App() {
   const modal = $ref();

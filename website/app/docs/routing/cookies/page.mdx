@@ -143,7 +143,9 @@ Loaders are server-only modules — safe to read cookies from the request when p
 // app/account/loader.js
 import { getCookie } from "@opentf/web/server";
 
-export default async function (request) {
+export default async function ({ request }) {
+  // Static prerendering has no incoming request or session cookie.
+  if (!request) return { user: null };
   const session = getCookie(request, "session");
   if (!session) return { user: null };
   return { user: await loadUser(session) };

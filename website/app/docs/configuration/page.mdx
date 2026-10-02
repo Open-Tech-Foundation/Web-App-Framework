@@ -1,15 +1,19 @@
 ---
-title: Configuration
-description: Configure an OTF Web project with otfw.config.js — site URL, docs, API, and blog sections.
+title: Project Configuration
+description: Use esdev.json for tooling and otfw.config.js for site, docs, blog and locale settings.
 ---
 
 import { Callout } from "@opentf/web-docs";
 
-# Configuration
+# Project Configuration
 
 Use **esdev.json** for build targets, compiler plugins and the development loop.
 Use **otfw.config.js** for site/theme settings read by the project's prerender
 script and `@opentf/web-docs` components. Neither replaces the other.
+
+For the build-target and browser-entry setup, follow
+[Production Build](/docs/deployment/build). The settings below apply when your
+project uses prerendering, the docs theme or locale routing.
 
 ```js
 // otfw.config.js
@@ -58,24 +62,12 @@ origin before rendering. Supply it through this config or your own prerender scr
 
 ## `docs`
 
-The main documentation section. Common fields:
+The `docs` block supplies branding, navigation, footer and search settings to
+`DocsLayout`. Pass it to the layout explicitly; add the build plugins for generated
+navigation, timestamps and search output.
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `title` | string | Product name in the navbar. |
-| `version` | string | Version badge (e.g. `"v0.4.0"`). |
-| `logo` | string | Navbar logo URL. |
-| `github` | string | GitHub URL (navbar icon). |
-| `repoUrl` | string | Source repo — enables per-page "Edit this page" links. |
-| `dir` | string | Content folder under `app/` (default `"docs"`). |
-| `nav` | array | Top navbar links: `{ label, href, icon?, external? }`. |
-| `footer` | object | `{ text, links }`. |
-| `search` | object | `{ provider: "otf" }` to enable static search. |
-| `lastUpdated` | boolean | Show a "Last updated" line per page (git/frontmatter). Requires the last-updated build plugin (set on `docs` or `blog`). |
-| `repoUrl` + `lastUpdated` | — | Together they enable **"Edit this page"** links (`<repoUrl>/edit/main/<source>`). `repoUrl` alone is not enough. |
-
-See [Packages → web-docs → Configuration](/packages/web-docs/configuration) for the
-exhaustive field reference and per-folder `_meta.js` ordering.
+See [Docs Configuration](/packages/web-docs/configuration) for the settings,
+plugin registration and per-folder `_meta.js` ordering.
 
 ## Multiple sections
 
@@ -105,7 +97,8 @@ of this file.
 
 ## `blog`
 
-Turns on the blog generator (post list, banners, reading time, feeds). See
+Supplies settings for the blog components and release output. Register
+`blogPostsPlugin` explicitly to generate the post list. See
 [Packages → web-docs → Blog](/packages/web-docs/blog).
 
 ```js

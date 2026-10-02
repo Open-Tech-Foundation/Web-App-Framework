@@ -20,20 +20,30 @@ The default locale is served at the bare path; every other locale is prefixed:
 | `/pricing` | `/pricing` | `/fr/pricing` | `/ja/pricing` |
 | `/blog/hello` | `/blog/hello` | `/fr/blog/hello` | `/ja/blog/hello` |
 
-Configure it once in `otfw.config.json`:
+Define the locales in `otfw.config.js`:
 
-```json
-{
-  "i18n": {
-    "locales": ["en", "fr", "ja"],
-    "defaultLocale": "en"
+```js otfw.config.js
+export default {
+  i18n: {
+    locales: ["en", "fr", "ja"],
+    defaultLocale: "en",
   }
-}
+};
 ```
 
-The toolchain threads this into `mountApp`, so the client router knows the locales and
-resolves `router.locale` from the URL. (You can also pass it directly:
-`mountApp({ pages, i18n: { locales, defaultLocale } })`.)
+Pass that configuration to `mountApp` in your browser entry. The compiler plugin
+does not read it automatically:
+
+```js entry.js
+import { mountApp } from "@opentf/web";
+import { pages, guard } from "@otfw/routes";
+import config from "./otfw.config.js";
+
+mountApp({ pages, guard, i18n: config.i18n, target: document.getElementById("app") });
+```
+
+Use the same locales in `createI18n` and pass `i18n: config.i18n` to your prerender
+helper or request renderer.
 
 <Callout type="note" title="Switching locale is a navigation">
   There is no in-place locale toggle — to change language you navigate to the

@@ -12,7 +12,7 @@ navbar, sidebar, table of contents, breadcrumbs, prev/next — over your MDX con
 and generates the navigation tree from the file system at build time.
 
 ```bash
-bun add @opentf/web-docs
+pnpm add @opentf/web-docs
 ```
 
 <Callout type="info" title="A package, not a fork">
@@ -42,6 +42,21 @@ import { Callout } from "@opentf/web-docs";
 
 Fenced code is highlighted at build time, and every code block gets a copy button
 automatically.
+
+## Build setup
+
+Install `@opentf/esdev-plugin-web` and use the
+[SSG build configuration](/docs/deployment/static-generation). Register the docs
+plugins explicitly in `esdev.json`, following
+[Configuration](/packages/web-docs/configuration#build-plugins), and import the
+theme from your entry stylesheet:
+
+```css app/global.css
+@import "@opentf/web-docs/theme";
+```
+
+Adding `docs` or `blog` to `otfw.config.js` supplies settings; it does not register
+plugins or create the prerender script.
 
 ## The shell
 

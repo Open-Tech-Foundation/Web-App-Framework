@@ -44,7 +44,9 @@ export default {
 };
 ```
 
-That's the whole server. `createFetchHandler` threads the runtime's `env` and `ctx` through
+This entry handles APIs and delegates other requests to static assets. It does not
+run route loaders or SSR. Add those to the fallback when your app needs them.
+`createFetchHandler` threads the runtime's `env` and `ctx` through
 middleware, handlers, **and** the `fallback`, so platform bindings are available everywhere
 you need them.
 
@@ -161,7 +163,7 @@ Same order in dev (via the proxy) and production (in your Fetch handler):
 | --- | --- |
 | `/api/todos` | `middleware` → `apiRoutes` → your `route.{js,ts}` |
 | `/dashboard` (guarded page) | `middleware` → redirect or static layer → `index.html` |
-| `/dashboard/__data.json` | `middleware` (same scope as `/dashboard`) → loader data |
+| `/dashboard/__data.json` | `middleware` → your fallback; add loader-registry handling there for live data |
 | `/assets/app-*.js`, `/favicon.ico` | Static layer directly (often bypasses middleware) |
 | `/`, any SPA route | `middleware` → static layer → `index.html` (SPA fallback) |
 
@@ -201,7 +203,8 @@ export default {
   "assets": {
     "directory": "dist",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "my-app-db", "database_id": "<your-id>" }
@@ -211,12 +214,29 @@ export default {
 
 - `assets.binding: "ASSETS"` is what makes `env.ASSETS.fetch(request)` work in the entry.
 - `not_found_handling: "single-page-application"` serves `dist/index.html` for unknown paths.
+- `run_worker_first: true` runs the handler before assets, so middleware can guard
+  HTML and data files. Without it, matching assets can bypass your handler.
 - `d1_databases[].binding: "DB"` surfaces as `context.env.DB` in handlers.
+
+Keep server bundles out of public assets. For this layout, copy a
+`public/.assetsignore` file into `dist/` through the browser target's
+`assets: ["public"]` setting:
+
+```text public/.assetsignore
+/server/
+```
+
+That excludes `dist/server/api.js` and loader bundles from asset uploads; Wrangler
+still bundles imports from the Worker entry. Prefer a separate server output
+directory when possible. See Cloudflare's official
+[asset configuration](https://developers.cloudflare.com/workers/static-assets/binding/).
 
 **Local D1:** `wrangler d1 execute my-app-db --local --file=./schema.sql`. Drop `--local`
 (add `--remote`) for the deployed database.
 
-**Dev proxy:** `proxy: { "/api": "http://localhost:8787" }` with `wrangler dev` on port 8787.
+**Development forwarding:** run `wrangler dev` on port 8787 and configure forwarding
+in your app-owned server or an external proxy. Adding a legacy `proxy` block to
+`otfw.config.js` does not configure esdev.
 
 ### Other Fetch-native hosts
 

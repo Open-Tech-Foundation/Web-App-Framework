@@ -8,16 +8,16 @@ cover: /blog/cover-intro.svg
 tags: announcements, framework
 ---
 
-Most frameworks ship a virtual DOM and diff it on every change. OTF Web takes a
-different approach: the compiler translates JSX into exactly the `createElement` and
-update calls a view requires, so no reconciliation loop runs at runtime.
+OTF Web compiles JSX into DOM creation calls and reactive bindings. State changes
+run the bindings that depend on them, without creating a virtual DOM tree. Keyed
+lists still reconcile their items when the list changes.
 
 ## What the model provides
 
 - **No virtual DOM** — a change updates only the DOM node bound to it.
 - **Standards-based components** — every component is a real `HTMLElement`.
-- **Fine-grained reactivity** — `$state`, `$derived`, and `$effect` resolve dependencies
-  at compile time.
+- **Fine-grained reactivity** — the compiler turns `$state`, `$derived`, and `$effect`
+  into signals and computations; dependency tracking happens as they run.
 
 The project is still early. The core is fast and the programming model is deliberately
 small, and we would value your feedback — particularly bug reports from real

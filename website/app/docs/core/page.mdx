@@ -15,7 +15,9 @@ compile to — prefer the macros in components.)
 | `signal(initial)` | Create a signal. Read/write via `.value`. |
 | `computed(fn)` | Derived signal, cached. |
 | `effect(fn)` | Run a reactive side effect; returns a disposer. |
-| `batch(fn)` | Group writes into a single update. |
+| `batch(fn)` | Defer dependent effects until the grouped writes complete. |
+| `untracked(fn)` | Read signals without subscribing the current computation. |
+| `resource(...)` | Async data with reactive `data`, `loading`, `error` and `refetch`; see [Data Fetching](/docs/data-fetching). |
 | `reactive(init)` | Deep reactive store — mutate nested data in place. |
 | `isReactive(v)` | Whether `v` was created by `reactive()`. |
 | `toRawValue(v)` | Underlying plain object for a reactive store. |
@@ -28,14 +30,15 @@ or nested data you update by mutation.
 
 | Export | Description |
 | --- | --- |
-| `mountApp(options)` | Boot the app: `{ pages, target, guard?, i18n? }`. |
+| `mountApp(options)` | Boot the app: `{ pages, target, guard?, i18n?, nav?, loaders? }`. |
 | `Link` | Client-side navigation anchor (`<Link href="…">`). Localized automatically when i18n is enabled. |
-| `router` | Reactive route facade: `pathname`, `params`, `query`, `locale`, `push`, `replace`. |
+| `router` | Reactive route facade: `pathname`, `params`, `query`, `locale`, `data`, `push`, `replace`. |
 
 ### Internationalization
 
 URL path-prefix locale routing. Enable via `mountApp({ i18n: { locales, defaultLocale } })`
-or the [`otfw.config` `i18n` block](/docs/configuration#i18n). Messages and formatters live
+using settings from the [`otfw.config` `i18n` block](/docs/configuration#i18n).
+The entry must pass those settings explicitly. Messages and formatters live
 in [`@opentf/web-i18n`](/api/web-i18n).
 
 | Export | Signature | Description |

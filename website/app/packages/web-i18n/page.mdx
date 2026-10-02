@@ -21,7 +21,7 @@ follow the active locale (Arabic flips the card to right-to-left):
 ## Installation
 
 ```bash
-bun add @opentf/web-i18n
+pnpm add @opentf/web-i18n
 ```
 
 `@opentf/web-i18n` is an opt-in companion to `@opentf/web` (a peer dependency) — apps
@@ -51,12 +51,20 @@ createI18n({
 createI18n({
   locales: ["en", "fr", "ja"],
   defaultLocale: "en",
-  load: (locale) => import(`./messages/${locale}.json`),
+  load: (locale) => ({
+    en: () => import("./messages/en.json"),
+    fr: () => import("./messages/fr.json"),
+    ja: () => import("./messages/ja.json"),
+  })[locale](),
 });
 ```
 
+Call `await loadLocale(locale)` before rendering a lazy catalog. Registering `load`
+does not fetch messages automatically; your route guard or prerender script must
+preload the active locale and the fallback catalog.
+
 The active locale comes from the router (`router.locale`, derived from the URL —
-see [Locale Routing](./routing)). Lookups fall back **active → default → the raw
+see [Locale Routing](/packages/web-i18n/routing)). Lookups fall back **active → default → the raw
 key**, so a missing translation is visible, never a crash.
 
 ## Translating with `t()`
@@ -120,25 +128,26 @@ Numbers, currency, dates, and relative time format per the active locale via
 ```jsx
 import { fmt } from "@opentf/web-i18n";
 
-fmt.currency(42, "USD");                 // "$42.00" / "42,00 $US" / "￥42"
+fmt.currency(42, "USD");                 // USD formatted for the active locale
 fmt.date(order.date, { dateStyle: "long" });
 fmt.relativeTime(-2, "day");             // "2 days ago" / "il y a 2 jours"
 ```
 
-See [Formatting](./formatting) for the full set, with a live demo.
+See [Formatting](/packages/web-i18n/formatting) for the full set, with a live demo.
 
 ## Locale routing
 
 The locale lives in the **URL path** (`/fr/about`), and switching locale is a
 navigation. The core router strips the prefix, exposes `router.locale`, and `<Link>`
-keeps links in the active locale automatically. SSG emits a static page per locale;
-SSR detects and redirects.
+keeps links in the active locale automatically. Pass i18n settings to the prerender
+helper to emit a static page per locale. Locale detection and redirects in SSR
+belong in your request server.
 
 <Callout type="note" title="Switching is a navigation">
   Under URL-prefix routing the locale is fixed per page, so there's no in-place
   toggle — to change language you navigate to the localized URL. This is what makes
   every locale independently cacheable and SEO-friendly. See
-  [Locale Routing](./routing).
+  [Locale Routing](/packages/web-i18n/routing).
 </Callout>
 
 ```jsx

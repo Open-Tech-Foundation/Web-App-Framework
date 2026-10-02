@@ -12,7 +12,7 @@ import StatusMini from "./StatusMini.jsx";
 # @opentf/web-form
 
 A high-performance form engine built on OTF Web's signals. Fields bind directly to
-state, updates are surgical (no re-render), and deeply nested values are addressed by
+state, updates affect the bindings that read changed fields, and deeply nested values are addressed by
 path string.
 
 A full multi-step booking flow on one shared form — tap through it and watch the live
@@ -25,7 +25,7 @@ state on the right:
 Install the package from npm with your preferred package manager:
 
 ```bash
-bun add @opentf/web-form
+pnpm add @opentf/web-form
 ```
 
 ## createForm
@@ -63,7 +63,8 @@ The same form, running live:
 <Callout type="tip" title="Works with any input">
   `register` follows the standard `value` / `oninput` contract, so it binds native
   inputs and custom components alike — including checkboxes (it also returns
-  `checked`).
+  `checked`). For radio groups and custom widgets, map their value/events explicitly
+  rather than assuming checkbox behavior.
 </Callout>
 
 ## Reactive state

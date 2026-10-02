@@ -7,14 +7,17 @@ import { Callout } from "@opentf/web-docs";
 
 # Route Guards
 
-Route guards run in the **browser** on SPA navigation. They improve UX (redirects,
-spinners) but are **not** a security boundary — they never see a first load, `curl`, or a
-crawler. For real auth on pages, API routes, and loader data, use
+Route guards run in the **browser** during initial app mounting and later SPA
+navigation. They can redirect the UI, but they cannot prevent the server from
+sending HTML or data to a direct request. For authentication on pages, API routes,
+and loader data, use
 [Middleware](/docs/routing/middleware) (`app/_middleware.js`) on the server and
 compose a client guard for the SPA feel.
 
-Add `app/routeGuard.js` and it is discovered automatically. It runs before each
-client navigation and can be async.
+Add `app/routeGuard.js`. The routes plugin exports it as `guard`; pass that export
+to `mountApp({ pages, guard, target })`, as in the
+[browser entry example](/docs/deployment/build). The guard runs before each client
+navigation and can be async.
 
 ```js
 export default async function routeGuard(to, { next, redirect }) {
@@ -29,7 +32,7 @@ export default async function routeGuard(to, { next, redirect }) {
 | --- | --- |
 | `to` | The target route: `pathname`, `fullPath` (pathname + query + hash), `params`, and `query`. |
 | `next()` | Allow the navigation. |
-| `redirect(path)` | Cancel and navigate elsewhere. |
+| `redirect(path)` | Cancel and navigate elsewhere, replacing the history entry. |
 | `replace(path)` | Redirect without adding a history entry. |
 
 `to.fullPath` is handy for redirect-then-return flows — e.g.

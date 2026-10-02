@@ -184,25 +184,25 @@ export default function FlightDemo() {
               </div>
               <div class="grid grid-cols-2 gap-4">
                 <div>
-                  <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">From</label>
-                  <select {...form.register("from")} class={field}>{AIRPORTS.map((a) => <option value={a.code}>{a.code} · {a.city}</option>)}</select>
+                  <label for="flight-from" class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">From</label>
+                  <select id="flight-from" {...form.register("from")} class={field}>{AIRPORTS.map((a) => <option value={a.code}>{a.code} · {a.city}</option>)}</select>
                 </div>
                 <div>
-                  <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">To</label>
-                  <select {...form.register("to")} class={field}>{AIRPORTS.map((a) => <option value={a.code}>{a.code} · {a.city}</option>)}</select>
+                  <label for="flight-to" class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">To</label>
+                  <select id="flight-to" {...form.register("to")} class={field}>{AIRPORTS.map((a) => <option value={a.code}>{a.code} · {a.city}</option>)}</select>
                 </div>
               </div>
               {form.values.from === form.values.to && <p class="text-[11px] text-red-500 font-bold">Origin and destination can't match.</p>}
               <div class="grid grid-cols-2 gap-4">
                 <div>
-                  <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Departure</label>
-                  <input type="date" {...form.register("depart")} class={field} />
+                  <label for="flight-depart" class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Departure</label>
+                  <input type="date" id="flight-depart" {...form.register("depart")} class={field} />
                   {triedNext && !form.values.depart && <span class="text-[10px] text-red-500 font-bold">*Required</span>}
                 </div>
                 {form.values.tripType === "round" && (
                   <div>
-                    <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Return</label>
-                    <input type="date" {...form.register("ret")} class={field} />
+                    <label for="flight-ret" class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Return</label>
+                    <input type="date" id="flight-ret" {...form.register("ret")} class={field} />
                     {triedNext && !form.values.ret && <span class="text-[10px] text-red-500 font-bold">*Required</span>}
                   </div>
                 )}
@@ -211,9 +211,9 @@ export default function FlightDemo() {
                 <div>
                   <label class="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider block mb-1">Passengers</label>
                   <div class="flex items-center gap-3">
-                    <button type="button" onclick={() => setPax(form.values.passengers - 1)} class="w-9 h-9 rounded-xl border border-[var(--border)] text-[var(--text-main)] text-lg">−</button>
+                    <button type="button" aria-label="Remove a passenger" onclick={() => setPax(form.values.passengers - 1)} class="w-9 h-9 rounded-xl border border-[var(--border)] text-[var(--text-main)] text-lg">−</button>
                     <span class="w-8 text-center text-[var(--text-main)] font-bold text-lg">{form.values.passengers}</span>
-                    <button type="button" onclick={() => setPax(form.values.passengers + 1)} class="w-9 h-9 rounded-xl border border-[var(--border)] text-[var(--text-main)] text-lg">+</button>
+                    <button type="button" aria-label="Add a passenger" onclick={() => setPax(form.values.passengers + 1)} class="w-9 h-9 rounded-xl border border-[var(--border)] text-[var(--text-main)] text-lg">+</button>
                   </div>
                 </div>
                 <div>
@@ -254,11 +254,11 @@ export default function FlightDemo() {
                   <div class="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-3">Traveler {i + 1}</div>
                   <div class="grid grid-cols-2 gap-3">
                     <div>
-                      <input {...form.register(`travelers.${i}.firstName`)} placeholder="First name" class={field} />
+                      <input aria-label={`Traveler ${i + 1} first name`} {...form.register(`travelers.${i}.firstName`)} placeholder="First name" class={field} />
                       {((triedNext && !form.values.travelers[i].firstName) || form.errors.travelers?.[i]?.firstName) && <span class="text-[10px] text-red-500 font-bold">*Required</span>}
                     </div>
                     <div>
-                      <input {...form.register(`travelers.${i}.lastName`)} placeholder="Last name" class={field} />
+                      <input aria-label={`Traveler ${i + 1} last name`} {...form.register(`travelers.${i}.lastName`)} placeholder="Last name" class={field} />
                       {((triedNext && !form.values.travelers[i].lastName) || form.errors.travelers?.[i]?.lastName) && <span class="text-[10px] text-red-500 font-bold">*Required</span>}
                     </div>
                   </div>
@@ -293,7 +293,7 @@ export default function FlightDemo() {
               <div>
                 <div class="text-[11px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-2">Promo code</div>
                 <div class="flex gap-2">
-                  <input {...form.register("promo")} placeholder="Try FLY10" class={field + " flex-1"} />
+                  <input aria-label="Promo code" {...form.register("promo")} placeholder="Try FLY10" class={field + " flex-1"} />
                   <button type="button" onclick={applyPromo} class="px-4 rounded-xl border border-[var(--border)] bg-[var(--bg-main)] text-[var(--text-main)] text-sm font-bold hover:border-indigo-400">{promoState === "checking" ? "…" : "Apply"}</button>
                 </div>
                 {promoState === "ok" && <p class="text-[11px] text-emerald-600 font-bold mt-1">FLY10 applied — 10% off.</p>}

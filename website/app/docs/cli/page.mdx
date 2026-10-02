@@ -3,8 +3,6 @@ title: CLI
 description: Develop, build, preview and test OTF Web projects with esdev.
 ---
 
-import { Callout } from "@opentf/web-docs";
-
 # CLI
 
 OTF Web projects use **esdev** with `@opentf/esdev-plugin-web`. The plugin compiles
@@ -20,24 +18,15 @@ and manages the development loop. The historical `otfw` executable is retired.
 | `esdev test --config=esdev.test.json --browser` | Run tests in a real browser with its matching driver. |
 | `esdev typecheck` | Run the project's TypeScript checker. |
 
-In this repository, `tsr dev`, `tsr site`, `tsr site-build`, `tsr test` and
-`tsr test-e2e` are the shared entry points for those operations.
-
 ## Scaffolding
 
 ```bash
-esdev create my-app --template=spa --package-manager=pnpm
+esdev create my-app
 ```
 
-OTF templates are `spa`, `fullstack`, `docs` and `library`. They support JavaScript
-or TypeScript. Use `esdev create --help` for options.
-
-<Callout type="warning" title="Template migration">
-  The installed esdev 0.14 OTF app templates still generate retired otfw scripts and
-  omit esdev.json. They need an upstream template update and a new esdev release.
-  Do not assume that changing the plugin updates an installed binary's templates.
-  The deprecated create-web scaffolder is retained only for compatibility.
-</Callout>
+Choose a template, language and package manager at the prompts. See
+[Installation](/docs/getting-started/installation) for setup, non-interactive
+options and the current template migration limitation.
 
 ## Project configuration
 

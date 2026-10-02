@@ -1,6 +1,6 @@
 export default {
   markdown: "Markdown & MDX",
   components: "Components",
-  configuration: "Configuration",
+  configuration: "Docs Configuration",
   blog: "Blog",
 };

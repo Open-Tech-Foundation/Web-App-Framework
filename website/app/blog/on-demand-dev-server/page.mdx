@@ -9,9 +9,17 @@ cover: /blog/cover-on-demand.svg
 tags: internals, toolchain, performance
 ---
 
+import { Callout } from "@opentf/web-docs";
+
+<Callout type="info" title="Historical tooling example">
+  This sample post describes the retired OTF dev server and its measurements.
+  Current projects use esdev; these endpoints, protocol details and startup figures
+  do not describe the current development pipeline. See [CLI](/docs/cli).
+</Callout>
+
 A development server's first obligation is to stay out of the way. When `dev` takes
 fifteen seconds to start, every restart becomes a context switch. On our documentation
-site, the OTF Web dev server now starts in roughly **40 milliseconds** — achieved not by
+site, the retired OTF Web dev server started in roughly **40 milliseconds** — achieved not by
 performing the same work faster, but by performing **less work, later**.
 
 ## The old shape: compile everything, then serve

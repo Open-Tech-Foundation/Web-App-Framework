@@ -20,8 +20,8 @@ export default function ReactiveMini() {
       </div>
       <div class="mt-3 grid sm:grid-cols-2 gap-4 items-end">
         <div>
-          <label class={label}>Your name</label>
-          <input {...form.register("name")} placeholder="Start typing…" class={field} />
+          <label for="reactive-name" class={label}>Your name</label>
+          <input id="reactive-name" {...form.register("name")} placeholder="Start typing…" class={field} />
         </div>
         <div class="rounded-lg bg-[var(--bg-main)] border border-[var(--border)] p-3">
           <div class="text-[10px] font-mono text-[var(--text-muted)]">form.values.name</div>

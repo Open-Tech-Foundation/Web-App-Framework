@@ -30,12 +30,12 @@ export default function LoginMini() {
       </div>
       <form onsubmit={form.handleSubmit(onSubmit)} class="mt-3 space-y-3">
         <div>
-          <label class={label}>Email</label>
-          <input {...form.register("email")} type="email" placeholder="you@example.com" class={field} />
+          <label for="login-email" class={label}>Email</label>
+          <input id="login-email" {...form.register("email")} type="email" placeholder="you@example.com" class={field} />
         </div>
         <div>
-          <label class={label}>Password</label>
-          <input {...form.register("password")} type="password" placeholder="••••••••" class={field} />
+          <label for="login-password" class={label}>Password</label>
+          <input id="login-password" {...form.register("password")} type="password" placeholder="••••••••" class={field} />
         </div>
         <div class="flex items-center gap-3 pt-1">
           <button type="submit" disabled={form.isSubmitting} class={btn}>

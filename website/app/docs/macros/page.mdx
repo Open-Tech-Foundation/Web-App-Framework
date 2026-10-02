@@ -87,20 +87,23 @@ parent can call them through a `$ref`.
 
 | | |
 | --- | --- |
-| **Signature** | `$expose(api)` — `api` is a plain object literal or variable holding methods/getters |
+| **Signature** | `$expose(api)` — `api` is a plain object literal or variable holding methods |
 | **Where** | Components only (not pages or layouts) |
 | **Compiler output** | `Object.assign(this, api)` inside `connectedCallback` |
 | **Consumption** | `<Child ref={child} />` then `child.methodName()` |
 
-```jsx
-// Child
+```jsx Field.jsx
 export default function Field() {
   const input = $ref();
   $expose({ focus: () => input.focus() });
   return <input ref={input} />;
 }
 
-// Parent
+```
+
+```jsx Form.jsx
+import Field from "./Field.jsx";
+
 export default function Form() {
   const email = $ref();
   return (
@@ -112,8 +115,10 @@ export default function Form() {
 }
 ```
 
-**Typical `api` shape:** methods (`open`, `close`, `focus`, `reset`) and optionally
-getters. Avoid exposing large state blobs — keep the surface imperative and small.
+**Typical `api` shape:** methods (`open`, `close`, `focus`, `reset`).
+`Object.assign` reads getters when the object is assigned; it does not preserve
+them as live getters. Expose a method such as `isPaused()` for values that must be
+read later.
 
 **Not supported:** `$expose` in `page.jsx` / layout factories (no `this` to assign to).
 

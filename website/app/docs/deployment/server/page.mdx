@@ -1,11 +1,11 @@
 ---
-title: Server
+title: Server Setup
 description: Supply a native Request/Response server entry for API routes, middleware and SSR.
 ---
 
 import { Callout } from "@opentf/web-docs";
 
-# Server
+# Server Setup
 
 API routes, middleware and loaders are standard server modules. A fullstack app
 provides a **server entry** that composes them and hosts the request pipeline.
@@ -43,8 +43,8 @@ esdev dist/server.js
 ```
 
 This example hosts APIs only. Static assets, SSR and additional routes belong in
-the app's server entry. The native plugin integration tests verify compiled server
-rendering, real HTTP API requests, middleware and loader data endpoints.
+the app's server entry. The [Server API](/docs/server) reference describes the
+helpers for composing that pipeline.
 
 ## Compose a full pipeline
 
@@ -58,7 +58,7 @@ with the same data. Request rendering uses shared route/collector state; the ser
 entry must account for overlapping requests rather than assuming isolated renderers.
 
 <Callout type="info" title="Starter work remains upstream">
-  The installed esdev 0.14 fullstack template still refers to the retired server
+  The installed esdev 0.15 fullstack template still refers to the retired server
   command. Its replacement needs a server entry, request pipeline and native build/dev
   config. An updated compiler plugin alone does not supply those files.
 </Callout>

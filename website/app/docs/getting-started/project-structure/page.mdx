@@ -7,10 +7,12 @@ import { Callout } from "@opentf/web-docs";
 
 # Project Structure
 
-`esdev create` scaffolds four project types — **SPA**, **Fullstack**, **Documentation
-site**, and **Library** (`@opentf/create-web` is deprecated — use `esdev create`
-for new projects). Apps and docs sites share the same `app/` routing layout;
-libraries ship source components with no `app/` folder.
+OTF Web supports browser apps, fullstack apps, documentation sites and component
+libraries. The layouts below show the native esdev setup. The embedded OTF templates
+in esdev 0.15 still need their upstream migration; see
+[Installation](/docs/getting-started/installation) before using generated projects.
+Apps and docs sites share the same `app/` routing layout; libraries ship source
+components without an `app/` folder.
 
 ## SPA (browser-only)
 
@@ -55,6 +57,9 @@ my-app/
 │  │     └─ route.js  # API endpoint: GET /api/hello
 │  └─ global.css
 ├─ public/
+├─ esdev.json         # browser and server targets
+├─ entry.js           # client bootstrap
+├─ server.js          # app-owned request pipeline
 ├─ index.html
 └─ package.json
 ```
@@ -64,8 +69,7 @@ Provide a native server entry to compose per-request rendering, loaders and API 
 
 ## Documentation site
 
-Docs projects add `otfw.config.js` and an `app/docs/` section for MDX content. The
-scaffolder can optionally add `app/blog/` — see [web-docs → Blog](/packages/web-docs/blog).
+Docs projects add `otfw.config.js` and an `app/docs/` section for MDX content. Add `app/blog/` when you need posts — see [web-docs → Blog](/packages/web-docs/blog).
 
 ```text
 my-docs/
@@ -79,6 +83,7 @@ my-docs/
 │  └─ global.css
 ├─ public/                # logos, og images — served at /
 ├─ esdev.json             # browser + prerender targets
+├─ entry.js               # client bootstrap
 ├─ ssg.js                 # staged release prerender step
 ├─ otfw.config.js         # site URL, docs/blog sections (@opentf/web-docs)
 ├─ index.html
@@ -118,7 +123,7 @@ Files the toolchain recognizes beyond ordinary components. Extensions `.js`, `.t
 | `route.js` | An [API endpoint](/docs/routing/api-routes). The folder is the URL (`app/api/hello/route.js` → `/api/hello`). A folder holds a `page.*` or a `route.*`, never both. |
 | `loader.js` | A [route loader](/docs/data-fetching) sibling to a `page.*`. Runs server-side before the page renders; its return value is `router.data`. Requires a matching `page.*` in the same folder. |
 | `_middleware.js` | [Middleware](/docs/routing/middleware) for its folder and everything nested under it (pages, API, loader data, SSR). |
-| `_meta.js` | Docs sidebar order and labels for a folder (`@opentf/web-docs`). JavaScript only today. |
+| `_meta.js` | Docs sidebar order and labels for a folder (`@opentf/web-docs`). Supports `.js`, `.mjs` and `.json` today. |
 
 ### Project root
 
@@ -126,7 +131,7 @@ Files the toolchain recognizes beyond ordinary components. Extensions `.js`, `.t
 | --- | --- |
 | `esdev.json` | Compiler plugins, build targets, output locations and development settings. |
 | `entry.js` | Client bootstrap: imports @otfw/routes and calls mountApp. |
-| `index.html` | The HTML shell with an explicit module script. The toolchain mounts the app into `#app` and injects the bundle. |
+| `index.html` | The HTML shell with an explicit module script. Your entry mounts into `#app`; esdev bundles the module script. |
 | `public/` | Static assets copied to `dist/` at build time and served at the site root (`public/favicon.svg` → `/favicon.svg`). Overrides generated files when names collide (e.g. a hand-written `public/robots.txt`). |
 | `otfw.config.js` | Optional for SPA/fullstack (`site.url`, `i18n`). Required for docs/blog production builds and drives `@opentf/web-docs` (navbar, search, feeds). See [Configuration](/docs/configuration). |
 | `dist/` | Build output — created by `esdev build`. Not checked in; safe to delete and rebuild. |
@@ -136,7 +141,7 @@ registration needed (see [Components](/docs/core-concepts/components)).
 
 ## Conventions
 
-- `.jsx`/`.tsx` files must have a default export.
+- Route pages and layouts need a default export. Reusable components can use named or default exports.
 - Components are PascalCase (`UserCard.jsx`).
 - You never import `$state`, `onMount`, etc. — the compiler injects them.
 

@@ -29,12 +29,12 @@ export default function NestedMini() {
         <div class="space-y-3">
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class={label}>profile.firstName</label>
-              <input {...form.register("profile.firstName")} class={field} />
+              <label for="nested-profile-firstName" class={label}>profile.firstName</label>
+              <input id="nested-profile-firstName" {...form.register("profile.firstName")} class={field} />
             </div>
             <div>
-              <label class={label}>profile.lastName</label>
-              <input {...form.register("profile.lastName")} class={field} />
+              <label for="nested-profile-lastName" class={label}>profile.lastName</label>
+              <input id="nested-profile-lastName" {...form.register("profile.lastName")} class={field} />
             </div>
           </div>
           <div>
@@ -42,8 +42,8 @@ export default function NestedMini() {
             <div class="space-y-2">
               {form.values.tags.map((_, i) => (
                 <div class="flex items-center gap-2">
-                  <input {...form.register(`tags.${i}`)} placeholder={`tags.${i}`} class={field} />
-                  <button type="button" onclick={() => removeTag(i)} class="shrink-0 w-9 h-9 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-red-500 hover:border-red-400 transition-all">✕</button>
+                  <input aria-label={`Tag ${i + 1}`} {...form.register(`tags.${i}`)} placeholder={`tags.${i}`} class={field} />
+                  <button type="button" aria-label={`Remove tag ${i + 1}`} onclick={() => removeTag(i)} class="shrink-0 w-9 h-9 rounded-lg border border-[var(--border)] text-[var(--text-muted)] hover:text-red-500 hover:border-red-400 transition-all">✕</button>
                 </div>
               ))}
             </div>

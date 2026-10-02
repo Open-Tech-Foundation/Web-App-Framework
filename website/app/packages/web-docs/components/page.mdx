@@ -6,7 +6,7 @@ description: Content components shipped with web-docs — callouts, steps, tabs,
 import { Callout, Steps, Tabs, CodeBlock } from "@opentf/web-docs";
 
 export const demoTabs = [
-  { label: "bun", content: <CodeBlock code="pnpm add @opentf/web" /> },
+  { label: "bun", content: <CodeBlock code="bun add @opentf/web" /> },
   { label: "npm", content: <CodeBlock code="npm i @opentf/web" /> },
   { label: "pnpm", content: <CodeBlock code="pnpm add @opentf/web" /> },
 ];
@@ -69,7 +69,7 @@ copy button, pass a `CodeBlock`.
 import { Tabs, CodeBlock } from "@opentf/web-docs";
 
 <Tabs tabs={[
-  { label: "bun", content: <CodeBlock code="pnpm add @opentf/web" /> },
+  { label: "bun", content: <CodeBlock code="bun add @opentf/web" /> },
   { label: "npm", content: <CodeBlock code="npm i @opentf/web" /> },
 ]} />
 ```

@@ -16,7 +16,7 @@ an app-owned server entry renders routes per request (SSR) and mounts your
 [API routes](/docs/routing/api-routes) at their file paths (`route.{js,ts}` works in
 any folder, conventionally `app/api/`). Typed server functions are still in progress.
 
-Deployment options include to deploy:
+Choose the output that fits your app:
 
 - **[Production Build](/docs/deployment/build)** — a single-page app: one `index.html`
   shell plus the bundle. The client renders every route. Best for app-like sites behind
@@ -46,7 +46,8 @@ Deployment options include to deploy:
 
 For a **single-page** build, configure the host to fall back to `index.html` for unknown
 paths so client-side routes resolve. A fully **static-generated** site needs no fallback
-— every route already has its own HTML file.
+— generated routes have their own HTML files. Configure the host to return your
+404 page for paths that were not generated.
 
 ## Running a server
 
