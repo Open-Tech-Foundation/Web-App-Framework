@@ -286,6 +286,33 @@ local issues listed above now have fixes or explicit unsupported-route handling;
 full MDX fallback support and automatic dynamic navigation expansion remain future
 features.
 
+## esdev maintainer follow-up
+
+Framework package declarations now include a type-only `jsx-runtime` entry for
+`jsx: "preserve"` and `jsxImportSource: "@opentf/web"`, plus root/runtime/signals
+entry declarations. A copied-package strict TypeScript regression checks starter
+page, layout and counter shapes, loader data access, native events, SVG, custom
+elements, built-in components and lifecycle callbacks. Expected errors check
+component props, DOM event targets and signal writes. Declaration checking runs
+with `skipLibCheck: false`; this is not an exhaustive regeneration of every
+upstream template variant.
+
+The local plugin exports `loaderRoutes` from discovered `loader.{js,ts}` files;
+browser entries can pass `loaders: loaderRoutes` to `mountApp`. Tests cover root,
+dynamic and catch-all patterns, custom app directories, exclusions, site
+isolation, deleted loaders and duplicate loader rejection. The real fullstack
+bundle regression and website entry use this generated list. Loader source is
+not imported into the browser route map.
+
+DOM-free route registration already exists at `@opentf/web/server`; upstream
+fullstack servers should use that entry rather than the browser runtime entry.
+Removing the bootstrap and updating embedded template imports remains an upstream
+starter change. These additions require web and esdev-plugin-web package releases,
+with no new native binary or release configuration changes.
+
+Validation: **867 existing + 3 new = 870 tests**, plus repository typechecking.
+Logs: `/tmp/otfw-maintainer-tests.log` and `/tmp/otfw-maintainer-typecheck.log`.
+
 ## Coverage limits
 
 This audit checked JavaScript starter shapes with targeted JSX, TSX, MDX, CSS-module,

@@ -16,7 +16,30 @@ bun add @opentf/web
 
 Scaffold a ready-to-run app with [`esdev create`](https://esrun.opentechf.org/esdev/create)
 (`@opentf/create-web` is deprecated)
-and drive it with [`@opentf/web-cli`](https://github.com/Open-Tech-Foundation/Web-App-Framework/tree/main/packages/web-cli).
+and use `esdev start`, `esdev build`, and `esdev typecheck`.
+
+## TypeScript
+
+The package includes runtime declarations and JSX types. For `.tsx` sources, keep
+JSX for the OTF compiler and select the framework's type entry:
+
+```json
+{
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "@opentf/web",
+    "moduleResolution": "bundler",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmit": true
+  }
+}
+```
+
+`esdev create my-app --language=ts` supplies the starter configuration and macro
+declarations. `@opentf/web/jsx-runtime` is a type entry; component compilation
+still runs through `@opentf/esdev-plugin-web`. Compiler helper signatures remain
+permissive; signals and lifecycle callbacks carry their value and event types.
 
 ## What's inside
 

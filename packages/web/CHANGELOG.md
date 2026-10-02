@@ -4,6 +4,8 @@
 
 ### Added
 
+- Publish framework entry declarations and compiler JSX types for strict TypeScript starters.
+
 - The DOM-free server entry exposes route registration, request-scoped router
   values and locale helpers for SSR setup without browser Custom Elements.
 

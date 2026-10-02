@@ -4,6 +4,8 @@
 
 ### Added
 
+- Export discovered loader route patterns as `loaderRoutes` from `@otfw/routes`, without bundling server loader modules in the browser.
+
 - Request component/page refresh output for hot browser CSR builds through esdev's
   existing HMR API. Release, server and test output stays free of refresh code.
 - Local-package Chromium regressions cover compatible state, cleanup, refs,

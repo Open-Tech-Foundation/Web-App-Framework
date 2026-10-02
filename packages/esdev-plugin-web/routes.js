@@ -4,9 +4,9 @@
 //
 //   // entry.js — the whole app shell, Vite-style:
 //   import { mountApp } from "@opentf/web";
-//   import { guard, pages } from "@otfw/routes";
+//   import { guard, pages, loaderRoutes } from "@otfw/routes";
 //
-//   mountApp({ pages, guard, target: document.getElementById("app") });
+//   mountApp({ pages, guard, loaders: loaderRoutes, target: document.getElementById("app") });
 //
 // ```json
 // { "plugins": [{ "module": "@opentf/esdev-plugin-web",
@@ -59,6 +59,18 @@ async function discoverPages(dir, exclude = new Set()) {
     out.push(join(dir, rel));
   }
   return out;
+}
+
+async function discoverLoaders(dir, exclude) {
+  const routes = new Map();
+  for await (const rel of new Glob("**/loader.{js,ts}").scan(dir)) {
+    if ([...exclude].some((name) => rel === name || rel.startsWith(`${name}/`))) continue;
+    const pattern = rel.replace(/(^|\/)loader\.(js|ts)$/, "") || "/";
+    const route = pattern.startsWith("/") ? pattern : `/${pattern}`;
+    if (routes.has(route)) throw new Error(`Conflicting loaders for ${route}: ${routes.get(route)} and ${join(dir, rel)}`);
+    routes.set(route, join(dir, rel));
+  }
+  return [...routes].sort(([a], [b]) => a.localeCompare(b));
 }
 
 function stripAppPrefix(filePath, appDir) {
@@ -117,18 +129,20 @@ export function createOtfwRoutes({ appDir = "app", exclude = [] } = {}) {
       async handler(id) {
         const root = id.slice("@otfw/routes:".length);
         const pages = await discoverPages(root, excluded);
+        const loaders = await discoverLoaders(root, excluded);
         const map = pages
           .map((p) => `  [${JSON.stringify(routeKey(p, root))}]: () => import(${JSON.stringify(p)}),`)
           .join("\n");
         const guard = await findGuard(root);
         const code =
           `export const pages = {\n${map}\n};\n` +
+          `export const loaderRoutes = ${JSON.stringify(loaders.map(([route]) => route))};\n` +
           (guard
             ? `export { default as guard } from ${JSON.stringify(guard)};\n`
             : `export const guard = undefined;\n`);
         // The discovered files, so an edit rebuilds the map. (Directories are
         // not listed: `dependsOn` names files the graph cannot discover.)
-        return { code, type: "js", dependsOn: pages };
+        return { code, type: "js", dependsOn: [...pages, ...loaders.map(([, file]) => file), ...(guard ? [guard] : [])] };
       },
     },
   };

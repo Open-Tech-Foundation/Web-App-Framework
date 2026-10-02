@@ -4,9 +4,18 @@
   "description": "The native-first OTF Web runtime — signal-based reactivity and zero-VDOM DOM operations, paired with the IR-based compiler.",
   "type": "module",
   "exports": {
-    ".": "./index.js",
-    "./signals": "./core/signals.js",
-    "./runtime": "./runtime/index.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./signals": {
+      "types": "./core/signals.d.ts",
+      "default": "./core/signals.js"
+    },
+    "./runtime": {
+      "types": "./runtime/index.d.ts",
+      "default": "./runtime/index.js"
+    },
     "./server": {
       "types": "./server/index.d.ts",
       "default": "./server/index.js"
@@ -15,10 +24,15 @@
       "types": "./server/adapters/node.d.ts",
       "default": "./server/adapters/node.js"
     },
-    "./hmr": "./runtime/hmr.js"
+    "./hmr": "./runtime/hmr.js",
+    "./jsx-runtime": {
+      "types": "./jsx-runtime.d.ts"
+    }
   },
   "files": [
     "index.js",
+    "index.d.ts",
+    "jsx-runtime.d.ts",
     "core",
     "runtime",
     "components",
@@ -43,5 +57,6 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "types": "./index.d.ts"
 }

@@ -3,8 +3,8 @@
 // (file conventions, no CLI), components compile on load, styles compile
 // natively (project tailwindcss).
 import { mountApp } from "@opentf/web";
-import { guard, pages } from "@otfw/routes";
+import { guard, pages, loaderRoutes } from "@otfw/routes";
 
 import "./app/global.css";
 
-mountApp({ pages, guard, target: document.getElementById("app") });
+mountApp({ pages, guard, loaders: loaderRoutes, target: document.getElementById("app") });

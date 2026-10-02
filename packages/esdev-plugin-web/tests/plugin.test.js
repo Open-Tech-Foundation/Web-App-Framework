@@ -138,7 +138,7 @@ test("a starter config loads the default factory and builds browser and server r
     }));
     await write(join(scratch, "tsconfig.json"), "{}");
     await write(join(scratch, "app/page.jsx"), source);
-    await write(join(scratch, "entry.js"), 'import { mountApp } from "@opentf/web"; import { pages } from "@otfw/routes"; mountApp({ pages, target: document.getElementById("app") });');
+    await write(join(scratch, "entry.js"), 'import { mountApp } from "@opentf/web"; import { pages, loaderRoutes } from "@otfw/routes"; mountApp({ pages, loaders: loaderRoutes, target: document.getElementById("app") });');
     await write(join(scratch, "index.html"), '<html><body><div id="app"></div><script type="module" src="./entry.js"></script></body></html>');
     await mkdir(join(scratch, "app/api/hello"), { recursive: true });
     await write(join(scratch, "app/api/hello/route.js"), 'export function GET(request, context) { return Response.json({ message: "API", source: context.locals.source }); }');

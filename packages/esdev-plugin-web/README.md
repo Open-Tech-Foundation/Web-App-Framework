@@ -27,10 +27,15 @@ The starter must install `@opentf/web` and `@opentf/esdev-plugin-web`. Its
 
 ```js
 import { mountApp } from "@opentf/web";
-import { pages, guard } from "@otfw/routes";
+import { pages, guard, loaderRoutes } from "@otfw/routes";
 
-mountApp({ pages, guard, target: document.getElementById("app") });
+mountApp({ pages, guard, loaders: loaderRoutes, target: document.getElementById("app") });
 ```
+
+`loaderRoutes` contains the patterns discovered from `app/**/loader.{js,ts}`,
+including `/`, `/posts/[id]`, and `/docs/[...slug]`. Server loader modules stay out
+of this browser route map. Excluded subtrees are skipped; competing JS and TS
+loaders for the same route fail the build.
 
 Run `esdev start`, `esdev build`, or `esdev test --dom`. CSS and Tailwind use
 esdev's native pipeline. This package adds compilation and route discovery;
@@ -160,9 +165,9 @@ workspace compiler (`tsr build-compiler`) and restart esdev to enable them.
 
   ```js
   import { mountApp } from "@opentf/web";
-  import { guard, pages } from "@otfw/routes";
+  import { guard, pages, loaderRoutes } from "@otfw/routes";
 
-  mountApp({ pages, guard, target: document.getElementById("app") });
+  mountApp({ pages, guard, loaders: loaderRoutes, target: document.getElementById("app") });
   ```
 
   `resolve` + `load` only. It runs under builds and unbundled commands alike
