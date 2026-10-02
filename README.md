@@ -134,6 +134,12 @@ from that directory. You can also run `esdev start`, `esdev build` and
 `esdev preview` directly there. Changes to workspace packages reach the site after
 their released versions are updated in `website/package.json`.
 
+For automatic Cloudflare deployment, set the build command to
+`bash scripts/build-site.sh` with the repository root as the working directory.
+The script installs esdev 0.15.0 (override with `ESDEV_VERSION`), installs the
+website's locked dependencies, and builds `website/dist`. Keep the existing
+Cloudflare deployment command; the root `wrangler.jsonc` points to that output.
+
 Component sources compile on import through `@opentf/esdev-plugin-web` in
 esdev's DOM realm: `tsr test-web-docs-dom`, `tsr test-web-form`, and
 `tsr test-web-i18n` run them individually. Each test file runs in a separate
