@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- Request component/page refresh output for hot browser CSR builds through esdev's
+  existing HMR API. Release, server and test output stays free of refresh code.
+- Local-package Chromium regressions cover compatible state, cleanup, refs,
+  slotted/co-located children, route refresh and reload fallbacks.
+
 ### Changed
 
 - Require esdev `>=0.15.0` for the compiler package resolver used by bundled

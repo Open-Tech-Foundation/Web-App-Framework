@@ -70,7 +70,7 @@ async function compileModule(server, code, id, { target, failOnError, onResult, 
   const base = id.split("/").pop().replace(/\.(mdx|md|[jt]sx)$/, "");
   const isPage = base === "page" || base === "layout" || base === "404";
   try {
-    const { code: out, map } = await server.compile(id, code, !isPage, target);
+    const { code: out, map } = await server.compile(id, code, !isPage, ctx?.hot && target === "csr" ? "csr-hot" : target);
     onResult?.(id, null);
     // otfwc has already lowered the JSX, so the result is plain JavaScript —
     // saying so keeps the bundler from parsing a `.jsx` id as JSX a second time.

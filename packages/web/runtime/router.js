@@ -581,6 +581,34 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
   }
 }
 
+// Development factory refresh deliberately bypasses navigation: no guard,
+// loader request, history mutation, route-state change or heading focus jump.
+export async function refreshHotRoute(factory) {
+  if (!rootEl || !currentNodes.some(node => node.__otfwHotFactory === factory)) return;
+  const seq = navSeq;
+  const match = matchRoute(state.pathname.value) ||
+    (routes.notFound ? { entry: routes.notFound, route: state.pathname.value, params: {} } : null);
+  if (!match) return;
+  try {
+    const built = await buildRouteNode(match, Object.fromEntries(state.searchParams.value));
+    if (seq !== navSeq) {
+      for (const node of built.nodes) runCleanup(node);
+      return;
+    }
+    const focusedId = rootEl.contains(document.activeElement) ? document.activeElement.id : null;
+    const scroll = [window.scrollX, window.scrollY];
+    for (const node of currentNodes) runCleanup(node);
+    rootEl.replaceChildren(built.node);
+    currentNodes = built.nodes;
+    for (const node of currentNodes) runMount(node);
+    if (focusedId) document.getElementById(focusedId)?.focus({ preventScroll: true });
+    window.scrollTo(...scroll);
+    clearError({ phase: "route" });
+  } catch (error) {
+    reportError(error, { phase: "route", path: state.pathname.value });
+  }
+}
+
 /** Move keyboard/screen-reader focus into the newly rendered route after SPA nav. */
 function focusRouteContent(container) {
   const target = container.querySelector("h1") || container.querySelector("main");

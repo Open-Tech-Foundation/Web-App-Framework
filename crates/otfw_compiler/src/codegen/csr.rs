@@ -94,6 +94,7 @@ struct Uses {
     /// The constructor reads rich island props from the serialized payload (hydrate
     /// target only; a CSR `Build` component reads attributes as before).
     hydration_props: bool,
+    hot: bool,
 }
 
 impl Uses {
@@ -118,6 +119,7 @@ impl Uses {
         self.run_build |= o.run_build;
         self.slot_children |= o.slot_children;
         self.hydration_props |= o.hydration_props;
+        self.hot |= o.hot;
     }
 }
 
@@ -189,10 +191,13 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
             merged.push(name.clone());
         }
     }
-    if merged.is_empty() {
-        return String::new();
+    let mut header = if merged.is_empty() { String::new() } else {
+        format!("import {{ {} }} from \"@opentf/web\";\n", merged.join(", "))
+    };
+    if uses.hot {
+        header.push_str("import { hotState, registerHotModule, registerHotRoute } from \"@opentf/web/hmr\";\n");
     }
-    format!("import {{ {} }} from \"@opentf/web\";\n", merged.join(", "))
+    header
 }
 
 /// Emit a page/layout as a factory function returning the root DOM node.
@@ -301,6 +306,8 @@ pub(crate) enum ComponentView<'a> {
     /// Pure CSR: build the subtree and append it. No server DOM is ever present, and no
     /// hydration helper is referenced (a CSR-only app stays free of `isHydrating` etc.).
     Build,
+    /// Development-only CSR with compatible state slots and refresh registration.
+    Hot,
     /// Hydrate target, adoptable:
     /// `if (isHydrating() && this.firstChild) { <adopt> } else { <build> }` — adopt the
     /// server DOM on first paint, build fresh on client navigation. An adopt-time
@@ -327,9 +334,12 @@ fn component_body_ex<'a>(
     let props = &lowered.props;
     // Hydrate-target components (anything but pure CSR `Build`) initialize prop signals
     // from the serialized rich-props payload; a CSR-only build reads attributes as before.
-    let hydratable = !matches!(view, ComponentView::Build);
+    let hot = matches!(view, ComponentView::Hot);
+    let hydratable = !matches!(view, ComponentView::Build | ComponentView::Hot);
 
     let mut e = Emitter::new(lowered, Disposal::Sink("this._cleanups"));
+    e.hot = hot;
+    e.uses.hot = hot;
     // A hydrate-target build can run over a server-rendered host (rebuild fallback / mismatch
     // recovery), where the slotted children must be recovered from the slot markers.
     e.emit_children_capture(hydratable && lowered.children_local.is_some());
@@ -444,6 +454,9 @@ fn component_body_ex<'a>(
     code.push_str("    if (this._mounted) return;\n");
     code.push_str("    this._mounted = true;\n");
     code.push_str("    this._cleanups = [];\n");
+    if hot {
+        code.push_str("    if (!this._hotRefreshing) this._hotState = new Map();\n");
+    }
     // Stable styling hook (additive — never clobbers a consumer's class): lets CSS
     // target the host by a readable name even though the registry tag is hashed.
     // When the component declares a `class` prop, the hook lives on the same observed
@@ -464,7 +477,7 @@ fn component_body_ex<'a>(
     }
     code.push_str("    try {\n");
     match view {
-        ComponentView::Build => {
+        ComponentView::Build | ComponentView::Hot => {
             code.push_str(&body);
             code.push_str(&format!("    this.appendChild({root});\n"));
             code.push_str(&mounts);
@@ -587,6 +600,9 @@ fn component_body_ex<'a>(
     code.push_str("      if (this._cleanups) for (const dispose of this._cleanups) dispose();\n");
     code.push_str("      this._cleanups = [];\n");
     code.push_str("      this._mounted = false;\n");
+    if hot {
+        code.push_str("      this._hotState = null; this._hotChildren = null;\n");
+    }
     // Drop the built subtree so a reused element instance remounts clean. Most hosts are
     // discarded with their parent on removal, but a module-level JSX node held in a
     // `const` and re-inserted across client navigations is the same instance each time —
@@ -648,6 +664,12 @@ pub fn emit_module(
     module_exprs: &ExprTable,
 ) -> CsrModule {
     emit_module_inner(components, module_stmts, module_exprs, &[], &[])
+}
+
+/// Development CSR. Page factories and mixed export modules remain reload boundaries.
+pub fn emit_hot_module(components: &[Lowered], module_stmts: &[BodyItem], module_exprs: &ExprTable) -> CsrModule {
+    let views = vec![ComponentView::Hot; components.len()];
+    emit_module_inner(components, module_stmts, module_exprs, &views, &[])
 }
 
 /// Like `emit_module`, but each component may carry a [`ComponentView`] (aligned with
@@ -745,7 +767,13 @@ fn emit_module_inner(
         // surface alongside codegen errors so the CLI's warning channel sees them.
         errors.extend(c.errors.iter().cloned());
         if c.is_page {
-            let (e, body) = page_body(c);
+            let (mut e, mut body) = page_body(c);
+            if views.get(i).is_some_and(|v| matches!(v, ComponentView::Hot)) && c.ir.id.export == "default" {
+                e.uses.hot = true;
+                body = body.replacen("export default function (", "function __otfwRoute(", 1);
+                let safe = hot_boundary_safe(components, module_stmts, module_exprs);
+                body.push_str(&format!("export default registerHotRoute(import.meta.hot, __otfwRoute, {safe});\n"));
+            }
             combined.merge(&e.uses);
             templates.extend(e.templates);
             errors.extend(e.errors);
@@ -805,10 +833,46 @@ fn emit_module_inner(
     // All registrations last: every component class (and any module-level builder) is now
     // declared, so defining a tag — which synchronously upgrades a matching SSR element
     // and runs its `connectedCallback` — can safely reach any sibling component by `.tag`.
-    for define in defines {
-        code.push_str(&define);
+    if views.iter().any(|v| matches!(v, ComponentView::Hot)) && components.iter().any(|c| !c.is_page) {
+        let entries = components.iter().filter(|c| !c.is_page).map(|c| {
+            // Changing constructor/observed attributes or state declarations is a reload.
+            // Initializer expressions are intentionally excluded: existing state wins.
+            let props = c.props.iter().map(|p| {
+                let default = p.default.as_ref()
+                    .map(|d| crate::sourcemap::plain(c.exprs.source_map.as_deref(), d));
+                format!("{}:{:?}", p.attr, default)
+            }).collect::<Vec<_>>();
+            let states = c.body.iter().filter_map(|item| match item {
+                BodyItem::Signal(d) => Some(format!("{}:{:?}", d.name, d.kind)), _ => None,
+            }).collect::<Vec<_>>();
+            let signature = format!("{:?}|{:?}|{:?}|{}|{}",
+                props, states, c.children_local, c.is_default_export, c.is_named_export);
+            format!("[{}Element, {}]", c.name, js_string(&signature))
+        }).collect::<Vec<_>>().join(", ");
+        // Exposed APIs and exported helpers can affect importers beyond the view.
+        let safe = hot_boundary_safe(components, module_stmts, module_exprs);
+        let accept = if components.iter().any(|c| c.is_page) { ", false" } else { "" };
+        code.push_str(&format!("registerHotModule(import.meta.hot, [{entries}], {safe}{accept});\n"));
+    } else {
+        for define in defines { code.push_str(&define); }
+    }
+    if views.iter().any(|v| matches!(v, ComponentView::Hot)) &&
+        !components.iter().any(|c| c.is_page && c.ir.id.export == "default") {
+        code.push_str("if (import.meta.hot?.data.otfwRouteBoundary) import.meta.hot.invalidate();\n");
     }
     CsrModule { code, errors }
+}
+
+fn hot_boundary_safe(components: &[Lowered], stmts: &[BodyItem], exprs: &ExprTable) -> bool {
+    components.iter().all(|c| c.exposes.is_empty()) && !stmts.iter().any(|stmt| {
+        let source = match stmt {
+            BodyItem::Raw(source) => source,
+            BodyItem::Jsx { template, .. } => template,
+            _ => return false,
+        };
+        crate::sourcemap::plain(exprs.source_map.as_deref(), source)
+            .trim_start().starts_with("export ")
+    })
 }
 
 /// Where effect disposers go: nowhere (page) or a collection sink (component).
@@ -832,6 +896,7 @@ struct Emitter<'a> {
     /// Whether the current element context is inside an `<svg>` subtree, so
     /// descendants are created with `createElementNS` (SPEC §5.8).
     in_svg: bool,
+    hot: bool,
     /// Static subtrees this unit stamps from a hoisted `<template>`, as
     /// `(const name, HTML)` — drained by the module assembler (see [`Template`]).
     templates: Vec<Template>,
@@ -895,6 +960,7 @@ impl<'a> Emitter<'a> {
             base,
             list_counter: 0,
             in_svg: false,
+            hot: false,
             templates: Vec::new(),
         }
     }
@@ -951,6 +1017,8 @@ impl<'a> Emitter<'a> {
                     "const {local} = this._serverSlot ?? Array.from(this.childNodes);"
                 ));
                 self.line("this._serverSlot = null;".to_string());
+            } else if self.hot {
+                self.line(format!("const {local} = this._hotChildren ??= Array.from(this.childNodes);"));
             } else {
                 self.line(format!("const {local} = Array.from(this.childNodes);"));
             }
@@ -1136,7 +1204,11 @@ impl<'a> Emitter<'a> {
         match decl.kind {
             SignalKind::State => {
                 self.uses.signal = true;
-                self.line(format!("const {} = signal({});", decl.name, decl.init));
+                if self.hot {
+                    self.line(format!("const {} = hotState(this, {}, () => signal({}));", decl.name, js_string(&decl.name), decl.init));
+                } else {
+                    self.line(format!("const {} = signal({});", decl.name, decl.init));
+                }
             }
             SignalKind::Ref => {
                 self.uses.signal = true;
@@ -1156,6 +1228,9 @@ impl<'a> Emitter<'a> {
                     format!("() => {}", decl.init)
                 };
                 self.line(format!("const {} = computed({});", decl.name, body));
+                if self.hot {
+                    self.line(format!("this._cleanups.push(() => {}.dispose());", decl.name));
+                }
             }
             // `Prop`-kind signals come from the (not yet implemented) props path.
             SignalKind::Prop => {

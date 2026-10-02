@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- Development component refresh retains compatible state and props, disposes old
+  effects/hooks, rebinds refs, and preserves slotted child hosts. Page/layout refresh
+  updates the active route without navigation and remounts its views.
+
+### Fixed
+
+- Derived values can release owned subscriptions during view teardown. Effect
+  disposal detaches dependencies even when a cleanup throws, and scope teardown
+  continues through all owned consumers.
+
 ## [0.29.0] - 2026-10-01
 
 ### Fixed

@@ -180,3 +180,23 @@ workspace compiler (`tsr build-compiler`) and restart esdev to enable them.
 
 Current starter compatibility and release requirements are tracked in
 [ESDEV_MIGRATION.md](../../docs/ESDEV_MIGRATION.md).
+
+## Development refresh
+
+For hot browser CSR builds (`ctx.hot`), the plugin requests development output
+from the compiler. No application HMR bootstrap or manual `accept()` is needed.
+Compatible component edits retain the registered host, props and named `$state`
+slots. The view is rebuilt: refs and derived values are recreated, old effects
+and lifecycle hooks are disposed, and new hooks run once. Slotted child nodes
+survive their parent's refresh; other children created by the edited view remount.
+
+Page/layout edits refresh the active route without changing the document, URL,
+history or loader data. The route views remount, so their local state resets.
+Changed component identities, prop/state declarations, mixed helper exports and
+`$expose` modules use the reload fallback. Uncontrolled fields inside a rebuilt
+view reset; bind drafts to `$state` to retain them across compatible edits.
+
+Refresh requires the matching updated `@opentf/web`, compiler binary and plugin.
+Server, release and test output contains no refresh registration. Verification
+and the outstanding upstream compile-error recovery issue are documented in
+[HMR_VERIFICATION.md](../../docs/HMR_VERIFICATION.md).

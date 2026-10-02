@@ -28,6 +28,7 @@
     "noPropertyAccessFromIndexSignature": false,
     "paths": {
       "@opentf/web": ["./packages/web/index.js"],
+      "@opentf/web/hmr": ["./packages/web/runtime/hmr.js"],
       "@opentf/web/compiler": ["./packages/web/compiler/index.js"],
       "@opentf/web-form": ["./packages/web-form/index.js"],
       "@opentf/web-test": ["./packages/web-test/index.js"],

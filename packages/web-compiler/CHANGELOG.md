@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- Development CSR output with component compatibility metadata, named state slots
+  and route refresh registrations (`csr-hot` service target, `build --hot`). Requires
+  the matching updated runtime and esdev plugin; rebuild the existing `otfwc` archives.
+
 ### Fixed
 
 - Resolve the installed compiler package before locating its binary archive.

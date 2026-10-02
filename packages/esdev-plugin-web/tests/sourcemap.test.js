@@ -84,6 +84,16 @@ test("Markdown source maps identify the generated JSX intermediate", async () =>
   expect(result.map.sourcesContent[0]).toContain("export default");
 });
 
+test("hot component handlers retain their original source positions", async () => {
+  const result = await createWebPlugin().transform.handler(source, "/Counter.jsx", {
+    command: "start", platform: "browser", hot: true,
+  });
+  expect(result.code).toContain("hotState(this,");
+  const error = originalAt(result, 'throw new Error("source-map-probe")');
+  expect(error.originalLine).toBe(4);
+  expect(error.originalColumn).toBe(4);
+});
+
 test("CLI --sourcemap emits an inline map and the legacy service still returns JavaScript", async () => {
   const root = dirname(dirname(dirname(dirname(fromFileURL(import.meta.url)))));
   const compiler = join(root, "target/debug/otfwc");

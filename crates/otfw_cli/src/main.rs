@@ -29,6 +29,7 @@ use diagnostic::Diag;
 #[derive(Clone, Copy)]
 enum Target {
     Csr,
+    CsrHot,
     Ssg,
     Hydrate,
 }
@@ -40,7 +41,9 @@ fn main() -> ExitCode {
             let rest = &args[2..];
             let as_component = rest.iter().any(|a| a == "--component");
             let from_stdin = rest.iter().any(|a| a == "--stdin");
-            let target = if rest.iter().any(|a| a == "--target=hydrate") {
+            let target = if rest.iter().any(|a| a == "--hot") {
+                Target::CsrHot
+            } else if rest.iter().any(|a| a == "--target=hydrate") {
                 Target::Hydrate
             } else if rest.iter().any(|a| a == "--target=ssg" || a == "--ssg") {
                 Target::Ssg
@@ -53,7 +56,7 @@ fn main() -> ExitCode {
                     rest.iter().any(|a| a == "--sourcemap"),
                 ),
                 None => {
-                    eprintln!("usage: otfwc build [--component] [--stdin] [--sourcemap] [--target=ssg|hydrate] <file.tsx>");
+                    eprintln!("usage: otfwc build [--component] [--stdin] [--sourcemap] [--hot] [--target=ssg|hydrate] <file.tsx>");
                     ExitCode::FAILURE
                 }
             }
@@ -66,6 +69,7 @@ fn main() -> ExitCode {
             println!("usage: otfwc build [--component] [--stdin] <file.tsx>   # parse → lower → CSR codegen");
             println!("  default emits a page factory; --component emits a Custom Element class");
             println!("  --stdin reads source from stdin; <file> is used only for the module id");
+            println!("  --hot emits development CSR refresh metadata for esdev");
             println!("  --sourcemap emits an inline map for JSX/TSX; Markdown maps to generated JSX");
             println!("       otfwc serve [--sourcemap]   # long-lived compiler: framed requests on stdin, results on stdout");
             println!("       otfwc docs <index|inspect|query> …   # static HTML search indexes");
@@ -248,6 +252,10 @@ fn compile_module(
                 hydrate::emit_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
             (m.code, m.errors)
         }
+        Target::CsrHot => {
+            let m = csr::emit_hot_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
+            (m.code, m.errors)
+        }
         Target::Csr => {
             let m = csr::emit_module(&lowered.components, &lowered.module_stmts, &lowered.module_exprs);
             (m.code, m.errors)
@@ -372,6 +380,7 @@ fn serve(source_map: bool) -> ExitCode {
         // The serve protocol's 4th field selects the codegen backend by token; an
         // unknown token falls back to CSR (the safe default).
         let target = match target_tok.as_str() {
+            "csr-hot" => Target::CsrHot,
             "ssg" => Target::Ssg,
             "hydrate" => Target::Hydrate,
             _ => Target::Csr,

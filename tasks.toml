@@ -138,8 +138,12 @@ run = "esdev test --config=esdev.test.json --browser --setup=@opentf/web-test/se
 [tasks.test-e2e-benchmark-runner]
 run = "esdev test --config=esdev.test.json benchmarks/tests/browser-runner.test.js"
 
+[tasks.test-e2e-hmr]
+deps = ["build-compiler"]
+run = "esdev scripts/verify-hmr.mjs"
+
 [tasks.test-e2e]
-deps = ["test-e2e-docs", "test-e2e-web-test", "test-e2e-benchmark-runner"]
+deps = ["test-e2e-docs", "test-e2e-web-test", "test-e2e-benchmark-runner", "test-e2e-hmr"]
 
 # Local convenience — CI runs the fast and browser tiers as separate parallel jobs, so this
 # is the "use my cores" path on a dev machine. `build-compiler` is de-duplicated to one run.

@@ -63,6 +63,41 @@ test("already lowered JSX is left to the next transform", async () => {
   expect(await plugin.transform.handler("export default 1;", "/app/page.jsx", { type: "js" })).toBeNull();
 });
 
+test("only hot browser CSR builds emit component refresh and state slots", async () => {
+  const component = 'export default function Counter() { let count = $state(0); return <button onclick={() => count++}>{count}</button>; }';
+  for (const hot of [true, false]) {
+    const result = await webPlugin().transform.handler(component, "/app/Counter.jsx", {
+      command: "start", platform: "browser", hot,
+    });
+    expect(result.code.includes("@opentf/web/hmr")).toBe(hot);
+    expect(result.code.includes('hotState(this, "count", () => signal(0))')).toBe(hot);
+    expect(result.code.includes("registerHotModule(import.meta.hot,")).toBe(hot);
+    expect(result.map.sourcesContent).toEqual([component]);
+  }
+  const server = await webPlugin({ mode: "ssr" }).transform.handler(component, "/app/Counter.jsx", {
+    command: "start", platform: "server", hot: true,
+  });
+  expect(server.code).not.toContain("@opentf/web/hmr");
+});
+
+test("mixed helper exports remain reload boundaries", async () => {
+  const result = await webPlugin().transform.handler('export const value = 1; export default function Box() { return <p>Box</p>; }', "/Box.jsx", {
+    command: "start", platform: "browser", hot: true,
+  });
+  expect(result.code).toContain("registerHotModule(import.meta.hot,");
+  expect(result.code).toContain(", false);");
+});
+
+test("hot pages expose refresh factories and production pages stay plain", async () => {
+  for (const hot of [true, false]) {
+    const result = await webPlugin().transform.handler(source, "/app/page.jsx", {
+      command: hot ? "start" : "build", platform: "browser", hot,
+    });
+    expect(result.code.includes("registerHotRoute(import.meta.hot, __otfwRoute, true)")).toBe(hot);
+    expect(result.code.includes("@opentf/web/hmr")).toBe(hot);
+  }
+});
+
 test("the starter plugin fails on compiler errors instead of emitting a DOM stub", async () => {
   const plugin = webPlugin();
   await expect(plugin.transform.handler("export default function {", "/app/page.jsx", {

@@ -129,11 +129,13 @@ export function computed(fn) {
     fn,
     value: undefined,
     stale: true,
+    disposed: false,
     sources: new Set(),
     subscribers: new Set(),
   };
-  return {
+  const value = {
     get value() {
+      if (node.disposed) return node.value;
       if (node.stale) {
         const prev = activeConsumer;
         clearSources(node);
@@ -148,12 +150,22 @@ export function computed(fn) {
       track(node);
       return node.value;
     },
+    /** Detach an owned derived value when its view is replaced or removed. */
+    dispose() {
+      if (node.disposed) return;
+      node.disposed = true;
+      clearSources(node);
+      node.subscribers.clear();
+      node.fn = null;
+    },
   };
+  if (activeScope) activeScope.push(value.dispose);
+  return value;
 }
 
 /**
- * Collect ownership of the effects created while `fn` runs. Returns
- * `{ result, dispose }`: `dispose()` stops every effect `fn` created (including
+ * Collect ownership of effects and derived values created while `fn` runs. Returns
+ * `{ result, dispose }`: `dispose()` stops every owned consumer (including
  * ones created in nested calls, unless an inner `scope()` claimed them first).
  *
  * This is how dynamic regions own their bindings: a keyed-list item, a
@@ -175,8 +187,13 @@ export function scope(fn) {
   return {
     result,
     dispose() {
-      for (const d of disposers) d();
-      disposers.length = 0;
+      const owned = disposers.splice(0);
+      let failed = false, failure;
+      for (const dispose of owned) {
+        try { dispose(); }
+        catch (error) { if (!failed) { failed = true; failure = error; } }
+      }
+      if (failed) throw failure;
     },
   };
 }
@@ -218,8 +235,7 @@ export function effect(fn) {
   const dispose = function dispose() {
     if (node.disposed) return;
     node.disposed = true;
-    runCleanup(node);
-    clearSources(node);
+    try { runCleanup(node); } finally { clearSources(node); }
   };
   if (activeScope) activeScope.push(dispose);
   return dispose;

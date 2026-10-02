@@ -14,7 +14,8 @@
     "./server/adapters/node": {
       "types": "./server/adapters/node.d.ts",
       "default": "./server/adapters/node.js"
-    }
+    },
+    "./hmr": "./runtime/hmr.js"
   },
   "files": [
     "index.js",

@@ -1,8 +1,10 @@
 # esdev migration status
 
-Output hooks and generated SPA/docs templates verified against esdev 0.15.0 on
-2026-10-02. OTF template integration is intentionally pending upstream, after
-validation here. The DOM and asset observations below were recorded against
+Output hooks and all four generated OTF templates verified against esdev 0.15.0 on
+2026-10-02. See [local plugin template verification](TEMPLATE_VERIFICATION.md) for
+native configurations tested with checkout package files and the local compiler.
+Generated-project failures are separate from those local-plugin checks. OTF template
+integration remains pending upstream. The DOM and asset observations below were recorded against
 0.14.0 and await re-verification.
 Template files are embedded in the esdev binary; updating this repo's plugin cannot change them.
 
@@ -32,8 +34,8 @@ Reproduce with `esdev create <dir> --template=<name> --package-manager=pnpm
 | --- | --- | --- |
 | `spa` (0.15) | No esdev.json; otfw dev/build/build --ssg scripts; HTML lacks a module entry | Emit native config, OTF plugin dependency and a client entry that imports @otfw/routes and calls mountApp; use esdev scripts; make the stylesheet URL relative |
 | `docs` (0.15) | No esdev.json; otfw dev/build --ssg scripts | Emit client/config plus a release prerender target; use provider otf and index the prerendered output; make the stylesheet URL relative |
-| `fullstack` (0.14) | No esdev.json; otfw dev/build/serve scripts | Emit client and server targets, a Request/Response server entry, API/middleware/loader wiring, and native run/watch scripts |
-| `library` (0.14) | esdev test script, but no compiler/test config; test only checks source files | Configure CSR compilation with routes disabled and native DOM cleanup; test an imported, rendered component |
+| `fullstack` (0.15) | No esdev.json; otfw dev/build/serve scripts | Emit client and server targets, a Request/Response server entry, API/middleware/loader wiring, SSR bootstrap, and native run/watch scripts |
+| `library` (0.15) | esdev test passes, but checks only source files; no compiler/test config | Configure CSR compilation with routes disabled and native DOM cleanup; test an imported, rendered component |
 
 SPA/docs/fullstack currently request the retired @opentf/web-cli executable.
 They need an upstream template change and a new esdev binary release, followed
@@ -70,7 +72,8 @@ and registers both the compiler/routes plugin and the output plugin locally.
 The prerender entry loads installed SSG helpers at runtime so package-relative
 compiler archive paths are preserved when esdev bundles the entry.
 
-Development runs neither `finish` nor the prerender step by default. Browser-only
+Development does not run `finish`; a `then: "run"` prerender target can still execute,
+so its script must guard release staging and skip rendering without it. Browser-only
 selected builds skip output generation when their configured `prerenderTarget`
 was not built; they preserve the existing index rather than indexing a CSR shell.
 The integration fixture covers staging, searchable section links, public overrides,
@@ -127,7 +130,19 @@ it is not the location for new starter development.
 
 ## Validation before updating upstream templates
 
-Fresh SPA and docs projects were generated outside this workspace with esdev
+The latest sequential check uses the local plugin, compiler executable and OTF
+package source for all four templates; see
+[the complete results](TEMPLATE_VERIFICATION.md). Generated SPA/fullstack/docs
+scripts fail because the released CLI no longer provides `otfw`. The generated
+library test passes but does not import or render its component.
+
+With explicit native wiring and the local packages, SPA build/tests/development,
+docs prerender/index/feed output and library rendering/props/click/cleanup pass.
+Fullstack API/middleware/loaders/SSR checks pass after a minimal `HTMLElement`
+bootstrap. Production browsers still fail on the upstream entry reference issue.
+The packed source library works in a development consumer using the local plugin.
+
+In the earlier published-package check, fresh SPA and docs projects were generated outside this workspace with esdev
 0.15.0 and installed from npm. Their temporary configs were converted to native
 esdev targets and the published `@opentf/esdev-plugin-web` 0.2.0.
 
@@ -145,5 +160,18 @@ esdev targets and the published `@opentf/esdev-plugin-web` 0.2.0.
 
 Release the resolver fixes in `@opentf/web-compiler` and `@opentf/web-cli` before
 upstream templates consume them. The plugin's minimum esdev version is now 0.15;
-release that manifest update with its compiler dependency update. The native
-compiler's Rust code and indexing format did not change.
+release that manifest update with its compiler dependency update. The resolver fixes alone did not change the indexing format. Component HMR now
+also changes native compiler output and requires rebuilding the same platform archives.
+
+## Component refresh
+
+The local compiler/plugin/runtime now implement development refresh on esdev's
+`ctx.hot` / `import.meta.hot` API. Compatible component edits preserve hosts,
+props and named state slots, with old effects/hooks disposed and refs/derived
+values recreated. Slotted children survive a parent refresh. Page/layout edits
+refresh the active route without document navigation, but remount route views.
+
+See [HMR verification](HMR_VERIFICATION.md) for the permanent browser check,
+compatibility limits and outstanding upstream compile-error recovery panic.
+Release `@opentf/web`, `@opentf/esdev-plugin-web` and updated `@opentf/web-compiler`
+archives together before updating the isolated site or upstream templates.

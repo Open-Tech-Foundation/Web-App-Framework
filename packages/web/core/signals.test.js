@@ -2,6 +2,60 @@ import { describe, expect, test } from "runtime:test";
 
 import { batch, computed, effect, scope, signal } from "./signals.js";
 
+test("disposing a derived value releases its subscriptions and keeps its last value", () => {
+  const source = signal(1);
+  const value = computed(() => source.value * 2);
+  let runs = 0;
+  const stop = effect(() => { value.value; runs++; });
+  expect(value.value).toBe(2);
+  value.dispose();
+  value.dispose();
+  source.value = 2;
+  expect(runs).toBe(1);
+  expect(value.value).toBe(2);
+  stop();
+});
+
+test("a scope disposes its derived values as well as its effects", () => {
+  const source = signal(1);
+  const owned = scope(() => computed(() => source.value * 2));
+  expect(owned.result.value).toBe(2);
+  owned.dispose();
+  source.value = 2;
+  expect(owned.result.value).toBe(2);
+});
+
+test("a throwing effect cleanup still detaches its dependencies", () => {
+  const source = signal(1);
+  let runs = 0;
+  const stop = effect(() => {
+    source.value;
+    runs++;
+    return () => { throw new Error("cleanup failure"); };
+  });
+  expect(stop).toThrow("cleanup failure");
+  source.value = 2;
+  expect(runs).toBe(1);
+  stop();
+});
+
+test("a scope tears down all owned consumers even when a cleanup throws", () => {
+  const source = signal(1);
+  let runs = 0;
+  const owned = scope(() => {
+    effect(() => { source.value; return () => { throw new Error("first cleanup"); }; });
+    effect(() => { source.value; runs++; });
+    const value = computed(() => source.value * 2);
+    value.value;
+    return value;
+  });
+  expect(() => owned.dispose()).toThrow("first cleanup");
+  source.value = 2;
+  expect(runs).toBe(1);
+  expect(owned.result.value).toBe(2);
+  owned.dispose();
+});
+
 describe("signal", () => {
   test("reads and writes a value", () => {
     const count = signal(1);
