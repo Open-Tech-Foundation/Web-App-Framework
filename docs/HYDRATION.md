@@ -278,8 +278,8 @@ since those helpers already operate on existing nodes. Only acquisition (the cla
   isn't adoptable (no `hydrateAt`), or a thrown mismatch, falls through to a clean CSR build.
 - **A server sentinel** _(implemented)_ — `<div id="app" data-otfw-hydrate>`, stamped by
   the shell injection (`stampHydrateSentinel`) whenever the client bundle was built for
-  the hydrate target. The toolchain wires this for `otfw serve` (always) and `otfw build
-  --ssg` (pre-rendered pages have markup to adopt); a plain CSR `otfw build` mounts into
+  the hydrate target. SSG build scripts and app-owned SSR servers stamp this
+  sentinel when serving rendered markup; a plain CSR `esdev build` mounts into
   an empty `#app`, so it keeps the leaner CSR bundle and stamps no sentinel. The compiler
   serve protocol carries the target as a token (`csr`/`ssg`/`hydrate`), so the client
   build requests `--target=hydrate` and gets the dual module per route.
@@ -442,7 +442,7 @@ optimization (`template_html`); the same model now answers the hydrate question 
 **Diagnostics have to be visible to exist.** `otfwc serve` — the path the toolchain always
 uses — dropped the compiler's non-fatal warnings on the floor, so every "this view can't be
 adopted" fallback was silent. It now prints them (deduplicated, prefixed with the module),
-which is what makes the open items in §6 observable in an ordinary `otfw build`.
+which is what makes the open items in §6 observable in an ordinary native esdev build.
 
 ---
 
@@ -467,10 +467,10 @@ which is what makes the open items in §6 observable in an ordinary `otfw build`
 Hydration is notoriously bug-prone in ways unit tests miss (timing of upgrades,
 whitespace nodes, double mounts). The bar:
 
-- **Unit tests** for the runtime primitives and marker parsing (happy-dom). _(done)_
+- **Unit tests** for the runtime primitives and marker parsing (esdev native DOM). _(done)_
 - **A CDP-driven browser e2e** _(implemented for leaf routes —
-  `packages/web-cli/tests/e2e/hydrate-browser.mjs`)_ that drives the real `otfw serve`
-  in headless Chromium and asserts the two properties that actually define correct
+  `packages/web-docs/tests/e2e/hydration.mjs`)_ that builds SSG/hydrate fixtures
+  and checks adoption in headless Chromium and asserts the two properties that actually define correct
   hydration:
   1. **No DOM mutation on hydrate** — a document-start MutationObserver tags every
      server node as the parser inserts it; after hydrate the live `<main>`/`<button>`

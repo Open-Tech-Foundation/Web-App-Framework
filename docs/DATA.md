@@ -43,8 +43,8 @@ export default async function loader({ params, query, request, locale, locals })
 ```
 
 A named `loader` export is also accepted — the spelling Phase B's co-located
-form will compile to. `request` is the live Fetch `Request` under `otfw serve`/
-`dev` and `undefined` at SSG prerender. `locals` is the per-request bag stamped
+form will compile to. An app-owned server passes the live Fetch `Request`;
+`request` is `undefined` at SSG prerender. `locals` is the per-request bag stamped
 by `_middleware.*` (docs/MIDDLEWARE.md) — empty (`{}`) at SSG prerender, where
 no middleware runs. `getStaticPaths` stays on the page module — a dynamic route
 with a loader still needs it to prerender.
@@ -111,7 +111,7 @@ scope** until actions/Phase B.
 ### Known limits (MVP)
 
 - Page-level only; no layout loaders.
-- Query-dependent loaders need `otfw serve` — static `__data.json` files are
+- Query-dependent loaders need a request server — static `__data.json` files are
   rendered with an empty query.
 - No streaming; the navigation waits for the data.
 - `generateMetadata` does not see loader data.
@@ -136,16 +136,13 @@ paint, keeping hydration adoption aligned.
 
 ## 4. Toolchain
 
-- `otfw dev` — loader bundle built lazily on the first `__data.json` request,
-  invalidated by the watcher on `loader.*` edits (the entry is rewritten too:
-  the loader route set is baked into it). Rebuilds emit a **versioned filename**
-  (`loaders.<n>.js`) because Bun's ESM cache ignores `?v=` on file URLs.
-- `otfw build` — `dist/server/loaders.js` (emitted before prerender); with
-  `--ssg`, prerender runs each matched loader (empty query, no request), inlines
-  the payload, and writes the per-locale `__data.json` files.
-- `otfw serve` — imports `dist/server/loaders.js`; per request runs the loader
-  before `renderRoute` and answers the data endpoint (checked after API routes,
-  before the static-asset branch — the suffix has a file extension).
+- The project build can call `emitLoaderBundle` from `@opentf/web-cli/ssg` before
+  prerendering. `runPrerender` runs matched loaders with an empty query and no
+  request, injects their data into the HTML, and writes per-locale `__data.json`.
+- An app-owned request server imports the loader bundle, runs loaders before
+  `renderRoute`, and serves the data endpoint alongside API routes and pages.
+- `esdev start` rebuilds and restarts configured server targets. The compiler
+  plugin does not supply a loader HTTP endpoint, proxy or request server.
 
 ## 5. Phase B forward-compatibility
 

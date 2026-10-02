@@ -34,15 +34,18 @@ many targets. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full design.
 
 ## Quick start
 
+Install [ES-Runtime](https://esrun.opentechf.org/) (`esdev` 0.15 or newer) and
+add the runtime and compiler/routes plugin to your app:
+
 ```bash
-pnpm create @opentf/web my-app
-cd my-app
-pnpm install
-pnpm run dev
+pnpm add @opentf/web
+pnpm add -D @opentf/esdev-plugin-web
 ```
 
-Install [ES-Runtime](https://esrun.opentechf.org/) first: `otfw` runs under
-`esdev`, while pnpm manages dependencies.
+Configure the HTML entry, client entry and `esdev.json` as shown in the
+[plugin setup guide](packages/esdev-plugin-web/README.md), then run `esdev start`.
+The OTF templates in `esdev create` are awaiting their upstream plugin migration;
+see the [verified migration status](docs/ESDEV_MIGRATION.md) before using them.
 
 ## Example
 
@@ -88,8 +91,8 @@ methodology, and caveats. Reproduce locally with `tsr bench -- all`.
 | Package | Purpose |
 | --- | --- |
 | [`@opentf/web`](packages/web) | Runtime — signals, DOM operations, router, SSG. |
-| [`@opentf/web-cli`](packages/web-cli) | The `otfw` toolchain — dev server and production build. |
-| [`@opentf/web-compiler`](packages/web-compiler) | The IR compiler (`otfwc`) — prebuilt binaries + host resolver. |
+| [`@opentf/web-cli`](packages/web-cli) | SSG helpers and release output hooks for esdev builds. |
+| [`@opentf/web-compiler`](packages/web-compiler) | Native toolchain (`otfwc`) — compilation, docs indexing and binary resolution. |
 | [`@opentf/web-form`](packages/web-form) | Reactive forms with async validation. |
 | [`@opentf/web-test`](packages/web-test) | Testing utilities for native components. |
 | [`@opentf/web-docs`](packages/web-docs) | MDX documentation theme — sidebar, callouts, TOC. |

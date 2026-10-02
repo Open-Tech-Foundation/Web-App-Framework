@@ -18,8 +18,9 @@ standard [`Response`](https://developer.mozilla.org/docs/Web/API/Response), so t
 run unchanged on Bun, Node 20+, Cloudflare Workers, and Deno.
 
 Because they're plain server code, they're discovered and bundled by the JS
-toolchain (not the Rust compiler): `otfw dev` and `otfw serve` serve them, and
-`otfw build` emits a self-contained `dist/server/api.js` for deployment.
+toolchain (not the Rust compiler). A project build can call `emitApiBundle` from
+`@opentf/web-cli/ssg` to emit `dist/server/api.js`; an app-owned server or deploy
+adapter serves its Fetch handlers. The compiler plugin does not start a server.
 
 ## 2. File-based routing
 
@@ -111,19 +112,17 @@ export const GET: ApiHandler = (request, { params }) => Response.json({ id: para
 
 ## 6. Running & deploying
 
-- **`otfw dev`** — endpoints are served by a bundle built lazily on first request and
-  rebuilt on edit (hot reload).
-- **`otfw serve`** — the SSR server tries a matching `route.*` handler ahead of SSR;
-  a request that matches no handler falls through to the page router, so pages and
-  endpoints coexist (only a *same-folder* `page.*` + `route.*` is rejected).
-- **`otfw build`** — emits `dist/server/api.js`, a self-contained ESM module (the
-  runtime dispatchers are bundled in; your npm/node deps stay external for the
-  target) exporting three handlers:
-  - `apiRoutes(request) => Response | null` — routes only;
-  - `middleware` — the request-middleware runner (docs/MIDDLEWARE.md);
-  - `apiHandler(request) => Response | null` — routes with the middleware
-    composed in, for standalone use (don't pair it with `middleware`, or the
-    middleware runs twice).
+Use `esdev start` with an app-owned server target for live API requests and SSR.
+The server composes API dispatch, loader data and page rendering explicitly;
+`esdev build` bundles its entry, and esdev starts/restarts the configured server
+in development. Static `esdev preview` serves built files; it does not run APIs.
+
+A build driver calling `emitApiBundle` emits `dist/server/api.js`, exporting:
+
+- `apiRoutes(request) => Response | null` — routes only.
+- `middleware` — the request-middleware runner (see [MIDDLEWARE.md](MIDDLEWARE.md)).
+- `apiHandler(request) => Response | null` — routes with middleware composed in
+  for standalone use. Do not pair it with `middleware`, or middleware runs twice.
 
 ### Adapters
 
@@ -155,27 +154,25 @@ createServer(toNodeListener(apiHandler)).listen(3000);
 ```
 
 For a full full-stack Fetch-handler setup (entry file, static assets, platform bindings,
-and the dev proxy), see the website's [Fetch handler](https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/website/app/docs/deployment/fetch-handler/page.mdx)
+and forwarding to a platform dev server), see the website's [Fetch handler](https://github.com/Open-Tech-Foundation/Web-App-Framework/blob/main/website/app/docs/deployment/fetch-handler/page.mdx)
 deployment guide.
 
 ### Development with bindings (D1) — the dev proxy
 
-Bindings like D1 exist only inside the Workers runtime, so in dev run the API on
-`wrangler dev` and forward `/api/*` to it from `otfw.config.js` — the same handler
-code runs in dev and production, against a real local D1:
-
-```js
-// otfw.config.js
-export default { proxy: { "/api": "http://localhost:8787" } };
-```
-
-`otfw dev` then serves the SPA (with HMR) and proxies matched prefixes to the
-upstream. The `proxy` config is **dev-only** — it has no effect on `otfw build`.
+Bindings like D1 exist inside the Workers runtime. Run the API with `wrangler dev`
+and configure forwarding in your app server or an external proxy. The retired
+`otfw.config.js` `proxy` setting is not implemented by the compiler plugin or
+esdev's static development server.
 
 ## 7. Environment variables
 
-Server-only secrets in `.env` are available to handlers via `process.env`. Only
-`PUBLIC_`-prefixed variables are ever exposed to the client bundle (SPEC §14).
+Platform bindings and secrets arrive through `context.env` when the deploy
+adapter supplies them. ES-Runtime server code reads host environment variables
+through `runtime:process` under the deployment's environment grants. Node servers
+can use `process.env`.
+
+Expose public browser values explicitly through build configuration. The native
+plugin does not automatically expose variables based on a `PUBLIC_` prefix.
 
 ## 8. Phase B (planned)
 

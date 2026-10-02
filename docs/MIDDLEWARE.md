@@ -1,8 +1,8 @@
 # Request Middleware
 
 > **Status:** implemented. Middleware governs the whole request pipeline — pages,
-> API endpoints, route-loader data, and 404s alike — under `otfw dev`, `otfw
-> serve`, and the deploy adapters. The user-facing contract originates in
+> API endpoints, route-loader data, and 404s alike — when composed into an
+> app-owned request server or deploy adapter. The user-facing contract originates in
 > [`SPEC.md`](../SPEC.md) §11.5; the API-route side is documented in
 > [`API.md`](./API.md).
 
@@ -105,40 +105,38 @@ Two normalizations happen before a pathname is matched against folder scopes:
 - **A non-default locale prefix is stripped** (mirroring the loader registry):
   `/fr/admin` is governed by `app/admin/_middleware.js` too.
 
-**Static assets bypass middleware.** A dotted path that resolves to a real file
-(the client bundle, CSS, `public/` files) is served directly — a root auth guard
-must not break the login page's stylesheet. A dotted path that is *not* a file
-(an `/api/v1.0` endpoint) goes through the pipeline like any other request. To
-protect downloadable files, serve them from a `route.*` handler instead.
+**Static-asset policy belongs to the server.** A server can serve public files
+before middleware, or use a guarded fallback with `createFetchHandler`. Protect
+private downloads through a guarded handler; a dotted pathname alone does not
+establish that a request is for a public asset.
 
 ## 5. Where it runs
 
-- **`otfw dev`** / **`otfw serve`** — the chain wraps API dispatch, the
-  `__data.json` endpoint, and SSR / the app shell; rebuilt on edit in dev.
-- **`otfw build`** — `dist/server/api.js` exports three composed handlers:
-  - `middleware` — the pipeline runner (`createMiddleware`);
-  - `apiRoutes` — the routes-only API dispatcher, for servers that run
-    `middleware` themselves;
-  - `apiHandler` — routes *with* the middleware composed in (standalone use;
-    don't combine with `middleware` or it runs twice).
-- **Adapters** — `createFetchHandler` takes the runner and wraps everything,
-  including the static-asset fallback:
+A project build can call `emitApiBundle` from `@opentf/web-cli/ssg` to emit:
 
-  ```js
-  // Cloudflare Workers / Bun / Deno
-  import { apiRoutes, middleware } from "./dist/server/api.js";
-  import { createFetchHandler } from "@opentf/web/server";
-  export default {
-    fetch: createFetchHandler(apiRoutes, {
-      middleware,
-      fallback: (request, env) => env.ASSETS.fetch(request),
-    }),
-  };
-  ```
+- `middleware` — the pipeline runner (`createMiddleware`).
+- `apiRoutes` — the routes-only API dispatcher, for servers that run middleware
+  themselves.
+- `apiHandler` — routes with middleware composed in. Do not combine this handler
+  with the middleware runner a second time.
 
-- **Static hosting** — a pure `otfw build` deployed to a static host has no
-  server, so middleware cannot run there (same constraint as every framework).
-  Pages that need guarding need `otfw serve` or a server/edge adapter.
+An app-owned server composes middleware around API dispatch, loader endpoints,
+SSR and its fallback. `createFetchHandler` accepts a middleware runner and wraps
+its fallback too:
+
+```js
+import { apiRoutes, middleware } from "./dist/server/api.js";
+import { createFetchHandler } from "@opentf/web/server";
+export default {
+  fetch: createFetchHandler(apiRoutes, {
+    middleware,
+    fallback: (request, env) => env.ASSETS.fetch(request),
+  }),
+};
+```
+
+`esdev start` can run and restart that server target. A static build or
+`esdev preview` has no request server, so server middleware cannot run there.
 
 ## 6. Middleware vs. the client route guard
 
