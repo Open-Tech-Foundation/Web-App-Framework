@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Generated server entries import route registration and locale configuration
+  from `@opentf/web/server` instead of loading the browser runtime.
+
 - Prerendered metadata tags are marked for cleanup on client navigation. Encoded
   dynamic URLs write decoded HTML and loader-data paths for static hosts.
 

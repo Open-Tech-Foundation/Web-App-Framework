@@ -197,6 +197,16 @@ JSX fallback substitution and production entry-reference normalization were used
 Logs: `/tmp/otfw-metadata-paths-spa-browser.log` and
 `/tmp/otfw-metadata-paths-docs-build.log`.
 
+Sixth follow-up: server setup now imports route registration, the request-scoped
+router facade and locale helpers from `@opentf/web/server`. The generated server
+entry uses that public export instead of importing the browser entry. Fresh esdev
+processes load a copy of the package's published files, verify that DOM globals
+remain absent, and exercise lazy routes/layouts, metadata, static paths, locale
+matching, 404 registration and concurrent request data. Browser components keep
+using the browser entry.
+Verification: **845 existing + two new = 847 tests passed**, plus type checking.
+Logs: `/tmp/otfw-server-entry-tests.log` and `/tmp/otfw-server-entry-typecheck.log`.
+
 | Priority | Issue and reproduction | Code to change |
 | --- | --- | --- |
 | P1 | Concurrent SSR mixes request data. Render `/concurrent/A` with `token-A` and `/concurrent/B` with `token-B` using `Promise.all`; both HTML responses contain B and `token-B`. Sequential rendering passes. | `packages/web/server/render.js` and request state in `packages/web/runtime/router.js` |
@@ -209,8 +219,9 @@ Logs: `/tmp/otfw-metadata-paths-spa-browser.log` and
 
 The MDX homepage-conflict guard, concurrent SSR isolation, production route effect
 cleanup, lazy SSR metadata and static paths are implemented. Full MDX fallback
-support is deferred. The remaining confirmed local issues are DOM-free server
-initialization and placeholder links in dynamic docs navigation.
+support is deferred. DOM-free server initialization is also implemented through
+the server entry. The remaining confirmed local issue is placeholder links in
+dynamic docs navigation.
 
 ## Coverage limits
 

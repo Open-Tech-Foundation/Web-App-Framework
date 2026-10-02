@@ -4,6 +4,9 @@
 
 ### Added
 
+- The DOM-free server entry exposes route registration, request-scoped router
+  values and locale helpers for SSR setup without browser Custom Elements.
+
 - Route metadata updates the browser head on SPA navigation and component route
   refresh. Async generators can await resolved parent metadata through their
   second argument.

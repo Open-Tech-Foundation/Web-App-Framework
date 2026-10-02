@@ -122,7 +122,7 @@ describe("serverEntrySource", () => {
     expect(src).toContain(`import * as p1 from "/app/about/page.jsx";`);
     expect(src).toContain(`["/app/page.jsx"]: p0,`);
     expect(src).toContain(`["/app/about/page.jsx"]: p1,`);
-    expect(src).toContain(`import { registerRoutes } from "@opentf/web";`);
+    expect(src).toContain(`import { registerRoutes } from "@opentf/web/server";`);
     expect(src).toContain(`renderRoute, renderHead, collectRoutePaths`);
     // resolveMetadata is re-exported so the CSR build can resolve the root layout's
     // route-independent head via resolveLayoutShellHead.
@@ -131,7 +131,7 @@ describe("serverEntrySource", () => {
 
   test("configures the server-side router with i18n so prefixes match", () => {
     const src = serverEntrySource(["/app/page.jsx"], { locales: ["en", "fr"], defaultLocale: "en" });
-    expect(src).toContain(`import { registerRoutes, configureI18n } from "@opentf/web";`);
+    expect(src).toContain(`import { registerRoutes, configureI18n } from "@opentf/web/server";`);
     expect(src).toContain(`configureI18n({"locales":["en","fr"],"defaultLocale":"en"});`);
   });
 

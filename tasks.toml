@@ -59,7 +59,7 @@ run = "cargo test"
 # Runtime-native tests: the SSG lib, scaffolder, and framework's pure core/server paths.
 [tasks.test-esdev]
 deps = ["build-compiler"]
-run = "esdev test --config=esdev.test.json packages/web-cli/tests packages/web-compiler/tests packages/create-web/tests packages/web/core/reactive.test.js packages/web/core/signals.test.js packages/web/esdev-tests/clsx.test.js packages/web/server/api.test.js packages/web/server/cookies.test.js packages/web/server/head.test.js packages/web/server/loader.test.js packages/web/server/middleware.test.js packages/web/server/render.test.js packages/web/server/ssg-runtime.test.js packages/web/server/adapters/node.test.js"
+run = "esdev test --config=esdev.test.json packages/web-cli/tests packages/web-compiler/tests packages/create-web/tests packages/web/core/reactive.test.js packages/web/core/signals.test.js packages/web/esdev-tests/clsx.test.js packages/web/server/api.test.js packages/web/server/cookies.test.js packages/web/server/head.test.js packages/web/server/index.test.js packages/web/server/loader.test.js packages/web/server/middleware.test.js packages/web/server/render.test.js packages/web/server/ssg-runtime.test.js packages/web/server/adapters/node.test.js"
 
 # DOM suites: these ran under happy-dom's ambient `document` before; under esdev
 # the `--dom` realm provides it instead (esdev's URL is http://localhost/, so the

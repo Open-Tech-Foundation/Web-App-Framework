@@ -54,8 +54,36 @@ data endpoints, static assets and page rendering. `createLoaderRegistry` supplie
 
 Thread the live request, query and middleware locals into loaders. Include serialized
 route data and island props in server HTML so client navigation and hydration resume
-with the same data. Request rendering uses shared route/collector state; the server
-entry must account for overlapping requests rather than assuming isolated renderers.
+with the same data. Each `renderRoute()` call isolates route values and island props
+across async work, so concurrent renders keep their own parameters and loader data.
+
+## Register pages for SSR
+
+Import route registration from the server entry. It loads without a DOM or
+`HTMLElement` shim and shares the route table used by `renderRoute()`:
+
+```js
+import { registerRoutes, renderRoute } from "@opentf/web/server";
+import { pages } from "@otfw/routes";
+
+registerRoutes(pages);
+
+export async function renderPage(request, data) {
+  const url = new URL(request.url);
+  return renderRoute(url.pathname, null, url.search, { data });
+}
+```
+
+The OTF plugin supplies `@otfw/routes` and compiles server pages with
+`mode: "ssr"`. The renderer returns HTML, metadata, hydration props and status;
+compose these into your HTML response. See [Metadata & SEO](/docs/routing/metadata)
+for head rendering.
+
+Server modules can also import `router`, `configureI18n`, `matchRoute`,
+`resolveLocale`, `localizePath` and `i18nLocales` from `@opentf/web/server`.
+During rendering, `router.params`, `router.query`, `router.locale` and `router.data`
+refer to the current request. Browser components continue importing from
+`@opentf/web`.
 
 <Callout type="info" title="Starter work remains upstream">
   The installed esdev 0.15 fullstack template still refers to the retired server

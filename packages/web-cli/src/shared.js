@@ -1324,7 +1324,7 @@ export function serverEntrySource(pages, i18n = null) {
     : "";
   return (
     `${imports}\n` +
-    `import { ${named} } from "@opentf/web";\n` +
+    `import { ${named} } from "@opentf/web/server";\n` +
     `export { renderRoute, renderHead, collectRoutePaths, resolveMetadata } from "@opentf/web/server";\n` +
     i18nCall +
     `registerRoutes({\n${map}\n});\n`

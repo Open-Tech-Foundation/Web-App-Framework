@@ -5,6 +5,23 @@
 export * from "./api.js";
 export * from "./cookies.js";
 
+/** Register eager namespaces or lazy module loaders, keyed by app file path. */
+export function registerRoutes(modules: Record<string, unknown>): void;
+/** Request-scoped route values during SSR. */
+export const router: {
+  readonly pathname: string;
+  readonly searchParams: URLSearchParams;
+  readonly query: Record<string, string>;
+  readonly params: RouteParams;
+  readonly locale: string | null;
+  readonly data: unknown;
+};
+export function matchRoute(pathname: string): { entry: unknown; params: RouteParams; route: string } | null;
+export function configureI18n(config: { locales: string[]; defaultLocale?: string } | null): void;
+export function i18nLocales(): { locales: string[]; defaultLocale: string } | null;
+export function resolveLocale(pathname: string): { locale: string | null; path: string };
+export function localizePath(pathname: string, locale?: string | null): string;
+
 // ── Render / route API (render.js) ─────────────────────────────────────────────
 export interface RenderResult {
   html: string;
