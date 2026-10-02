@@ -22,6 +22,14 @@ const RESOLVED_ID = "otfw-virtual:otfw-docs-nav";
 const PAGE_RE = /^page\.(mdx|md|[jt]sx)$/;
 const MD_RE = /\.(mdx|md)$/;
 
+// Folder scans know route patterns, not the parameter values a page generates.
+// Omit the whole branch so descendants never inherit a placeholder URL.
+function navDirectory(entry, exclude) {
+  return entry.isDir && !entry.name.startsWith(".") &&
+    !entry.name.startsWith("_") && !exclude.has(entry.name) &&
+    !/\[[^\]]+\]/.test(entry.name);
+}
+
 /**
  * Generates `@opentf/web-docs/nav` as a **section map** — `{ "/<dir>": tree }`, one entry
  * per top-level folder under `app/`. Each folder is a potential `DocsLayout` section; the
@@ -49,10 +57,7 @@ export function docsNavPlugin({ appDir, exclude = new Set(), importModule } = {}
         const ctx = { watch: [], importModule };
         const out = {};
         for (const entry of await readEntries(appDir)) {
-          if (!entry.isDir) continue;
-          if (entry.name.startsWith(".") || entry.name.startsWith("_") || exclude.has(entry.name)) {
-            continue;
-          }
+          if (!navDirectory(entry, exclude)) continue;
           const base = "/" + entry.name;
           out[base] = await buildSection(join(appDir, entry.name), base, ctx, true, exclude);
         }
@@ -127,13 +132,7 @@ async function buildSection(dir, route, ctx, withIndex = false, exclude = new Se
   const meta = await loadMeta(dir, ctx);
   const entries = await readEntries(dir);
   const subdirs = entries
-    .filter(
-      (e) =>
-        e.isDir &&
-        !e.name.startsWith(".") &&
-        !e.name.startsWith("_") &&
-        !exclude.has(e.name),
-    )
+    .filter((entry) => navDirectory(entry, exclude))
     .map((e) => e.name);
 
   const items = [];

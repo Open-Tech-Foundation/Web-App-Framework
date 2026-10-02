@@ -207,6 +207,19 @@ using the browser entry.
 Verification: **845 existing + two new = 847 tests passed**, plus type checking.
 Logs: `/tmp/otfw-server-entry-tests.log` and `/tmp/otfw-server-entry-typecheck.log`.
 
+Seventh follow-up: automatic docs navigation omits parameterized directories at
+all levels, including their descendants. Static landing pages and siblings retain
+frontmatter titles and `_meta` ordering; groups with no remaining static entries
+are pruned. The plugin does not run page generators while scanning navigation.
+Dynamic paths remain prerendered; creating concrete navigation entries from
+`getStaticPaths()` is not implemented.
+Verification: **847 existing + three new = 850 tests passed**, plus type checking
+and the full browser suite. A local-plugin docs release build and real preview
+serve `/docs/topic/one`; all three prerendered documentation pages contain no
+placeholder hrefs. The existing temporary JSX fallback adaptation was used.
+Logs: `/tmp/otfw-docs-nav-tests.log`, `/tmp/otfw-docs-nav-typecheck.log`,
+`/tmp/otfw-docs-nav-e2e.log` and `/tmp/otfw-docs-nav-build.log`.
+
 | Priority | Issue and reproduction | Code to change |
 | --- | --- | --- |
 | P1 | Concurrent SSR mixes request data. Render `/concurrent/A` with `token-A` and `/concurrent/B` with `token-B` using `Promise.all`; both HTML responses contain B and `token-B`. Sequential rendering passes. | `packages/web/server/render.js` and request state in `packages/web/runtime/router.js` |
@@ -219,9 +232,11 @@ Logs: `/tmp/otfw-server-entry-tests.log` and `/tmp/otfw-server-entry-typecheck.l
 
 The MDX homepage-conflict guard, concurrent SSR isolation, production route effect
 cleanup, lazy SSR metadata and static paths are implemented. Full MDX fallback
-support is deferred. DOM-free server initialization is also implemented through
-the server entry. The remaining confirmed local issue is placeholder links in
-dynamic docs navigation.
+support is deferred. DOM-free server initialization is implemented through the
+server entry, and automatic docs navigation omits dynamic branches. All confirmed
+local issues listed above now have fixes or explicit unsupported-route handling;
+full MDX fallback support and automatic dynamic navigation expansion remain future
+features.
 
 ## Coverage limits
 

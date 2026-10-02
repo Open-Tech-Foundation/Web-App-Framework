@@ -11,6 +11,10 @@
 
 ### Fixed
 
+- Omit parameterized folder branches from automatic navigation so sidebars,
+  breadcrumbs and previous/next links never point to literal route placeholders.
+  Keep static sibling pages and landing pages, and remove empty generated groups.
+
 - Keep section locations from all matching prefix and identifier alternatives
   instead of discarding locations from lower-scoring alternatives.
 

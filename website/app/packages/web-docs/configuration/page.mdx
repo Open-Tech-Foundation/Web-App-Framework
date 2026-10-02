@@ -41,6 +41,11 @@ The sidebar is generated from the folder tree under your docs directory. A folde
 with a `page.*` becomes a link; a folder **without** one becomes a group subheading
 over its children. Nesting is arbitrary.
 
+Parameterized folders such as `[slug]` and `[...path]`, including their descendants,
+are omitted from automatic navigation. `getStaticPaths()` enumerates prerendered
+URLs; it does not populate the navigation tree. Link to concrete generated URLs
+from your documentation content.
+
 Each folder's `_meta.js` sets the order and labels of its children. Listed keys come
 first in declared order; unlisted folders are appended alphabetically.
 
