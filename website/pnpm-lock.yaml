@@ -9,24 +9,24 @@ importers:
   .:
     dependencies:
       '@opentf/web':
-        specifier: 0.29.0
-        version: 0.29.0
+        specifier: 0.30.0
+        version: 0.30.0
       '@opentf/web-docs':
-        specifier: 0.27.0
-        version: 0.27.0(@opentf/web@0.29.0)
+        specifier: 0.28.0
+        version: 0.28.0(@opentf/web@0.30.0)
       '@opentf/web-form':
         specifier: 1.24.0
-        version: 1.24.0(@opentf/web@0.29.0)
+        version: 1.24.0(@opentf/web@0.30.0)
       '@opentf/web-i18n':
         specifier: 1.24.0
-        version: 1.24.0(@opentf/web@0.29.0)
+        version: 1.24.0(@opentf/web@0.30.0)
     devDependencies:
       '@opentf/esdev-plugin-web':
-        specifier: 0.2.0
-        version: 0.2.0
+        specifier: 0.3.0
+        version: 0.3.0
       '@opentf/web-cli':
-        specifier: 1.27.0
-        version: 1.27.0(@opentf/web@0.29.0)
+        specifier: 1.28.0
+        version: 1.28.0(@opentf/web@0.30.0)
       tailwindcss:
         specifier: 4.2.2
         version: 4.2.2
@@ -48,27 +48,28 @@ packages:
   '@formatjs/intl-localematcher@0.6.2':
     resolution: {integrity: sha512-XOMO2Hupl0wdd172Y06h6kLpBz6Dv+J4okPLl4LPtzbr8f66WbIoy4ev98EBuZ6ZK4h5ydTN6XneT4QVpD7cdA==}
 
-  '@opentf/esdev-plugin-web@0.2.0':
-    resolution: {integrity: sha512-SRaS09XzqgH07vkjb7ImRA6RQlIXRDpgY5fg5suEfw/2Sr8q7swOHvtQgWTBDwxDcoh+vwjDQ56GXMkJMKudtQ==}
-    engines: {esdev: '>=0.14.0'}
+  '@opentf/esdev-plugin-web@0.3.0':
+    resolution: {integrity: sha512-lgEbQceexGEtm7x2cygOkDQYpg/twv9Do+iyF3mgjBPExy0Qbo5i0ZJaJX8T6r2mLIzDhuLRQ16TTkfCj2HRxQ==}
+    engines: {esdev: '>=0.15.0'}
 
   '@opentf/std@0.19.0':
     resolution: {integrity: sha512-tnBP9Fv3T7Sfd1VWJQKfq6BubBH/qvVEC80zzMeeLW7epACt0jtpZ7ivB9A5HLSzb8Lxs9Mc0V/jvD6jStq+bA==}
     engines: {node: '>=20.0.0'}
 
-  '@opentf/web-cli@1.27.0':
-    resolution: {integrity: sha512-YnKS8cAbyLMEg+dwVKLCys47AF0VN8jJcuYtZjHen51mtks8HM2fnZrT9MOfNgFb2loMYo3Kf0T8Dqq5Pc0p9A==}
+  '@opentf/web-cli@1.28.0':
+    resolution: {integrity: sha512-rViZJC80WWAulBR1B4TqxeibAzQZkH+ahT7LWQXSpKkWy9124o7zW2JOvez6GDQL6iDOStQBT25aD1Q4L63TfA==}
     engines: {esdev: '>=0.15.0'}
     peerDependencies:
-      '@opentf/web': 0.29.0
+      '@opentf/web': 0.30.0
 
-  '@opentf/web-compiler@0.18.0':
-    resolution: {integrity: sha512-Ff+6mzpmD+qFInvw9rA0Kika43smpImrHvMAfkTcMrTtkbTwumF8mYct/6oW+V9co8/uNUZ0f6Vg5fvTV7Ow2Q==}
+  '@opentf/web-compiler@0.19.0':
+    resolution: {integrity: sha512-ZyTlt5vbSRX2R6U7Z6mxvf6mf0nTN0AIF4oGY9c2t5x/obOA3o0L9BY0Pe3qTJ715vwDxc+ffmOWze4U1WljJw==}
+    engines: {esdev: '>=0.15.0'}
 
-  '@opentf/web-docs@0.27.0':
-    resolution: {integrity: sha512-iBaIZGaUZMEQ49xRrhcf9OI9ybSB6khSM0BMdMW8txJB9qp3Ysi80mygzUW+v82qYzPQrO/sehUulzXZG/WLCA==}
+  '@opentf/web-docs@0.28.0':
+    resolution: {integrity: sha512-ugGtp/c1e02vrQrrdJqM6QNj0IT9Rzm4dTmdu0CtJ9L2bqsVPZ0Q0/Z02un5X66rBs98BDCr2eYtVH+QXbWrCw==}
     peerDependencies:
-      '@opentf/web': 0.29.0
+      '@opentf/web': 0.30.0
 
   '@opentf/web-form@1.24.0':
     resolution: {integrity: sha512-bno0+ryoJzVJP8dx5u1CyMbNynXWGTewiz3qTSn7latUtmxdnIM7LH5QMSjPGe9Lg2bYC/0y4sgsWMZzKdwMLQ==}
@@ -80,8 +81,8 @@ packages:
     peerDependencies:
       '@opentf/web': 0.29.0
 
-  '@opentf/web@0.29.0':
-    resolution: {integrity: sha512-xTsNhhesp+XGNAeg+fTv4oFBXB95NOI5Dgpu/dhpVo0isS65xD/6t7SyYDx8dmAYT/lNL8AcUeRVKpVPI+UrQg==}
+  '@opentf/web@0.30.0':
+    resolution: {integrity: sha512-Zc8w77N5GuhtjWxkQemARLeF7ln/DYKrKN4RFivMczxJKGHYy6X+IxXZbxQmpVkI7pJSkpDIITv2rSOE2gs4yQ==}
 
   decimal.js@10.6.0:
     resolution: {integrity: sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==}
@@ -123,35 +124,35 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@opentf/esdev-plugin-web@0.2.0':
+  '@opentf/esdev-plugin-web@0.3.0':
     dependencies:
-      '@opentf/web-compiler': 0.18.0
+      '@opentf/web-compiler': 0.19.0
 
   '@opentf/std@0.19.0': {}
 
-  '@opentf/web-cli@1.27.0(@opentf/web@0.29.0)':
+  '@opentf/web-cli@1.28.0(@opentf/web@0.30.0)':
     dependencies:
-      '@opentf/esdev-plugin-web': 0.2.0
-      '@opentf/web': 0.29.0
+      '@opentf/esdev-plugin-web': 0.3.0
+      '@opentf/web': 0.30.0
 
-  '@opentf/web-compiler@0.18.0': {}
+  '@opentf/web-compiler@0.19.0': {}
 
-  '@opentf/web-docs@0.27.0(@opentf/web@0.29.0)':
+  '@opentf/web-docs@0.28.0(@opentf/web@0.30.0)':
     dependencies:
-      '@opentf/web': 0.29.0
-      '@opentf/web-compiler': 0.18.0
+      '@opentf/web': 0.30.0
+      '@opentf/web-compiler': 0.19.0
 
-  '@opentf/web-form@1.24.0(@opentf/web@0.29.0)':
+  '@opentf/web-form@1.24.0(@opentf/web@0.30.0)':
     dependencies:
       '@opentf/std': 0.19.0
-      '@opentf/web': 0.29.0
+      '@opentf/web': 0.30.0
 
-  '@opentf/web-i18n@1.24.0(@opentf/web@0.29.0)':
+  '@opentf/web-i18n@1.24.0(@opentf/web@0.30.0)':
     dependencies:
-      '@opentf/web': 0.29.0
+      '@opentf/web': 0.30.0
       intl-messageformat: 10.7.18
 
-  '@opentf/web@0.29.0': {}
+  '@opentf/web@0.30.0': {}
 
   decimal.js@10.6.0: {}
 

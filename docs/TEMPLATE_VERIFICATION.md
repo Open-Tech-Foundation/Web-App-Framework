@@ -313,6 +313,65 @@ with no new native binary or release configuration changes.
 Validation: **867 existing + 3 new = 870 tests**, plus repository typechecking.
 Logs: `/tmp/otfw-maintainer-tests.log` and `/tmp/otfw-maintainer-typecheck.log`.
 
+## Fresh TypeScript starter audit after esdev updates
+
+Rechecked on 2026-10-03 using the newer local ES-Runtime debug binary (checkout
+`f13211bf`). The globally installed esdev also reports 0.15.0 but still embeds
+legacy CLI templates; it was not used for this recheck. Each native OTF template
+was created afresh with `--language=ts --package-manager=pnpm --no-install`.
+Installed framework/plugin/compiler/test/docs packages were overlaid with physical
+copies of this checkout's published files. No workspace links or generated chunk
+filename rewrites were used. CSS was selected for SPA/fullstack; docs uses its
+built-in theme. This checks four template shapes, not every styling/language or
+package-manager variant.
+
+| Template | Typecheck of generated sources | Runtime and build checks |
+| --- | --- | --- |
+| SPA | Pass | Starter test, build, dev and preview; counter interaction and client navigation to/from an added lazy page pass. |
+| Fullstack | Fails: three implicit-any parameters in generated `_middleware.ts` | Two starter tests pass. Build, SSR, API, loader endpoint, middleware, script MIME and client mounting pass in dev and production with the generated bootstrap. With temporary middleware annotations and `loaders: loaderRoutes`, lazy navigation and loader-backed return navigation also pass. |
+| Docs | Fails: missing declarations for `@opentf/web-docs` and `@opentf/web-docs/posts` | Release build prerenders four pages and indexes two. Dev/preview rendering, blog index/post, search mount, real search results, highlighting and exact-section navigation pass. The generated fallback is TSX, so the deferred MDX 404 feature does not block this starter. |
+| Library | Fails: `index.ts` imports `Counter.tsx` without `allowImportingTsExtensions` | Three starter tests pass. The copied source library works inside a SPA in dev/preview; clicking Count 7 produces Count 8. Enabling that compiler option in the library and consumer makes their typechecks pass. The library intentionally has no standalone site build/dev/preview target. |
+
+The earlier missing JSX declarations are resolved: no `JSX.IntrinsicElements` or
+`jsx-runtime` errors occur in these starter checks. Remaining confirmed items:
+
+- **Local framework: SSR page imports still reach DOM classes.** Moving server
+  registration to `@opentf/web/server` works as an API import boundary, but a
+  rendered page importing the browser entry can retain its side effects. Removing
+  the bootstrap produces HTTP 500 and `ReferenceError: HTMLElement is not defined`
+  from the bundled `runtime/context.js`, in both dev and production. Reproduced
+  with `router.data` alone and with `Link` navigation. Keep the bootstrap until
+  the server compiler/import graph handles those browser-entry imports.
+- **Local docs package: declarations are missing.** Strict TS layouts importing
+  Navbar, Footer, DocsLayout, BlogLayout and PostList, plus the virtual posts entry,
+  fail TS7016. Framework root declarations do not cover the separate docs package.
+- **Generated fullstack middleware:** annotate Request, context and next callback
+  parameters, or provide a typed middleware helper.
+- **Generated source-library imports:** enable `allowImportingTsExtensions` where
+  explicit `.tsx` source imports are used, or emit supported import specifiers.
+
+Validation: **6 existing starter tests + 0 new unit tests = 6 passing starter
+ tests**, plus **37 browser assertions** across SPA, fullstack with bootstrap,
+ docs and the library consumer. The repository suite remains **870 existing + 0
+ new = 870 tests**; this recheck did not rerun that entire suite. Failures above
+ are recorded separately and are not counted as successful typechecks.
+
+Fixtures: `/tmp/otfw-latest-{spa,fullstack,docs,library}`. Per-template logs use
+`/tmp/otfw-latest-<template>-{typecheck,test,build,browser}.log`. Fullstack adaptation
+logs include `fullstack-shim-browser`, `fullstack-domfree-browser` and
+`fullstack-domfree-production`; library consumer checks use
+`library-consumer-browser`. Temporary fixtures and logs can be cleaned up by the
+system.
+
+The repository site's CI failure was a dependency mismatch: `entry.js` imported
+`loaderRoutes` while the site still pinned plugin 0.2.0. Its manifest, lockfile and
+release-age allowlist now select released web 0.30.0, docs 0.28.0, plugin 0.3.0 and
+CLI 1.28.0. Frozen installation and `tsr site-build` pass using released packages:
+65 pages prerendered, 63 indexed, three feed posts. Existing spread/fragment
+hydration fallback warnings remain. Logs: `/tmp/otfw-site-frozen-install.log` and
+`/tmp/otfw-site-released-build.log`. CI's site build remains an integration check;
+it does not deploy the site.
+
 ## Coverage limits
 
 This audit checked JavaScript starter shapes with targeted JSX, TSX, MDX, CSS-module,
