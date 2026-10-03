@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-03
+
 ### Added
 
 - Development CSR output with component compatibility metadata, named state slots

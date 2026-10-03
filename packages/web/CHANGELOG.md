@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-10-03
+
 ### Added
 
 - Publish framework entry declarations and compiler JSX types for strict TypeScript starters.
