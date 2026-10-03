@@ -95,3 +95,21 @@ assert(JSON.parse(a.html).data.token === "alpha", "request A loader data");
 assert(JSON.parse(b.html).locale === "en", "request B locale");
 `);
 });
+
+test("server context, lifecycle and built-in renderers need no DOM globals", async () => {
+  await runServer(`
+const { createContext, readContext, onMount, Link, Portal, RawHtml, ssgComponent, registerRoutes, renderRoute, configureI18n } = server;
+const theme = createContext("dark");
+assert(readContext(theme).value === "dark", "context fallback");
+let ran = false; onMount(() => { ran = true; }); assert(!ran, "server lifecycle is inert");
+assert(Link.tag === "web-link" && Portal.tag === "web-internal-portal", "renderer tags");
+assert(RawHtml({ html: "<b>raw</b>" }) === "<b>raw</b>", "raw HTML renderer");
+configureI18n({ locales: ["en", "fr"], defaultLocale: "en" });
+registerRoutes({ "/app/link/page.jsx": { default: () => ssgComponent("web-link", { href: "/next?q=a&b", class: { active: true }, "aria-label": 'Read "next"', ariaCurrent: "page" }, "<b>Next</b>") } });
+const { html } = await renderRoute("/fr/link");
+assert(html.includes('href="/fr/next?q=a&amp;b"'), "localized escaped href");
+assert(html.includes('class="active"') && html.includes('aria-current="page"'), "link attributes");
+assert(html.includes('aria-label="Read &quot;next&quot;"'), "ARIA escaping");
+assert(html.includes('<!--c[web-link--><b>Next</b><!--c]web-link-->'), "hydration slot markers");
+`);
+});

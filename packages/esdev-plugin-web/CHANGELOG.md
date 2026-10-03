@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolve framework imports in shared JavaScript/TypeScript modules to the DOM-free server entry for server targets; browser and explicit CSR/hydration targets keep the browser entry.
+
 ## [0.3.0] - 2026-10-03
 
 ### Added

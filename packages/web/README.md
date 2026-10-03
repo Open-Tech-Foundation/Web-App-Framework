@@ -61,7 +61,7 @@ permissive; signals and lifecycle callbacks carry their value and event types.
 | `@opentf/web` | runtime + reactivity + `Link` (what compiled components import) |
 | `@opentf/web/signals` | the reactivity core on its own |
 | `@opentf/web/runtime` | DOM helpers, Context, Portal, ErrorBoundary |
-| `@opentf/web/server` | string-composed render helpers for SSG |
+| `@opentf/web/server` | DOM-free SSR/SSG rendering, route registration and shared framework helpers |
 
 ## License
 

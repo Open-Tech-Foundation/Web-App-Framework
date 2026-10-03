@@ -7,6 +7,8 @@ The `[Unreleased]` section is renamed to the new version number at release time.
 
 ### Fixed
 
+- Route SSG framework bindings and parsed namespace import paths to the server entry so page rendering does not load DOM registrations.
+
 - **MDX no longer wraps block-level content in a `<p>` (`mdx.rs`).** markdown-rs puts stacked
   JSX elements (four `<Callout/>` lines in a row) and raw HTML blocks in one Paragraph, and the
   emitted `<p>` around them is markup the browser **re-parses differently** — the parser closes

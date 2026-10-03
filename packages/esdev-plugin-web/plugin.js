@@ -50,6 +50,7 @@ export function createOtfwPlugin({ target, mode = "spa", failOnError = false, on
     (serverPromise ??= resolveCompiler().then(({ otfwc }) => startCompilerServer(otfwc, { sourceMap: true })));
   return {
     name: "otfw",
+    resolve: serverImports(target),
     transform: {
       // Same host-side filter as `otfwPlugin` below.
       filter: { id: /\.(mdx|md|[jt]sx)$/ },
@@ -62,6 +63,18 @@ export function createOtfwPlugin({ target, mode = "spa", failOnError = false, on
           failOnError, onResult, quiet, ctx,
         });
       },
+    },
+  };
+}
+
+// Plain JS shared modules do not pass through the JSX compiler. Resolve their
+// framework imports to the same DOM-free entry as compiled server components.
+function serverImports(target) {
+  return {
+    filter: { id: /^@opentf\/web(?:\/runtime)?$/ },
+    async handler(source, importer, ctx) {
+      if ((target ?? (ctx?.platform === "server" ? "ssg" : undefined)) !== "ssg") return null;
+      return ctx.resolve("@opentf/web/server", importer);
     },
   };
 }
@@ -125,6 +138,7 @@ export function otfwPlugin(otfwc, { failOnError = false, onResult, target = "csr
     // names strictly, and there is nothing to tear down per build anyway: one child
     // serves every build, and it exits on the EOF its stdin gets when we do.
     name: "otfw",
+    resolve: serverImports(target),
     transform: {
       // Matched on the Rust side, so a module the compiler has no business seeing
       // never costs a crossing into this isolate.

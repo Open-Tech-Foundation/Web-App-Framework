@@ -394,6 +394,45 @@ Requires an `@opentf/web-docs` package release; no binary or release-config chan
 The remaining SSR DOM-import issue and upstream middleware/library template
 changes from the preceding audit are separate work.
 
+## SSR browser-import follow-up
+
+The remaining SSR DOM-import failure is fixed locally. The server compiler maps
+named and namespace imports from `@opentf/web` and `@opentf/web/runtime` to the
+DOM-free server entry. The native esdev plugin applies the same resolution to
+shared JavaScript/TypeScript modules that bypass JSX compilation. Browser targets
+retain their existing imports.
+
+The server entry now exposes pure context helpers, reactivity, inert lifecycle
+hooks and built-in renderers. Link's server renderer preserves localized and
+escaped attributes, host styling and hydration slot markers. Browser context
+registration shares the extracted pure context implementation.
+
+The fresh TypeScript fullstack fixture builds and runs with `bootstrap.js` deleted
+and the server target pointing at `server.js`. Its original `registerRoutes`
+import from `@opentf/web/runtime` resolves successfully through the local plugin.
+Development and production each pass eight browser/HTTP checks covering SSR,
+hydration, counter updates, code-split Link navigation, middleware, API, loader
+endpoints and script MIME types. No generated chunk references were patched.
+The earlier fixture-only middleware type annotations remain in place; that
+upstream template issue is separate.
+
+Validation: **871 existing + five new = 876 tests passed** (372 Rust + 504 native),
+repository typecheck and the full browser suite. Fullstack starter typecheck and
+release build pass; the local docs build also prerenders four pages, indexes two
+pages and generates feeds. Three new compiler regressions cover named/aliased
+imports, namespace imports and rewriting only parsed module paths. Two native
+regressions cover plugin target resolution and DOM-free server helpers/renderers;
+the existing fullstack bundling test also exercises shared-module imports.
+
+Requires releases of `@opentf/web`, `@opentf/esdev-plugin-web` and
+`@opentf/web-compiler`, with rebuilt existing `otfwc` archives. No new binary kind
+or release configuration changes are needed. Upstream can then remove its
+fullstack bootstrap and point the server target at `server.js`.
+Logs: `/tmp/otfw-ssr-imports-tests.log`, `/tmp/otfw-ssr-imports-typecheck.log`,
+`/tmp/otfw-ssr-imports-e2e.log`, `/tmp/otfw-ssr-imports-starter-build.log`,
+`/tmp/otfw-ssr-imports-starter-typecheck.log`,
+`/tmp/otfw-ssr-imports-browser.log` and `/tmp/otfw-ssr-imports-docs-build.log`.
+
 ## Coverage limits
 
 This audit checked JavaScript starter shapes with targeted JSX, TSX, MDX, CSS-module,

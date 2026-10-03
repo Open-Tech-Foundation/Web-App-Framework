@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Emit framework imports through the server entry for SSG/SSR, including aliases and namespace imports. Preserve other import names and source-map locations. Requires rebuilding the otfwc archives and matching runtime/plugin releases.
+
 ## [0.19.0] - 2026-10-03
 
 ### Added

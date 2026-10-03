@@ -7,6 +7,25 @@ import webPlugin, { closeCompilers, createOtfwPlugin, createWebPlugin } from "..
 
 afterAll(closeCompilers);
 
+test("framework resolution selects the server entry only for server rendering", async () => {
+  const calls = [];
+  const ctx = { platform: "server", async resolve(source, importer) {
+    calls.push([source, importer]); return { id: "/pkg/server/index.js" };
+  } };
+  for (const routes of [true, false]) {
+    const plugin = webPlugin({ routes });
+    for (const source of ["@opentf/web", "@opentf/web/runtime"]) {
+      expect(await plugin.resolve.handler(source, "/app/shared.js", ctx)).toEqual({ id: "/pkg/server/index.js" });
+      expect(await plugin.resolve.handler(source, "/app/shared.js", { ...ctx, platform: "browser" })).toBeNull();
+    }
+  }
+  expect(calls).toEqual(Array.from({ length: 4 }, () => ["@opentf/web/server", "/app/shared.js"]));
+  expect(await createOtfwPlugin({ target: "ssg" }).resolve.handler("@opentf/web", "/app/shared.js", { ...ctx, platform: "browser" })).toEqual({ id: "/pkg/server/index.js" });
+  for (const target of ["csr", "hydrate"]) {
+    expect(await createOtfwPlugin({ target }).resolve.handler("@opentf/web", "/app/shared.js", ctx)).toBeNull();
+  }
+});
+
 const source = 'export default function Home() { let value = $state("Hello"); return <p>{value}</p>; }';
 
 test("the default factory combines the compiler and virtual route hooks", () => {
@@ -16,7 +35,7 @@ test("the default factory combines the compiler and virtual route hooks", () => 
   expect(typeof plugin.transform.handler).toBe("function");
   expect(typeof plugin.resolve.handler).toBe("function");
   expect(typeof plugin.load.handler).toBe("function");
-  expect(webPlugin({ routes: false }).resolve).toBeUndefined();
+  expect(typeof webPlugin({ routes: false }).resolve.handler).toBe("function");
 });
 
 test("invalid rendering options fail before the compiler starts", () => {
@@ -137,7 +156,8 @@ test("a starter config loads the default factory and builds browser and server r
       },
     }));
     await write(join(scratch, "tsconfig.json"), "{}");
-    await write(join(scratch, "app/page.jsx"), source);
+    await write(join(scratch, "app/shared.js"), 'import * as web from "@opentf/web"; export const Theme = web.createContext("Default");');
+    await write(join(scratch, "app/page.jsx"), 'import { router, Link, ContextProvider, RawHtml, onMount } from "@opentf/web"; import { Theme } from "./shared.js"; export default function Home() { let value = $state("Hello"); const theme = $context(Theme); onMount(() => {}); return <section><p>{value}</p><Link href="/next" class={{ active: true }}>{router.data?.message || theme}</Link><ContextProvider context={Theme} value="Provided"><RawHtml html="<b>Trusted</b>"/></ContextProvider></section>; }');
     await write(join(scratch, "entry.js"), 'import { mountApp } from "@opentf/web"; import { pages, loaderRoutes } from "@otfw/routes"; mountApp({ pages, loaders: loaderRoutes, target: document.getElementById("app") });');
     await write(join(scratch, "index.html"), '<html><body><div id="app"></div><script type="module" src="./entry.js"></script></body></html>');
     await mkdir(join(scratch, "app/api/hello"), { recursive: true });
@@ -147,11 +167,16 @@ test("a starter config loads the default factory and builds browser and server r
     await write(join(scratch, "server.js"), `
       import { pages } from "@otfw/routes";
       import { createApiHandler, createLoaderRegistry, createMiddleware } from "@opentf/web/server";
+      import { registerRoutes } from "@opentf/web";
       import { serve } from "runtime:http";
       import * as endpoint from "./app/api/hello/route.js";
       import * as loader from "./app/loader.js";
       import * as middlewareModule from "./app/_middleware.js";
       const { default: Home } = await pages["/app/page.jsx"]();
+      if (typeof HTMLElement !== "undefined" || typeof document !== "undefined") throw Error("SSR must stay DOM-free");
+      registerRoutes(pages);
+      const initial = Home();
+      if (!initial.includes('href="/next"') || !initial.includes('class="active"') || !initial.includes('Default') || !initial.includes('<b>Trusted</b>')) throw Error("SSR framework imports failed");
       console.log(Home());
       const api = createApiHandler({ "/app/api/hello/route.js": endpoint });
       const loaders = createLoaderRegistry({ "/app/loader.js": loader });

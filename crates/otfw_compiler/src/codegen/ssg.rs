@@ -78,8 +78,8 @@ pub fn emit_module(
 
     let mut code = String::new();
     if let Some(first) = components.first() {
-        if !first.imports.is_empty() {
-            code.push_str(&first.imports.join("\n"));
+        if !first.server_imports.is_empty() {
+            code.push_str(&first.server_imports.join("\n"));
             code.push('\n');
         }
         code.push_str(&import_header(&core, &server, &first.runtime_imports));
@@ -104,8 +104,8 @@ fn import_header(core: &BTreeSet<&str>, server: &BTreeSet<&str>, runtime: &[Stri
             names.join(", ")
         ));
     }
-    // Preserve the source's own runtime bindings independently of generated
-    // helpers; application imports may include router, Link, or createContext.
+    // Source bindings use server equivalents; preserving the browser barrel
+    // here would load its Custom Element definitions at module scope.
     let runtime_names: Vec<&String> = runtime
         .iter()
         .filter(|name| !core.contains(name.as_str()))
@@ -113,7 +113,7 @@ fn import_header(core: &BTreeSet<&str>, server: &BTreeSet<&str>, runtime: &[Stri
     if !runtime_names.is_empty() {
         let names: Vec<&str> = runtime_names.iter().map(|name| name.as_str()).collect();
         out.push_str(&format!(
-            "import {{ {} }} from \"@opentf/web\";\n",
+            "import {{ {} }} from \"@opentf/web/server\";\n",
             names.join(", ")
         ));
     }
@@ -817,6 +817,37 @@ mod tests {
         assert!(!m.code.contains("document."), "no DOM:\n{}", m.code);
         assert!(!m.code.contains("effect("), "no effects:\n{}", m.code);
         assert!(!m.code.contains("addEventListener"), "no events:\n{}", m.code);
+    }
+
+    #[test]
+    fn framework_bindings_and_aliases_use_the_server_entry() {
+        let m = emit("import { router as route, Link, createContext, onMount } from '@opentf/web'; export default function P(){ onMount(() => {}); return <Link href='/next'>{route.data?.message}</Link>; }", true);
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("router as route, Link, createContext, onMount } from \"@opentf/web/server\""), "{}", m.code);
+        assert!(!m.code.contains("from \"@opentf/web\""), "{}", m.code);
+        assert!(m.code.contains("route.data?.message"), "{}", m.code);
+        assert!(m.code.contains("ssgComponent(\"web-link\""), "{}", m.code);
+    }
+
+    #[test]
+    fn namespace_framework_imports_use_the_server_entry() {
+        for quote in ["'", "\""] {
+            let src = format!("import * as Web from {quote}@opentf/web{quote}; export default function P(){{return <h1>{{Web.router.data?.message}}</h1>;}}");
+            let m = emit(&src, true);
+            assert!(m.is_complete(), "errors: {:?}", m.errors);
+            assert!(m.code.contains("\"@opentf/web/server\""), "{}", m.code);
+            assert!(!m.code.contains(&format!("{quote}@opentf/web{quote}")), "{}", m.code);
+        }
+    }
+
+    #[test]
+    fn preserved_imports_remap_only_framework_module_paths() {
+        let m = emit("import { \"@opentf/web\" as label } from 'labels'; import * as Runtime from '@opentf/web/runtime'; export default function P(){return <h1>{label}{Runtime.router.pathname}</h1>;}", true);
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("\"@opentf/web\" as label"), "{}", m.code);
+        assert!(m.code.contains("from 'labels'"), "{}", m.code);
+        assert!(m.code.contains("from \"@opentf/web/server\""), "{}", m.code);
+        assert!(!m.code.contains("\"@opentf/web/server\" as label"), "{}", m.code);
     }
 
     #[test]

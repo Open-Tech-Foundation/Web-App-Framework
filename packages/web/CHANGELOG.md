@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Server rendering exposes DOM-free signals, stores, context tokens, lifecycle hooks and built-in component renderers. Compiled pages can import router and Link without an HTMLElement bootstrap.
+
 ## [0.30.0] - 2026-10-03
 
 ### Added

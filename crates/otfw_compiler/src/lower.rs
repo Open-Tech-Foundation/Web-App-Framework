@@ -175,6 +175,8 @@ pub struct Lowered {
     /// components that self-register as Custom Elements) — re-emitted ahead of the
     /// runtime import.
     pub imports: Vec<String>,
+    /// The same declarations with framework source literals remapped for SSR.
+    pub server_imports: Vec<String>,
     /// Named specifiers the source imports from `@opentf/web` (e.g. `signal`,
     /// `router`, `Link`), merged into the single generated runtime import.
     pub runtime_imports: Vec<String>,
@@ -283,10 +285,10 @@ pub fn lower_component<'a>(
 ) -> Option<Lowered> {
     let resolved = crate::semantic::resolve(program);
     let scoping = resolved.semantic.scoping();
-    let (imports, runtime_imports) = collect_imports(program, source, None);
+    let (imports, server_imports, runtime_imports) = collect_imports(program, source, None);
     let (export, func) = find_component(program)?;
     lower_one(
-        module, &export, func, scoping, source, is_page, &imports, &runtime_imports, is_page, true,
+        module, &export, func, scoping, source, is_page, &imports, &server_imports, &runtime_imports, is_page, true,
         false, None,
     )
 }
@@ -338,7 +340,7 @@ fn lower_module_inner<'a>(
 ) -> Option<LoweredModule> {
     let resolved = crate::semantic::resolve(program);
     let scoping = resolved.semantic.scoping();
-    let (imports, runtime_imports) = collect_imports(program, source, source_map);
+    let (imports, server_imports, runtime_imports) = collect_imports(program, source, source_map);
 
     // A module-scope lowerer (no component signals) templates JSX-as-value in
     // preserved top-level statements; its expr table travels with the module.
@@ -352,7 +354,7 @@ fn lower_module_inner<'a>(
             let is_default = export_kind == ExportKind::Default;
             let role = is_page_module && is_default;
             if let Some(lowered) = lower_one(
-                module, &export, func, scoping, source, role, &imports, &runtime_imports, role,
+                module, &export, func, scoping, source, role, &imports, &server_imports, &runtime_imports, role,
                 is_default, export_kind == ExportKind::Named, source_map,
             ) {
                 components.push(lowered);
@@ -390,6 +392,7 @@ pub fn module_shell(module: &str, exprs: ExprTable, body: Vec<BodyItem>) -> Lowe
         is_named_export: false,
         name: "module".to_string(),
         imports: Vec::new(),
+        server_imports: Vec::new(),
         runtime_imports: Vec::new(),
         exprs,
         decls: Vec::new(),
@@ -423,6 +426,7 @@ fn lower_one<'a>(
     source: &'a str,
     is_page: bool,
     imports: &[String],
+    server_imports: &[String],
     runtime_imports: &[String],
     is_page_role: bool,
     is_default_export: bool,
@@ -547,6 +551,7 @@ fn lower_one<'a>(
         is_named_export,
         name,
         imports: imports.to_vec(),
+        server_imports: server_imports.to_vec(),
         runtime_imports: runtime_imports.to_vec(),
         exprs: lowerer.exprs,
         decls: classified.decls,
@@ -573,13 +578,21 @@ fn lower_one<'a>(
 /// Collect the module's top-level imports. `@opentf/web` named specifiers are
 /// returned separately (merged into the single generated runtime import); compiler
 /// macros are dropped; all other imports are preserved verbatim.
-fn collect_imports(program: &Program, source: &str, source_map: Option<&str>) -> (Vec<String>, Vec<String>) {
+fn collect_imports(program: &Program, source: &str, source_map: Option<&str>) -> (Vec<String>, Vec<String>, Vec<String>) {
     let mut imports = Vec::new();
+    let mut server_imports = Vec::new();
     let mut runtime_imports = Vec::new();
     for stmt in &program.body {
         let Statement::ImportDeclaration(decl) = stmt else { continue };
+        let original = crate::sourcemap::copy(source_map, source, decl.span.start, decl.span.end);
+        let server = if matches!(decl.source.value.as_str(), "@opentf/web" | "@opentf/web/runtime") {
+            format!("{}\"@opentf/web/server\"{}",
+                crate::sourcemap::copy(source_map, source, decl.span.start, decl.source.span.start),
+                crate::sourcemap::copy(source_map, source, decl.source.span.end, decl.span.end))
+        } else { original.clone() };
         if decl.source.value != "@opentf/web" {
-            imports.push(crate::sourcemap::copy(source_map, source, decl.span.start, decl.span.end));
+            imports.push(original);
+            server_imports.push(server);
             continue;
         }
         let mut verbatim = false;
@@ -603,10 +616,11 @@ fn collect_imports(program: &Program, source: &str, source_map: Option<&str>) ->
             }
         }
         if verbatim {
-            imports.push(crate::sourcemap::copy(source_map, source, decl.span.start, decl.span.end));
+            imports.push(original);
+            server_imports.push(server);
         }
     }
-    (imports, runtime_imports)
+    (imports, server_imports, runtime_imports)
 }
 
 /// How a component appears in its module's export surface.

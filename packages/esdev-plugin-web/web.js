@@ -8,7 +8,18 @@ export function createWebPlugin({ appDir = "app", exclude = [], routes = true, f
   const compiler = createOtfwPlugin({ ...options, failOnError });
   if (!routes) return compiler;
   const routing = createOtfwRoutes({ appDir, exclude });
-  return { ...compiler, resolve: routing.resolve, load: routing.load };
+  return {
+    ...compiler,
+    resolve: {
+      filter: { id: /^(?:@otfw\/routes|@opentf\/web(?:\/runtime)?)$/ },
+      handler(source, importer, ctx) {
+        return source === "@otfw/routes"
+          ? routing.resolve.handler(source, importer)
+          : compiler.resolve.handler(source, importer, ctx);
+      },
+    },
+    load: routing.load,
+  };
 }
 
 export default createWebPlugin;

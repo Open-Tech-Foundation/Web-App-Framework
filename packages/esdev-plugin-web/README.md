@@ -72,6 +72,14 @@ An explicit `target` (`csr`, `ssg`, or `hydrate`) overrides that selection.
 route subtrees. Compiler errors fail by default; `failOnError: false` opts into
 browser diagnostic stubs.
 
+For server rendering, the compiler imports framework helpers from
+`@opentf/web/server`. The plugin also resolves `@opentf/web` and
+`@opentf/web/runtime` imports in shared JavaScript/TypeScript modules to that
+entry. Backend code can import route registration directly from
+`@opentf/web/server`; pages can keep their usual `router` and `Link` imports.
+The server entry registers HTML renderers without browser Custom Elements, so
+the server target can point directly at `server.js` without a DOM bootstrap.
+
 The default export is also available as `createWebPlugin`. Separate named
 compiler and route factories remain available for custom pipelines. A prior
 transform that reports `type: "js"` for a JSX/TSX file is left alone.

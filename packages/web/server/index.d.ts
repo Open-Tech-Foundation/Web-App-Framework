@@ -4,6 +4,28 @@
 
 export * from "./api.js";
 export * from "./cookies.js";
+export * from "../core/signals.js";
+export * from "../core/reactive.js";
+export * from "../core/errors.js";
+export * from "../core/context.js";
+export * from "../runtime/lifecycle.js";
+export { resource } from "../runtime/resource.js";
+export { copyText, copyWithFeedback } from "../runtime/clipboard.js";
+
+/** DOM-free built-in renderers used by the server compiler. */
+export interface ServerComponent {
+  (props: Record<string, unknown>, children?: string): string;
+  tag: string;
+  hostClass?: string;
+  hostAttrs?: (props: Record<string, unknown>) => string;
+}
+export const Link: ServerComponent;
+export const ContextProvider: ServerComponent;
+export const Portal: ServerComponent;
+export const ErrorBoundary: ServerComponent;
+export const RawHtml: ServerComponent;
+export const CodeFence: ServerComponent;
+export function shouldInterceptNav(): boolean;
 
 /** Register eager namespaces or lazy module loaders, keyed by app file path. */
 export function registerRoutes(modules: Record<string, unknown>): void;
