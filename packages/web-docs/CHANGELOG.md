@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-03
+
 ### Added
 
 - Search returns distinct cards for matching sections on the same page, with

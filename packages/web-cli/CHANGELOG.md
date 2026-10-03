@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-10-03
+
 ### Fixed
 
 - Generated server entries import route registration and locale configuration

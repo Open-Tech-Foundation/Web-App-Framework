@@ -1,6 +1,6 @@
 {
   "name": "@opentf/esdev-plugin-web",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "OTF Web plugins for esdev's runtime:build bundler — compile .jsx/.tsx/.mdx through the otfwc IR compiler.",
   "type": "module",
   "exports": {

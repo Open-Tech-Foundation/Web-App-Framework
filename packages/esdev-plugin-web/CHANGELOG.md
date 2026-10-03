@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-03
+
 ### Added
 
 - Export discovered loader route patterns as `loaderRoutes` from `@otfw/routes`, without bundling server loader modules in the browser.
