@@ -1,20 +1,39 @@
 {
   "name": "@opentf/web-docs",
   "version": "0.28.0",
-  "description": "Documentation-site generator for OTF Web \u2014 themed shell components (sidebar, TOC, callouts, tabs), a build-time nav generator, and a default light/dark theme.",
+  "description": "Documentation-site generator for OTF Web — themed shell components (sidebar, TOC, callouts, tabs), a build-time nav generator, and a default light/dark theme.",
   "type": "module",
   "exports": {
-    ".": "./index.js",
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./index.js"
+    },
     "./theme": "./theme/index.css",
-    "./config": "./config.js",
-    "./nav": "./nav-virtual.js",
-    "./posts": "./posts-virtual.js",
-    "./updated": "./updated-virtual.js",
+    "./config": {
+      "types": "./types/config.d.ts",
+      "default": "./config.js"
+    },
+    "./nav": {
+      "types": "./types/nav.d.ts",
+      "default": "./nav-virtual.js"
+    },
+    "./posts": {
+      "types": "./types/posts.d.ts",
+      "default": "./posts-virtual.js"
+    },
+    "./updated": {
+      "types": "./types/updated.d.ts",
+      "default": "./updated-virtual.js"
+    },
     "./build": "./build/index.js",
-    "./search": "./search.js"
+    "./search": {
+      "types": "./types/search.d.ts",
+      "default": "./search.js"
+    }
   },
   "files": [
     "index.js",
+    "types",
     "search.js",
     "config.js",
     "nav-virtual.js",
@@ -53,5 +72,6 @@
   "devDependencies": {
     "@opentf/web": "workspace:*",
     "@opentf/web-test": "workspace:*"
-  }
+  },
+  "types": "./types/index.d.ts"
 }

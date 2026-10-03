@@ -12,6 +12,11 @@ import { Callout } from "@opentf/web-docs";
 Site-wide options live under `docs` in `otfw.config.js` — brand, version, GitHub
 link, and the top-level nav (which supports per-link icons).
 
+The package includes TypeScript declarations for configuration, components, and
+generated navigation and blog data. For a custom configuration object, import
+`DocsConfig` or `SiteConfig` with `import type` from `@opentf/web-docs/config`.
+`defineDocsConfig` checks the supported options and preserves the supplied shape.
+
 ```js
 import { defineDocsConfig } from "@opentf/web-docs/config";
 

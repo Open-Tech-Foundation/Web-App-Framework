@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- Publish TypeScript declarations for docs and blog components, configuration,
+  navigation, posts, last-updated maps and the browser search client. Strict
+  TypeScript docs starters can resolve these package entries without ambient shims.
+
 ## [0.28.0] - 2026-10-03
 
 ### Added

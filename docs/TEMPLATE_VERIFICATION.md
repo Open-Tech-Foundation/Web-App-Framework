@@ -372,6 +372,28 @@ hydration fallback warnings remain. Logs: `/tmp/otfw-site-frozen-install.log` an
 `/tmp/otfw-site-released-build.log`. CI's site build remains an integration check;
 it does not deploy the site.
 
+## Docs TypeScript declaration follow-up
+
+The docs package now publishes declarations for its JSX components, configuration
+helper, generated navigation/posts/last-updated entries, and client search API.
+The fresh TypeScript docs starter above passes `esdev typecheck` with local package
+files and no consumer-side ambient module declarations. Its release build still
+prerenders four pages, indexes two pages and generates the demo blog feeds.
+
+A published-files regression checks the starter's root/docs/blog layouts and all
+public component imports, both named/default virtual exports, configuration shape
+inference, and search result fields. Declaration checking uses
+`skipLibCheck: false`; expected errors ensure bad props, navigation links, post
+fields and search options are rejected.
+
+Validation: **870 existing + 1 new = 871 tests** (369 Rust + 502 native), repository
+typecheck, and the starter's typecheck/build pass. Logs:
+`/tmp/otfw-docs-types-tests.log`, `/tmp/otfw-docs-types-typecheck.log`,
+`/tmp/otfw-docs-types-starter.log`, `/tmp/otfw-docs-types-build.log`.
+Requires an `@opentf/web-docs` package release; no binary or release-config change.
+The remaining SSR DOM-import issue and upstream middleware/library template
+changes from the preceding audit are separate work.
+
 ## Coverage limits
 
 This audit checked JavaScript starter shapes with targeted JSX, TSX, MDX, CSS-module,
