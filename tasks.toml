@@ -99,7 +99,7 @@ run = "esdev test --config=esdev.test.json --dom packages/web-i18n/i18n.test.js"
 # Public testing helpers in the native DOM realm; setup registers automatic cleanup.
 [tasks.test-web-test]
 deps = ["build-compiler"]
-run = "esdev test --config=esdev.test.json --dom --setup=@opentf/web-test/setup packages/web-test/tests/render.test.js packages/web-test/tests/setup.test.js"
+run = "esdev test --config=esdev.test.json --dom --setup=@opentf/web-test/setup packages/web-test/tests/render.test.js packages/web-test/tests/setup.test.js packages/web-test/tests/types.test.js"
 
 [tasks.test-benchmark-tooling]
 run = "esdev test --config=esdev.test.json benchmarks/tests/tooling.test.js"

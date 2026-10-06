@@ -4,6 +4,7 @@
   "description": "DOM testing utilities for OTF Web",
   "type": "module",
   "main": "index.js",
+  "types": "./index.d.ts",
   "peerDependencies": {
     "@opentf/web": "workspace:*"
   },
@@ -12,16 +13,27 @@
     "@testing-library/user-event": "^14.6.1"
   },
   "exports": {
-    ".": "./index.js",
-    "./setup": "./setup.js",
-    "./setup.js": "./setup.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./setup": {
+      "types": "./setup.d.ts",
+      "default": "./setup.js"
+    },
+    "./setup.js": {
+      "types": "./setup.d.ts",
+      "default": "./setup.js"
+    },
     "./browser-runner": "./browser-runner.js",
     "./browser-runner.js": "./browser-runner.js",
     "./package.json": "./package.json"
   },
   "files": [
     "index.js",
+    "index.d.ts",
     "setup.js",
+    "setup.d.ts",
     "browser-runner.js"
   ],
   "engines": {
