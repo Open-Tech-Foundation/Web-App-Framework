@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- Publish TypeScript declarations for `render`, `RenderResult` (bound Testing
+  Library queries plus `container` and `unmount`), `cleanup`, `userEvent` and the
+  `./setup` entry. Strict TypeScript tests in esdev's SPA and library starters
+  now typecheck.
+
+### Changed
+
+- Requires esdev `>=0.16.0`.
+
 ## [1.25.0] - 2026-10-03
 
 _Dependency updates._

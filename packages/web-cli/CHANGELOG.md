@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Requires esdev `>=0.16.0`. Earlier releases emit production route chunks that
+  import an unhashed `entry.js`, so prerendered sites fail to mount.
+
+### Removed
+
+- Internal code left from the retired `otfw` dev/build/serve commands: the dev
+  proxy, module reloader, client entry generation, route chunk manifest, `new URL`
+  worker/asset rewriting and in-process API/loader bundles. None of it was
+  reachable from `@opentf/web-cli/ssg`; its exports and behavior are unchanged.
+
 ## [1.28.0] - 2026-10-03
 
 ### Fixed

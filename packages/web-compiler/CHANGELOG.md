@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Requires esdev `>=0.16.0`.
+
 ### Fixed
 
 - Emit framework imports through the server entry for SSG/SSR, including aliases and namespace imports. Preserve other import names and source-map locations. Requires rebuilding the otfwc archives and matching runtime/plugin releases.

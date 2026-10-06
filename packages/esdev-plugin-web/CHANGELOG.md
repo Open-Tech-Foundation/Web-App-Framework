@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Requires esdev `>=0.16.0`, which fixes production route chunks importing an
+  unhashed `entry.js`.
+
 ### Fixed
 
 - Resolve framework imports in shared JavaScript/TypeScript modules to the DOM-free server entry for server targets; browser and explicit CSR/hydration targets keep the browser entry.
