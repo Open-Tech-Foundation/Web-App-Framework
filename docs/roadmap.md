@@ -37,3 +37,12 @@
 * [x] JSX/TSX source maps from `otfwc`: original statements, expressions and callbacks carry mappings; the esdev plugin returns them for bundler composition. Compiler-generated helpers remain unmapped.
 * [ ] Original Markdown/MDX source maps: current maps target the generated `?otfw-jsx` intermediate. The Markdown front end still needs to supply the preceding mapping.
 * [x] Native esdev starters (spa, fullstack, docs, library) verified on esdev 0.16. Open upstream issues: [ESDEV_MIGRATION.md](ESDEV_MIGRATION.md).
+
+## Known issues
+Open items carried over from the 2026-10 site and HMR audits.
+* [ ] SSG omits spread attributes and multi-node (fragment) roots; the client restores them after hydration.
+* [ ] `@opentf/web-docs` `Tabs`: add tab/tabpanel roles, selection state and arrow-key navigation.
+* [ ] `@opentf/web-docs` `BlogLayout`: show "Last updated" only when the update is later than publication, not merely different.
+* [ ] Portal guide's custom overlay demo lacks modal semantics, focus containment, Escape handling and focus restoration.
+* [ ] Homepage render-pipeline tour needs manual pause/step controls.
+* [ ] Component refresh: preserve route-tree state across page/layout edits and retain unaffected children; mixed-export and `$expose` modules still reload. Re-check with `tsr test-e2e-hmr`.

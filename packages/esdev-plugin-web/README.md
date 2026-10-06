@@ -209,7 +209,6 @@ Changed component identities, prop/state declarations, mixed helper exports and
 `$expose` modules use the reload fallback. Uncontrolled fields inside a rebuilt
 view reset; bind drafts to `$state` to retain them across compatible edits.
 
-Refresh requires the matching updated `@opentf/web`, compiler binary and plugin.
-Server, release and test output contains no refresh registration. Verification
-and the outstanding upstream compile-error recovery issue are documented in
-[HMR_VERIFICATION.md](../../docs/HMR_VERIFICATION.md).
+Server, release and test output contains no refresh registration. The browser
+check is `tsr test-e2e-hmr`; the outstanding upstream compile-error recovery issue
+is tracked in [ESDEV_MIGRATION.md](../../docs/ESDEV_MIGRATION.md).

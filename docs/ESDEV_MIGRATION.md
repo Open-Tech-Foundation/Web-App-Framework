@@ -115,5 +115,6 @@ new package versions.
 
 ## Component refresh
 
-See [HMR verification](HMR_VERIFICATION.md) for the browser check, compatibility
-limits and the error-recovery issue above.
+`tsr test-e2e-hmr` drives the browser check (state, effects, refs, slots, route
+refresh and reload fallbacks). Behavior and limits are described in the
+[plugin README](../packages/esdev-plugin-web/README.md#development-refresh).
