@@ -1,6 +1,6 @@
 {
   "name": "@opentf/web-compiler",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "OTF Web native toolchain (otfwc) — component compilation and documentation indexing in one platform binary.",
   "type": "module",
   "main": "index.js",

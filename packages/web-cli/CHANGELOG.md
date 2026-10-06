@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-10-06
+
 ### Changed
 
 - Requires esdev `>=0.16.0`. Earlier releases emit production route chunks that
