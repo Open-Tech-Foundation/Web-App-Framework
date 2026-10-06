@@ -1,6 +1,6 @@
 // Unit tests for the route-loader toolchain plumbing (docs/DATA.md): discovery of
 // `loader.{js,ts}` files, route derivation, misplacement detection, the generated
-// entry sources, and the `#__otfw_data` shell injection.
+// loader entry source, and the `#__otfw_data` shell injection.
 
 import { join } from "runtime:path";
 
@@ -10,7 +10,6 @@ import { afterAll, beforeAll, describe, expect, test } from "./harness.js";
 import {
   detectLoaderConflicts,
   discoverLoaders,
-  entrySource,
   injectRouteData,
   loaderEntrySource,
   loaderRoutePath,
@@ -90,16 +89,6 @@ describe("generated entry sources", () => {
     expect(src).toContain(`appDir: "/a/app"`);
     expect(src).toContain(`"defaultLocale":"en"`);
     expect(src).toContain(`export const loaders = createLoaderRegistry(`);
-  });
-
-  test("entrySource emits mountApp({ loaders }) only when routes exist", async () => {
-    const pages = ["/a/app/page.jsx"];
-    const withLoaders = await entrySource(pages, "/a/app", undefined, null, null, [
-      "/todos",
-      "/items/[id]",
-    ]);
-    expect(withLoaders).toContain(`loaders: ["/todos","/items/[id]"],`);
-    expect(await entrySource(pages, "/a/app")).not.toContain("loaders:");
   });
 });
 

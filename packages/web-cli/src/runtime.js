@@ -1,14 +1,11 @@
-// Host primitives for the OTF Web toolchain on the ES-Runtime (`esdev`).
+// Host primitives for the SSG library on the ES-Runtime (`esdev`).
 //
-// Everything the toolchain needs from the host that is not the bundler. `runtime:fs`
-// is async-only by design — there are no synchronous variants to fall back on — so the
-// `node:fs` calls this toolchain grew up on become awaited helpers here. The rest is
-// what Bun used to supply as globals: package resolution anchored at the *project*
-// (not at this file), base64url without `Buffer`, and subprocesses.
+// Everything the prerender needs from the host that is not the bundler: awaited
+// filesystem helpers (`runtime:fs` is async-only by design) and package
+// resolution anchored at the *project* rather than at this file.
 
-import { copy, exists as fsExists, file, mkdir, readDir, realPath, remove, stat, write } from "runtime:fs";
+import { exists as fsExists, file, mkdir, readDir, realPath, remove, write } from "runtime:fs";
 import { dirname, fromFileURL, join } from "runtime:path";
-import { Command } from "runtime:system";
 
 // ------------------------------------------------------------------ filesystem
 
@@ -24,17 +21,7 @@ export async function exists(path) {
   }
 }
 
-/** Whether `path` exists *and* is a regular file (a directory must not be served). */
-export async function isFile(path) {
-  try {
-    return (await stat(path)).isFile;
-  } catch {
-    return false;
-  }
-}
-
 export const readText = (path) => file(path).text();
-export const readBytes = (path) => file(path).bytes();
 
 /** Write `data`, creating the parent directory — `writeFileSync` never had to be told. */
 export async function writeFile(path, data) {
@@ -60,21 +47,6 @@ export async function readEntries(dir) {
   }
 }
 
-/**
- * Copy a directory tree. `copy()` takes one regular file at a time, which is the
- * honest primitive — `cpSync(dir, dir, { recursive: true })` was doing this walk
- * internally anyway.
- */
-export async function copyTree(from, to) {
-  await mkdir(to, { recursive: true });
-  for (const entry of await readEntries(from)) {
-    const src = join(from, entry.name);
-    const dest = join(to, entry.name);
-    if (entry.isDir) await copyTree(src, dest);
-    else if (entry.isFile) await copy(src, dest);
-  }
-}
-
 /** Nearest ancestor directory of `from` (inclusive) that contains `name`. */
 export async function findUp(name, from) {
   let dir = from;
@@ -84,33 +56,6 @@ export async function findUp(name, from) {
     if (parent === dir) return null;
     dir = parent;
   }
-}
-
-// ---------------------------------------------------------------- base64url
-//
-// Route/worker/asset URLs carry the module's absolute path as base64url so it
-// survives a URL path segment. There is no `Buffer` here, so it is `btoa`/`atob`
-// over UTF-8 bytes with the URL alphabet substituted.
-
-const enc = new TextEncoder();
-const dec = new TextDecoder();
-
-export function b64url(s) {
-  const bytes = enc.encode(s);
-  let bin = "";
-  // Chunked so a long path can't overflow the argument list of `fromCharCode`.
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-export function unb64url(s) {
-  const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
-  const bin = atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return dec.decode(bytes);
 }
 
 // ------------------------------------------------------------------ resolution
@@ -187,41 +132,4 @@ export async function resolveFrom(spec, fromDir, conditions) {
   }
 
   return realPath(fromFileURL(import.meta.resolve(spec)));
-}
-
-/** The directory of the package that declares `name`, resolved from `fromDir`. */
-export async function packageDir(name, fromDir) {
-  const entry = await resolveFrom(name, fromDir);
-  for (let dir = dirname(entry); ; ) {
-    const manifest = join(dir, "package.json");
-    if (await exists(manifest)) {
-      try {
-        if (JSON.parse(await readText(manifest)).name === name) return dir;
-      } catch {}
-    }
-    const up = dirname(dir);
-    if (up === dir) throw new Error(`cannot locate the ${name} package directory`);
-    dir = up;
-  }
-}
-
-// ------------------------------------------------------------------ subprocess
-
-/**
- * Run a command to completion. `runtime:system` has no synchronous variant (also by
- * design), so the callers that used `Bun.spawnSync` await this instead.
- */
-export async function run(program, args, { cwd, stdout = "piped", stderr = "piped" } = {}) {
-  try {
-    const out = await new Command(program, { args, cwd, stdout, stderr, inheritEnv: true }).output();
-    return {
-      ok: out.success,
-      code: out.code,
-      stdout: out.stdout ? dec.decode(out.stdout) : "",
-      stderr: out.stderr ? dec.decode(out.stderr) : "",
-    };
-  } catch (e) {
-    // A missing binary is a failed run, not a crash — callers report it themselves.
-    return { ok: false, code: null, stdout: "", stderr: e?.message ?? String(e), error: e };
-  }
 }

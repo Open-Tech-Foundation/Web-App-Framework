@@ -58,11 +58,10 @@ indexing (`otfwc docs index`) use that same executable. Published installations
 use the archive shipped by `@opentf/web-compiler`; this repository can use its
 Cargo debug build.
 
-## Starter migration
+## Starter
 
-Templates are embedded in esdev. The installed esdev 0.14 OTF app templates still
-emit retired `otfw` scripts; see the [migration status](../../docs/ESDEV_MIGRATION.md)
-for the upstream changes required before new generated projects can run.
+`esdev create <dir> --template=docs` generates a project wired this way: a
+`site-ssg` prerender target plus the `siteOutputPlugin` hook.
 
 ## License
 
