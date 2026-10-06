@@ -21,8 +21,8 @@ esdev test --config=esdev.test.json --browser
 
 Install a browser and matching driver following the official
 [browser testing guide](https://esrun.opentechf.org/esdev/test/browser).
-The native `--dom` realm in esdev 0.14 lacks the mutable clipboard and full
-input-selection APIs that `userEvent.setup()` needs. For native tests, use DOM
+The native `--dom` realm in esdev 0.16 lacks the mutable clipboard and
+`HTMLInputElement.select()` that `userEvent.setup()` and `userEvent.type()` need. For native tests, use DOM
 actions such as `button.click()` or `input.value` plus an `input` event.
 
 ## Setup

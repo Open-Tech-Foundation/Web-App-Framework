@@ -37,8 +37,8 @@ export default function Benchmarks() {
 
       <p className={NOTE}>
         These tables retain July–August 2026 measurements from the earlier toolchain.
-        They have not been re-measured after the esdev migration. The current runner
-        needs the upstream route-chunk fix before we can publish a fresh comparison.
+        They have not been re-measured after the esdev migration; a fresh comparison
+        will replace them once all four engines are re-run under the same conditions.
       </p>
 
       {/* ── Runtime ─────────────────────────────────────────────────────────── */}

@@ -15,8 +15,8 @@ second copy of the framework.
 esdev create my-lib --template=library --package-manager=pnpm
 ```
 
-The installed esdev 0.15 library template's test checks only source-file exports.
-Add a compiler config and rendering test to exercise the component itself.
+The generated project compiles components for tests and includes a rendering test;
+`esdev test --dom` runs it.
 
 ## Package entry
 
@@ -42,15 +42,15 @@ export default function Counter(props) {
 
 ## Rendering tests
 
-Use the [Testing Setup](/packages/web-test/setup) config. A library test uses the
-compiler-only factory, so route discovery is unnecessary:
+The library's `esdev.json` compiles components for client rendering and turns
+route discovery off, since a library has no `app/` folder. The
+[Testing Setup](/packages/web-test/setup) module registers cleanup:
 
-```json esdev.test.json
+```json esdev.json
 {
   "plugins": [{
     "module": "@opentf/esdev-plugin-web",
-    "export": "createOtfwPlugin",
-    "options": { "target": "csr", "failOnError": true }
+    "options": { "target": "csr", "routes": false }
   }],
   "test": { "setup": ["@opentf/web-test/setup"] }
 }
@@ -70,7 +70,7 @@ test("updates after a click", async () => {
 ```
 
 ```bash
-esdev test --config=esdev.test.json --dom
+esdev test --dom
 ```
 
 Use `--browser` for full user-event interaction sequences. Publishing source and

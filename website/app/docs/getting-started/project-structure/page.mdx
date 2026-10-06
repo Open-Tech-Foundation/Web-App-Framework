@@ -8,9 +8,8 @@ import { Callout } from "@opentf/web-docs";
 # Project Structure
 
 OTF Web supports browser apps, fullstack apps, documentation sites and component
-libraries. The layouts below show the native esdev setup. The embedded OTF templates
-in esdev 0.15 still need their upstream migration; see
-[Installation](/docs/getting-started/installation) before using generated projects.
+libraries. The layouts below match the projects `esdev create` generates; see
+[Installation](/docs/getting-started/installation).
 Apps and docs sites share the same `app/` routing layout; libraries ship source
 components without an `app/` folder.
 
@@ -60,6 +59,7 @@ my-app/
 ├─ esdev.json         # browser and server targets
 ├─ entry.js           # client bootstrap
 ├─ server.js          # app-owned request pipeline
+├─ bootstrap.js       # server target entry: HTMLElement stub, then server.js
 ├─ index.html
 └─ package.json
 ```
@@ -101,7 +101,7 @@ my-lib/
 │  └─ Counter.jsx
 ├─ tests/
 │  └─ counter.test.js
-├─ esdev.test.json  # CSR compiler plugin and native cleanup
+├─ esdev.json       # CSR compiler plugin (routes off) and test cleanup
 └─ package.json
 ```
 

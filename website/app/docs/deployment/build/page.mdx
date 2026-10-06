@@ -3,8 +3,6 @@ title: Production Build
 description: Compile and bundle your app with declarative esdev targets.
 ---
 
-import { Callout } from "@opentf/web-docs";
-
 # Production Build
 
 The OTF plugin compiles components and discovers routes. esdev processes the HTML
@@ -56,12 +54,6 @@ and final asset names. See the official
 
 For a single-page app, configure the host to fall back to `index.html` for unknown
 paths so client routes resolve.
-
-<Callout type="warning" title="esdev 0.15 route-chunk references">
-  The OTF benchmark exposed an upstream HTML-build issue: a route chunk imports
-  entry.js after esdev has renamed that entry with a content hash. Verify navigation
-  in preview, not only build success, until the upstream fix is released.
-</Callout>
 
 ## Static rendering and docs output
 
