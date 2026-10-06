@@ -67,11 +67,4 @@ Available templates:
 | `library` | A source package of reusable components compiled by its consumers. |
 
 Template files are embedded in esdev; package versions are resolved while scaffolding.
-
-<Callout type="warning" title="OTF template migration">
-  The installed esdev 0.15 OTF app templates still emit retired CLI scripts and
-  omit esdev.json. They need an upstream update and a new esdev binary release.
-  Until then, use the native config and entry files from
-  [Production Build](/docs/deployment/build) instead of the generated otfw scripts.
-  The create-web package is deprecated.
-</Callout>
+Each template writes its `esdev.json`, entry files and `dev`/`build`/`test` scripts.

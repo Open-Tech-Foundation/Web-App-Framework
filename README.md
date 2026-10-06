@@ -76,7 +76,7 @@ touches exactly that text node and nothing else.
 - **File-based routing** — nested layouts, dynamic segments, catch-all routes,
   and route guards.
 - **Batteries included** — forms, testing, i18n, MDX docs, and project
-  scaffolding via `esdev create` (`create-web` is deprecated).
+  scaffolding via `esdev create`.
 
 ## Performance
 
@@ -97,7 +97,6 @@ methodology, and caveats. Reproduce locally with `tsr bench -- all`.
 | [`@opentf/web-test`](packages/web-test) | Testing utilities for native components. |
 | [`@opentf/web-docs`](packages/web-docs) | MDX documentation theme — sidebar, callouts, TOC. |
 | [`@opentf/web-i18n`](packages/web-i18n) | Internationalization — ICU messages, Intl formatters, URL-prefix locale routing. |
-| [`create-web`](packages/create-web) (deprecated — use `esdev create`) | Legacy project scaffolder. |
 
 ## Repository map
 

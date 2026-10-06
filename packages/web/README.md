@@ -11,11 +11,10 @@ lowers them to plain DOM code that imports its helpers (`signal`, `computed`,
 ## Installation
 
 ```bash
-bun add @opentf/web
+pnpm add @opentf/web
 ```
 
 Scaffold a ready-to-run app with [`esdev create`](https://esrun.opentechf.org/esdev/create)
-(`@opentf/create-web` is deprecated)
 and use `esdev start`, `esdev build`, and `esdev typecheck`.
 
 ## TypeScript

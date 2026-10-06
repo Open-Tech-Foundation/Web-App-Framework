@@ -59,7 +59,7 @@ run = "cargo test"
 # Runtime-native tests: the SSG lib, scaffolder, and framework's pure core/server paths.
 [tasks.test-esdev]
 deps = ["build-compiler"]
-run = "esdev test --config=esdev.test.json packages/web-cli/tests packages/web-compiler/tests packages/create-web/tests packages/web/core/reactive.test.js packages/web/core/signals.test.js packages/web/esdev-tests/clsx.test.js packages/web/esdev-tests/jsx-types.test.js packages/web/server/api.test.js packages/web/server/cookies.test.js packages/web/server/head.test.js packages/web/server/index.test.js packages/web/server/loader.test.js packages/web/server/middleware.test.js packages/web/server/render.test.js packages/web/server/ssg-runtime.test.js packages/web/server/adapters/node.test.js"
+run = "esdev test --config=esdev.test.json packages/web-cli/tests packages/web-compiler/tests packages/web/core/reactive.test.js packages/web/core/signals.test.js packages/web/esdev-tests/clsx.test.js packages/web/esdev-tests/jsx-types.test.js packages/web/server/api.test.js packages/web/server/cookies.test.js packages/web/server/head.test.js packages/web/server/index.test.js packages/web/server/loader.test.js packages/web/server/middleware.test.js packages/web/server/render.test.js packages/web/server/ssg-runtime.test.js packages/web/server/adapters/node.test.js"
 
 # DOM suites: these ran under happy-dom's ambient `document` before; under esdev
 # the `--dom` realm provides it instead (esdev's URL is http://localhost/, so the
@@ -73,10 +73,6 @@ run = "esdev test --config=esdev.test.json --dom packages/web/core/errors.test.j
 [tasks.test-esdev-plugin]
 deps = ["build-compiler"]
 run = "esdev test --config=esdev.test.json packages/esdev-plugin-web/tests"
-
-# @opentf/create-web is deprecated (use `esdev create`); its tests stay until removal.
-[tasks.test-create-web]
-run = "esdev test --config=esdev.test.json packages/create-web/tests/scaffold.test.js"
 
 [tasks.test-web-docs]
 deps = ["build-compiler"]
