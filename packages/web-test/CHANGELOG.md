@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.26.0] - 2026-10-06
+
 ### Added
 
 - Publish TypeScript declarations for `render`, `RenderResult` (bound Testing

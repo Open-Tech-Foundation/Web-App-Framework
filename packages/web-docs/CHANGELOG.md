@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-06
+
 ### Added
 
 - Publish TypeScript declarations for docs and blog components, configuration,

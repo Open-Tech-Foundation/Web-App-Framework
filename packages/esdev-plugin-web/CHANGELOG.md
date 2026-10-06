@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-06
+
 ### Changed
 
 - Requires esdev `>=0.16.0`, which fixes production route chunks importing an
