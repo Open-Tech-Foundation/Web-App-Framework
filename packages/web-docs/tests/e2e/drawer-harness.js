@@ -3,7 +3,7 @@
 // burger) — inside a minimal navbar + docs grid, against the real web-docs theme CSS.
 //
 // Isolating the drawer here (rather than driving the full pre-rendered website) keeps
-// the e2e fast, dependency-free (no `otfw build` of the site), and focused on the one
+// the e2e fast, dependency-free (no build of the site), and focused on the one
 // thing the `--dom` unit tests can't check: the CSS-dependent behavior (off-canvas transform, the
 // 768px breakpoint, the slide-in, the backdrop, the body-scroll lock).
 import Sidebar from "../../components/Sidebar.jsx";

@@ -13,7 +13,7 @@ function page(html) {
 // suite that registers routes/layouts and doesn't clean up would otherwise leak into
 // the *first* test here (e.g. a leftover root layout wrapping this page's HTML, breaking
 // an exact-equality assertion). Reset before each test too — not just after — so this
-// suite is isolated regardless of which file bun ran before it.
+// suite is isolated regardless of which file the runner ran before it.
 const resetRoutes = () => {
   routes.pages = {};
   routes.layouts = {};

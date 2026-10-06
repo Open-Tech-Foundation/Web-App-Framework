@@ -20,7 +20,7 @@ re-render, no memoization.
 ```bash
 npm install @opentf/web-form
 # or
-bun add @opentf/web-form
+pnpm add @opentf/web-form
 ```
 
 ## Basic usage

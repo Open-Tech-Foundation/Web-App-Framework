@@ -1,11 +1,11 @@
 // Development-mode diagnostics. SPEC §5.4.4 specifies warnings that fire "in
 // development mode"; this is the flag they gate on.
 //
-// `process.env.NODE_ENV` is substituted at bundle time by the toolchain (`otfw
-// dev` → "development", `otfw build` → "production"), so DEV folds to a literal
+// `process.env.NODE_ENV` is substituted at bundle time by esdev ("development"
+// under `esdev start`, "production" for `esdev build`), so DEV folds to a literal
 // and every `if (DEV)` block is dropped by minification from production output.
-// ESdev has no Node `process`; its source-mode default is development. Bundled
-// production builds substitute this expression, while Bun/Node keep NODE_ENV.
+// Unbundled esdev code has no Node `process`, so it defaults to development;
+// Node keeps its own NODE_ENV.
 export const DEV = globalThis.process?.env?.NODE_ENV !== "production";
 
 const seen = new Set();

@@ -117,7 +117,7 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
       const urlPath = localizeFor(path, locale, defaultLocale);
       try {
         // Route loader (docs/DATA.md): run it at build time with no `request` and
-        // an empty query (a query-dependent loader needs `otfw serve`). The result
+        // an empty query (a query-dependent loader needs a request server). The result
         // is threaded into the render (`router.data`), inlined into the HTML, and
         // written as a sibling `__data.json` — per locale, since a localized
         // loader can return locale-dependent data.

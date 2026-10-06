@@ -1,7 +1,7 @@
 // OTF Search-backed modal. The navbar's `SearchTrigger` and the global
 // ⌘K / Ctrl+K shortcut open it via `window.__otfwOpenSearch`, which this component
-// installs on mount. The static index is generated at build time (`otfw build --ssg`
-// with `docs.search.provider === "otf"`) lives at `/_search/`; the reader is lazy so
+// installs on mount. The static index is generated after a release build (the `siteOutputPlugin`
+// output hook, with `docs.search.provider === "otf"`) lives at `/_search/`; the reader is lazy so
 // pages without a search never fetch its index.
 //
 // Note: results only exist against a built site (`dist/`). In dev there is no index,

@@ -48,7 +48,7 @@
  * @property {string} [title]        Feed title (default `"<docs.title> Blog"`).
  * @property {string} [description]  Feed description (default the title). RSS and Atom
  *                            feeds (`<dir>/rss.xml`, `<dir>/atom.xml`) are generated
- *                            by `otfw build`; production docs/blog builds require
+ *                            by the release output hook; production docs/blog builds require
  *                            `site.url` or `--base-url` so feed URLs are absolute.
  * @property {boolean} [lastUpdated] Show a "Last updated" line on a post when it was
  *                            edited after its publish date (from git / frontmatter).
@@ -62,9 +62,8 @@
  *                              docs/blog builds unless `--base-url` is passed).
  * @property {DocsConfig} [docs]         Documentation generator config.
  * @property {BlogConfig} [blog]         Blog generator config.
- * @property {ProxyConfig} [proxy]       Dev-only: `otfw dev` forwards matched path prefixes
- *                              to a separately-running backend (e.g. a local `wrangler dev`
- *                              providing Cloudflare D1). No effect on `otfw build`.
+ * @property {ProxyConfig} [proxy]       Retired dev-server forwarding. The esdev toolchain does
+ *                              not read it; kept so existing configs still type-check.
  */
 
 /**

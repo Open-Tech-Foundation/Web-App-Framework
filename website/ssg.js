@@ -14,7 +14,7 @@
 // The site owns its esdev.json and installed packages. Its project root is
 // always `website/`, including when copied for a standalone deploy.
 //
-// Everything else is the `otfw build --ssg` second half: the shell is the site
+// Everything else is the prerender half of a static build: the shell is the site
 // target's own `index.html` output (bundle script + stylesheet already injected,
 // assets already copied), stamped with the hydrate sentinel the declarative
 // build doesn't know about.

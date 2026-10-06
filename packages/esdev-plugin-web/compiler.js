@@ -149,7 +149,7 @@ export function compileError(payload) {
  */
 // Every compiler child started in this process, so a one-shot command can shut them
 // all down. It has to: an open reader on a child's stdout keeps the runtime alive, so
-// a build that simply returned would leave `otfw build` hanging after `dist/` is done.
+// a prerender step that simply returned would hang after its output is written.
 const compilers = new Set();
 
 /** Stop every `otfwc serve` child. Called at the end of the one-shot commands. */

@@ -3,7 +3,7 @@
 // by the Hydrate backend's factory — the very same nodes, no rebuild — and reactivity
 // then runs live on them, driven by a real DOM event.
 //
-// Unlike the rest of the suite (which compiles `.jsx` fixtures via the preload), this
+// Unlike the rest of the suite (which compiles `.jsx` fixtures through the esdev plugin), this
 // drives the otfwc binary directly so it can request the ssg/hydrate targets. It is
 // skipped when the workspace debug build is absent (OTFWC_BIN overrides the path).
 

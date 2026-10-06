@@ -62,7 +62,7 @@ export function docsNavPlugin({ appDir, exclude = new Set(), importModule } = {}
           out[base] = await buildSection(join(appDir, entry.name), base, ctx, true, exclude);
         }
         // The files this tree was generated from. They are not imports, so nothing else
-        // ties them to this module — declaring them is what makes `otfw dev` rebuild the
+        // ties them to this module — declaring them is what makes the dev server rebuild the
         // chunk holding the sidebar when a page's frontmatter or a `_meta.*` changes.
         return { code: `export default ${JSON.stringify(out)};\n`, dependsOn: ctx.watch };
       },
@@ -79,7 +79,7 @@ async function loadMeta(dir, ctx) {
     try {
       if (name.endsWith(".json")) return JSON.parse(await readText(p));
       // A query string does not bust the ESM cache (it is keyed by path and ignores
-      // `?t=`), so under `otfw dev` the toolchain supplies a loader that can actually
+      // `?t=`), so a host that needs live `_meta` edits supplies a loader that can
       // re-read the file; without one this is a plain, once-per-process import.
       const mod = await (ctx.importModule?.(p) ?? import(toFileURL(p).href));
       return mod.default ?? mod;
