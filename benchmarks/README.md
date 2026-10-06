@@ -103,11 +103,8 @@ the DevTools Protocol (no Playwright/Puppeteer install), collects the in-page
 results, writes `benchmarks/results/<case>-<timestamp>.json`, and prints a
 Markdown table.
 
-The installed esdev 0.14 HTML build currently leaves a route chunk importing
-`./entry.js` after renaming that entry with a hash. The real OTF run fails
-before measurements; fix the upstream chunk reference before publishing a new
-comparison. Runner behavior is covered by a controlled browser fixture. See
-[the migration status](../docs/ESDEV_MIGRATION.md).
+The OTF case builds and runs on esdev 0.16. The website tables predate the esdev
+migration; re-run every engine under the same conditions before replacing them.
 
 ### Pooling runs for the website table
 

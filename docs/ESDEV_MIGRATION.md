@@ -1,177 +1,119 @@
 # esdev migration status
 
-Output hooks and all four generated OTF templates verified against esdev 0.15.0 on
-2026-10-02. See [local plugin template verification](TEMPLATE_VERIFICATION.md) for
-native configurations tested with checkout package files and the local compiler.
-Generated-project failures are separate from those local-plugin checks. OTF template
-integration remains pending upstream. The DOM and asset observations below were recorded against
-0.14.0 and await re-verification.
-Template files are embedded in the esdev binary; updating this repo's plugin cannot change them.
+Verified on 2026-10-06 against **esdev 0.16.0** (`esdev upgrade --dry-run`: up to
+date) and Chromium 153. The migration inside this repository is complete; the
+remaining items are upstream esdev issues and framework follow-ups listed below.
 
 ## Working in this repository
 
-- Site and playground development/builds use declarative esdev configs.
-- The compiler plugin transforms JSX/TSX/MDX and returns source maps; esdev owns
-  final bundling, CSS and map composition. Markdown maps currently target generated JSX.
-- Rust, framework DOM tests and browser tests run through `tsr` and esdev.
-- `@opentf/web-test/setup` registers native `runtime:test` cleanup. JSX compilation
-  belongs to the esdev plugin, and the runner supplies the DOM.
-- Native `web-test` coverage verifies rendering, props, role queries and teardown;
-  real-browser coverage verifies the full Testing Library user-event workflow.
-- The standalone plugin integration test builds browser/server targets from package
-  files and verifies real HTTP API, middleware, loader and SSR requests.
-- Shared benchmark orchestration, aggregation and fixture generation use esdev.
-  Comparison-framework build scripts retain their existing Bun toolchains.
-- Release site builds prerender pages and generate OTF Search, feeds and LLM files.
-  CI runs a release site build as well as unit and browser suites.
+- Development, builds, tests, typechecking, benchmarks and the site build run
+  through `tsr` tasks that call esdev (`tasks.toml`). Bun, happy-dom and the
+  retired `otfw` CLI are no longer used by the framework packages.
+- `@opentf/esdev-plugin-web` compiles JSX/TSX/MDX through `otfwc` and generates
+  the `@otfw/routes` module; esdev owns bundling, CSS, HMR transport and serving.
+- `@opentf/web-cli` is only the SSG library (`@opentf/web-cli/ssg`): the
+  prerender driver for a `then: "run"` target and the release-only
+  `siteOutputPlugin` that writes search, feeds and LLM files.
+- The comparison benchmarks (`benchmarks/{react,solid,svelte}`) keep their own
+  Bun build scripts; OTF orchestration and aggregation run on esdev.
 
-## Upstream starter fixes required
+Checks run for this verification:
 
-Reproduce with `esdev create <dir> --template=<name> --package-manager=pnpm
---no-install --yes`.
+| Check | Result |
+| --- | --- |
+| `tsr typecheck` | Pass |
+| `tsr test` (Rust + native/DOM suites) | Pass |
+| `tsr test-e2e` (docs drawer/sidebar/hydration, browser userEvent, bench runner, HMR) | Pass |
+| `tsr build` (playground) | Pass |
+| `tsr site-build` | Pass: 65 pages prerendered, 63 indexed, feeds and LLM files |
+| `tsr bench -- otfw` | Completes: route chunks import the hashed entry |
 
-| Template | Observed output | Required change |
+## Generated OTF starters
+
+esdev 0.16 embeds native `spa`, `fullstack`, `docs` and `library` templates. Each
+was created with `--language=js` and `--language=ts`, installed from npm with pnpm
+(`@opentf/web` 0.30.0, plugin 0.3.0, web-test 1.25.0, web-docs 0.28.0, CLI
+1.28.0) and driven in headless Chromium.
+
+| Template | Published packages | With this checkout's packages |
 | --- | --- | --- |
-| `spa` (0.15) | No esdev.json; otfw dev/build/build --ssg scripts; HTML lacks a module entry | Emit native config, OTF plugin dependency and a client entry that imports @otfw/routes and calls mountApp; use esdev scripts; make the stylesheet URL relative |
-| `docs` (0.15) | No esdev.json; otfw dev/build --ssg scripts | Emit client/config plus a release prerender target; use provider otf and index the prerendered output; make the stylesheet URL relative |
-| `fullstack` (0.15) | No esdev.json; otfw dev/build/serve scripts | Emit client and server targets, a Request/Response server entry, API/middleware/loader wiring, SSR bootstrap, and native run/watch scripts |
-| `library` (0.15) | esdev test passes, but checks only source files; no compiler/test config | Configure CSR compilation with routes disabled and native DOM cleanup; test an imported, rendered component |
+| `spa` | Test, build, dev and preview pass; counter mounts and updates. TS typecheck fails: `@opentf/web-test` had no declarations. | TS typecheck passes. |
+| `fullstack` | Test, build, typecheck pass. Dev and production (`esrun dist/server.js`) serve SSR + hydration, loader data, API, middleware header and the 404 page. Needs the generated `bootstrap.js`. | Passes in dev and production with `bootstrap.js` deleted and the server target pointing at `server.js`. |
+| `docs` | Build prerenders four pages, indexes two, writes feeds and LLM files. Docs, sidebar, blog index and post render in dev and preview. TS typecheck fails: `@opentf/web-docs` had no declarations. | TS typecheck passes. |
+| `library` | Rendering tests pass. TS typecheck fails: `@opentf/web-test` had no declarations. | TS typecheck passes. |
 
-SPA/docs/fullstack currently request the retired @opentf/web-cli executable.
-They need an upstream template change and a new esdev binary release, followed
-by fresh-project build/start/preview/test checks against published packages.
-The repo's standalone plugin test verifies package integration independently;
-it does not claim those generated templates already work.
+The checkout-package column needs the next releases of `@opentf/web`,
+`@opentf/esdev-plugin-web`, `@opentf/web-compiler` (rebuilt `otfwc`),
+`@opentf/web-docs` and `@opentf/web-test`.
 
-## Upstream DOM compatibility
+## Upstream esdev issues
 
-In the native DOM of esdev 0.14:
+### 1. Dev server panics after recovering from a transform error
 
-- `userEvent.setup()` fails when it tries to define navigator.clipboard on the
-  non-extensible navigator.
-- `userEvent.type(input, text)` encounters a missing HTMLInputElement.select API.
+With the OTF plugin, saving a page with a syntax error shows the expected build
+overlay. Saving the fixed file then kills `esdev start`:
 
-Use native DOM actions for the fast tier and `esdev test --browser` for full
-Testing Library interactions. Fix the native DOM APIs upstream before documenting
-userEvent.setup as supported by --dom. Do not replace the runner's globals with
-happy-dom or a local DOM implementation.
+```text
+rolldown-1.2.3/src/types/scan_stage_cache.rs:79:28
+called `Option::unwrap()` on a `None` value
+```
 
-## Output hooks and development SSG
+Reproduce: `esdev create app --template=spa`, install, `esdev start`, change
+`<h1>Hello, world!</h1>` in `app/page.jsx` to `<h1>Broken</h1 <<`, save, then
+restore it. Reproduced on 0.15.0 and 0.16.0. On 0.15 a plain JavaScript syntax
+error without the plugin recovered, which points at plugin transform errors in
+Rolldown's incremental scan cache; that comparison was not repeated on 0.16.
 
-The configured `siteOutputPlugin` from `@opentf/web-cli/ssg` uses esdev 0.15's
-release-only `finish` hook. After all targets and `then: run` steps succeed, it
-indexes prerendered HTML and generates feeds/LLM files into the hook's staged
-`outDir`. An indexing error prevents publication and preserves the last deployment.
+### 2. Native `--dom` realm is missing APIs Testing Library uses
 
-`website/ssg.js` still prerenders routes and generates sitemap/robots from the
-actual rendered paths. It calls `writePrerenderReport` to pass resolved site
-metadata to the hook; the hook removes this temporary report before publication.
-The website owns `website/esdev.json`; repository site tasks run from that
-directory. It installs locked, published packages independently of the workspace
-and registers both the compiler/routes plugin and the output plugin locally.
-The prerender entry loads installed SSG helpers at runtime so package-relative
-compiler archive paths are preserved when esdev bundles the entry.
+- `userEvent.setup()` throws `TypeError: Cannot define property clipboard, object
+  is not extensible`: `navigator` cannot take the clipboard stub.
+- `userEvent.type(input, ...)` updates the value but reports
+  `Element INPUT does not implement "select"`: `HTMLInputElement.select()` is
+  missing.
 
-Development does not run `finish`; a `then: "run"` prerender target can still execute,
-so its script must guard release staging and skip rendering without it. Browser-only
-selected builds skip output generation when their configured `prerenderTarget`
-was not built; they preserve the existing index rather than indexing a CSR shell.
-The integration fixture covers staging, searchable section links, public overrides,
-indexer failure, selected builds and an isolated development server.
+Both fail on 0.14 and 0.16. `esdev test --browser` runs the same workflows
+correctly; docs point users there until the realm supports them.
 
-## HTML entry hash references
+### 3. `new URL("./file", import.meta.url)` assets are not emitted
 
-Reproduced against esdev 0.15.0 with a converted, installed SPA starter. Its
-native build emits `dist/assets/entry-<hash>.js`, while the route's generated
-`page-<hash>.js` still imports `./entry.js`. The missing module prevents the
-page from mounting in preview. The converted docs starter has the same imports
-in its layout and shared docs chunks. Development serves correctly; a successful
-release build alone does not establish browser readiness.
+`new Worker(new URL("./worker.js", import.meta.url))` is bundled and rewritten,
+but an ordinary asset reference such as `new URL("./icon.svg", import.meta.url)`
+stays verbatim in the output and the file is never copied, so it 404s in preview
+(`/assets/icon.svg`). Reproduced on 0.16 from plain JavaScript (not compiled by
+the OTF plugin), so this is the asset pipeline itself. Users must put such files
+in `public/` for now.
 
-The native OTF benchmark build in esdev 0.14 also emits
-`benchmarks/otfw/dist/assets/entry-<hash>.js`, while its generated `page-<hash>.js`
-imports `./entry.js`. That un-hashed file does not exist, so the browser cannot
-load the route. Reproduce with `tsr bench -- otfw --throttle=1`, or build with
-`tsr bench-otfw-build` and inspect the route chunk's first import.
+### 4. `esdev preview` ignores `dist/404.html`
 
-Fix references to renamed entry chunks in esdev's HTML build pipeline. The native
-runner itself is verified with a controlled browser fixture; a real OTF benchmark
-measurement is blocked by the generated asset reference. Do not publish timings
-from the failed run or relabel historical benchmark reports.
+Preview answers every unknown route-like path with `index.html` and status 200,
+including SSG output that ships a prerendered `404.html`. For a docs site this
+serves the prerendered home page at `/missing-page/`. Static hosts configured
+for SSG (e.g. Cloudflare `not_found_handling: "404-page"`) return `404.html`
+with status 404. Preview should do the same when the output has a `404.html`,
+and keep the SPA fallback otherwise.
 
-## JavaScript asset URLs
+### 5. Fullstack template bootstrap
 
-A native browser fixture verified that module workers created with
-`new Worker(new URL("./worker.js", import.meta.url), { type: "module" })` are
-bundled and rewritten correctly. However, an ordinary
-`new URL("./icon.svg", import.meta.url)` is preserved without emitting the icon.
-It resolves next to the output bundle and can point at a missing file.
+The template's server target enters through `bootstrap.js`, which stubs
+`globalThis.HTMLElement` before importing `server.js`. Once the next
+`@opentf/web`, plugin and compiler releases are published (server builds then
+resolve framework imports through the DOM-free server entry), the template
+should drop `bootstrap.js`, point the server target at `server.js`, and pin the
+new package versions.
 
-Use configured public assets for ordinary image/WebAssembly URLs until esdev's
-asset pipeline supports these references. The old framework CLI's rewriting
-helper is not installed by the native compiler plugin.
+## Framework follow-ups
 
-## Release handoff
-
-The maintainer owns release.toml changes, package versions and publishing.
-Release the updated compiler archives and the packages that consume them:
-@opentf/web-compiler, @opentf/esdev-plugin-web, @opentf/web-cli,
-@opentf/web-docs and @opentf/web-test.
-
-The compiler package ships one otfwc executable per supported platform, including
-the `docs index`, `docs inspect` and `docs query` commands. See [search/RELEASE.md](../packages/web-docs/search/RELEASE.md).
-The finish plugin additionally requires a new @opentf/web-cli release and esdev
-0.15 or newer. The unified indexing command requires rebuilding and publishing the compiler archives.
-The new web-test setup removes the Bun preload and happy-dom dependency; migrate
-consumers to esdev.test.json and runtime:test imports as documented in its README.
-
-The deprecated create-web package remains compatibility source until removal;
-it is not the location for new starter development.
-
-## Validation before updating upstream templates
-
-The latest sequential check uses the local plugin, compiler executable and OTF
-package source for all four templates; see
-[the complete results](TEMPLATE_VERIFICATION.md). Generated SPA/fullstack/docs
-scripts fail because the released CLI no longer provides `otfw`. The generated
-library test passes but does not import or render its component.
-
-With explicit native wiring and the local packages, SPA build/tests/development,
-docs prerender/index/feed output and library rendering/props/click/cleanup pass.
-Fullstack API/middleware/loaders/SSR checks pass after a minimal `HTMLElement`
-bootstrap. Production browsers still fail on the upstream entry reference issue.
-The packed source library works in a development consumer using the local plugin.
-
-In the earlier published-package check, fresh SPA and docs projects were generated outside this workspace with esdev
-0.15.0 and installed from npm. Their temporary configs were converted to native
-esdev targets and the published `@opentf/esdev-plugin-web` 0.2.0.
-
-- SPA: native build and a `@opentf/web-test` reactive component test pass. Chromium
-  verifies that the development route mounts and its counter responds to clicks.
-- Docs: with the local compiler/CLI resolver fixes overlaid into the temporary
-  installation, an ordinary bundled SSG import prerenders four pages, indexes two,
-  and emits blog feeds and LLM context. No binary override, workspace sources,
-  dynamic SSG import or site-specific canonicalization is needed.
-- The committed regressions cover bundled compiler extraction with both direct
-  and transitive dependencies, plus shared runtime state through symlinked package
-  resolution and aliases.
-- Release preview is blocked by the upstream HTML chunk-reference issue above.
-  Recheck SPA mounting and docs hydration/search after that esdev fix.
-
-Release the resolver fixes in `@opentf/web-compiler` and `@opentf/web-cli` before
-upstream templates consume them. The plugin's minimum esdev version is now 0.15;
-release that manifest update with its compiler dependency update. The resolver fixes alone did not change the indexing format. Component HMR now
-also changes native compiler output and requires rebuilding the same platform archives.
+- Hydration adopts prerendered markup without checking that it was rendered for
+  the current URL, so a host falling back to `index.html` shows that page's
+  content for an unknown path instead of the 404 route.
+- Original Markdown/MDX source maps (current maps target generated JSX).
+- MDX 404 routes are rejected; use `404.jsx`/`404.tsx`.
+- SSG omits spread attributes and multi-node roots (warned during builds).
+- Benchmarks: the published tables predate the migration. Re-run all four engines
+  under the same conditions before replacing them.
 
 ## Component refresh
 
-The local compiler/plugin/runtime now implement development refresh on esdev's
-`ctx.hot` / `import.meta.hot` API. Compatible component edits preserve hosts,
-props and named state slots, with old effects/hooks disposed and refs/derived
-values recreated. Slotted children survive a parent refresh. Page/layout edits
-refresh the active route without document navigation, but remount route views.
-
-See [HMR verification](HMR_VERIFICATION.md) for the permanent browser check,
-compatibility limits and outstanding upstream compile-error recovery panic.
-Release `@opentf/web`, `@opentf/esdev-plugin-web` and updated `@opentf/web-compiler`
-archives together before updating the isolated site or upstream templates.
+See [HMR verification](HMR_VERIFICATION.md) for the browser check, compatibility
+limits and the error-recovery issue above.

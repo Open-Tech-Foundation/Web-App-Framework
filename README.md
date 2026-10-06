@@ -44,8 +44,8 @@ pnpm add -D @opentf/esdev-plugin-web
 
 Configure the HTML entry, client entry and `esdev.json` as shown in the
 [plugin setup guide](packages/esdev-plugin-web/README.md), then run `esdev start`.
-The OTF templates in `esdev create` are awaiting their upstream plugin migration;
-see the [verified migration status](docs/ESDEV_MIGRATION.md) before using them.
+Or generate a project with `esdev create <dir> --template=spa` (also `fullstack`,
+`docs` and `library`).
 
 ## Example
 
@@ -152,7 +152,7 @@ The configs follow the official [project build configuration](https://esrun.open
 
 Full guides, API reference, and a live playground at **[https://web.opentechf.org/docs](https://web.opentechf.org/docs)**.
 
-Current upstream starter, output-hook and release requirements are tracked in
+Verified esdev behavior and open upstream issues are tracked in
 [the esdev migration status](docs/ESDEV_MIGRATION.md).
 
 ## License

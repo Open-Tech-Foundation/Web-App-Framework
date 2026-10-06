@@ -23,24 +23,26 @@ interchangeable.
 | **IR** | the compiler's internal data structures — the backbone (View / Reactivity / Server / Route / Metadata) | ours | Rust | build time |
 | **Project Graph** | the assembled cross-module component + dependency graph | ours | Rust | build time |
 | **Target / Backend** | a consumer of the IRs that emits code for one mode (CSR / Hydrate / SSG / SSR / API) | ours | Rust | build time |
-| **Bundler** (`Rolldown`) | links generated modules + dependencies into shippable assets | 3rd-party (library) | Rust | build time |
-| **Orchestrator / Toolchain** | our dev server + build driver: runs the compiler, drives the bundler, owns the incremental cache + HMR | ours | Rust | build time |
+| **Bundler** (`Rolldown`, inside esdev) | links generated modules + dependencies into shippable assets | 3rd-party | Rust | build time |
+| **Toolchain host** (`esdev`) | ES-Runtime's dev binary: dev server, build targets, bundling, HMR transport, test runner, preview | 3rd-party (OTF ecosystem) | Rust | build time |
+| **Plugin** (`@opentf/esdev-plugin-web`) | connects the compiler to esdev: transforms `.jsx/.tsx/.mdx`, generates `@otfw/routes`, wires component refresh | ours | JS | build time |
 | **Runtime** | the small JS library shipped to and executed in the **browser** — DOM operations, reactivity, hydration | ours | JS | in the browser |
 
 Mental model in one line:
 
-> The **toolchain** runs the **compiler** (which uses the **parser**) to produce
-> **IRs**, which **backends** turn into code that the **bundler** links — and the
-> result ships alongside our **runtime** that executes in the browser.
+> **esdev** calls our **plugin**, which runs the **compiler** (which uses the
+> **parser**) to produce **IRs**; **backends** turn them into code that esdev's
+> **bundler** links — and the result ships alongside our **runtime** that
+> executes in the browser.
 
 The two most-confused terms:
 
 - **Compiler vs Runtime** — the compiler runs at *build time* and produces code;
   the runtime is *shipped code* that executes in the browser. Different machines,
   different languages.
-- **Bundler vs Toolchain** — the bundler (Rolldown) is one *engine* we use; the
-  toolchain is *our* program that drives it (plus the compiler, cache, dev
-  server). We own the toolchain; we depend on the bundler.
+- **Compiler vs toolchain host** — we own the compiler and its plugin; esdev owns
+  the dev server, bundling, HMR transport and test runner. The plugin is the only
+  seam between them.
 
 ---
 
@@ -366,12 +368,12 @@ Each backend is a **pure function of the IRs / Project Graph**. Adding a target
   (rebuild that component via CSR), never silent.
 - **SSG** _(implemented — `codegen/ssg.rs`)_ — IR → HTML at build time. A pure
   consumer of the View IR that emits JS which **concatenates an HTML string** (runs
-  in Bun at build time to read initial `.value`s; no DOM, no effects, no lifecycle).
-  Driven by `otfw build --ssg`. Hydration markers (emit only where structure is
+  at build time to read initial `.value`s; no DOM, no effects, no lifecycle).
+  Driven by a project's `then: "run"` prerender target (`@opentf/web-cli/ssg`). Hydration markers (emit only where structure is
   variable — lists/conditionals) land with the Hydrate backend.
-- **SSR** _(Phase 1 implemented — `otfw serve`)_ — per-request HTML, rendered through
-  the **same** SSG render path (`buildServerBundle` → `renderRoute`) rather than a
-  separate backend; the server is JS at request time (Bun/Node), the compiler/toolchain
+- **SSR** _(implemented — app-owned server entry)_ — per-request HTML, rendered through
+  the **same** SSG render path (`renderRoute` from `@opentf/web/server`) rather than a
+  separate backend; the server is JS at request time (esrun/Node/Workers), the compiler/toolchain
   stays build-time-only. Phase 1 ships the server markup + client bundle, so the page is
   interactive via a CSR mount. Hydration (adopt the server DOM, no re-render) and
   streaming are later phases, gated on the Hydrate backend.
@@ -382,8 +384,9 @@ Each backend is a **pure function of the IRs / Project Graph**. Adding a target
   Next.js). Phase A routes are **plain server modules** (method-named exports
   `GET`/`POST`/…, standard Fetch `Request`/`Response`, `[param]`/`[...rest]`, nested
   `_middleware`), discovered and bundled by the JS toolchain rather than DOM-compiled
-  by the Rust front end; `otfw dev`/`serve` serve them and `otfw build` emits a
-  self-contained `dist/server/api.js` for deploy adapters (Bun/Node/CF Workers). Phase B — typed
+  by the Rust front end; the app's server entry dispatches them through
+  `createApiHandler`, or a prerender step emits a self-contained `dist/server/api.js`
+  for deploy adapters (Node/CF Workers). Phase B — typed
   **server functions / loaders** callable from components, splitting the client/server
   boundary through the Metadata + Server IR (§4.4) — is the compiler-backed follow-up
   that turns the Server IR placeholder into real lowering.
@@ -416,37 +419,31 @@ Tracked here as the discussion progresses:
 
 ## 8. Toolchain & runtime _(decided)_
 
-The framework owns its toolchain and its runtime, and uses **Rolldown** as the
-bundling engine. **We do not build on Vite.**
+The framework owns its compiler and its runtime. Development, bundling, HMR
+transport, testing and preview come from **esdev** (ES-Runtime's development
+binary), which bundles with **Rolldown**. **We do not build on Vite.**
 
 ### 8.1 Layering
 
 ```
-Orchestrator / Toolchain (Rust)      ← owns dev server, build, HMR, incremental cache
-  ├─ Compiler (oxc → IRs → codegen)  ← §3
-  ├─ Rolldown (used as a library)    ← bundling engine + module linking
+esdev (ES-Runtime)                   ← dev server, build targets, bundling, HMR, tests
+  ├─ @opentf/esdev-plugin-web        ← resolve/load/transform hooks, @otfw/routes
+  │    └─ Compiler (otfwc: oxc → IRs → codegen)  ← §3
   └─ Runtime (shipped JS)            ← DOM ops, reactivity, hydration (browser)
 ```
 
 ### 8.2 Decisions
 
-1. **Bundler = Rolldown, from the start.** Rust-native and from the same family
-   as `oxc` (it uses oxc internally), so there is no JS↔Rust bridge on the hot
-   path and we can share data structures (atoms, module graph) instead of
-   serializing across a boundary.
-2. **We own the orchestrator.** Dev server, build driver, HMR, and the
-   incremental cache (§5) are ours. Rolldown is invoked as a library — it
-   consumes our module graph / dependency metadata rather than re-deriving it.
-3. **We do not write a bundler from scratch.** Module resolution, tree-shaking,
-   npm compatibility, CSS, and the asset pipeline come from Rolldown.
+1. **esdev hosts the toolchain.** The framework-owned `otfw` dev server and build
+   driver were retired in favor of declarative `esdev.json` targets. The plugin
+   is the only integration point; projects configure it, not a framework CLI.
+2. **The compiler stays a native binary.** `otfwc` runs as a long-lived compiler
+   service per build; the plugin passes sources in and returns code plus source
+   maps, so esdev composes maps and owns final chunking.
+3. **We do not write a bundler.** Module resolution, tree-shaking, npm
+   compatibility, CSS, and the asset pipeline come from esdev/Rolldown.
 4. **The runtime is independent of the toolchain.** It is shipped JS that runs in
    the browser; it has no dependency on the bundler or dev server.
-
-### 8.3 Why not a plugin to an existing host
-
-Our model is fullstack — SSR, an API layer, a Server IR, a Project Graph, and an
-incremental cache. A client-oriented host's plugin lifecycle constrains those
-pieces. Owning the orchestrator keeps the fullstack concerns first-class instead
-of bolted on.
-</content>
-</invoke>
+5. **Fullstack wiring is app-owned.** A server entry composes `renderRoute`,
+   loaders, API routes and middleware from `@opentf/web/server`; SSG runs as a
+   prerender target through `@opentf/web-cli/ssg`.

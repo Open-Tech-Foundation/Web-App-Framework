@@ -36,4 +36,4 @@
 * [x] Located compile diagnostics: every compiler failure (syntax, `$state` mutation, callback `ref`, no-component) carries `file:line:column` and a code frame, rendered in the terminal and pushed to the dev overlay as structured fields.
 * [x] JSX/TSX source maps from `otfwc`: original statements, expressions and callbacks carry mappings; the esdev plugin returns them for bundler composition. Compiler-generated helpers remain unmapped.
 * [ ] Original Markdown/MDX source maps: current maps target the generated `?otfw-jsx` intermediate. The Markdown front end still needs to supply the preceding mapping.
-* [ ] Native fullstack orchestration and esdev starter verification. See [ESDEV_MIGRATION.md](ESDEV_MIGRATION.md).
+* [x] Native esdev starters (spa, fullstack, docs, library) verified on esdev 0.16. Open upstream issues: [ESDEV_MIGRATION.md](ESDEV_MIGRATION.md).
