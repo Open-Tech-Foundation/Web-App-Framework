@@ -34,7 +34,7 @@ many targets. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full design.
 
 ## Quick start
 
-Install [ES-Runtime](https://esrun.opentechf.org/) (`esdev` 0.15 or newer) and
+Install [ES-Runtime](https://esrun.opentechf.org/) (`esdev` 0.16 or newer) and
 add the runtime and compiler/routes plugin to your app:
 
 ```bash
@@ -109,7 +109,7 @@ methodology, and caveats. Reproduce locally with `tsr bench -- all`.
 
 ## Documentation
 
-For repository development, install ES-Runtime (`esdev` 0.15 or newer), the Rust
+For repository development, install ES-Runtime (`esdev` 0.16 or newer), the Rust
 toolchain, pnpm, and [tsr](https://tsr.opentechf.org/), then run `pnpm install`
 at the root. Run workspace tasks from the root so pnpm's package links stay
 inside esdev's project root.
@@ -135,7 +135,7 @@ their released versions are updated in `website/package.json`.
 
 For automatic Cloudflare deployment, set the build command to
 `bash scripts/build-site.sh` with the repository root as the working directory.
-The script installs esdev 0.15.0 (override with `ESDEV_VERSION`), installs the
+The script installs esdev 0.16.0 (override with `ESDEV_VERSION`), installs the
 website's locked dependencies, and builds `website/dist`. Keep the existing
 Cloudflare deployment command; the root `wrangler.jsonc` points to that output.
 

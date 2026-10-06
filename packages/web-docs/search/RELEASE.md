@@ -49,7 +49,7 @@ The package allowlist includes `search.js`; Pagefind is no longer a dependency.
 
 ## Output-hook integration
 
-The configured `siteOutputPlugin` from `@opentf/web-cli/ssg` uses esdev 0.15's
+The configured `siteOutputPlugin` from `@opentf/web-cli/ssg` uses esdev's
 release-only `finish` hook. It calls `indexWithOtfSearch({ siteDir, otfwc })` after
 the prerender target finishes, using the staged browser output directory.
 Indexing failures prevent publication and preserve the previous deployment.

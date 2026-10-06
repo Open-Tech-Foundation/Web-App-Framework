@@ -13,7 +13,7 @@
     "bin"
   ],
   "engines": {
-    "esdev": ">=0.15.0"
+    "esdev": ">=0.16.0"
   },
   "keywords": [
     "opentf",

@@ -7,7 +7,7 @@ framework dev server stop being a Node program.
 
 ## esdev create integration
 
-Requires esdev 0.15 or newer. A native OTF starter uses the package's default
+Requires esdev 0.16 or newer. A native OTF starter uses the package's default
 factory in the top-level `plugins` array; no `export` name or custom CLI is needed:
 
 ```json
@@ -159,8 +159,8 @@ workspace compiler (`tsr build-compiler`) and restart esdev to enable them.
 
   Synchronous by design (the compiler resolves lazily on the first
   transformed module). Declare it in the top-level `plugins` array of
-  `esdev.json`, alongside `build.targets` and `dev`. In esdev 0.14 or newer,
-  `resolve`, `load`, and `transform` also run for `esdev test`, `esdev test --dom`,
+  `esdev.json`, alongside `build.targets` and `dev`. `resolve`, `load`, and
+  `transform` also run for `esdev test`, `esdev test --dom`,
   and `esdev <file>`, so JSX imports compile directly without prebundling.
   Use `--config=esdev.test.json` with `target: "csr"` and `failOnError: true`
   when tests need a different rendering mode from the app's build.

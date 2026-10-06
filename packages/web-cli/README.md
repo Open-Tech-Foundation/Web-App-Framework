@@ -12,7 +12,7 @@ For projects with a prerender script:
 pnpm add -D @opentf/web-cli @opentf/esdev-plugin-web
 ```
 
-Apps also depend on `@opentf/web`. Install esdev 0.15 or newer and configure the
+Apps also depend on `@opentf/web`. Install esdev 0.16 or newer and configure the
 OTF compiler/routes plugin in `esdev.json`.
 
 ## Development and builds

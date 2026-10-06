@@ -9,7 +9,7 @@ query them with Testing Library, and tear down their lifecycle after each test.
 pnpm add -D @opentf/web-test @opentf/esdev-plugin-web
 ```
 
-Install esdev 0.14 or newer. The test runner supplies the DOM; this package does
+Install esdev 0.16 or newer. The test runner supplies the DOM; this package does
 not install a replacement DOM or its own compiler plugin.
 
 ## Configuration
@@ -67,8 +67,8 @@ esdev test --config=esdev.test.json --browser
 
 Install a supported browser and its matching driver as described in
 [esdev browser testing](https://esrun.opentechf.org/esdev/test/browser).
-In esdev 0.14's native DOM, `userEvent.setup()` cannot replace the frozen
-navigator's clipboard, and input selection is incomplete. Use native DOM actions
+In esdev 0.16's native DOM, `userEvent.setup()` cannot define a clipboard on the
+non-extensible navigator, and inputs lack `select()`. Use native DOM actions
 for `--dom` tests, or `--browser` for full Testing Library interaction sequences.
 
 ## API

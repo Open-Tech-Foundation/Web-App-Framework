@@ -78,7 +78,7 @@ run = "esdev test --config=esdev.test.json packages/esdev-plugin-web/tests"
 deps = ["build-compiler"]
 run = "esdev test --config=esdev.test.json packages/web-docs/tests/types.test.js packages/web-docs/tests/docs-nav.test.js packages/web-docs/tests/blog-posts.test.js packages/web-docs/tests/frontmatter.test.js packages/web-docs/tests/feed.test.js packages/web-docs/tests/llms.test.js packages/web-docs/tests/search.test.js packages/web-docs/tests/search-integration.test.js packages/web-docs/tests/tokenizer.test.js"
 
-# esdev 0.14 applies the test config's OTF plugin to unbundled JSX imports.
+# esdev applies the test config's OTF plugin to unbundled JSX imports.
 # Tests use CSR independently of the website's hydrate build configuration.
 [tasks.test-web-docs-dom]
 deps = ["build-compiler"]

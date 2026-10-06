@@ -13,7 +13,7 @@ export async function writePrerenderReport(outDir, result) {
   await writeFile(join(outDir, REPORT), JSON.stringify({ siteDescription: result.siteDescription ?? "" }));
 }
 
-/** esdev 0.15+ project plugin; output paths come from staging, never from config. */
+/** esdev project plugin (release-only `finish` hook); output paths come from staging, never from config. */
 export function siteOutputPlugin({ root = ".", target = "web", prerenderTarget, exclude = [] } = {}) {
   const siteRoot = resolve(cwd(), root);
   return {
