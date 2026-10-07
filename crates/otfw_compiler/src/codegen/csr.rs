@@ -195,14 +195,14 @@ fn import_header(uses: &Uses, runtime_imports: &[String]) -> String {
         format!("import {{ {} }} from \"@opentf/web\";\n", merged.join(", "))
     };
     if uses.hot {
-        header.push_str("import { hotState, registerHotModule, registerHotRoute } from \"@opentf/web/hmr\";\n");
+        header.push_str("import { hotRouteState, hotState, registerHotModule, registerHotRoute } from \"@opentf/web/hmr\";\n");
     }
     header
 }
 
 /// Emit a page/layout as a factory function returning the root DOM node.
 pub fn emit_page(lowered: &Lowered) -> CsrModule {
-    let (e, body) = page_body(lowered);
+    let (e, body) = page_body(lowered, false);
     let code =
         format!("{}{}{}{}", e.user_imports(), e.imports(), render_templates(&e.templates), body);
     let mut errors = lowered.errors.clone();
@@ -211,8 +211,11 @@ pub fn emit_page(lowered: &Lowered) -> CsrModule {
 }
 
 /// Build a page factory body (everything after the import header).
-fn page_body(lowered: &Lowered) -> (Emitter<'_>, String) {
+/// `hot_route` emits development route output: `$state` declarations keep their
+/// values in the route view's refresh slots (`hotRouteState`).
+fn page_body(lowered: &Lowered, hot_route: bool) -> (Emitter<'_>, String) {
     let mut e = Emitter::new(lowered, Disposal::None);
+    e.hot_route = hot_route;
     let root = e.emit_all();
     e.emit_effects();
     if !lowered.props.is_empty() {
@@ -747,6 +750,13 @@ pub(crate) fn effect_code_pub(lowered: &Lowered, cb: &EffectCb) -> (String, Vec<
     (code, e.templates)
 }
 
+/// `name:Kind` for every signal declaration — the refresh compatibility shape.
+fn state_shape(c: &Lowered) -> Vec<String> {
+    c.body.iter().filter_map(|item| match item {
+        BodyItem::Signal(d) => Some(format!("{}:{:?}", d.name, d.kind)), _ => None,
+    }).collect()
+}
+
 fn emit_module_inner(
     components: &[Lowered],
     module_stmts: &[BodyItem],
@@ -767,12 +777,19 @@ fn emit_module_inner(
         // surface alongside codegen errors so the CLI's warning channel sees them.
         errors.extend(c.errors.iter().cloned());
         if c.is_page {
-            let (mut e, mut body) = page_body(c);
-            if views.get(i).is_some_and(|v| matches!(v, ComponentView::Hot)) && c.ir.id.export == "default" {
+            let hot_route = views.get(i).is_some_and(|v| matches!(v, ComponentView::Hot)) && c.ir.id.export == "default";
+            let (mut e, mut body) = page_body(c, hot_route);
+            if hot_route {
                 e.uses.hot = true;
                 body = body.replacen("export default function (", "function __otfwRoute(", 1);
                 let safe = hot_boundary_safe(components, module_stmts, module_exprs);
-                body.push_str(&format!("export default registerHotRoute(import.meta.hot, __otfwRoute, {safe});\n"));
+                // State names and kinds decide whether a refresh may reuse the view's
+                // slots; initializer edits are excluded, so existing values win.
+                let shape = format!("{:?}", state_shape(c));
+                body.push_str(&format!(
+                    "export default registerHotRoute(import.meta.hot, __otfwRoute, {safe}, {});\n",
+                    js_string(&shape),
+                ));
             }
             combined.merge(&e.uses);
             templates.extend(e.templates);
@@ -842,9 +859,7 @@ fn emit_module_inner(
                     .map(|d| crate::sourcemap::plain(c.exprs.source_map.as_deref(), d));
                 format!("{}:{:?}", p.attr, default)
             }).collect::<Vec<_>>();
-            let states = c.body.iter().filter_map(|item| match item {
-                BodyItem::Signal(d) => Some(format!("{}:{:?}", d.name, d.kind)), _ => None,
-            }).collect::<Vec<_>>();
+            let states = state_shape(c);
             let signature = format!("{:?}|{:?}|{:?}|{}|{}",
                 props, states, c.children_local, c.is_default_export, c.is_named_export);
             format!("[{}Element, {}]", c.name, js_string(&signature))
@@ -897,6 +912,8 @@ struct Emitter<'a> {
     /// descendants are created with `createElementNS` (SPEC §5.8).
     in_svg: bool,
     hot: bool,
+    /// Development page/layout output: `$state` lives in the route view's slots.
+    hot_route: bool,
     /// Static subtrees this unit stamps from a hoisted `<template>`, as
     /// `(const name, HTML)` — drained by the module assembler (see [`Template`]).
     templates: Vec<Template>,
@@ -961,6 +978,7 @@ impl<'a> Emitter<'a> {
             list_counter: 0,
             in_svg: false,
             hot: false,
+            hot_route: false,
             templates: Vec::new(),
         }
     }
@@ -1206,6 +1224,8 @@ impl<'a> Emitter<'a> {
                 self.uses.signal = true;
                 if self.hot {
                     self.line(format!("const {} = hotState(this, {}, () => signal({}));", decl.name, js_string(&decl.name), decl.init));
+                } else if self.hot_route {
+                    self.line(format!("const {} = hotRouteState({}, () => signal({}));", decl.name, js_string(&decl.name), decl.init));
                 } else {
                     self.line(format!("const {} = signal({});", decl.name, decl.init));
                 }
@@ -2881,5 +2901,52 @@ mod tests {
             "code: {}",
             m.code
         );
+    }
+
+    fn hot_page(source: &str) -> CsrModule {
+        let sess = ParseSession::new();
+        let parsed = sess.parse(Path::new("page.tsx"), source);
+        assert!(parsed.is_clean(), "parse errors: {:?}", parsed.errors);
+        let m = crate::lower::lower_module("/app/page.tsx", &parsed.program, source, true)
+            .expect("a module");
+        emit_hot_module(&m.components, &m.module_stmts, &m.module_exprs)
+    }
+
+    #[test]
+    fn hot_route_state_lives_in_refresh_slots() {
+        let out = hot_page(
+            "export default function Page() { let count = $state(1); let label = $state(\"a\"); \
+             const double = $derived(count * 2); return <p>{label}{double}</p>; }",
+        );
+        assert!(out.is_complete(), "errors: {:?}", out.errors);
+        assert!(out.code.contains("const count = hotRouteState(\"count\", () => signal(1));"), "code:\n{}", out.code);
+        assert!(out.code.contains("const label = hotRouteState(\"label\", () => signal(\"a\"));"), "code:\n{}", out.code);
+        // Derived values are recreated, not kept.
+        assert!(out.code.contains("const double = computed("), "code:\n{}", out.code);
+        assert!(
+            out.code.contains("registerHotRoute(import.meta.hot, __otfwRoute, true, \"[\\\"count:State\\\", \\\"label:State\\\", \\\"double:Derived\\\"]\");"),
+            "code:\n{}",
+            out.code
+        );
+        assert!(out.code.contains("import { hotRouteState, hotState, registerHotModule, registerHotRoute } from \"@opentf/web/hmr\";"), "code:\n{}", out.code);
+    }
+
+    #[test]
+    fn hot_route_shape_ignores_initializers() {
+        let a = hot_page("export default function Page() { let n = $state(1); return <p>{n}</p>; }");
+        let b = hot_page("export default function Page() { let n = $state(99); return <b>{n}</b>; }");
+        let shape = |code: &str| code.lines().find(|l| l.starts_with("export default registerHotRoute")).map(str::to_owned);
+        assert_eq!(shape(&a.code), shape(&b.code));
+    }
+
+    #[test]
+    fn production_page_state_stays_plain() {
+        let sess = ParseSession::new();
+        let source = "export default function Page() { let n = $state(1); return <p>{n}</p>; }";
+        let parsed = sess.parse(Path::new("page.tsx"), source);
+        let m = crate::lower::lower_module("/app/page.tsx", &parsed.program, source, true).expect("a module");
+        let out = emit_module(&m.components, &m.module_stmts, &m.module_exprs);
+        assert!(out.code.contains("const n = signal(1);"), "code:\n{}", out.code);
+        assert!(!out.code.contains("hotRouteState"), "code:\n{}", out.code);
     }
 }

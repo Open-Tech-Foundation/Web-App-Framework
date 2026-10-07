@@ -112,7 +112,8 @@ test("hot pages expose refresh factories and production pages stay plain", async
     const result = await webPlugin().transform.handler(source, "/app/page.jsx", {
       command: hot ? "start" : "build", platform: "browser", hot,
     });
-    expect(result.code.includes("registerHotRoute(import.meta.hot, __otfwRoute, true)")).toBe(hot);
+    expect(result.code.includes('registerHotRoute(import.meta.hot, __otfwRoute, true, "[\\"value:State\\"]")')).toBe(hot);
+    expect(result.code.includes('hotRouteState("value", () => signal("Hello"))')).toBe(hot);
     expect(result.code.includes("@opentf/web/hmr")).toBe(hot);
   }
 });

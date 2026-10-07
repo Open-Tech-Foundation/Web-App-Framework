@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- Development (`--hot`) page/layout output keeps `$state` in the route view's
+  refresh slots (`hotRouteState`) and passes the state shape to `registerHotRoute`,
+  so a refresh keeps values while the declarations match. Requires the matching
+  `@opentf/web` runtime. Release and server output are unchanged.
+
 ## [0.20.0] - 2026-10-06
 
 ### Changed
