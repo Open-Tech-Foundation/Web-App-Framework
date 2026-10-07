@@ -1,8 +1,9 @@
 # esdev migration status
 
-Verified on 2026-10-06 against **esdev 0.16.0** (`esdev upgrade --dry-run`: up to
-date) and Chromium 153. The migration inside this repository is complete; the
-remaining items are upstream esdev issues and framework follow-ups listed below.
+Verified on 2026-10-07 against **esdev 0.17.0** and Chromium 153. The migration
+inside this repository is complete, and every upstream esdev issue found during it
+is fixed in 0.17. For esdev behavior, the official docs at
+[esrun.opentechf.org](https://esrun.opentechf.org/) are the reference.
 
 ## Working in this repository
 
@@ -22,91 +23,32 @@ Checks run for this verification:
 | Check | Result |
 | --- | --- |
 | `tsr typecheck` | Pass |
-| `tsr test` (Rust + native/DOM suites) | Pass |
-| `tsr test-e2e` (docs drawer/sidebar/hydration, browser userEvent, bench runner, HMR) | Pass |
-| `tsr build` (playground) | Pass |
-| `tsr site-build` | Pass: 65 pages prerendered, 63 indexed, feeds and LLM files |
-| `tsr bench -- otfw` | Completes: route chunks import the hashed entry |
+| `tsr test` (Rust + native/DOM suites, including userEvent under `--dom`) | Pass |
+| `tsr test-e2e-hmr` (component refresh, compile-error recovery) | Pass |
+| `tsr test-e2e-docs-hydration` | Pass: 126 checks |
+| `tsr site-build` with the checkout's `@opentf/web` | Pass: 65 pages prerendered, 63 indexed, feeds and LLM files |
 
-## Generated OTF starters
+## Upstream esdev issues (resolved in 0.17)
 
-esdev 0.16 embeds native `spa`, `fullstack`, `docs` and `library` templates. Each
-was created with `--language=js` and `--language=ts`, installed from npm with pnpm
-(`@opentf/web` 0.30.0, plugin 0.3.0, web-test 1.25.0, web-docs 0.28.0, CLI
-1.28.0) and driven in headless Chromium.
+| Issue | Seen in | Fix | Regression coverage here |
+| --- | --- | --- | --- |
+| `esdev start` panicked in Rolldown's incremental cache after a plugin transform error was fixed | 0.15, 0.16 | 0.17 | `tsr test-e2e-hmr` breaks and fixes the active page |
+| Native `--dom` realm lacked an extensible `navigator` and input selection, so `userEvent.setup()`/`type()` failed | 0.14–0.16 | 0.17 ([DOM realm](https://esrun.opentechf.org/esdev/test/dom)) | The userEvent suite runs in `tsr test-web-test` and the browser tier |
+| `new URL("./file", import.meta.url)` assets were not emitted | 0.15, 0.16 | 0.17 ([files named by URL](https://esrun.opentechf.org/esdev/build/browser#files-named-by-url)) | Site [Assets guide](https://web.opentechf.org/docs/core-concepts/assets) |
+| `esdev preview` answered every missing route with `index.html` and 200, ignoring `404.html` | 0.16 | 0.17: 404 + `404.html`; `--spa` opts into the fallback ([Preview](https://esrun.opentechf.org/esdev/start/preview)) | SPA starters use `esdev preview --spa` |
+| Fullstack starter needed an `HTMLElement` bootstrap | 0.16 | 0.17 template targets `server.js` (with `@opentf/web` 0.31) | `packages/web/server/index.test.js` loads the server entry with no DOM |
+| Route chunks imported an unhashed `entry.js` in production builds | 0.14, 0.15 | 0.16 | `tsr bench -- otfw`, site build |
 
-| Template | Published packages | With this checkout's packages |
-| --- | --- | --- |
-| `spa` | Test, build, dev and preview pass; counter mounts and updates. TS typecheck fails: `@opentf/web-test` had no declarations. | TS typecheck passes. |
-| `fullstack` | Test, build, typecheck pass. Dev and production (`esrun dist/server.js`) serve SSR + hydration, loader data, API, middleware header and the 404 page. Needs the generated `bootstrap.js`. | Passes in dev and production with `bootstrap.js` deleted and the server target pointing at `server.js`. |
-| `docs` | Build prerenders four pages, indexes two, writes feeds and LLM files. Docs, sidebar, blog index and post render in dev and preview. TS typecheck fails: `@opentf/web-docs` had no declarations. | TS typecheck passes. |
-| `library` | Rendering tests pass. TS typecheck fails: `@opentf/web-test` had no declarations. | TS typecheck passes. |
+## Pending in this repository
 
-The checkout-package column needs the next releases of `@opentf/web`,
-`@opentf/esdev-plugin-web`, `@opentf/web-compiler` (rebuilt `otfwc`),
-`@opentf/web-docs` and `@opentf/web-test`.
-
-## Upstream esdev issues
-
-### 1. Dev server panics after recovering from a transform error
-
-With the OTF plugin, saving a page with a syntax error shows the expected build
-overlay. Saving the fixed file then kills `esdev start`:
-
-```text
-rolldown-1.2.3/src/types/scan_stage_cache.rs:79:28
-called `Option::unwrap()` on a `None` value
-```
-
-Reproduce: `esdev create app --template=spa`, install, `esdev start`, change
-`<h1>Hello, world!</h1>` in `app/page.jsx` to `<h1>Broken</h1 <<`, save, then
-restore it. Reproduced on 0.15.0 and 0.16.0. On 0.15 a plain JavaScript syntax
-error without the plugin recovered, which points at plugin transform errors in
-Rolldown's incremental scan cache; that comparison was not repeated on 0.16.
-
-### 2. Native `--dom` realm is missing APIs Testing Library uses
-
-- `userEvent.setup()` throws `TypeError: Cannot define property clipboard, object
-  is not extensible`: `navigator` cannot take the clipboard stub.
-- `userEvent.type(input, ...)` updates the value but reports
-  `Element INPUT does not implement "select"`: `HTMLInputElement.select()` is
-  missing.
-
-Both fail on 0.14 and 0.16. `esdev test --browser` runs the same workflows
-correctly; docs point users there until the realm supports them.
-
-### 3. `new URL("./file", import.meta.url)` assets are not emitted
-
-`new Worker(new URL("./worker.js", import.meta.url))` is bundled and rewritten,
-but an ordinary asset reference such as `new URL("./icon.svg", import.meta.url)`
-stays verbatim in the output and the file is never copied, so it 404s in preview
-(`/assets/icon.svg`). Reproduced on 0.16 from plain JavaScript (not compiled by
-the OTF plugin), so this is the asset pipeline itself. Users must put such files
-in `public/` for now.
-
-### 4. `esdev preview` ignores `dist/404.html`
-
-Preview answers every unknown route-like path with `index.html` and status 200,
-including SSG output that ships a prerendered `404.html`. For a docs site this
-serves the prerendered home page at `/missing-page/`. Static hosts configured
-for SSG (e.g. Cloudflare `not_found_handling: "404-page"`) return `404.html`
-with status 404. Preview should do the same when the output has a `404.html`,
-and keep the SPA fallback otherwise.
-
-### 5. Fullstack template bootstrap
-
-The template's server target enters through `bootstrap.js`, which stubs
-`globalThis.HTMLElement` before importing `server.js`. Once the next
-`@opentf/web`, plugin and compiler releases are published (server builds then
-resolve framework imports through the DOM-free server entry), the template
-should drop `bootstrap.js`, point the server target at `server.js`, and pin the
-new package versions.
+- **Website dependencies.** `website/` is ready to move to web 0.31, web-docs 0.29,
+  plugin 0.4 and CLI 1.29, but published `@opentf/web` 0.31.0 fails its prerender:
+  server builds resolve page imports to `@opentf/web/server`, which lacked
+  `setLocale` (fixed here, unreleased). Update the site after the next `@opentf/web`
+  release.
 
 ## Framework follow-ups
 
-- Hydration adopts prerendered markup without checking that it was rendered for
-  the current URL, so a host falling back to `index.html` shows that page's
-  content for an unknown path instead of the 404 route.
 - Original Markdown/MDX source maps (current maps target generated JSX).
 - MDX 404 routes are rejected; use `404.jsx`/`404.tsx`.
 - SSG omits spread attributes and multi-node roots (warned during builds).
