@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Development refresh of a page or layout keeps its `$state` and leaves outer
+  layouts and the inner page in place (with the matching `@opentf/web` and
+  `@opentf/web-compiler`). The README describes the new behavior.
+
 ## [0.4.0] - 2026-10-06
 
 ### Changed
