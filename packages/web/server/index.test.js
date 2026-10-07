@@ -113,3 +113,20 @@ assert(html.includes('aria-label="Read &quot;next&quot;"'), "ARIA escaping");
 assert(html.includes('<!--c[web-link--><b>Next</b><!--c]web-link-->'), "hydration slot markers");
 `);
 });
+
+test("client APIs imported by pages resolve on the server entry and are request-safe", async () => {
+  await runServer(`
+const { setLocale, navigate, setRouteState, emit, isHydrating, router, registerRoutes, renderRoute, configureI18n } = server;
+for (const [name, fn] of Object.entries({ setLocale, navigate, setRouteState, emit, isHydrating })) {
+  assert(typeof fn === "function", name + " is exported by @opentf/web/server");
+}
+assert(isHydrating() === false, "server render never hydrates");
+await navigate("/elsewhere");
+configureI18n({ locales: ["en", "fr"], defaultLocale: "en" });
+registerRoutes({ "/app/demo/page.jsx": { default: () => { setLocale("fr"); return "<p>" + router.locale + "</p>"; } } });
+const outside = router.locale;
+const [first, second] = await Promise.all([renderRoute("/demo"), renderRoute("/demo")]);
+assert(first.html === "<p>fr</p>" && second.html === "<p>fr</p>", "setLocale during render sets the request locale");
+assert(router.locale === outside, "request locale does not leak outside the render");
+`);
+});

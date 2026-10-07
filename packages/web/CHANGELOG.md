@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `@opentf/web/server` exports `setLocale`, `setRouteState`, `navigate`, `isHydrating`
+  and `emit`. Server builds resolve a page's `@opentf/web` imports to this entry
+  since 0.31.0, so a page importing one of them failed to prerender ("is not
+  exported"). `setLocale` sets the request's locale during rendering; `navigate` is
+  a no-op on the server.
+
 ## [0.31.0] - 2026-10-06
 
 ### Fixed

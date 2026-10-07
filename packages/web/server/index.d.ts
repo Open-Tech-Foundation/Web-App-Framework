@@ -43,6 +43,21 @@ export function configureI18n(config: { locales: string[]; defaultLocale?: strin
 export function i18nLocales(): { locales: string[]; defaultLocale: string } | null;
 export function resolveLocale(pathname: string): { locale: string | null; path: string };
 export function localizePath(pathname: string, locale?: string | null): string;
+/** Set the current request's locale during server rendering. */
+export function setLocale(locale: string | null): void;
+/** Set the current request's route state directly. */
+export function setRouteState(state?: {
+  pathname?: string;
+  search?: string;
+  params?: RouteParams;
+  locale?: string | null;
+  data?: unknown;
+}): void;
+/** No-op on the server: there is no mounted app to navigate. */
+export function navigate(path: string, replace?: boolean): Promise<void>;
+/** Always `false` during server rendering. */
+export function isHydrating(): boolean;
+export { emit } from "../runtime/events.js";
 
 // ── Render / route API (render.js) ─────────────────────────────────────────────
 export interface RenderResult {
