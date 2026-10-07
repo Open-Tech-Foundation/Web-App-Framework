@@ -37,6 +37,6 @@
     "browser-runner.js"
   ],
   "engines": {
-    "esdev": ">=0.16.0"
+    "esdev": ">=0.17.0"
   }
 }

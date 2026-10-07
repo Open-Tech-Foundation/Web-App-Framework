@@ -9,7 +9,7 @@ query them with Testing Library, and tear down their lifecycle after each test.
 pnpm add -D @opentf/web-test @opentf/esdev-plugin-web
 ```
 
-Install esdev 0.16 or newer. The test runner supplies the DOM; this package does
+Install esdev 0.17 or newer. The test runner supplies the DOM; this package does
 not install a replacement DOM or its own compiler plugin.
 
 ## Configuration
@@ -51,8 +51,9 @@ esdev test --config=esdev.test.json --dom
 
 ## User interactions
 
-`userEvent` is re-exported from `@testing-library/user-event`. Run its session,
-typing, selection and clipboard workflows in a real browser:
+`userEvent` is re-exported from `@testing-library/user-event`. Its session,
+typing, selection and keyboard workflows run in esdev's native DOM and in a real
+browser:
 
 ```js
 import { userEvent } from "@opentf/web-test";
@@ -62,14 +63,13 @@ await user.type(input, "Ada");
 ```
 
 ```bash
-esdev test --config=esdev.test.json --browser
+esdev test --config=esdev.test.json --dom       # fast native DOM
+esdev test --config=esdev.test.json --browser   # real browser engine
 ```
 
+Use `--browser` when a test depends on layout, CSS or real browser event timing.
 Install a supported browser and its matching driver as described in
 [esdev browser testing](https://esrun.opentechf.org/esdev/test/browser).
-In esdev 0.16's native DOM, `userEvent.setup()` cannot define a clipboard on the
-non-extensible navigator, and inputs lack `select()`. Use native DOM actions
-for `--dom` tests, or `--browser` for full Testing Library interaction sequences.
 
 ## API
 

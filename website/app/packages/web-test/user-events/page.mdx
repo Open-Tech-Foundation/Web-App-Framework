@@ -11,19 +11,19 @@ import { Callout } from "@opentf/web-docs";
 interactions — dispatching the same sequence of events a browser would, rather than a
 single synthetic event.
 
-## Run in a browser
+## Run the tests
 
-Use the [test configuration](/packages/web-test/setup), then run:
+Use the [test configuration](/packages/web-test/setup). `userEvent` runs in esdev's
+native DOM (esdev 0.17 or newer) and in a real browser:
 
 ```bash
+esdev test --config=esdev.test.json --dom
 esdev test --config=esdev.test.json --browser
 ```
 
-Install a browser and matching driver following the official
+Choose `--browser` when an interaction depends on layout, CSS or real browser event
+timing; see the official [DOM realm guide](https://esrun.opentechf.org/esdev/test/dom) for its scope. Install a browser and matching driver following the official
 [browser testing guide](https://esrun.opentechf.org/esdev/test/browser).
-The native `--dom` realm in esdev 0.16 lacks the mutable clipboard and
-`HTMLInputElement.select()` that `userEvent.setup()` and `userEvent.type()` need. For native tests, use DOM
-actions such as `button.click()` or `input.value` plus an `input` event.
 
 ## Setup
 

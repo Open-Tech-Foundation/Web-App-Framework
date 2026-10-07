@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Requires esdev `>=0.17.0`, whose native DOM realm supports the APIs `userEvent`
+  needs (an extensible `navigator` for the clipboard stub, text selection and
+  `Selection`). `userEvent.setup()` workflows now run under `--dom` as well as
+  `--browser`.
+
 ## [1.26.0] - 2026-10-06
 
 ### Added

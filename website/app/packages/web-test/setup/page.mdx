@@ -15,7 +15,7 @@ import { Callout, Steps } from "@opentf/web-docs";
 pnpm add -D @opentf/web-test @opentf/esdev-plugin-web
 ```
 
-Use esdev 0.16 or newer.
+Use esdev 0.17 or newer.
 
 ### Configure compilation and cleanup
 
@@ -78,6 +78,6 @@ steps. See the official [test configuration](https://esrun.opentechf.org/esdev/t
 
 ## Browser interactions
 
-For full `userEvent.setup()` workflows, run `esdev test --config=esdev.test.json
---browser` with a supported browser and matching driver. The native DOM does not yet
-support its clipboard stub or full input-selection API. See [User Events](/packages/web-test/user-events).
+`userEvent.setup()` workflows run under `--dom`. Use `esdev test
+--config=esdev.test.json --browser` with a supported browser and matching driver when
+a test depends on layout, CSS or real event timing. See [User Events](/packages/web-test/user-events).

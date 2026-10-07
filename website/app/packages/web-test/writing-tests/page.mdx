@@ -34,11 +34,8 @@ expect(getByRole("heading").textContent).toBe("Hello, Ada");
 ## Assert on reactive updates
 
 Because OTF Web updates the DOM surgically, you read the node again after an
-interaction — no `act()` is needed. This example uses the browser test tier for `userEvent`:
-
-```bash
-esdev test --config=esdev.test.json --browser
-```
+interaction — no `act()` is needed. `userEvent` works in both the `--dom` and
+`--browser` tiers:
 
 ```jsx
 import { test, expect } from "runtime:test";
