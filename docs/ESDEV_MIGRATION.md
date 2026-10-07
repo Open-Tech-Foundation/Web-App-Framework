@@ -26,7 +26,7 @@ Checks run for this verification:
 | `tsr test` (Rust + native/DOM suites, including userEvent under `--dom`) | Pass |
 | `tsr test-e2e-hmr` (component refresh, compile-error recovery) | Pass |
 | `tsr test-e2e-docs-hydration` | Pass: 126 checks |
-| `tsr site-build` with the checkout's `@opentf/web` | Pass: 65 pages prerendered, 63 indexed, feeds and LLM files |
+| `tsr site-build` (released web 0.32.0, web-docs 0.30.0, plugin 0.4.0, CLI 1.30.0) | Pass: 65 pages prerendered, 63 indexed, feeds and LLM files |
 
 ## Upstream esdev issues (resolved in 0.17)
 
@@ -38,14 +38,6 @@ Checks run for this verification:
 | `esdev preview` answered every missing route with `index.html` and 200, ignoring `404.html` | 0.16 | 0.17: 404 + `404.html`; `--spa` opts into the fallback ([Preview](https://esrun.opentechf.org/esdev/start/preview)) | SPA starters use `esdev preview --spa` |
 | Fullstack starter needed an `HTMLElement` bootstrap | 0.16 | 0.17 template targets `server.js` (with `@opentf/web` 0.31) | `packages/web/server/index.test.js` loads the server entry with no DOM |
 | Route chunks imported an unhashed `entry.js` in production builds | 0.14, 0.15 | 0.16 | `tsr bench -- otfw`, site build |
-
-## Pending in this repository
-
-- **Website dependencies.** `website/` is ready to move to web 0.31, web-docs 0.29,
-  plugin 0.4 and CLI 1.29, but published `@opentf/web` 0.31.0 fails its prerender:
-  server builds resolve page imports to `@opentf/web/server`, which lacked
-  `setLocale` (fixed here, unreleased). Update the site after the next `@opentf/web`
-  release.
 
 ## Framework follow-ups
 
