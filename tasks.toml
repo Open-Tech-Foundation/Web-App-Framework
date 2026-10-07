@@ -98,12 +98,17 @@ run = "esdev test --config=esdev.test.json --dom packages/web-i18n/i18n.test.js"
 deps = ["build-compiler"]
 run = "esdev test --config=esdev.test.json --dom --setup=@opentf/web-test/setup packages/web-test/tests/render.test.js packages/web-test/tests/setup.test.js packages/web-test/tests/types.test.js packages/web-test/tests/browser/user-event.test.js"
 
+# Website demo behavior, against the site's own installed packages (`tsr site-install`).
+[tasks.test-site]
+run = "esdev test --dom tests"
+dir = "website"
+
 [tasks.test-benchmark-tooling]
 run = "esdev test --config=esdev.test.json benchmarks/tests/tooling.test.js"
 
 # Independent processes — cargo and the ES-Runtime — so they overlap.
 [tasks.test]
-deps = ["test-rust", "test-esdev", "test-esdev-dom", "test-esdev-plugin", "test-web-docs", "test-web-docs-dom", "test-web-form", "test-web-i18n", "test-web-test", "test-benchmark-tooling"]
+deps = ["test-rust", "test-esdev", "test-esdev-dom", "test-esdev-plugin", "test-web-docs", "test-web-docs-dom", "test-web-form", "test-web-i18n", "test-web-test", "test-site", "test-benchmark-tooling"]
 parallel = true
 
 # Real-browser tier (docs/HYDRATION.md §5) — framework-behavior suites (docs shell

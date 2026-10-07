@@ -29,7 +29,11 @@ removes them so custom-element disconnect and effect cleanups run. No manual DOM
 <PortalDemo />
 
 Open the portaled modal inside the clipped box — it renders on `document.body`, not inside
-the clip region. Compare with the native `<dialog>` below the demo.
+the clip region. A custom overlay has to supply what `<dialog>` gives for free, and the
+demo does: `role="dialog"` with `aria-modal` and a labelled title, focus moved inside on
+open and kept there with Tab, Escape and backdrop clicks to close, the page behind made
+`inert`, and focus returned to the opening button. Compare with the native `<dialog>`
+below the demo.
 
 ## The `to` target
 

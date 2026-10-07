@@ -449,6 +449,7 @@ h1[tabindex='-1']:focus {
   box-shadow: 0 24px 48px rgba(2, 6, 23, 0.18);
 }
 .demo-portal-modal-title {
+  margin: 0;
   font-size: 1.05rem;
   font-weight: 800;
 }
