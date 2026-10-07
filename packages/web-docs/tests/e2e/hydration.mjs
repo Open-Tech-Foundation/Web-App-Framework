@@ -191,6 +191,21 @@ const CASES = [
     })()`,
   },
   {
+    name: "props.children passed as a prop value (Tabs content)",
+    imports: `import Tabs from "${COMPONENTS}/Tabs.jsx";`,
+    body: `<Tabs label="Example" tabs={[{ label: "One", content: props.children }, { label: "Two", content: "second" }]} />`,
+    props: {},
+    // The children reach Tabs as a prop, not through a `{children}` slot: the server
+    // renders them as trusted HTML and the client rebuilds that panel content.
+    noSlot: true,
+    rebuildsContent: true,
+    expectMarkup: [/<b class="probe">PROBE<\/b>/],
+    interact: `(() => {
+      const probes = document.querySelectorAll(".probe");
+      return probes.length === 1 && probes[0].textContent === "PROBE" && !!probes[0].closest('[role="tabpanel"]');
+    })()`,
+  },
+  {
     name: "DocsLayout > Callout (page content nested inside the layout slot)",
     imports: `import DocsLayout from "${COMPONENTS}/DocsLayout.jsx";\nimport Callout from "${COMPONENTS}/Callout.jsx";`,
     consts: `const NAV = ${NAV};`,
@@ -428,7 +443,7 @@ try {
       `${kase.name}: nothing logged during hydration${s.errors.length ? ` — ${JSON.stringify(s.errors.slice(0, 1))}` : ""}`,
       kase.known,
     );
-    assert(
+    if (!kase.rebuildsContent) assert(
       s.removed.length === 0,
       `${kase.name}: no server node torn out${s.removed.length ? ` — removed ${JSON.stringify(s.removed.slice(0, 4))}` : ""}`,
       kase.known,

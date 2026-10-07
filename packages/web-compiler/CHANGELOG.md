@@ -9,6 +9,15 @@
   so a refresh keeps values while the declarations match. Requires the matching
   `@opentf/web` runtime. Release and server output are unchanged.
 
+### Fixed
+
+- A component reading its children as a value, such as
+  `<Tabs tabs={[{ content: props.children }]} />`, threw `props is not defined` on
+  the client and rendered nothing on the server. The client `props` alias now
+  exposes the captured children, and server output passes them as trusted HTML for
+  both `props.children` and a destructured `children`. `{children}` slots are
+  unchanged.
+
 ## [0.20.0] - 2026-10-06
 
 ### Changed

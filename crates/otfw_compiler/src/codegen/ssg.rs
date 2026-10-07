@@ -240,7 +240,12 @@ impl<'a> Emitter<'a> {
     /// `name.value` reads resolve (CSR backs them with signals; SSG passes plain
     /// props in and wraps them).
     fn emit_prop_setup(&mut self, lowered: &Lowered, out: &mut String) {
+        // `children` read as a value is the slotted HTML; `{ __html }` keeps it
+        // trusted when it lands in a hole (a `{children}` slot uses `__children`).
+        let children_value = "{ __html: __children ?? \"\" }";
         if let Some(local) = &lowered.props_object {
+            let children = lowered.children_local.as_ref()
+                .map(|_| format!("children: {children_value}"));
             if !lowered.props.is_empty() {
                 let mut entries = Vec::new();
                 for p in &lowered.props {
@@ -251,11 +256,15 @@ impl<'a> Emitter<'a> {
                         p.default.as_ref().map(|d| format!("?? ({d})")).unwrap_or_default()
                     ));
                 }
+                entries.extend(children);
                 out.push_str(&format!("const {local} = {{ {} }};\n", entries.join(", ")));
             } else {
-                out.push_str(&format!("const {local} = {{}};\n"));
+                out.push_str(&format!("const {local} = {{ {} }};\n", children.unwrap_or_default()));
             }
         } else {
+            if let Some(local) = lowered.children_local.as_ref().filter(|l| l.as_str() != "__children") {
+                out.push_str(&format!("const {local} = {children_value};\n"));
+            }
             for p in &lowered.props {
                 out.push_str(&format!(
                     "const {} = {{ value: __props?.[{}] {} }};\n",
@@ -1012,5 +1021,33 @@ mod tests {
             "\"a\\\\\\\"b\"",
             "escapes survive the merge"
         );
+    }
+
+    #[test]
+    fn props_children_value_is_trusted_slot_html() {
+        let m = emit("export function Wrap(props) { return <Inner list={[props.children]} />; }\nfunction Inner(props) { return <p>{props.list}</p>; }", false);
+        assert!(m.code.contains("const props = { children: { __html: __children ?? \"\" } };"), "code:\n{}", m.code);
+    }
+
+    #[test]
+    fn props_children_value_joins_the_keyed_props() {
+        let m = emit("export function Wrap(props) { return <p title={props.title}>{[props.children].length}</p>; }", false);
+        assert!(
+            m.code.contains("const props = { title: { value: __props?.[\"title\"]  }, children: { __html: __children ?? \"\" } };"),
+            "code:\n{}",
+            m.code
+        );
+    }
+
+    #[test]
+    fn destructured_children_value_is_trusted_slot_html() {
+        let m = emit("export function Wrap({ children }) { return <Inner list={[children]} />; }\nfunction Inner(props) { return <p>{props.list}</p>; }", false);
+        assert!(m.code.contains("const children = { __html: __children ?? \"\" };"), "code:\n{}", m.code);
+    }
+
+    #[test]
+    fn a_children_slot_still_renders_the_raw_slot_html() {
+        let m = emit("export function Wrap({ children }) { return <div>{children}</div>; }", false);
+        assert!(m.code.contains("(__children ?? \"\")"), "code:\n{}", m.code);
     }
 }

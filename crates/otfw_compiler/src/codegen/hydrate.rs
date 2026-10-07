@@ -509,8 +509,8 @@ impl<'a> Emitter<'a> {
     /// Alias prop signals so view references resolve (mirrors `csr::emit_prop_aliases`).
     fn emit_prop_aliases(&mut self) {
         if let Some(props_local) = self.lowered.props_object.clone() {
-            if !self.lowered.props.is_empty() {
-                self.line(format!("const {props_local} = this._props;"));
+            if let Some(alias) = super::csr::props_object_alias(&props_local, self.lowered) {
+                self.line(alias);
             }
             return;
         }

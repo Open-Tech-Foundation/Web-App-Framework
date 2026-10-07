@@ -750,6 +750,22 @@ pub(crate) fn effect_code_pub(lowered: &Lowered, cb: &EffectCb) -> (String, Vec<
     (code, e.templates)
 }
 
+/// The props-object alias (`function C(props)`): the keyed prop signals, plus
+/// `children` when the component reads it, so `props.children` used as a value
+/// (`<Tabs tabs={[{ content: props.children }]} />`) resolves to the captured
+/// light-DOM nodes. A getter reads the children local lazily: hydration adoption
+/// fills that local after the alias is declared.
+pub(crate) fn props_object_alias(props_local: &str, lowered: &Lowered) -> Option<String> {
+    let children = lowered.children_local.as_deref()
+        .map(|local| format!("get children() {{ return {local}; }}"));
+    match (lowered.props.is_empty(), children) {
+        (true, None) => None,
+        (false, None) => Some(format!("const {props_local} = this._props;")),
+        (true, Some(children)) => Some(format!("const {props_local} = {{ {children} }};")),
+        (false, Some(children)) => Some(format!("const {props_local} = {{ ...this._props, {children} }};")),
+    }
+}
+
 /// `name:Kind` for every signal declaration — the refresh compatibility shape.
 fn state_shape(c: &Lowered) -> Vec<String> {
     c.body.iter().filter_map(|item| match item {
@@ -1051,8 +1067,8 @@ impl<'a> Emitter<'a> {
     /// path only.
     fn emit_prop_aliases(&mut self) {
         if let Some(props_local) = self.lowered.props_object.clone() {
-            if !self.lowered.props.is_empty() {
-                self.lines.push(format!("const {props_local} = this._props;"));
+            if let Some(alias) = props_object_alias(&props_local, self.lowered) {
+                self.lines.push(alias);
             }
             return;
         }
@@ -2217,6 +2233,33 @@ mod tests {
         // First-Access references resolve through the alias.
         assert!(m.code.contains("bindText(t1, () => (props.title.value))"), "code: {}", m.code);
         assert!(m.code.contains("bindText(t2, () => (props.user.value.name))"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn props_children_as_a_value_reads_the_captured_children() {
+        let m = emit_component(&lower(
+            "export function Wrap(props) { return <div data-n={[props.children].length}></div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("const __children = Array.from(this.childNodes);"), "code: {}", m.code);
+        assert!(m.code.contains("const props = { get children() { return __children; } };"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn props_children_alias_keeps_the_keyed_prop_signals() {
+        let m = emit_component(&lower(
+            "export function Wrap(props) { return <div title={props.title} data-n={[props.children].length}></div>; }",
+        ));
+        assert!(m.is_complete(), "errors: {:?}", m.errors);
+        assert!(m.code.contains("const props = { ...this._props, get children() { return __children; } };"), "code: {}", m.code);
+        assert!(m.code.contains("props.title.value"), "code: {}", m.code);
+    }
+
+    #[test]
+    fn props_without_children_keep_the_plain_alias() {
+        let m = emit_component(&lower("export function Card(props) { return <p>{props.title}</p>; }"));
+        assert!(m.code.contains("const props = this._props;"), "code: {}", m.code);
+        assert!(!m.code.contains("get children()"), "code: {}", m.code);
     }
 
     #[test]
