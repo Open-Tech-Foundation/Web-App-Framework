@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-10-07
+
 ### Fixed
 
 - Hydration adopts server markup only when it was rendered for the current URL.
