@@ -1,6 +1,8 @@
 // Build-time preparation and runtime updates, compared with OTF Web.
 // Only runtime chips flash: a state change does not rerun the compiler.
 // WAAPI illustrates ordering, not elapsed time or comparative performance.
+// Hovering the panel pauses the tour so a reader can study the current stacks;
+// leaving resumes it. Reduced motion disables the tour entirely.
 
 import { onCleanup, onMediaQuery } from "@opentf/web";
 
@@ -57,7 +59,7 @@ const FRAMEWORKS = [
       { label: "VDOM patch", icon: "tree" },
       { label: "DOM updates", icon: "monitor" },
     ],
-    note: "Compiler hints narrow VDOM patching. The alien-signals reactivity refactor does not change this rendering mode.",
+    note: "Compiler hints narrow VDOM patching. The 3.6 alien-signals reactivity refactor does not change this rendering mode.",
     source: "https://vuejs.org/guide/extras/rendering-mechanism.html",
   },
   {
@@ -126,7 +128,7 @@ const FRAMEWORKS = [
       { label: "Dependent DOM bindings", icon: "layers" },
       { label: "DOM updates", icon: "monitor" },
     ],
-    note: "Component setup runs once per mount; dependent computations update the DOM. No VDOM. The Rust/Oxc toolchain is introduced in Solid 2.0 RC.",
+    note: "Component setup runs once per mount; dependent computations update the DOM. No VDOM. Solid 2.0 (release candidate) adds a native Oxc JSX compiler.",
     source: "https://docs.solidjs.com/concepts/components/basics",
   },
 ];
@@ -138,6 +140,7 @@ export default function RenderPipeline() {
   // Auto-tour: advance through every framework, playing each update flow.
   let tour = null;
   let tourStart = null;
+  let touring = false; // the tour runs (motion allowed); hover only pauses it
   const animations = new Set();
   const stopTour = () => {
     if (tourStart !== null) {
@@ -196,8 +199,13 @@ export default function RenderPipeline() {
     play();
   };
 
+  const resumeTour = () => {
+    if (touring && tour === null) tour = setInterval(tourStep, 3400);
+  };
+
   onMediaQuery("(prefers-reduced-motion: reduce)", (reduced) => {
     stopTour();
+    touring = !reduced;
     if (reduced) {
       stopAnimations();
       return;
@@ -212,7 +220,7 @@ export default function RenderPipeline() {
   onCleanup(stopAnimations);
 
   return (
-    <div ref={rootRef}>
+    <div ref={rootRef} onmouseenter={stopTour} onmouseleave={resumeTour}>
       {/* Icon sprite: one static <defs> block, chips reference symbols by href.
           Everything here is literal markup — no helpers returning elements (the
           compiler binds those as text) and no fragments (unsupported). */}
@@ -302,7 +310,7 @@ export default function RenderPipeline() {
             <a className="pipe-source" href={OTF.source}>Reactivity docs →</a>
           </div>
         </div>
-        <p className="pipe-caption">Simplified client-side update paths. Build steps stay static; animation speed and step counts do not represent performance.</p>
+        <p className="pipe-caption">Simplified client-side update paths. Build steps stay static; animation speed and step counts do not represent performance. Hover to pause the tour.</p>
       </div>
     </div>
   );
