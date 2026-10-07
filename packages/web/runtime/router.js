@@ -642,32 +642,51 @@ export async function navigate(path, replace = false, isPop = false, hydrate = f
 
 // Development factory refresh deliberately bypasses navigation: no guard,
 // loader request, history mutation, route-state change or heading focus jump.
+// Only the edited page or layout is rebuilt. Its `$state` slots carry over when
+// the declarations still match (see `registerHotRoute`), outer layouts keep their
+// nodes and state, and an edited layout receives the existing inner route view as
+// `children`, so the page and its components move into it without remounting.
 export async function refreshHotRoute(factory) {
-  if (!rootEl || !currentNodes.some(node => node.__otfwHotFactory === factory)) return;
+  const index = currentNodes.findIndex(node => node.__otfwHotFactory === factory);
+  if (!rootEl || index < 0) return;
   const seq = navSeq;
+  const previous = currentNodes[index];
   const match = matchRoute(state.pathname.value) ||
     (routes.notFound ? { entry: routes.notFound, route: state.pathname.value, params: {} } : null);
   if (!match) return;
-  let built;
+  const query = Object.fromEntries(state.searchParams.value);
+  const inner = index > 0 ? currentNodes[index - 1] : null;
+  const innerParent = inner?.parentNode;
+  const innerNext = inner?.nextSibling;
+  let node;
   try {
-    built = await buildRouteNode(match, Object.fromEntries(state.searchParams.value));
-    const metadata = await resolveMetadataModules(built.modules, { params: match.params, query: Object.fromEntries(state.searchParams.value) });
-    if (seq !== navSeq) {
-      for (const node of built.nodes) runCleanup(node);
-      return;
-    }
+    const [pageModule, ...layoutModules] = await resolveAll(
+      [match.entry, ...layoutChain(match.route)],
+      resolveModule,
+    );
+    if (seq !== navSeq || currentNodes[index] !== previous) return;
     const focusedId = rootEl.contains(document.activeElement) ? document.activeElement.id : null;
     const scroll = [window.scrollX, window.scrollY];
-    for (const node of currentNodes) runCleanup(node);
-    rootEl.replaceChildren(built.node);
-    updateRouteHead(metadata, state.pathname.value);
-    currentNodes = built.nodes;
-    for (const node of currentNodes) runMount(node);
+    const props = { params: match.params, query };
+    if (inner) props.children = inner;
+    node = buildScopedView(() => factory(props, previous));
+    previous.replaceWith(node);
+    runCleanup(previous);
+    currentNodes = currentNodes.map((current, i) => (i === index ? node : current));
+    runMount(node);
+    const namespace = module => typeof module === "function" ? { default: module } : module;
+    const metadata = await resolveMetadataModules(
+      [...layoutModules, pageModule].map(namespace),
+      { params: match.params, query },
+    );
+    if (seq === navSeq) updateRouteHead(metadata, state.pathname.value);
     if (focusedId) document.getElementById(focusedId)?.focus({ preventScroll: true });
     window.scrollTo(...scroll);
     clearError({ phase: "route" });
   } catch (error) {
-    if (built) for (const node of built.nodes) runCleanup(node);
+    // A failed layout build may already hold the inner view; put it back.
+    if (inner && innerParent && inner.parentNode !== innerParent) innerParent.insertBefore(inner, innerNext ?? null);
+    if (node && !node.isConnected) runCleanup(node);
     reportError(error, { phase: "route", path: state.pathname.value });
   }
 }

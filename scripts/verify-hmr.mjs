@@ -42,7 +42,7 @@ await write(`${project}/index.html`, '<html><body><div id="app"></div><script ty
 await write(`${project}/entry.js`, 'import { mountApp, navigate } from "@opentf/web"; import { pages } from "@otfw/routes"; import "./style.css"; window.__navigate=navigate; mountApp({pages, guard:(to,tools)=>{window.__guards=(window.__guards||0)+1;tools.next();}, target:document.getElementById("app")});');
 await write(`${project}/style.css`, 'body {min-height:3000px} #counter {color:rgb(10,20,30)}');
 await write(`${project}/app/other/page.jsx`, 'export default function Other(){return <h1>Other A</h1>;}');
-await write(`${project}/app/page.jsx`, 'import Counter from "../Counter.jsx"; import Shell from "../Shell.jsx"; export default function Home() { return <section><h1>Page D</h1><Shell><Counter/></Shell><input id="draft"/></section>; }');
+await write(`${project}/app/page.jsx`, 'import Counter from "../Counter.jsx"; import Shell from "../Shell.jsx"; export default function Home() { let visits = $state(0); return <section><h1>Page D</h1><button id="visits" onclick={() => visits++}>Visits {visits}</button><Shell><Counter/></Shell><input id="draft"/></section>; }');
 await write(`${project}/app/layout.jsx`, 'export default function Layout(props) { return <main><p id="layout">Layout B</p>{props.children}</main>; }');
 await write(`${project}/Shell.jsx`, 'export default function Shell({children}) { return <div id="shell">Shell A{children}</div>; }');
 await write(`${project}/Counter.jsx`, `export default function Counter() {
@@ -135,12 +135,22 @@ try {
     ['app/layout.jsx','Layout B','Layout C',"document.getElementById('layout')?.textContent==='Layout C'"],
   ]) {
     const url=await evaluate('location.href');const guardCount=await evaluate('window.__guards');const historyLength=await evaluate('history.length');const old=await file(project+'/'+path).text();
+    await evaluate('document.getElementById("visits").click();document.getElementById("counter").click()');
+    const visits=await evaluate('document.getElementById("visits").textContent');
+    const counter=await evaluate('document.getElementById("counter").textContent');
+    const pageHost=await evaluate('window.__pageSection=document.querySelector("section");true');
     await write(project+'/'+path,old.replace(from,to));await until(check);
-    assert(await evaluate('window.__hmrDocumentToken')===token,path+' refresh retains document');
+    assert(pageHost && await evaluate('window.__hmrDocumentToken')===token,path+' refresh retains document');
     assert(await evaluate('location.href')===url,path+' retains URL');
     assert(await evaluate('window.__guards')===guardCount,path+' does not rerun guard');
     assert(await evaluate('history.length')===historyLength,path+' does not mutate history');
-    assert(await evaluate('document.getElementById("counter").textContent.endsWith(": 0")'),path+' remounts child state');
+    assert(await evaluate('document.getElementById("visits").textContent')===visits,path+' keeps page state');
+    if (path==='app/layout.jsx') {
+      assert(await evaluate('document.querySelector("section")===window.__pageSection'),'app/layout.jsx keeps the page view in place');
+      assert(await evaluate('document.getElementById("counter").textContent')===counter,'app/layout.jsx keeps child component state');
+    } else {
+      assert(await evaluate('document.getElementById("counter").textContent.endsWith(": 0")'),'app/page.jsx rebuilds the page view and its children');
+    }
   }
   await write(project+'/Counter.jsx',(await file(project+'/Counter.jsx').text()).replace('let count=$state(0);','let count=$state(0); let extra=$state(1);'));
   await until('window.__hmrDocumentToken!=='+JSON.stringify(token));

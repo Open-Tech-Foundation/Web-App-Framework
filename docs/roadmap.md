@@ -45,4 +45,5 @@ Open items carried over from the 2026-10 site and HMR audits.
 * [x] `@opentf/web-docs` `BlogLayout`: show "Last updated" only when the update is later than publication, not merely different.
 * [x] Portal guide's custom overlay demo lacks modal semantics, focus containment, Escape handling and focus restoration.
 * [x] Homepage render-pipeline tour pauses while hovered.
-* [ ] Component refresh: preserve route-tree state across page/layout edits and retain unaffected children; mixed-export and `$expose` modules still reload. Re-check with `tsr test-e2e-hmr`.
+* [x] Component refresh: page/layout edits keep route-tree state and leave unaffected layers and children in place.
+* [ ] Component refresh: mixed-export and `$expose` modules still reload. Re-check with `tsr test-e2e-hmr`.

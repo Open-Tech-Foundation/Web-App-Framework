@@ -6,7 +6,20 @@ import { refreshHotRoute } from "./router.js";
 
 const components = new Map();
 
-export function registerHotRoute(hot, factory, safe) {
+// The `$state` slots of the page/layout view currently being built.
+let routeSlots = null;
+
+/**
+ * A page/layout `$state` signal kept in the view's refresh slots: a refresh of the
+ * same view reuses the signal (and its value) when the state shape is unchanged.
+ */
+export function hotRouteState(key, create) {
+  if (!routeSlots) return create();
+  if (!routeSlots.has(key)) routeSlots.set(key, create());
+  return routeSlots.get(key);
+}
+
+export function registerHotRoute(hot, factory, safe, shape = "") {
   if (!hot) return factory;
   if (!safe) {
     if (hot.data.otfwRouteBoundary) hot.invalidate();
@@ -14,13 +27,24 @@ export function registerHotRoute(hot, factory, safe) {
   }
   hot.data.otfwRouteBoundary = true;
   const record = hot.keep("otfw-route", () => {
-    const entry = { factory };
-    entry.view = props => {
+    const entry = { factory, shape };
+    // `previous` is the view node this build replaces during a refresh. Its state
+    // slots carry over when the declarations still match; otherwise state is fresh.
+    entry.view = (props, previous) => {
+      const kept = previous?.__otfwHotSlots;
+      const slots = kept && kept.shape === entry.shape ? kept.slots : new Map();
       let failed = false, failure;
-      const built = scope(() => {
-        try { return entry.factory(props); }
-        catch (error) { failed = true; failure = error; }
-      });
+      const outer = routeSlots;
+      routeSlots = slots;
+      let built;
+      try {
+        built = scope(() => {
+          try { return entry.factory(props); }
+          catch (error) { failed = true; failure = error; }
+        });
+      } finally {
+        routeSlots = outer;
+      }
       if (failed) {
         try { built.dispose(); } catch (error) { console.error(error); }
         throw failure;
@@ -29,12 +53,14 @@ export function registerHotRoute(hot, factory, safe) {
       const lifecycle = node.__lifecycle ??= { mounts: [], cleanups: [] };
       lifecycle.cleanups.push(built.dispose);
       node.__otfwHotFactory = entry.view;
+      node.__otfwHotSlots = { shape: entry.shape, slots };
       return node;
     };
     return entry;
   });
-  const updated = record.factory !== factory;
+  const updated = record.factory !== factory || record.shape !== shape;
   record.factory = factory;
+  record.shape = shape;
   hot.accept();
   if (updated) queueMicrotask(() => {
     if (!hot.data.otfwInvalidated) void refreshHotRoute(record.view);

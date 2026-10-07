@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Development route refresh rebuilds only the edited page or layout. Its `$state`
+  carries over while the declarations match; outer layouts keep their nodes and
+  state, and an edited layout reuses the existing page view as `children`, so the
+  page and its components keep their state. A failed layout rebuild leaves the
+  current view in place. Needs the matching `@opentf/web-compiler` (`otfwc`).
+
 ## [0.32.0] - 2026-10-07
 
 ### Fixed

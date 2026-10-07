@@ -204,7 +204,11 @@ and lifecycle hooks are disposed, and new hooks run once. Slotted child nodes
 survive their parent's refresh; other children created by the edited view remount.
 
 Page/layout edits refresh the active route without changing the document, URL,
-history or loader data. The route views remount, so their local state resets.
+history or loader data. Only the edited page or layout is rebuilt, and its named
+`$state` values carry over while the state declarations are unchanged (changed
+names or kinds start fresh). Outer layouts keep their nodes and state. An edited
+layout receives the existing page view as `children`, so the page and its child
+components keep their state; a page edit rebuilds the page's own child components.
 Changed component identities, prop/state declarations, mixed helper exports and
 `$expose` modules use the reload fallback. Uncontrolled fields inside a rebuilt
 view reset; bind drafts to `$state` to retain them across compatible edits.

@@ -67,7 +67,7 @@ run = "esdev test --config=esdev.test.json packages/web-cli/tests packages/web-c
 # needs it too — without a `document` the resource thinks it is server-side.
 [tasks.test-esdev-dom]
 deps = ["build-compiler"]
-run = "esdev test --config=esdev.test.json --dom packages/web/core/errors.test.js packages/web/runtime/lifecycle.test.js packages/web/runtime/resource.test.js packages/web/runtime/clsx.test.js packages/web/runtime/dom.test.js packages/web/runtime/router.test.js packages/web/runtime/router-data.test.js packages/web/runtime/router-hydrate.test.js packages/web/runtime/router-nav.test.js packages/web/runtime/hydrate.e2e.test.js"
+run = "esdev test --config=esdev.test.json --dom packages/web/core/errors.test.js packages/web/runtime/lifecycle.test.js packages/web/runtime/resource.test.js packages/web/runtime/clsx.test.js packages/web/runtime/dom.test.js packages/web/runtime/router.test.js packages/web/runtime/router-data.test.js packages/web/runtime/router-hydrate.test.js packages/web/runtime/router-hot.test.js packages/web/runtime/router-nav.test.js packages/web/runtime/hydrate.e2e.test.js"
 
 # @opentf/esdev-plugin-web: resolver tests plus real compiler/context integration.
 [tasks.test-esdev-plugin]
