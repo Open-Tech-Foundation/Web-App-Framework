@@ -167,6 +167,13 @@ try {
   assert(await evaluate('document.querySelector("h1").textContent==="Page E" && document.getElementById("counter").textContent==="Component C: 1"'),'inactive route edit leaves active view and state intact');
   await evaluate('window.__navigate("/other")');await until('document.querySelector("h1")?.textContent==="Other B"');
   assert(await evaluate('window.__hmrDocumentToken')===activeToken,'updated inactive route renders on client navigation');
+  const otherPage=await file(project+'/app/other/page.jsx').text();
+  await write(project+'/app/other/page.jsx',otherPage.replace('<h1>Other B</h1>','<h1>Other B</h1 <<'));
+  await delay(1500);
+  assert(await evaluate('document.querySelector("h1")?.textContent==="Other B"'),'compile error keeps the previous view');
+  await write(project+'/app/other/page.jsx',otherPage.replace('Other B','Other C'));
+  await until('document.querySelector("h1")?.textContent==="Other C"');
+  assert((await fetch(origin)).ok,'dev server survives fixing a compile error');
   const failures=errors.filter(error => error && !error.includes('/favicon.ico'));
   assert(failures.length===0,'no browser errors: '+JSON.stringify(failures));
   passed = true;

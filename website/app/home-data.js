@@ -60,7 +60,7 @@ export const capabilities = [
       { name: "Dev server + reload on save", status: "supported", desc: "esdev watches and rebuilds configured targets, refreshing accepted modules or reloading the page." },
       { name: "CSS hot updates", status: "supported", desc: "Global stylesheet edits update in place and keep page state." },
       { name: "JavaScript module HMR", status: "supported", desc: "esdev hot-swaps JavaScript modules that explicitly accept updates." },
-      { name: "Component HMR", status: "partial", desc: "Compatible component edits retain state; page/layout edits remount route views; a fixed compile error can stop the dev server (upstream esdev issue)." },
+      { name: "Component HMR", status: "partial", desc: "Compatible component edits retain state and recover after a compile error; page/layout edits remount route views." },
       { name: "Compiler diagnostics", status: "supported", desc: "Located compile errors and source maps; runtime errors report through the framework API." },
       { name: "Testing library", status: "supported", desc: "Component testing utilities." },
       { name: "TypeScript / TSX", status: "beta", desc: "Compile TSX components with macro typings; full editor tooling is in progress." },
