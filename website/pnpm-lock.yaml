@@ -9,24 +9,24 @@ importers:
   .:
     dependencies:
       '@opentf/web':
-        specifier: 0.30.0
-        version: 0.30.0
+        specifier: 0.32.0
+        version: 0.32.0
       '@opentf/web-docs':
-        specifier: 0.28.0
-        version: 0.28.0(@opentf/web@0.30.0)
+        specifier: 0.30.0
+        version: 0.30.0(@opentf/web@0.32.0)
       '@opentf/web-form':
-        specifier: 1.24.0
-        version: 1.24.0(@opentf/web@0.30.0)
+        specifier: 1.27.0
+        version: 1.27.0(@opentf/web@0.32.0)
       '@opentf/web-i18n':
-        specifier: 1.24.0
-        version: 1.24.0(@opentf/web@0.30.0)
+        specifier: 1.27.0
+        version: 1.27.0(@opentf/web@0.32.0)
     devDependencies:
       '@opentf/esdev-plugin-web':
-        specifier: 0.3.0
-        version: 0.3.0
+        specifier: 0.4.0
+        version: 0.4.0
       '@opentf/web-cli':
-        specifier: 1.28.0
-        version: 1.28.0(@opentf/web@0.30.0)
+        specifier: 1.30.0
+        version: 1.30.0(@opentf/web@0.32.0)
       tailwindcss:
         specifier: 4.2.2
         version: 4.2.2
@@ -48,41 +48,41 @@ packages:
   '@formatjs/intl-localematcher@0.6.2':
     resolution: {integrity: sha512-XOMO2Hupl0wdd172Y06h6kLpBz6Dv+J4okPLl4LPtzbr8f66WbIoy4ev98EBuZ6ZK4h5ydTN6XneT4QVpD7cdA==}
 
-  '@opentf/esdev-plugin-web@0.3.0':
-    resolution: {integrity: sha512-lgEbQceexGEtm7x2cygOkDQYpg/twv9Do+iyF3mgjBPExy0Qbo5i0ZJaJX8T6r2mLIzDhuLRQ16TTkfCj2HRxQ==}
-    engines: {esdev: '>=0.15.0'}
+  '@opentf/esdev-plugin-web@0.4.0':
+    resolution: {integrity: sha512-7KGNAUMw7hkOrxlUJqy8yExwAPwm8f22rjH1UCuDWp03Qk0r5ha8cg0I00SA91WsleTe9r1z+EkuuimkRkMvbQ==}
+    engines: {esdev: '>=0.16.0'}
 
   '@opentf/std@0.19.0':
     resolution: {integrity: sha512-tnBP9Fv3T7Sfd1VWJQKfq6BubBH/qvVEC80zzMeeLW7epACt0jtpZ7ivB9A5HLSzb8Lxs9Mc0V/jvD6jStq+bA==}
     engines: {node: '>=20.0.0'}
 
-  '@opentf/web-cli@1.28.0':
-    resolution: {integrity: sha512-rViZJC80WWAulBR1B4TqxeibAzQZkH+ahT7LWQXSpKkWy9124o7zW2JOvez6GDQL6iDOStQBT25aD1Q4L63TfA==}
-    engines: {esdev: '>=0.15.0'}
+  '@opentf/web-cli@1.30.0':
+    resolution: {integrity: sha512-yVLiqpQ83SnHa3RYfBZ+c5vubtk/2KcfU8I2m9m9gw0QwOIsQDCykxOaCgeg4zaEiLMUd7dN1k+vgYKIWeYzaw==}
+    engines: {esdev: '>=0.16.0'}
     peerDependencies:
-      '@opentf/web': 0.30.0
+      '@opentf/web': 0.32.0
 
-  '@opentf/web-compiler@0.19.0':
-    resolution: {integrity: sha512-ZyTlt5vbSRX2R6U7Z6mxvf6mf0nTN0AIF4oGY9c2t5x/obOA3o0L9BY0Pe3qTJ715vwDxc+ffmOWze4U1WljJw==}
-    engines: {esdev: '>=0.15.0'}
+  '@opentf/web-compiler@0.20.0':
+    resolution: {integrity: sha512-vNMzQspcUGnCndwg8tc8CGQKtpJhibr8GKY8D4OOwVcYw65TBIiqBU6zOWKYM/aRfna35oI5q4CDG3C4MeXcPg==}
+    engines: {esdev: '>=0.16.0'}
 
-  '@opentf/web-docs@0.28.0':
-    resolution: {integrity: sha512-ugGtp/c1e02vrQrrdJqM6QNj0IT9Rzm4dTmdu0CtJ9L2bqsVPZ0Q0/Z02un5X66rBs98BDCr2eYtVH+QXbWrCw==}
+  '@opentf/web-docs@0.30.0':
+    resolution: {integrity: sha512-cWYplw16ggDsswWKL5OotDHwD2UY+qAOQR4/FN4TlzPCY6fN2A0i5yh23pX6/4XWffYMFZvmNAF3F/n11fMRIg==}
     peerDependencies:
-      '@opentf/web': 0.30.0
+      '@opentf/web': 0.32.0
 
-  '@opentf/web-form@1.24.0':
-    resolution: {integrity: sha512-bno0+ryoJzVJP8dx5u1CyMbNynXWGTewiz3qTSn7latUtmxdnIM7LH5QMSjPGe9Lg2bYC/0y4sgsWMZzKdwMLQ==}
+  '@opentf/web-form@1.27.0':
+    resolution: {integrity: sha512-BQ07sBa3sL/+58zMkiJNMq5XMYTz+vxzdX1yoONiF/TO0Qqh0mQJBRBDBpltDrpPEIOgLxGSAHQFkhQNDUxbow==}
     peerDependencies:
-      '@opentf/web': 0.29.0
+      '@opentf/web': 0.32.0
 
-  '@opentf/web-i18n@1.24.0':
-    resolution: {integrity: sha512-LZ/3RWjP2kecF4rR3FNLnz4kf+i6+K/GtG3sCMKkOpcaFGEsOAJwEgXv1zH/u45zmJQEDlIvDWu+XOoaR/wsOg==}
+  '@opentf/web-i18n@1.27.0':
+    resolution: {integrity: sha512-d0apWfkDFAev24CCDAUtL2m7kK6Jxx+dr4o31IbxmntdiYbqV0aEt5HRdGDQ/s8a12PBGhb3RrCsi7LkfBsXXw==}
     peerDependencies:
-      '@opentf/web': 0.29.0
+      '@opentf/web': 0.32.0
 
-  '@opentf/web@0.30.0':
-    resolution: {integrity: sha512-Zc8w77N5GuhtjWxkQemARLeF7ln/DYKrKN4RFivMczxJKGHYy6X+IxXZbxQmpVkI7pJSkpDIITv2rSOE2gs4yQ==}
+  '@opentf/web@0.32.0':
+    resolution: {integrity: sha512-NqjIC+0/q6cEWFJiRTFzLCmnRuZ2ESqfvF/bxiS1u4QvyTM8kSFh13Db2awdA7IKQ+jpBYBsz1NUza6C1ZvXAg==}
 
   decimal.js@10.6.0:
     resolution: {integrity: sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==}
@@ -124,35 +124,35 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@opentf/esdev-plugin-web@0.3.0':
+  '@opentf/esdev-plugin-web@0.4.0':
     dependencies:
-      '@opentf/web-compiler': 0.19.0
+      '@opentf/web-compiler': 0.20.0
 
   '@opentf/std@0.19.0': {}
 
-  '@opentf/web-cli@1.28.0(@opentf/web@0.30.0)':
+  '@opentf/web-cli@1.30.0(@opentf/web@0.32.0)':
     dependencies:
-      '@opentf/esdev-plugin-web': 0.3.0
-      '@opentf/web': 0.30.0
+      '@opentf/esdev-plugin-web': 0.4.0
+      '@opentf/web': 0.32.0
 
-  '@opentf/web-compiler@0.19.0': {}
+  '@opentf/web-compiler@0.20.0': {}
 
-  '@opentf/web-docs@0.28.0(@opentf/web@0.30.0)':
+  '@opentf/web-docs@0.30.0(@opentf/web@0.32.0)':
     dependencies:
-      '@opentf/web': 0.30.0
-      '@opentf/web-compiler': 0.19.0
+      '@opentf/web': 0.32.0
+      '@opentf/web-compiler': 0.20.0
 
-  '@opentf/web-form@1.24.0(@opentf/web@0.30.0)':
+  '@opentf/web-form@1.27.0(@opentf/web@0.32.0)':
     dependencies:
       '@opentf/std': 0.19.0
-      '@opentf/web': 0.30.0
+      '@opentf/web': 0.32.0
 
-  '@opentf/web-i18n@1.24.0(@opentf/web@0.30.0)':
+  '@opentf/web-i18n@1.27.0(@opentf/web@0.32.0)':
     dependencies:
-      '@opentf/web': 0.30.0
+      '@opentf/web': 0.32.0
       intl-messageformat: 10.7.18
 
-  '@opentf/web@0.30.0': {}
+  '@opentf/web@0.32.0': {}
 
   decimal.js@10.6.0: {}
 
