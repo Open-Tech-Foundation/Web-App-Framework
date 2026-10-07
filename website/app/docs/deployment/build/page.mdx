@@ -42,7 +42,7 @@ mountApp({ pages, guard, target: document.getElementById("app") });
 
 ```bash
 esdev build --minify
-esdev preview
+esdev preview --spa
 ```
 
 ## Output
@@ -52,8 +52,10 @@ configured public files. The route map uses dynamic imports; esdev owns chunking
 and final asset names. See the official
 [project build configuration](https://esrun.opentechf.org/esdev/build/project).
 
-For a single-page app, configure the host to fall back to `index.html` for unknown
-paths so client routes resolve.
+`esdev preview` serves the output as a static host does: a missing path is a `404`,
+with `dist/404.html` when present. A single-page app passes `--spa` so route-like
+paths get `index.html`; configure your host the same way so client routes resolve.
+See [Preview](https://esrun.opentechf.org/esdev/start/preview).
 
 ## Static rendering and docs output
 

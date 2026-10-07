@@ -88,9 +88,8 @@ refer to the current request. Browser components continue importing from
 <Callout type="info" title="Fullstack starter">
   `esdev create <dir> --template=fullstack` generates this wiring: a `server.js`
   request pipeline, browser and server targets, and `esdev start` running the server.
-  Its server target enters through a `bootstrap.js` that defines `HTMLElement` before
-  `server.js` loads. Once your `@opentf/web` resolves page imports through the
-  DOM-free server entry, point the server target at `server.js` and delete the bootstrap.
+  Server builds resolve page imports through the DOM-free `@opentf/web/server` entry,
+  so `server.js` is the server target directly; no `HTMLElement` stub is needed.
 </Callout>
 
 ## Other runtimes

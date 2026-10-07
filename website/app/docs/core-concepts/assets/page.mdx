@@ -56,11 +56,18 @@ export default function WorkerStatus() {
 
 ## Ordinary files referenced from JavaScript
 
-In the verified esdev 0.16 build, `new URL("./icon.svg", import.meta.url)` remains
-in the generated JavaScript without copying that file. It then resolves beside the
-emitted bundle, where the original source file may not exist. This migration gap
-needs an upstream asset-pipeline fix. Use configured public assets for ordinary
-image/WebAssembly URLs until that behavior is supported and verified.
+Name a file relative to the module with `new URL("./icon.svg", import.meta.url)`.
+esdev (0.17 or newer) copies it into the output with a content hash and rewrites the
+URL to the copy. The path must be a literal starting with `./` or `../`. See
+[files named by URL](https://esrun.opentechf.org/esdev/build/browser#files-named-by-url).
+
+```jsx
+const icon = new URL("./icon.svg", import.meta.url).href;
+
+export default function Logo() {
+  return <img src={icon} alt="" />;
+}
+```
 
 HTML/CSS references use esdev's own browser pipeline. See the official
 [browser build guide](https://esrun.opentechf.org/esdev/build/browser).
