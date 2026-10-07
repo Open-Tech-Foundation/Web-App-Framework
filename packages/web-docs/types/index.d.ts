@@ -48,7 +48,11 @@ export function SearchTrigger(): Node;
 export function Search(): Node;
 export function Callout(props: ChildrenProps & { type?: "note" | "tip" | "info" | "warning" | "danger"; title?: string }): Node;
 export function CodeBlock(props: { code: string; lang?: string; name?: string }): Node;
-export function Tabs(props: { tabs?: { label: string; content: unknown }[] }): Node;
+export function Tabs(props: {
+  tabs?: { label: string; content: unknown }[];
+  /** Accessible name for the tab list. */
+  label?: string;
+}): Node;
 export function Steps(props: ChildrenProps): Node;
 export function Table(props: ChildrenProps): Node;
 export function Cards(props: ChildrenProps): Node;

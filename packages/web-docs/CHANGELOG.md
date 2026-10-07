@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- `Tabs` follows the WAI-ARIA tabs pattern: `tab`/`tabpanel` roles, `aria-selected`,
+  tab-to-panel links, one tab stop with roving `tabindex`, and Arrow Left/Right
+  (wrapping), Home and End to move and select. Hidden panels use `hidden`, and a new
+  optional `label` prop names the tab list.
 - `BlogLayout` shows "Last updated" only when a post's update falls on a later
   calendar day (UTC) than its publish date. An update dated before publication, such
   as a stale git timestamp or a backdated post, previously showed as well.

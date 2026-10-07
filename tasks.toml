@@ -82,7 +82,7 @@ run = "esdev test --config=esdev.test.json packages/web-docs/tests/types.test.js
 # Tests use CSR independently of the website's hydrate build configuration.
 [tasks.test-web-docs-dom]
 deps = ["build-compiler"]
-run = "esdev test --config=esdev.test.json --dom packages/web-docs/tests/MobileDrawer.test.js packages/web-docs/tests/SidebarCollapseAll.test.js"
+run = "esdev test --config=esdev.test.json --dom --setup=@opentf/web-test/setup packages/web-docs/tests/MobileDrawer.test.js packages/web-docs/tests/SidebarCollapseAll.test.js packages/web-docs/tests/Tabs.test.js"
 
 [tasks.test-web-form]
 deps = ["build-compiler"]

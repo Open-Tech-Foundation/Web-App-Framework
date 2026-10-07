@@ -169,6 +169,28 @@ const CASES = [
     props: {},
   },
   {
+    name: "Tabs (adopted tab set responds to the keyboard)",
+    imports: `import Tabs from "${COMPONENTS}/Tabs.jsx";`,
+    body: `<Tabs label="Example" tabs={[{ label: "One", content: "first" }, { label: "Two", content: "second" }]} />`,
+    props: {},
+    // Tabs takes content through a prop, not a `{children}` slot, so the slotted-probe
+    // invariants do not apply; the server-node and interaction checks do.
+    noSlot: true,
+    expectMarkup: [/role="tablist"/, /role="tab"/, /aria-selected="true"/, /role="tabpanel"/, /hidden/],
+    // Runs after hydration: the adopted tab set must respond to the keyboard and keep
+    // its ARIA state in step.
+    interact: `(async () => {
+      const tabs = [...document.querySelectorAll('[role="tab"]')];
+      const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+      const linked = tabs.every((t, i) => t.getAttribute("aria-controls") === panels[i].id && panels[i].getAttribute("aria-labelledby") === t.id);
+      tabs[0].focus();
+      tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+      await new Promise((r) => setTimeout(r, 50));
+      return linked && document.activeElement === tabs[1] && tabs[1].getAttribute("aria-selected") === "true"
+        && tabs[0].getAttribute("tabindex") === "-1" && panels[0].hidden && !panels[1].hidden;
+    })()`,
+  },
+  {
     name: "DocsLayout > Callout (page content nested inside the layout slot)",
     imports: `import DocsLayout from "${COMPONENTS}/DocsLayout.jsx";\nimport Callout from "${COMPONENTS}/Callout.jsx";`,
     consts: `const NAV = ${NAV};`,
@@ -384,8 +406,10 @@ try {
 
     // Assert on the server markup, never on the whole page — the page inlines the theme CSS,
     // which mentions every one of these class names.
-    assert(markup.includes("<!--c["), `${kase.name}: server HTML carries the slot markers`);
-    assert(markup.includes('class="probe"'), `${kase.name}: server HTML rendered the slotted probe`);
+    if (!kase.noSlot) {
+      assert(markup.includes("<!--c["), `${kase.name}: server HTML carries the slot markers`);
+      assert(markup.includes('class="probe"'), `${kase.name}: server HTML rendered the slotted probe`);
+    }
     for (const re of kase.expectMarkup ?? []) {
       assert(re.test(markup), `${kase.name}: server HTML matches ${re}`);
     }
@@ -409,14 +433,19 @@ try {
       `${kase.name}: no server node torn out${s.removed.length ? ` — removed ${JSON.stringify(s.removed.slice(0, 4))}` : ""}`,
       kase.known,
     );
-    assert(s.probeCount === 1, `${kase.name}: the slotted probe exists exactly once`, kase.known);
-    assert(s.probeText === "PROBE", `${kase.name}: the slotted probe kept its text`, kase.known);
-    assert(s.probeIsServer, `${kase.name}: the slotted probe is the server node, adopted in place`, kase.known);
+    if (!kase.noSlot) {
+      assert(s.probeCount === 1, `${kase.name}: the slotted probe exists exactly once`, kase.known);
+      assert(s.probeText === "PROBE", `${kase.name}: the slotted probe kept its text`, kase.known);
+      assert(s.probeIsServer, `${kase.name}: the slotted probe is the server node, adopted in place`, kase.known);
+    }
     if (kase.slotSelector) {
       assert(s.probeInSlot, `${kase.name}: the probe is still inside ${kase.slotSelector}`, kase.known);
       assert(s.slotIsServer, `${kase.name}: ${kase.slotSelector} is the server node`, kase.known);
     }
     assert(s.anchorCount === 0, `${kase.name}: no <Link> island double-built its <a>`, kase.known);
+    if (kase.interact) {
+      assert(await evalJS(client, kase.interact), `${kase.name}: interaction works on the adopted DOM`, kase.known);
+    }
   }
 
   // Reactivity must be live on the adopted DOM, not just structurally intact: the sidebar
