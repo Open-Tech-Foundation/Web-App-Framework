@@ -90,7 +90,31 @@ export class HydrationMismatch extends Error {
 // flag when it decides *not* to hydrate (no sentinel / empty root), so a CSR mount and
 // every subsequent SPA navigation build fresh.
 let _hydrating =
-  typeof document !== "undefined" && !!document.querySelector("[data-otfw-hydrate]");
+  typeof document !== "undefined" &&
+  renderedForPath(document.querySelector("[data-otfw-hydrate]"), globalThis.location?.pathname);
+
+/**
+ * Whether `el` carries the hydrate sentinel for markup rendered at `pathname`. A
+ * prerender stamps the route it rendered (`data-otfw-hydrate="/docs/x"`); a bare
+ * sentinel (SSR, which renders the requested URL) always matches. A host that
+ * answers one URL with another page's HTML — an SPA fallback over static output —
+ * gets a mismatch, so the client builds the requested route instead of adopting.
+ */
+export function renderedForPath(el, pathname) {
+  if (!el?.hasAttribute?.("data-otfw-hydrate")) return false;
+  const rendered = el.getAttribute("data-otfw-hydrate");
+  return !rendered || canonicalPath(rendered) === canonicalPath(pathname ?? "/");
+}
+
+function canonicalPath(path) {
+  let decoded = path;
+  try {
+    decoded = decodeURI(path);
+  } catch {
+    // Malformed escapes compare literally.
+  }
+  return decoded.replace(/(.)\/+$/, "$1") || "/";
+}
 
 /** Is the client mid-hydration right now? */
 export function isHydrating() {

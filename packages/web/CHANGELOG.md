@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- Hydration adopts server markup only when it was rendered for the current URL.
+  A prerendered page stamps its route on the `data-otfw-hydrate` sentinel; when a
+  host serves that HTML for another path (an SPA fallback over static output), the
+  client builds the requested route instead of showing the other page. A bare
+  sentinel keeps the previous behavior.
+
 - `@opentf/web/server` exports `setLocale`, `setRouteState`, `navigate`, `isHydrating`
   and `emit`. Server builds resolve a page's `@opentf/web` imports to this entry
   since 0.31.0, so a page importing one of them failed to prerender ("is not

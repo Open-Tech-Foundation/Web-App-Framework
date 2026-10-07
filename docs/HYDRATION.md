@@ -283,6 +283,11 @@ since those helpers already operate on existing nodes. Only acquisition (the cla
   an empty `#app`, so it keeps the leaner CSR bundle and stamps no sentinel. The compiler
   serve protocol carries the target as a token (`csr`/`ssg`/`hydrate`), so the client
   build requests `--target=hydrate` and gets the dual module per route.
+  The prerender records each page's route on the sentinel
+  (`data-otfw-hydrate="/docs/x"`, `stampRenderedPath`); the client adopts only when
+  it matches the current URL (`renderedForPath`, ignoring trailing slashes and
+  percent-encoding) and otherwise builds the requested route. A bare sentinel (SSR,
+  which renders the requested URL) always matches.
 - **`connectedCallback` branches on `isHydrating() && this.firstChild`** _(implemented)_ —
   a component upgrades — and runs this switch — the instant its class is
   `customElements.define`d. Route chunks are code-split, so a *route's* components define

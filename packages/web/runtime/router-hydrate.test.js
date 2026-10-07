@@ -246,6 +246,42 @@ describe("router boot — hydrate vs build", () => {
     expect(root.textContent).toContain("BUILT");
   });
 
+  test("builds the requested route when the markup was prerendered for another path", async () => {
+    // A host that answers an unknown URL with another page's HTML (an SPA fallback
+    // over SSG output) must not leave that page's content on screen.
+    const home = {};
+    const missing = {};
+    registerRoutes({ "/proj/app/page.jsx": makeModule(home), "/proj/app/404.jsx": makeModule(missing) });
+    const root = serverRoot(true);
+    root.setAttribute("data-otfw-hydrate", "/");
+    const serverDiv = root.firstChild;
+    window.history.replaceState({}, "", "/no-such-page");
+
+    await mountApp({ target: root });
+
+    expect(home.hydrate).toBeUndefined();
+    expect(missing.hydrate).toBeUndefined();
+    expect(missing.build).toBe(true);
+    expect(missing.hydratingDuringBuild).toBe(false);
+    expect(root.firstChild).not.toBe(serverDiv);
+    expect(root.textContent).toContain("BUILT");
+  });
+
+  test("adopts markup stamped with the current path, ignoring trailing slashes and encoding", async () => {
+    const calls = {};
+    registerRoutes({ "/proj/app/docs/[slug]/page.jsx": makeModule(calls) });
+    const root = serverRoot(true);
+    root.setAttribute("data-otfw-hydrate", "/docs/hello%20world");
+    const serverDiv = root.firstChild;
+    window.history.replaceState({}, "", "/docs/hello world/");
+
+    await mountApp({ target: root });
+
+    expect(calls.hydrate).toBe(true);
+    expect(calls.build).toBeUndefined();
+    expect(root.firstChild).toBe(serverDiv);
+  });
+
   test("falls back to a build when the route has no hydrate factory (CSR-only module)", async () => {
     const calls = {};
     // A module with only a build factory (e.g. a page the hydrate target couldn't adopt).

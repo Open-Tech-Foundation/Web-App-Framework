@@ -1,5 +1,7 @@
 /** Is the client mid-hydration right now? */
 export function isHydrating(): boolean;
+/** Whether `el` carries the hydrate sentinel for markup rendered at `pathname`. */
+export function renderedForPath(el: Element | null | undefined, pathname?: string | null): boolean;
 /**
  * Run `fn` with the hydration flag *cleared*, restoring the prior value (nesting-safe).
  *

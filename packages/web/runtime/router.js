@@ -19,7 +19,7 @@ import { signal } from "../core/signals.js";
 import { getRenderContext } from "../core/render-context.js";
 import { resolveMetadataModules } from "../core/metadata.js";
 import { prepareRouteHead, updateRouteHead } from "./head.js";
-import { beginHydration, cursor, endHydration } from "./hydrate.js";
+import { beginHydration, cursor, endHydration, renderedForPath } from "./hydrate.js";
 import { buildScopedView, runCleanup, runMount } from "./mount.js";
 import { fetchRouteData, readInlineRouteData } from "./route-data.js";
 
@@ -717,14 +717,14 @@ export function mountApp({ pages, target, guard: g, i18n, nav, loaders } = {}) {
       ),
     );
   }
-  // Hydrate the first paint when the server stamped `data-otfw-hydrate` on the root and
-  // left rendered markup in it; otherwise this is a plain CSR mount (build into #app).
+  // Hydrate the first paint when the server stamped `data-otfw-hydrate` on the root,
+  // left rendered markup in it, and rendered it for this URL; otherwise this is a
+  // plain CSR mount (build into #app), replacing any markup rendered for another path.
   const hydrate = !!(
     isBrowser &&
     rootEl &&
     rootEl.firstChild &&
-    typeof rootEl.hasAttribute === "function" &&
-    rootEl.hasAttribute("data-otfw-hydrate")
+    renderedForPath(rootEl, window.location.pathname)
   );
   if (isBrowser) prepareRouteHead(hydrate);
   // The flag is seeded `true` from the sentinel at module load (so eagerly-defined
