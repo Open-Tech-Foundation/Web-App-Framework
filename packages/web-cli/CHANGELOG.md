@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Prerendered pages stamp their route on the `data-otfw-hydrate` sentinel, so the
+  runtime does not adopt a page's markup when a host serves it for another URL.
+
 ## [1.29.0] - 2026-10-06
 
 ### Changed

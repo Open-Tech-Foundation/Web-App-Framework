@@ -15,6 +15,7 @@ import {
   injectMarkup,
   injectRouteData,
   modulepreloadTags,
+  stampRenderedPath,
   withHtmlLang,
 } from "./shared.js";
 
@@ -155,7 +156,7 @@ export async function runPrerender({ root, pages, webEntry, otfwc, shellHtml, ou
           file,
           injectRouteData(
             injectHydrationData(
-              injectMarkup(injectHead(withHtmlLang(shellHtml, locale), head), html),
+              injectMarkup(injectHead(withHtmlLang(stampRenderedPath(shellHtml, urlPath), locale), head), html),
               hydration,
             ),
             dataJson,

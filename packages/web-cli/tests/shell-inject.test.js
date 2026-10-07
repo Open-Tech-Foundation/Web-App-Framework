@@ -10,6 +10,7 @@ import {
   modulepreloadTags,
   serverEntrySource,
   stampHydrateSentinel,
+  stampRenderedPath,
   withHtmlLang,
 } from "../src/shared.js";
 
@@ -82,6 +83,23 @@ describe("withHtmlLang (i18n)", () => {
   test("is a no-op without a locale", () => {
     const shell = `<html lang="en"></html>`;
     expect(withHtmlLang(shell, null)).toBe(shell);
+  });
+});
+
+describe("stampRenderedPath", () => {
+  test("records the rendered route on a bare sentinel", () => {
+    const shell = `<body><div id="app" data-otfw-hydrate></div></body>`;
+    expect(stampRenderedPath(shell, "/docs/x")).toContain(`<div id="app" data-otfw-hydrate="/docs/x">`);
+  });
+
+  test("replaces a previously stamped route and escapes attribute characters", () => {
+    const shell = `<div id="app" class="root" data-otfw-hydrate="/old"></div>`;
+    expect(stampRenderedPath(shell, '/a"b&c')).toBe(`<div id="app" class="root" data-otfw-hydrate="/a&quot;b&amp;c"></div>`);
+  });
+
+  test("leaves a CSR shell without a sentinel untouched", () => {
+    const shell = `<div id="app"></div>`;
+    expect(stampRenderedPath(shell, "/docs/x")).toBe(shell);
   });
 });
 

@@ -79,6 +79,17 @@ export function stampHydrateSentinel(shellHtml) {
 }
 
 /**
+ * Record the route a prerendered page was rendered for on its hydrate sentinel
+ * (`data-otfw-hydrate="/docs/x"`), so the client adopts the markup only at that URL
+ * and builds the requested route when a host serves this file for another path.
+ * A no-op when the shell carries no sentinel (a CSR-only shell).
+ */
+export function stampRenderedPath(shellHtml, path) {
+  const value = String(path).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  return shellHtml.replace(/(<div id="app"[^>]*?\sdata-otfw-hydrate)(?:="[^"]*")?/, (_m, attr) => `${attr}="${value}"`);
+}
+
+/**
  * Inject per-route `<head>` tags before `</head>`, dropping the shell's default
  * `<title>` when the route supplies its own (so each page gets a unique,
  * non-duplicated title). Shared by SSG pre-render and the SSR server.

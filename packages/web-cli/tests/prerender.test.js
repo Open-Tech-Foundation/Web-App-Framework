@@ -23,7 +23,7 @@ export default function Post({ params }) { return <h1>{params.slug}</h1>; }
       pages: [join(dir, "app/post/[slug]/page.jsx")],
       webEntry: join(root, "packages/web/index.js"),
       otfwc: join(root, "target/debug/otfwc"),
-      shellHtml: '<html><head></head><body><div id="app"></div></body></html>',
+      shellHtml: '<html><head></head><body><div id="app" data-otfw-hydrate></div></body></html>',
       outDir, baseUrl: "https://example.com",
       loaders: {
         match(path) { return { path }; },
@@ -35,6 +35,7 @@ export default function Post({ params }) { return <h1>{params.slug}</h1>; }
     const html = await file(join(outDir, "post/hello world/index.html")).text();
     expect(html).toContain('href="https://example.com/post/hello%20world"');
     expect(html).toContain('<title data-otfw-head="">hello world</title>');
+    expect(html).toContain('<div id="app" data-otfw-hydrate="/post/hello%20world">');
     expect(await file(join(outDir, "post/hello world/__data.json")).json()).toEqual({ path: "/post/hello%20world" });
     expect(await file(join(outDir, "post/100%25/__data.json")).json()).toEqual({ path: "/post/100%2525" });
   } finally { await discard(dir); }
