@@ -240,7 +240,7 @@ export default function RenderPipeline() {
           <symbol id="pi-layers" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></symbol>
         </defs>
       </svg>
-      <div className="pipe-body">
+      <div>
         {/* Stacks are written out (not a shared helper returning JSX): the
             compiler binds a helper's returned element as text. */}
         <div className="pipe-duel">
@@ -310,7 +310,6 @@ export default function RenderPipeline() {
             <a className="pipe-source" href={OTF.source}>Reactivity docs →</a>
           </div>
         </div>
-        <p className="pipe-caption">Simplified client-side update paths. Build steps stay static; animation speed and step counts do not represent performance. Hover to pause the tour.</p>
       </div>
     </div>
   );

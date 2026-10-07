@@ -691,16 +691,10 @@ body {
   color: var(--text-muted);
 }
 /* ── Render-pipeline (hero) ────────────────────────────────────────────────────
-   Always-dark panel: auto-touring framework stacks left, OTF pinned right.
-   Runtime chips flash top to bottom (WAAPI from RenderPipeline.jsx); build
-   steps stay static. The panel uses a dark palette in both themes. */
-.pipe-body {
-  padding: 1.25rem;
-  border-radius: 1rem;
-  background: #020617;
-  border: 1px solid #1e293b;
-  box-shadow: 0 24px 50px -28px rgba(2, 6, 23, 0.65);
-}
+   Two always-dark cards around a "vs" pill: auto-touring framework stack left,
+   OTF pinned right. Runtime chips flash top to bottom (WAAPI from
+   RenderPipeline.jsx); build steps stay static. The cards use a dark palette in
+   both themes. */
 .pipe-duel {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -734,6 +728,7 @@ body {
 .pipe-stack-head {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   font-family: 'Geist Mono', ui-monospace, monospace;
   font-size: 0.72rem;
@@ -812,7 +807,7 @@ body {
   line-height: 1.5;
   color: #94a3b8;
 }
-/* Angular's mark is near-black — always inverted on this dark panel. */
+/* Angular's mark is near-black — always inverted on the dark card. */
 .pipe-logo.is-angular {
   filter: invert(1);
 }
@@ -823,10 +818,4 @@ body {
   .pipe-vs {
     justify-self: center;
   }
-}
-.pipe-caption {
-  margin: 0.85rem 0 0;
-  font-size: 0.76rem;
-  line-height: 1.5;
-  color: #94a3b8;
 }
