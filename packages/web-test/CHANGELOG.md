@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.27.0] - 2026-10-07
+
 ### Changed
 
 - Requires esdev `>=0.17.0`, whose native DOM realm supports the APIs `userEvent`
