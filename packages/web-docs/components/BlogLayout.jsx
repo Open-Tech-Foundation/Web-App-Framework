@@ -24,14 +24,7 @@ import Footer from "./Footer.jsx";
 import Toc from "./Toc.jsx";
 import PostBanner from "./PostBanner.jsx";
 import LastUpdated from "./LastUpdated.jsx";
-
-// True when the post was edited after it was published (different calendar day), so a
-// "Last updated" line adds information rather than echoing the publish date.
-function editedAfterPublish(iso, published) {
-  if (!iso) return false;
-  if (!published) return true;
-  return new Date(iso).toDateString() !== new Date(published).toDateString();
-}
+import { editedAfterPublish } from "./post-dates.js";
 
 // Structured data for crawlers: the current post as a BlogPosting, emitted in
 // the body (JSON-LD is discovered wherever it sits). `siteUrl` (optional site
